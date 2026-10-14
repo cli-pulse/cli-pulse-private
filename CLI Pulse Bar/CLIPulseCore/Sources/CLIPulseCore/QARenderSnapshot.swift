@@ -451,8 +451,10 @@ public enum QARenderSnapshot {
     /// `min(520, max(440, room to the left of the popover))`, which is 520
     /// whenever the popover sits at the right of an ordinary screen.
     public static let storePanelWidth = 520.0
-    /// The panel's headline counts up for 2.2 s (`CountUpNumber`); the panel
-    /// is drawn no sooner than this after it appears.
+    /// The panel is drawn no sooner than this after it appears. Its headline
+    /// does not count up in a render (the renderer draws every view with
+    /// `EnvironmentValues.countsUp` off); the wait is kept for everything
+    /// else the panel loads.
     public static let storePanelSettleSeconds = 3.0
 
     // MARK: - The store set's local usage history

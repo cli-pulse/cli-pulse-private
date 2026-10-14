@@ -120,10 +120,16 @@ public struct CostUsageScanResult: Sendable {
     }
 
     /// v1.9.4 (second revision): `input + output` only, matching the
-    /// "I/O tokens" definition used everywhere in the UI. For Claude that
-    /// excludes cache reads and writes; for Codex `input` already includes
-    /// cached input. Cost is computed elsewhere with per-component pricing.
-    /// See `AppState.totalTokens` for rationale.
+    /// "I/O tokens" definition used everywhere in the UI.
+    ///
+    /// Why (per Codex + Gemini 3.1 Pro review): one formula for every
+    /// provider. For Claude it leaves cache out: `cachedTokens` holds cache
+    /// reads and writes separately, and cache reads dominate its raw total.
+    /// For Codex it does NOT: OpenAI's `input_tokens` already includes cached
+    /// input (`cachedTokens` is the cached share of it, never added), which
+    /// is how OpenAI itself reports Codex usage. Cost is computed elsewhere
+    /// with per-component pricing either way. The UI labels this "I/O tokens"
+    /// and its help text says what each provider's input holds.
     public func totalTokens(for date: String) -> Int {
         entries.filter { $0.date == date }.reduce(0) { $0 + $1.inputTokens + $1.outputTokens }
     }

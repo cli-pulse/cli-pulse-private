@@ -370,44 +370,6 @@ public final class AppState: ObservableObject {
     /// `@Published` — it is scheduling state, not something a view renders.
     var isReportingCollectorStatus = false
 
-    /// Total I/O tokens for a provider from the JSONL scan: `input + output`
-    /// for every provider (`totalTokens` below). The same formula means
-    /// different things, because the providers' `input` differs: Claude's
-    /// excludes cache reads and writes, Codex's already includes cached input
-    /// (OpenAI's `input_tokens` does). The help texts say so per provider.
-    public func scanTokens(for provider: String, onDate: Date? = nil) -> Int? {
-        guard let scan = costUsageScanResult, !scan.entries.isEmpty else { return nil }
-        let filtered: [CostUsageScanResult.DailyEntry] = {
-            if let date = onDate {
-                let key = DayKey.string(from: date)   // the scanner's Gregorian keys
-                return scan.entries.filter { $0.provider == provider && $0.date == key }
-            }
-            return scan.entries.filter { $0.provider == provider }
-        }()
-        let total = Self.totalTokens(filtered, provider: provider)
-        return total > 0 ? total : nil
-    }
-
-    /// v1.9.4 (second revision): raw user + assistant log-event count for a
-    /// provider, NOT deduped. Matches Claude Code's UI convention (which also
-    /// counts streaming chunks and user messages). Currently only populated
-    /// for Claude (Codex doesn't carry a stable per-turn id). This is the
-    /// hero metric for Claude cards because Claude Code's own UI leads with
-    /// messages — token numbers are dominated by ~98% cache_read noise and
-    /// don't reconcile with Anthropic's dashboard.
-    public func scanMessages(for provider: String, onDate: Date? = nil) -> Int? {
-        guard let scan = costUsageScanResult, !scan.entries.isEmpty else { return nil }
-        let filtered: [CostUsageScanResult.DailyEntry] = {
-            if let date = onDate {
-                let key = DayKey.string(from: date)   // the scanner's Gregorian keys
-                return scan.entries.filter { $0.provider == provider && $0.date == key }
-            }
-            return scan.entries.filter { $0.provider == provider }
-        }()
-        let total = filtered.reduce(0) { $0 + $1.messageCount }
-        return total > 0 ? total : nil
-    }
-
     /// v1.56: whether any of `provider`'s scanned cost on `onDate` (every
     /// scanned day when nil) was charged at a rate borrowed from a neighbouring
     /// model. The provider card shows that cost as "≈$…".
@@ -432,38 +394,6 @@ public final class AppState: ObservableObject {
         return scan.entries.contains {
             $0.provider == provider && $0.priceIsApproximate && $0.date >= cutoffKey
         }
-    }
-
-    public func scanMessagesThisWeek(for provider: String) -> Int? {
-        guard let scan = costUsageScanResult, !scan.entries.isEmpty else { return nil }
-        let cutoffKey = DateRange.rollingWeekStartYMD(from: Date())
-        let total = scan.entries
-            .filter { $0.provider == provider && $0.date >= cutoffKey }
-            .reduce(0) { $0 + $1.messageCount }
-        return total > 0 ? total : nil
-    }
-
-    /// Tokens for the rolling 7-day window ending now (provider-aware).
-    public func scanTokensThisWeek(for provider: String) -> Int? {
-        guard let scan = costUsageScanResult, !scan.entries.isEmpty else { return nil }
-        let cutoffKey = DateRange.rollingWeekStartYMD(from: Date())
-        let filtered = scan.entries.filter { $0.provider == provider && $0.date >= cutoffKey }
-        let total = Self.totalTokens(filtered, provider: provider)
-        return total > 0 ? total : nil
-    }
-
-    private static func totalTokens(_ entries: [CostUsageScanResult.DailyEntry], provider: String) -> Int {
-        // v1.9.4 (second revision, per Codex + Gemini 3.1 Pro review):
-        // Uniform formula across providers — `input + output`. For Claude
-        // that leaves cache out: `cachedTokens` holds cache reads and writes
-        // separately, and cache reads dominate its raw total. For Codex it
-        // does NOT: OpenAI's `input_tokens` already includes cached input
-        // (`cachedTokens` is the cached share of it, never added), which is
-        // how OpenAI itself reports Codex usage. An earlier version of this
-        // comment said the opposite. Cost is computed elsewhere with
-        // per-component pricing either way. The UI labels this "I/O tokens"
-        // and the help text states the per-provider scope.
-        return entries.reduce(0) { $0 + $1.inputTokens + $1.outputTokens }
     }
 
     // MARK: - Cost Forecast

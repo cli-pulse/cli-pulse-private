@@ -180,14 +180,23 @@ public struct ProviderCardUsage: Sendable, Equatable {
         }
     }
 
-    /// Whether the chart has a bar to draw for `metric`.
-    public func chartHasData(_ metric: UsageChartMetric) -> Bool {
-        chartDays(metric).contains { $0.value(metric) > 0 }
+    /// What the card's small chart draws for one measure, worked out once a
+    /// redraw: its bars, the tallest of them and whether there is one to
+    /// draw at all.
+    public struct Chart: Sendable, Equatable {
+        /// `chartDays(metric)`.
+        public let bars: [ProviderUsageDays.Day]
+        public let metric: UsageChartMetric
+
+        /// The tallest bar, for the chart's help text ("Highest day: …").
+        public var highest: Double { bars.map { $0.value(metric) }.max() ?? 0 }
+        /// Whether there is a bar to draw. The card draws no chart without one.
+        public var hasData: Bool { highest > 0 }
     }
 
-    /// The tallest bar, for the chart's scale and its help text.
-    public func chartMaximum(_ metric: UsageChartMetric) -> Double {
-        chartDays(metric).map { $0.value(metric) }.max() ?? 0
+    /// The small chart for `metric`.
+    public func chart(_ metric: UsageChartMetric) -> Chart {
+        Chart(bars: chartDays(metric), metric: metric)
     }
 
     /// The messages a signed-in card shows are this Mac's alone, beside
@@ -252,11 +261,19 @@ public struct ProviderCardUsage: Sendable, Equatable {
 /// leaves this Mac's own. The larger is taken, never the sum, because the
 /// synced day already contains what this Mac sent.
 ///
+/// Tokens and cost each take their own larger source. The tokens of a day are
+/// the larger of the two days' tokens and its cost the larger of the two
+/// costs, picked separately, so on one day a figure's tokens can be this
+/// Mac's and its cost the account's: this Mac has counted tokens it has not
+/// synced yet, while another device's pricier model makes the account's day
+/// cost more. Each is that measure's chart bars added up; a single bar is
+/// still one source's day, as the panel lists it.
+///
 /// Day by day, not window by window: when this Mac has counted days the
 /// account has not received yet (an upload failed, or the next sync has not
 /// run) while the account holds more over the month, the larger window would
 /// drop this Mac's unsynced days. The figures are the chart's bars added up,
-/// so This Week is never less than its seven bars.
+/// so This Week is never less than its seven bars, in either measure.
 ///
 /// The account's own window figures (`provider_summary`, the same rows
 /// summed by the server) are a floor under each cost: they are what the card

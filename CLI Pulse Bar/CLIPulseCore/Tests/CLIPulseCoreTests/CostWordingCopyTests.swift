@@ -83,6 +83,51 @@ final class CostWordingCopyTests: XCTestCase {
         }
     }
 
+    /// A provider card, and the usage panel it opens, speak for that one
+    /// provider. The panel opened from Claude's card named Codex too, and
+    /// opened from any other provider's card named both, though neither was
+    /// on screen.
+    func testCardAndPanelTokenHelpNameOnlyTheirOwnProviderInEveryLanguage() throws {
+        let english = try catalogue("en")
+        for localization in LocaleOverrideStore.shippedLocalizations {
+            LocaleOverrideStore.shared.set(localization)
+            let codex = ProviderUsageDays.ioTokensHelp(provider: ProviderKind.codex.rawValue)
+            let claude = ProviderUsageDays.ioTokensHelp(provider: ProviderKind.claude.rawValue)
+            let other = ProviderUsageDays.ioTokensHelp(provider: ProviderKind.gemini.rawValue)
+            XCTAssertEqual(codex, L10n.providers.codexIOTokensHelp, localization)
+            XCTAssertFalse(codex.contains("Claude"), "\(localization): \(codex)")
+            for name in ["Codex", "OpenAI"] {
+                XCTAssertFalse(claude.contains(name), "\(localization): \(claude)")
+            }
+            for name in ["Claude", "Codex", "OpenAI"] {
+                XCTAssertFalse(other.contains(name), "\(localization): \(other)")
+            }
+            XCTAssertEqual(Set([codex, claude, other, L10n.cost.ioTokensHelp]).count, 4, localization)
+            if localization != "en" {
+                // Read from this language's catalogue, not the English fallback.
+                XCTAssertNotEqual(claude, english["providers.claude_io_tokens_help"], localization)
+                XCTAssertNotEqual(other, english["providers.io_tokens_help"], localization)
+            }
+        }
+    }
+
+    /// The line under the panel's total, as each way of opening it shows it.
+    func testThePanelsTokenLineFollowsWhatOpenedItInChinese() {
+        LocaleOverrideStore.shared.set("zh-Hans")
+        func days(_ provider: String, _ basis: ProviderUsageDays.TokenBasis) -> ProviderUsageDays {
+            ProviderUsageDays.fromCloud([], provider: provider, basis: basis, todayKey: "2026-10-07",
+                                        timeZone: TimeZone(identifier: "Asia/Tokyo")!)
+        }
+        // Opened from the dashboard: every token once, whichever provider.
+        XCTAssertEqual(days("Claude", .eachOnce).tokenBasisHelp, "token：输入、缓存输入和输出各只计一次。")
+        // Opened from a card: that provider's input + output.
+        XCTAssertEqual(days("Claude", .inputOutput).tokenBasisHelp,
+                       "输入 + 输出 token。不含缓存读取和缓存写入；费用预估按它们各自的单价计入。")
+        XCTAssertTrue(days("Codex", .inputOutput).tokenBasisHelp.contains("输入已包含缓存输入"))
+        XCTAssertEqual(days("Gemini", .inputOutput).tokenBasisHelp,
+                       "输入 + 输出 token。输入是否包含缓存输入，取决于服务商的统计口径。")
+    }
+
     /// In this catalogue "cuenta" means an account, so "como la cuenta OpenAI"
     /// read as "like the OpenAI account" rather than "the way OpenAI counts it".
     func testSpanishCodexHelpDoesNotReadAsAnAccount() {

@@ -1496,6 +1496,8 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "providers.claude_metric_help" = "Mensajes = eventos de registro del usuario + del asistente (incluidos los fragmentos de streaming); coincide con el criterio de la interfaz de Claude Code. Tokens de E/S = entrada + salida; no se incluyen las lecturas ni las escrituras de caché, pero el costo estimado sí las tiene en cuenta, cada una con su propia tarifa.";
 "providers.claude_no_scan_help" = "Aún no hay datos de escaneo local de Claude para este periodo. Concede acceso en Ajustes › Acceso a herramientas CLI y haz clic en «Forzar nuevo escaneo».";
 "providers.codex_io_tokens_help" = "Tokens de entrada + salida. La entrada ya incluye la entrada en caché, tal como la contabiliza OpenAI. En el costo estimado, la entrada en caché se calcula con la tarifa de entrada en caché.";
+"providers.claude_io_tokens_help" = "Tokens de entrada + salida. No se incluyen las lecturas ni las escrituras de caché, pero el costo estimado sí las tiene en cuenta, cada una con su propia tarifa.";
+"providers.io_tokens_help" = "Tokens de entrada + salida. Que la entrada incluya o no la entrada en caché depende de cómo la contabilice el proveedor.";
 "providers.no_scan_help" = "Aún no hay datos de escaneo local para este periodo.";
 "providers.api_token_count_help" = "Recuento de tokens informado por la API del proveedor.";
 "common.disabled" = "desactivado";

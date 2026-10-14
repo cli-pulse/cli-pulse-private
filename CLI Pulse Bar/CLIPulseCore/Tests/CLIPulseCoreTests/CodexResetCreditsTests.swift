@@ -338,6 +338,65 @@ final class CodexResetCreditsTests: XCTestCase {
         XCTAssertFalse(presentation.accessibilityLabel.contains("1 天 6 小时"), "the compact form is not spoken")
     }
 
+    /// The ASCII numbers in `text`, in order: "6 天 4 小时" and "6天4小时后过期"
+    /// are both [6, 4].
+    private static func numbers(_ text: String) -> [Int] {
+        text.split(whereSeparator: { !("0"..."9").contains($0) }).compactMap { Int($0) }
+    }
+
+    /// VoiceOver reads the chip's own units. A formatter given the time left
+    /// rounds the last unit it keeps, so 6 days, 4 hours and 31 minutes,
+    /// shown "6 天 4 小时", was spoken "6天5小时", and 6 days 23 hours 45
+    /// minutes, shown "6 天 23 小时", was spoken "7天".
+    func testVoiceOverSpeaksTheChipsUnitsInChinese() throws {
+        LocaleOverrideStore.shared.set("zh-Hans")
+        let presentation = try presentation([
+            Self.credit("a", expiresIn: 6 * 86_400 + 4 * 3_600 + 31 * 60),
+            Self.credit("b", expiresIn: 6 * 86_400 + 23 * 3_600 + 45 * 60),
+            Self.credit("c", expiresIn: 86_400 + 5 * 60),
+        ])
+        // Soonest first.
+        XCTAssertEqual(presentation.items.map(\.compactExpiryText), ["1 天 5 分钟", "6 天 4 小时", "6 天 23 小时"])
+        XCTAssertEqual(presentation.items.map { Self.numbers($0.spokenExpiryText) }, [[1, 5], [6, 4], [6, 23]],
+                       presentation.items.map(\.spokenExpiryText).joined(separator: " | "))
+        let spoken = presentation.items[1].spokenExpiryText
+        XCTAssertTrue(spoken.hasSuffix("小时后过期") && spoken.contains("天"), spoken)
+        XCTAssertFalse(spoken.contains("6 天 4 小时"), "the compact form is not spoken: \(spoken)")
+        XCTAssertTrue(presentation.accessibilityLabel.contains(spoken), presentation.accessibilityLabel)
+    }
+
+    func testVoiceOverSpeaksTheChipsUnitsInJapanese() throws {
+        LocaleOverrideStore.shared.set("ja")
+        let presentation = try presentation([
+            Self.credit("a", expiresIn: 6 * 86_400 + 4 * 3_600 + 31 * 60),
+            Self.credit("b", expiresIn: 2 * 3_600 + 59 * 60 + 1),
+        ])
+        // Soonest first; 2 h 59 min 1 s is whole minutes rounded up, on both.
+        XCTAssertEqual(presentation.items.map(\.compactExpiryText), ["3 時間", "6 日 4 時間"])
+        XCTAssertEqual(presentation.items.map { Self.numbers($0.spokenExpiryText) }, [[3], [6, 4]],
+                       presentation.items.map(\.spokenExpiryText).joined(separator: " | "))
+        let spoken = presentation.items[1].spokenExpiryText
+        XCTAssertTrue(spoken.hasPrefix("あと ") && spoken.hasSuffix("時間で期限切れ") && spoken.contains("日"), spoken)
+        XCTAssertFalse(spoken.contains("6 日 4 時間"), "the compact form is not spoken: \(spoken)")
+    }
+
+    /// Every countdown up to ten days, minute steps that cross each unit
+    /// boundary: the spoken numbers are the chip's numbers, in both languages.
+    func testSpokenCountdownNeverRoundsAwayFromTheChip() throws {
+        for language in ["zh-Hans", "ja"] {
+            LocaleOverrideStore.shared.set(language)
+            var mismatches: [String] = []
+            for minutes in stride(from: 1, through: 10 * 24 * 60, by: 7) {
+                let units = CodexResetCreditsPresentation.CountdownUnits(totalMinutes: minutes)
+                let spoken = try XCTUnwrap(CodexResetCreditsPresentation.spokenCountdownText(units), "\(minutes)")
+                if Self.numbers(spoken) != Self.numbers(units.compactText) {
+                    mismatches.append("\(minutes) min: \(units.compactText) / \(spoken)")
+                }
+            }
+            XCTAssertEqual(Array(mismatches.prefix(5)), [], "\(language): \(mismatches.count) countdowns spoken differently")
+        }
+    }
+
     /// The title names the credits in every language. Under the 5-hour and
     /// Weekly bars, whose detail says "resets in 3d 4h", a bare "limit reset"
     /// reads as when the quota resets, and the countdowns beside it as that

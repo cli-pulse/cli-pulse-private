@@ -239,6 +239,23 @@ public struct CountUpNumber: View, Animatable {
     }
 }
 
+private struct CountsUpKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+public extension EnvironmentValues {
+    /// Whether a view showing a `CountUpNumber` reveals it with
+    /// `CountUpNumber.countUpAnimation` or shows the figure at once. True
+    /// everywhere the app draws. Only the QA build's offscreen renderer
+    /// (`QASnapshotRenderer`) sets it to false, so a picture it takes a moment
+    /// after the view appears holds the settled figure, not one part of the
+    /// way up.
+    var countsUp: Bool {
+        get { self[CountsUpKey.self] }
+        set { self[CountsUpKey.self] = newValue }
+    }
+}
+
 // MARK: - Usage Bar
 
 /// A reference tick drawn on a `UsageBar`, positioned in the SAME fill

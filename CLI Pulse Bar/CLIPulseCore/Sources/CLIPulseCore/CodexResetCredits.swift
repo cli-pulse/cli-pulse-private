@@ -378,11 +378,12 @@ public struct CodexResetCreditsPresentation: Equatable, Sendable {
                 spokenExpiryText: L10n.resetCredits.expiresNow
             )
         }
-        let countdown = countdownText(until: expiresAt, now: now)
+        let units = CountdownUnits(totalMinutes: minutes)
+        let countdown = units.compactText
         return Item(
             expiryText: L10n.resetCredits.expiresIn(countdown),
             compactExpiryText: countdown,
-            spokenExpiryText: L10n.resetCredits.expiresIn(spokenCountdownText(minutes: minutes) ?? countdown)
+            spokenExpiryText: L10n.resetCredits.expiresIn(spokenCountdownText(units) ?? countdown)
         )
     }
 
@@ -393,10 +394,66 @@ public struct CodexResetCreditsPresentation: Equatable, Sendable {
         return max(1, rounded)
     }
 
+    /// The two units a countdown shows, from whole minutes rounded up:
+    /// upstream's rule (`countdownText`). The chip and VoiceOver both read
+    /// these, so what is spoken is what is shown: "6d 4h" is "6 days,
+    /// 4 hours", never the "6 days, 5 hours" a formatter rounding the
+    /// remaining 31 minutes into the hours would say.
+    enum CountdownUnits: Equatable {
+        case daysHours(Int, Int)
+        /// Days and minutes, when the hours are 0.
+        case daysMinutes(Int, Int)
+        case days(Int)
+        case hoursMinutes(Int, Int)
+        case hours(Int)
+        case minutes(Int)
+
+        init(totalMinutes: Int) {
+            let days = totalMinutes / (24 * 60)
+            let hours = (totalMinutes / 60) % 24
+            let minutes = totalMinutes % 60
+            if days > 0 {
+                if hours > 0 { self = .daysHours(days, hours) }
+                else if minutes > 0 { self = .daysMinutes(days, minutes) }
+                else { self = .days(days) }
+            } else if hours > 0 {
+                self = minutes > 0 ? .hoursMinutes(hours, minutes) : .hours(hours)
+            } else {
+                self = .minutes(totalMinutes)
+            }
+        }
+
+        /// "6d 4h", "6 天 4 小时".
+        var compactText: String {
+            switch self {
+            case let .daysHours(d, h): return L10n.resetCredits.leftDaysHours(d, h)
+            case let .daysMinutes(d, m): return L10n.resetCredits.leftDaysMinutes(d, m)
+            case let .days(d): return L10n.resetCredits.leftDays(d)
+            case let .hoursMinutes(h, m): return L10n.resetCredits.leftHoursMinutes(h, m)
+            case let .hours(h): return L10n.resetCredits.leftHours(h)
+            case let .minutes(m): return L10n.resetCredits.leftMinutes(m)
+            }
+        }
+
+        /// The same units and nothing else, for the spoken form.
+        var components: DateComponents {
+            switch self {
+            case let .daysHours(d, h): return DateComponents(day: d, hour: h)
+            case let .daysMinutes(d, m): return DateComponents(day: d, minute: m)
+            case let .days(d): return DateComponents(day: d)
+            case let .hoursMinutes(h, m): return DateComponents(hour: h, minute: m)
+            case let .hours(h): return DateComponents(hour: h)
+            case let .minutes(m): return DateComponents(minute: m)
+            }
+        }
+    }
+
     /// The countdown in words, in the app's language ("6 days, 4 hours",
-    /// "6天4小时"), with the same two units as the compact one. Gregorian on
-    /// purpose: days and hours, whatever calendar the Mac uses.
-    static func spokenCountdownText(minutes: Int) -> String? {
+    /// "6天4小时"), with exactly the units of the compact one. Formatted from
+    /// those units, not from the time left: given a duration, the formatter
+    /// rounds the last unit it keeps. Gregorian on purpose: days and hours,
+    /// whatever calendar the Mac uses.
+    static func spokenCountdownText(_ units: CountdownUnits) -> String? {
         let formatter = DateComponentsFormatter()
         formatter.unitsStyle = .full
         formatter.allowedUnits = [.day, .hour, .minute]
@@ -404,7 +461,7 @@ public struct CodexResetCreditsPresentation: Equatable, Sendable {
         var calendar = Calendar(identifier: .gregorian)
         calendar.locale = LocaleOverrideStore.resolvedLocalization.map { Locale(identifier: $0) } ?? .current
         formatter.calendar = calendar
-        return formatter.string(from: TimeInterval(minutes) * 60)
+        return formatter.string(from: units.components)
     }
 
     /// Upstream's countdown: whole minutes rounded up, then days and hours,
@@ -414,19 +471,7 @@ public struct CodexResetCreditsPresentation: Equatable, Sendable {
         guard let totalMinutes = countdownMinutes(until: date, now: now) else {
             return L10n.resetCredits.leftNow
         }
-        let days = totalMinutes / (24 * 60)
-        let hours = (totalMinutes / 60) % 24
-        let minutes = totalMinutes % 60
-        if days > 0 {
-            if hours > 0 { return L10n.resetCredits.leftDaysHours(days, hours) }
-            if minutes > 0 { return L10n.resetCredits.leftDaysMinutes(days, minutes) }
-            return L10n.resetCredits.leftDays(days)
-        }
-        if hours > 0 {
-            if minutes > 0 { return L10n.resetCredits.leftHoursMinutes(hours, minutes) }
-            return L10n.resetCredits.leftHours(hours)
-        }
-        return L10n.resetCredits.leftMinutes(totalMinutes)
+        return CountdownUnits(totalMinutes: totalMinutes).compactText
     }
 }
 

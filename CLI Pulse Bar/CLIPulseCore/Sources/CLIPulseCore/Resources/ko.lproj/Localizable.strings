@@ -1483,6 +1483,8 @@
 "providers.claude_metric_help" = "메시지 = 사용자 + 어시스턴트 로그 이벤트(스트리밍 청크 포함) — Claude Code UI의 집계 방식과 같습니다. I/O 토큰 = 입력 + 출력. 캐시 읽기와 캐시 쓰기는 포함하지 않지만, 추정 비용에는 각각의 단가로 반영됩니다.";
 "providers.claude_no_scan_help" = "이 기간의 로컬 Claude 스캔 데이터가 아직 없습니다. 설정 › CLI 도구 접근에서 권한을 허용한 후 강제 재스캔을 클릭하세요.";
 "providers.codex_io_tokens_help" = "입력 + 출력 토큰. 입력에 캐시 입력이 이미 포함됩니다(OpenAI의 집계 방식과 동일). 추정 비용에서 캐시 입력에는 캐시 입력 단가가 적용됩니다.";
+"providers.claude_io_tokens_help" = "입력 + 출력 토큰. 캐시 읽기와 캐시 쓰기는 포함하지 않지만, 추정 비용에는 각각의 단가로 반영됩니다.";
+"providers.io_tokens_help" = "입력 + 출력 토큰. 입력에 캐시 입력이 포함되는지는 공급자의 집계 방식에 따라 다릅니다.";
 "providers.no_scan_help" = "이 기간의 로컬 스캔 데이터가 아직 없습니다.";
 "providers.api_token_count_help" = "공급자 API가 보고한 토큰 수입니다.";
 "common.disabled" = "비활성";

@@ -489,8 +489,8 @@ public struct ProviderUsagePanelView: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 // What the tokens count: each once, or, opened from a provider
-                // card, the card's input + output.
-                Text(data.basis == .inputOutput ? L10n.cost.ioTokensHelp : L10n.providerPanel.tokenBasis)
+                // card, the card's input + output, for this provider alone.
+                Text(data.tokenBasisHelp)
                 // The header names the scope; this says what it means.
                 Text(scopeHelp)
             }

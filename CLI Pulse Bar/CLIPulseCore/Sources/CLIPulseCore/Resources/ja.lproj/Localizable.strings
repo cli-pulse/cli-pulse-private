@@ -1542,6 +1542,8 @@
 "providers.claude_metric_help" = "メッセージ数 = ユーザー + アシスタントのログイベント（ストリーミングのチャンクを含む）— Claude Code の UI と同じ数え方です。I/O トークン = 入力 + 出力。キャッシュの読み取りと書き込みは含みませんが、推定コストにはそれぞれの単価で含まれています。";
 "providers.claude_no_scan_help" = "この期間のローカル Claude スキャンデータはまだありません。「設定 › CLI ツールアクセス」でアクセスを許可してから、「強制再スキャン」をクリックしてください。";
 "providers.codex_io_tokens_help" = "入力 + 出力トークン。入力にはキャッシュ入力が含まれます（OpenAI と同じ数え方）。推定コストでは、キャッシュ入力にキャッシュ入力用の単価を適用しています。";
+"providers.claude_io_tokens_help" = "入力 + 出力トークン。キャッシュの読み取りと書き込みは含みませんが、推定コストにはそれぞれの単価で含まれています。";
+"providers.io_tokens_help" = "入力 + 出力トークン。入力にキャッシュ入力が含まれるかどうかは、プロバイダーの数え方によります。";
 "providers.no_scan_help" = "この期間のローカルスキャンデータはまだありません。";
 "providers.api_token_count_help" = "プロバイダーの API が報告したトークン数です。";
 "common.disabled" = "無効";

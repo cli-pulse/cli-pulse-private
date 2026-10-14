@@ -653,7 +653,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
     /// 520 points wide, always dark, with its close button. Its see-through
     /// HUD backdrop is blended within the window over an opaque dark fill
     /// (`blendHUDWithinWindow`), and it is drawn only once two drawings half a
-    /// second apart agree (the headline counts up).
+    /// second apart agree. Its headline does not count up here (`drawPages`).
     private func captureStorePanel(
         _ shot: QARenderStoreShot
     ) async -> (file: String, md5: String, settled: Bool, backdropLuminance: Double)? {
@@ -1197,7 +1197,8 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             note: "Panel content with the Demo archive (DemoDataProvider.dailyUsage), 480 points wide."
                 + " The Demo archive is cloud-shaped and includes Gemini; the real panel reads this Mac's"
                 + " local-scan archive, which holds only what the scanner records (Claude and Codex),"
-                + " so the \"Claude + Codex\" caption is true there. The headline counts up over 2.2 s."
+                + " so the \"Claude + Codex\" caption is true there. The headline is drawn at its settled"
+                + " figure: the renderer turns its 2.2-second count-up off."
         )
     }
 
@@ -1399,11 +1400,16 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         prepare: ((NSView) -> Void)? = nil
     ) async -> DrawnPages? {
         // Every root gets `displayLocaleRoot()`, as every scene root of the
-        // app does, and is told it is in the key window.
+        // app does, and is told it is in the key window. A count-up headline
+        // (the usage panel's) shows its settled figure at once: a page is
+        // drawn about 1.2 s after it appears, before a 2.2 s count-up ends,
+        // which caught the review set's headline part of the way up. Render
+        // only; the app still counts up (`UsageDashboardCountUpTests`).
         let hosting = NSHostingView(
             rootView: content
                 .displayLocaleRoot()
                 .environment(\.controlActiveState, .key)
+                .environment(\.countsUp, false)
         )
         let window = offscreenWindow(holding: hosting, size: NSSize(width: 420, height: 600))
         if let prepare {
