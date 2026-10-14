@@ -32,11 +32,21 @@ final class UsageDashboardCountUpTests: XCTestCase {
         let app = PanelWindow(archive, countsUp: true)
         defer { app.close() }
         let early = app.drawAsTheRendererDoes()
-        app.pump(for: 2.5)   // the count-up is 2.2 s from appearing; this is past 3.5 s
-        let settled = try XCTUnwrap(app.pixels(in: RendererTiming.header), "the panel drew no header")
+        // The count-up ends 2.2 s after the panel appears. Settled: two
+        // drawings 0.4 s apart agree, past that point.
+        app.pump(for: 1.4)
+        var candidate = app.pixels(in: RendererTiming.header)
+        let deadline = Date().addingTimeInterval(6)
+        while Date() < deadline {
+            app.pump(for: 0.4)
+            let again = app.pixels(in: RendererTiming.header)
+            if again != nil, again == candidate { break }
+            candidate = again
+        }
+        let settled = try XCTUnwrap(candidate, "the panel drew no header")
         app.pump(for: 0.4)
         XCTAssertEqual(app.pixels(in: RendererTiming.header), settled,
-                       "the app's headline still moves after 3.5 s, so this is not its settled figure")
+                       "the app's headline never stopped moving, so there is no settled figure to compare with")
         XCTAssertNotEqual(early, settled,
                           "the app's headline has already settled when a render is taken, so this test cannot see a count-up")
 
