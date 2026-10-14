@@ -16,7 +16,9 @@ import XCTest
 /// to a credentialed request reaches no cache through it, with a control that
 /// shows the same answer IS stored the old way; that every injectable client
 /// defaults to it; that no shipping source sends a credential through another
-/// session (the guard a new collector meets); the one-time purge; and that
+/// session (the guard a new collector meets), and that the Developer ID
+/// app's second binary, `cli_pulse_helper`, has no session that writes to
+/// disk; the one-time purge, whose done-flag waits for the deletion; and that
 /// every app runs it before it sends anything.
 final class CredentialedRequestsNoStoreTests: XCTestCase {
 
@@ -54,7 +56,9 @@ final class CredentialedRequestsNoStoreTests: XCTestCase {
     /// `APIClient`'s configuration. The control, the `.default` configuration
     /// `APIClient` used up to 1.56, stores the same answer, token included,
     /// in the very cache checked here: without it, "nothing stored" could
-    /// mean the stub's answers are never stored at all.
+    /// mean the stub's answers are never stored at all. The no-store side is
+    /// watched for the whole window, not checked once, so a cache write that
+    /// lands late is still seen.
     func testACacheableCredentialedAnswerReachesNoCache() async throws {
         let directory = try Self.scratchDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -83,11 +87,17 @@ final class CredentialedRequestsNoStoreTests: XCTestCase {
             let request = Self.credentialedRequest(path: "nostore-\(index)", token: canary)
             let (data, _) = try await URLSession(configuration: configuration).data(for: request)
             XCTAssertEqual(String(data: data, encoding: .utf8), CacheableAnswerProtocol.body, label)
-            // Long enough for the control above to have landed on disk.
-            try await Task.sleep(nanoseconds: 500_000_000)
-            XCTAssertNil(scratch.cachedResponse(for: request), "\(label) stored a credentialed answer in URLCache.shared")
-            XCTAssertNil(configuration.urlCache?.cachedResponse(for: request), "\(label) stored it in its own cache")
-            XCTAssertFalse(Self.files(in: directory, contain: canary), "\(label)'s token reached the cache's files")
+            let leak = await Self.firstSighting(within: Self.noStoreWindow) { () -> String? in
+                if scratch.cachedResponse(for: request) != nil {
+                    return "\(label) stored a credentialed answer in URLCache.shared"
+                }
+                if configuration.urlCache?.cachedResponse(for: request) != nil {
+                    return "\(label) stored it in its own cache"
+                }
+                if Self.files(in: directory, contain: canary) { return "\(label)'s token reached the cache's files" }
+                return nil
+            }
+            XCTAssertNil(leak, leak ?? "")
         }
     }
 
@@ -123,8 +133,9 @@ final class CredentialedRequestsNoStoreTests: XCTestCase {
 
     /// Every network call in shipping Swift (CLIPulseCore and every app
     /// target) goes through `CredentialedURLSession`, except four fetches of
-    /// public, unauthenticated data, which may use `URLSession.shared` as
-    /// long as nothing in them looks like a credential. No other source may
+    /// public, unauthenticated data (named by path), which may use
+    /// `URLSession.shared` as long as nothing in them looks like a credential
+    /// and every header they set is named by a literal. No other source may
     /// touch `URLSession.shared`, pass `.shared` as a session, or make a
     /// configuration of its own (`APIClient` makes its session from
     /// `CredentialedURLSession.makeConfiguration()`).
@@ -148,9 +159,13 @@ final class CredentialedRequestsNoStoreTests: XCTestCase {
                 if sharedSession { violations.append("\(path): the session itself touches .shared") }
                 continue
             }
-            if let reason = Self.publicFetchers[name] {
+            if let reason = Self.publicFetcherReason(for: path) {
                 if !credential.isEmpty {
                     violations.append("\(path) (\(reason)) uses the shared session and sends \(credential.sorted())")
+                }
+                if Self.matches(code, Self.nonLiteralHeaderName) {
+                    violations.append("\(path) (\(reason)) names a header with something other than a literal, "
+                                      + "so this guard cannot see whether it is a credential")
                 }
                 if ownConfiguration { violations.append("\(path): makes a session configuration of its own") }
                 continue
@@ -216,6 +231,106 @@ final class CredentialedRequestsNoStoreTests: XCTestCase {
         }
     }
 
+    /// The network-call pattern sees each way a source can reach the network,
+    /// and not a read of a local file.
+    func testTheNetworkCallPatternSeesEveryKindOfCall() {
+        let calls = [
+            #"let (data, response) = try await session.data(for: request)"#,
+            #"let (url, _) = try await session.download(from: url)"#,
+            #"try await session.upload(for: request, from: body)"#,
+            #"for try await line in try await session.bytes(for: request).0.lines {}"#,
+            #"let task = session.dataTask(with: req) { _, _, _ in }"#,
+            #"session.webSocketTask(with: url).resume()"#,
+            #"session.dataTaskPublisher(for: request).sink { _ in } receiveValue: { _ in }"#,
+            #"let raw = try Data(contentsOf: URL(string: "https://example.invalid/x")!)"#,
+            #"let text = try String(contentsOf: URL(string: "http://example.invalid/x")!)"#,
+        ]
+        for call in calls {
+            XCTAssertTrue(Self.matches(call, Self.networkCall), call)
+        }
+        for local in [#"let raw = try Data(contentsOf: fileURL)"#, #"guard let data = try? Data(contentsOf: path)"#] {
+            XCTAssertFalse(Self.matches(local, Self.networkCall), local)
+        }
+        XCTAssertTrue(Self.matches(#"request.setValue(token, forHTTPHeaderField: Self.headerName)"#, Self.nonLiteralHeaderName))
+        // A configuration of one's own, including the plain initializer
+        // (which is the default, disk-backed configuration).
+        for own in [#"let c = URLSessionConfiguration.default"#, #"let c = URLSessionConfiguration.ephemeral"#,
+                    #"let c = URLSessionConfiguration()"#, #"let s = URLSession(configuration: c)"#] {
+            XCTAssertTrue(Self.matches(own, Self.ownConfiguration), own)
+        }
+        XCTAssertFalse(Self.matches(#"let c = CredentialedURLSession.makeConfiguration()"#, Self.ownConfiguration))
+        XCTAssertFalse(Self.matches(#"request.setValue("application/json", forHTTPHeaderField: "Accept")"#,
+                                    Self.nonLiteralHeaderName))
+    }
+
+    /// The four public fetchers are exempt by path, and only those files: a
+    /// new `AppUpdater.swift` in an app target gets no exemption.
+    func testPublicFetchersAreExemptByPathOnly() throws {
+        for path in Self.publicFetchers.keys {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: Self.projectRoot.appendingPathComponent(path).path),
+                          "\(path) is exempt but does not exist")
+            XCTAssertNotNil(Self.publicFetcherReason(for: path))
+        }
+        for elsewhere in ["CLI Pulse Bar/AppUpdater.swift", "CLIPulseHelper/CurrencyConverter.swift",
+                          "CLIPulseCore/Sources/CLIPulseCore/Collectors/ServiceStatus.swift",
+                          "../HelperSwift/Sources/HelperKit/HelperInstaller.swift"] {
+            XCTAssertNil(Self.publicFetcherReason(for: elsewhere), "\(elsewhere) shares a name, not the exemption")
+        }
+    }
+
+    /// The Developer ID app ships a second binary, `cli_pulse_helper`
+    /// (HelperSwift, with SensorProbe linked in), which sends credentials of
+    /// its own: Claude OAuth refreshes, the anon key and the helper secret on
+    /// its Supabase calls, bearer tokens to the quota endpoints. HelperKit
+    /// does not import CLIPulseCore, so it cannot use `CredentialedURLSession`;
+    /// the rule there is the one that matters: no session that writes to disk.
+    /// No `URLSession.shared` (or `.shared` handed over as a session), no
+    /// `.default` or `.background` configuration, and no shared URL cache or
+    /// cookie jar put on an `ephemeral` one.
+    func testTheDeveloperIDHelperBinaryKeepsNothingOnDisk() throws {
+        let sources = try Self.sources(under: Self.helperBinaryRoots, atLeast: 60)
+        var violations: [String] = []
+        var networkFiles: Set<String> = []
+        var credentialedFiles: Set<String> = []
+
+        for (path, code) in sources {
+            let name = (path as NSString).lastPathComponent
+            if Self.matches(code, Self.networkCall) { networkFiles.insert(name) }
+            if !Self.credentialMarkers(in: code).isEmpty { credentialedFiles.insert(name) }
+            if Self.matches(code, Self.sharedSession) {
+                violations.append("\(path): uses URLSession.shared or passes .shared as a session")
+            }
+            if Self.matches(code, Self.diskConfiguration) {
+                violations.append("\(path): makes a .default or .background session, which writes to disk")
+            }
+            if Self.matches(code, Self.sharedStoreOnConfiguration) {
+                violations.append("\(path): gives a session the shared URL cache or cookie jar")
+            }
+        }
+
+        XCTAssertEqual(violations, [], "\n" + violations.joined(separator: "\n"))
+
+        // The guard sees what it guards.
+        for known in ["SupabaseRPCCaller.swift", "ClaudeOAuthInjector.swift", "ClaudeQuotaFetcher.swift",
+                      "SupabaseRealtimeBroadcastSink.swift", "PrivateTerminalBroadcastSink.swift"] {
+            XCTAssertTrue(networkFiles.contains(known), "the guard no longer sees \(known)'s network call")
+        }
+        for known in ["SupabaseRPCCaller.swift", "ClaudeOAuthInjector.swift", "ClaudeQuotaFetcher.swift"] {
+            XCTAssertTrue(credentialedFiles.contains(known), "the guard no longer sees \(known)'s credential")
+        }
+        for sample in [#"let cfg = URLSessionConfiguration.default"#, #"URLSession(configuration: .default)"#,
+                       #"URLSession(configuration: .background(withIdentifier: "x"))"#,
+                       #"let cfg = URLSessionConfiguration()"#] {
+            XCTAssertTrue(Self.matches(sample, Self.diskConfiguration), sample)
+        }
+        for sample in [#"cfg.urlCache = URLCache.shared"#, #"cfg.urlCache = URLCache(memoryCapacity: 0, diskCapacity: 1, directory: nil)"#,
+                       #"cfg.httpCookieStorage = .shared"#, #"cfg.httpCookieStorage = HTTPCookieStorage.shared"#] {
+            XCTAssertTrue(Self.matches(sample, Self.sharedStoreOnConfiguration), sample)
+        }
+        XCTAssertFalse(Self.matches(#"let cfg = URLSessionConfiguration.ephemeral"#, Self.diskConfiguration))
+        XCTAssertFalse(Self.matches(#"cfg.urlCache = nil"#, Self.sharedStoreOnConfiguration))
+    }
+
     // MARK: - What earlier versions left
 
     /// The purge empties the URL cache, down to its files, and the cookie
@@ -253,7 +368,9 @@ final class CredentialedRequestsNoStoreTests: XCTestCase {
             XCTAssertTrue(stored, "precondition: \(canary) never reached the cache's files")
         }
 
-        XCTAssertTrue(CredentialedURLSession.purgeLegacyStorageIfNeeded(defaults: defaults, cache: cache, cookies: jar))
+        XCTAssertTrue(CredentialedURLSession.purgeLegacyStorageIfNeeded(
+            defaults: defaults, cache: cache, cookies: jar, settleTime: 0
+        ))
         for canary in canaries {
             let gone = await Self.eventually { !Self.files(in: directory, contain: canary) }
             XCTAssertTrue(gone, "\(canary) is still in the cache's files after the purge")
@@ -261,7 +378,10 @@ final class CredentialedRequestsNoStoreTests: XCTestCase {
         XCTAssertNil(cache.cachedResponse(for: get))
         XCTAssertNil(cache.cachedResponse(for: post))
         XCTAssertFalse((jar.cookies ?? []).contains { $0.domain.contains("purge-check.invalid") }, "the jar kept its cookie")
-        XCTAssertEqual(defaults.integer(forKey: CredentialedURLSession.purgeDoneKey), CredentialedURLSession.purgeVersion)
+        let flagged = await Self.eventually {
+            defaults.integer(forKey: CredentialedURLSession.purgeDoneKey) == CredentialedURLSession.purgeVersion
+        }
+        XCTAssertTrue(flagged, "the purge never recorded that it ran")
 
         // Once: the next launch leaves the cache alone.
         let later = Self.credentialedRequest(path: "after-purge", token: "after-purge")
@@ -270,6 +390,35 @@ final class CredentialedRequestsNoStoreTests: XCTestCase {
         XCTAssertTrue(laterStored)
         XCTAssertFalse(CredentialedURLSession.purgeLegacyStorageIfNeeded(defaults: defaults, cache: cache, cookies: jar))
         XCTAssertNotNil(cache.cachedResponse(for: later), "a second launch purged again")
+    }
+
+    /// The done-flag is written only once CFNetwork has had time to delete:
+    /// `removeAllCachedResponses()` returns before anything is gone, and a
+    /// process killed straight after it keeps every entry. Until the flag is
+    /// written, the next launch purges again.
+    func testThePurgeFlagWaitsForTheDeletion() async throws {
+        let directory = try Self.scratchDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = URLCache(memoryCapacity: 0, diskCapacity: 20_000_000, directory: directory)
+        let defaults = isolatedDefaults()
+        let jar = HTTPCookieStorage.shared
+        let savedCookies = jar.cookies ?? []
+        defer {
+            jar.removeCookies(since: .distantPast)
+            savedCookies.forEach(jar.setCookie)
+        }
+        let key = CredentialedURLSession.purgeDoneKey
+
+        XCTAssertGreaterThanOrEqual(CredentialedURLSession.purgeSettleTime, 3,
+                                    "300 entries / 18 MB took up to 3 s to go")
+        XCTAssertTrue(CredentialedURLSession.purgeLegacyStorageIfNeeded(
+            defaults: defaults, cache: cache, cookies: jar, settleTime: 1
+        ))
+        XCTAssertEqual(defaults.integer(forKey: key), 0,
+                       "the flag was written before anything could be deleted: a process killed now would never purge again")
+        let flagged = await Self.eventually { defaults.integer(forKey: key) == CredentialedURLSession.purgeVersion }
+        XCTAssertTrue(flagged, "the flag was never written")
+        XCTAssertFalse(CredentialedURLSession.purgeLegacyStorageIfNeeded(defaults: defaults, cache: cache, cookies: jar))
     }
 
     /// The done-flag stays out of the app-owned namespace: the App Store to
@@ -309,21 +458,36 @@ final class CredentialedRequestsNoStoreTests: XCTestCase {
 
     // MARK: - Source scanning
 
-    /// A network call.
-    static let networkCall = #"\.(data|download|upload|bytes)\((for|from|with):|\b(data|download|upload|webSocket|stream)Task\(with"#
+    /// A network call: the async calls, the task makers, Combine's
+    /// publisher, and a blocking read of a web address.
+    static let networkCall = #"\.(data|download|upload|bytes)\((for|from|with):|\b(data|download|upload|webSocket|stream)Task\(with|\bdataTaskPublisher\(for|\b(Data|String)\(contentsOf:\s*URL\(string:\s*"https?:"#
+    /// A header name that is not a string literal (a constant or a
+    /// variable), which the credential markers cannot read.
+    static let nonLiteralHeaderName = #"forHTTPHeaderField:\s*[^"\s]"#
     /// `URLSession.shared`, or `.shared` handed over as a session.
     /// (Not `CredentialedURLSession.shared`: the look-behind.)
     static let sharedSession = #"(?<![A-Za-z0-9_])URLSession\s*\.\s*shared\b|(?i:session)\s*(:\s*URLSession\s*)?[:=]\s*\.shared\b"#
+    /// A configuration that writes to disk (in the helper binary, where
+    /// `ephemeral` ones are the rule).
+    static let diskConfiguration = #"URLSessionConfiguration\s*(\.\s*(default|background)\b|\(\s*\))|configuration:\s*\.(default|background)\b"#
+    /// A disk cache or the shared cookie jar put on a configuration.
+    static let sharedStoreOnConfiguration = #"\.urlCache\s*=\s*(URLCache\s*\.\s*shared|\.shared|URLCache\s*\()|\.httpCookieStorage\s*=\s*(HTTPCookieStorage\s*\.\s*shared|\.shared)"#
     /// A session made from a configuration of its own.
-    static let ownConfiguration = #"URLSessionConfiguration\s*\.\s*(default|ephemeral|background)|(?<![A-Za-z0-9_])URLSession\s*(\.init)?\(\s*configuration:"#
+    static let ownConfiguration = #"URLSessionConfiguration\s*(\.\s*(default|ephemeral|background)\b|\(\s*\))|(?<![A-Za-z0-9_])URLSession\s*(\.init)?\(\s*configuration:"#
 
-    /// Public, unauthenticated fetches that may stay on `URLSession.shared`.
+    /// Public, unauthenticated fetches that may stay on `URLSession.shared`,
+    /// by path from the project root: a file of the same name elsewhere gets
+    /// no exemption.
     static let publicFetchers: [String: String] = [
-        "CurrencyConverter.swift": "exchange rates from a public endpoint",
-        "ServiceStatus.swift": "providers' public status pages",
-        "AppUpdater.swift": "the Developer ID update manifest and DMG",
-        "HelperInstaller.swift": "the Companion manifest and package",
+        "CLIPulseCore/Sources/CLIPulseCore/CurrencyConverter.swift": "exchange rates from a public endpoint",
+        "CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift": "providers' public status pages",
+        "CLIPulseCore/Sources/CLIPulseCore/AppUpdater.swift": "the Developer ID update manifest and DMG",
+        "CLIPulseCore/Sources/CLIPulseCore/HelperInstaller.swift": "the Companion manifest and package",
     ]
+
+    static func publicFetcherReason(for path: String) -> String? {
+        publicFetchers[path]
+    }
 
     /// What in a source looks like a credential: a header named for one, or
     /// a token, secret or password field in a body, an answer or a URL.
@@ -353,7 +517,7 @@ final class CredentialedRequestsNoStoreTests: XCTestCase {
     }
 
     /// The directory holding the app targets and CLIPulseCore.
-    private static var projectRoot: URL {
+    static var projectRoot: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // CLIPulseCoreTests
             .deletingLastPathComponent()  // Tests
@@ -367,17 +531,25 @@ final class CredentialedRequestsNoStoreTests: XCTestCase {
         "CLI Pulse Bar Watch", "CLI Pulse Widgets", "CLIPulseHelper",
     ]
 
+    /// The Developer ID app's `cli_pulse_helper` binary: HelperSwift, and the
+    /// SensorProbe package it links.
+    private static let helperBinaryRoots = ["../HelperSwift/Sources", "../SensorProbe/Sources"]
+
     private static func shippingSources() throws -> [(path: String, code: String)] {
+        try sources(under: sourceRoots, atLeast: 300)
+    }
+
+    private static func sources(under roots: [String], atLeast minimum: Int) throws -> [(path: String, code: String)] {
         var sources: [(String, String)] = []
-        for root in sourceRoots {
-            let base = projectRoot.appendingPathComponent(root)
+        for root in roots {
+            let base = projectRoot.appendingPathComponent(root).standardizedFileURL
             let enumerator = try XCTUnwrap(FileManager.default.enumerator(at: base, includingPropertiesForKeys: nil))
             for case let url as URL in enumerator where url.pathExtension == "swift" {
-                let relative = root + url.path.dropFirst(base.path.count)
+                let relative = root + url.standardizedFileURL.path.dropFirst(base.path.count)
                 sources.append((relative, try shippingCode(at: relative)))
             }
         }
-        XCTAssertGreaterThan(sources.count, 300, "the scan found too few sources: wrong root?")
+        XCTAssertGreaterThanOrEqual(sources.count, minimum, "the scan found too few sources under \(roots): wrong root?")
         return sources
     }
 
@@ -442,6 +614,20 @@ final class CredentialedRequestsNoStoreTests: XCTestCase {
             if let data = try? Data(contentsOf: url), data.range(of: needle) != nil { return true }
         }
         return false
+    }
+
+    /// How long the no-store side is watched: the control lands well within it.
+    private static let noStoreWindow: TimeInterval = 3
+
+    /// The first thing `look` reports within `seconds`, polling every 0.1 s;
+    /// nil if it reports nothing the whole time.
+    private static func firstSighting(within seconds: TimeInterval, _ look: @escaping () -> String?) async -> String? {
+        let deadline = Date().addingTimeInterval(seconds)
+        repeat {
+            if let seen = look() { return seen }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        } while Date() < deadline
+        return look()
     }
 
     /// True as soon as `condition` holds, polling for up to five seconds: the

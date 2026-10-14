@@ -89,6 +89,15 @@ public enum CredentialedURLSession {
     public static let purgeDoneKey = "CLIPulse.credentialedCachePurge"
     static let purgeVersion = 1
 
+    /// How long after asking for the deletion the done-flag is written.
+    /// `removeAllCachedResponses()` returns at once and CFNetwork deletes in
+    /// the background: measured with throwaway caches, a process killed 0 ms
+    /// after the call kept every entry in `Cache.db-wal` and `fsCachedData`,
+    /// 200 entries were gone within 0.2 s and 300 entries / 18 MB within 3 s.
+    /// The flag waits, so a process that dies in between purges again on its
+    /// next launch rather than never.
+    public static let purgeSettleTime: TimeInterval = 5
+
     /// Removes, once per install of a version with this session, what earlier
     /// versions left in this process's URL cache and cookie jar.
     ///
@@ -107,17 +116,26 @@ public enum CredentialedURLSession {
     /// APIs' answers to credentialed requests (on a real Mac: OpenAI's
     /// sign-in host and chatgpt.com).
     ///
+    /// `cache` and `cookies` default to the shared ones, resolved only after
+    /// the flag check: on every later launch neither is created, so the
+    /// cookie jar is not read from disk on the main thread for nothing. The
+    /// flag itself is written `settleTime` later, off the main thread.
+    ///
     /// Returns whether it purged.
     @discardableResult
     public static func purgeLegacyStorageIfNeeded(
         defaults: UserDefaults = .standard,
-        cache: URLCache = .shared,
-        cookies: HTTPCookieStorage = .shared
+        cache: URLCache? = nil,
+        cookies: HTTPCookieStorage? = nil,
+        settleTime: TimeInterval = purgeSettleTime
     ) -> Bool {
         guard defaults.integer(forKey: purgeDoneKey) < purgeVersion else { return false }
-        cache.removeAllCachedResponses()
-        cookies.removeCookies(since: .distantPast)
-        defaults.set(purgeVersion, forKey: purgeDoneKey)
+        (cache ?? URLCache.shared).removeAllCachedResponses()
+        (cookies ?? HTTPCookieStorage.shared).removeCookies(since: .distantPast)
+        let version = purgeVersion
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + settleTime) {
+            defaults.set(version, forKey: purgeDoneKey)
+        }
         return true
     }
 }

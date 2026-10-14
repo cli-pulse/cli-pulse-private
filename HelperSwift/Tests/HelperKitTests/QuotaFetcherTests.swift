@@ -260,6 +260,20 @@ final class ClaudeQuotaFetcherTests: XCTestCase {
             XCTFail("expected parse_error")
         }
     }
+
+    /// The live hook (the default for the Claude, Codex and Gemini quota
+    /// fetchers) sends bearer tokens; its session must keep nothing, or each
+    /// request, `Authorization` header included, and its answer would land in
+    /// this binary's `Cache.db`.
+    func testLiveHTTPSessionKeepsNothing() {
+        let configuration = ClaudeQuotaFetcher.liveSession.configuration
+        XCTAssertNil(configuration.urlCache, "a URL cache stores the bearer token and the answer")
+        XCTAssertNil(configuration.httpCookieStorage, "a cookie jar keeps what the provider sets")
+        XCTAssertFalse(configuration.httpShouldSetCookies)
+        XCTAssertNil(configuration.urlCredentialStorage)
+        XCTAssertEqual(configuration.requestCachePolicy, .reloadIgnoringLocalCacheData)
+        XCTAssertFalse(ClaudeQuotaFetcher.liveSession === URLSession.shared)
+    }
 }
 
 // MARK: - CodexQuotaFetcher
