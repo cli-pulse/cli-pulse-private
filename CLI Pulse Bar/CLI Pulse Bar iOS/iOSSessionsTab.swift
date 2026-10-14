@@ -62,10 +62,10 @@ struct iOSSessionsTab: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     // Source of truth = FreshnessTier classifier so the
-                    // running pill matches the row badges (only proc-
-                    // confirmed rows count as "running"; JSONL-synthesized
-                    // rows are "recent activity" / "recent" and don't
-                    // contribute).
+                    // running pill matches the row badges (only process-
+                    // confirmed rows, `local-` and `proc-`, count as
+                    // "running"; JSONL-synthesized rows are "recent
+                    // activity" / "recent" and don't contribute).
                     let now = Date()
                     let runningCount = state.sessions.reduce(0) { acc, s in
                         acc + (SessionFreshnessTierClassifier.classify(s, now: now) == .activeProcess ? 1 : 0)
@@ -189,7 +189,8 @@ struct iOSSessionsTab: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 // Same FreshnessTier source as the iPhone toolbar — only
-                // proc-confirmed rows count as "running" in the pill.
+                // process-confirmed rows (`local-` and `proc-`) count as
+                // "running" in the pill.
                 let now = Date()
                 let runningTierCount = state.sessions.reduce(0) { acc, s in
                     acc + (SessionFreshnessTierClassifier.classify(s, now: now) == .activeProcess ? 1 : 0)
