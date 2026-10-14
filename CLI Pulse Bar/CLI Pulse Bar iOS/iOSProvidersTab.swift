@@ -374,19 +374,33 @@ struct iOSEnhancedProviderCard: View {
                 // provider; the summary's figures otherwise. The chart below
                 // draws the same days (`ProviderCardAccountFigures`).
                 let figures = ProviderCardAccountFigures(provider: provider, cloudRows: dailyUsage)
-                // Usage stats
-                HStack(spacing: 20) {
-                    // The cost's status sits with Today's cost. Next to the
-                    // quota line it read as if "92% used" were the estimate.
-                    usageFigure(L10n.dashboard.today, figures.today, costStatus: provider.cost_status_today)
-                    usageFigure(L10n.providers.thisWeek, figures.week, costStatus: nil)
-                    Spacer()
-                    if accountUsages.isEmpty {
-                        // Legacy provider-only snapshots still need their
-                        // aggregate quota badge. V2 quota is rendered inside
-                        // each account row to avoid attributing one account's
-                        // pressure to every account in the provider.
-                        quotaBadge
+                // The cost's status sits with Today's cost. Next to the
+                // quota line it read as if "92% used" were the estimate.
+                let today = usageFigure(L10n.dashboard.today, figures.today, costStatus: provider.cost_status_today)
+                let week = usageFigure(L10n.providers.thisWeek, figures.week, costStatus: nil)
+                // Usage stats: both figures and the quota badge on one row
+                // while they fit whole; at large text sizes the badge goes
+                // under the figures, and then each figure on a line of its
+                // own. Squeezed into one row, a figure broke mid-figure at
+                // XXXL ("12.9M" over "I/O", "$3.5" over "7").
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 20) {
+                        today.fixedSize()
+                        week.fixedSize()
+                        Spacer(minLength: 0)
+                        usageBadge
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .top, spacing: 20) {
+                            today.fixedSize()
+                            week.fixedSize()
+                        }
+                        usageBadge
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        today
+                        week
+                        usageBadge
                     }
                 }
 
@@ -493,6 +507,17 @@ struct iOSEnhancedProviderCard: View {
             parts.append(L10n.providers.percentUsed(pct))
         }
         return parts.joined(separator: ", ")
+    }
+
+    /// Legacy provider-only snapshots still need their aggregate quota badge
+    /// beside the usage figures. V2 quota is rendered inside each account
+    /// row to avoid attributing one account's pressure to every account in
+    /// the provider.
+    @ViewBuilder
+    private var usageBadge: some View {
+        if accountUsages.isEmpty {
+            quotaBadge
+        }
     }
 
     /// Today or This Week: tokens over cost. Counted from the account's rows
