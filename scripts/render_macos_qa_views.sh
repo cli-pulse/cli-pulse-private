@@ -21,8 +21,9 @@
 # exited 0; a failed language leaves <lang>.rejected/ (with render.log) and the
 # folder as it was. --replace is implied and --appearance is light.
 #
-# Build the app first (the QA scheme, `Debug QA`):
-#   xcodebuild build -project "CLI Pulse Bar/CLI Pulse Bar.xcodeproj" \
+# Build the app first (the QA scheme, `Debug QA`), through scripts/lib/build_env.sh,
+# which adds the shared Swift packages and COMPILER_INDEX_STORE_ENABLE=NO:
+#   scripts/lib/build_env.sh xcodebuild build -project "CLI Pulse Bar/CLI Pulse Bar.xcodeproj" \
 #     -scheme "CLIPulse QA" -configuration "Debug QA" -destination platform=macOS \
 #     -derivedDataPath build/qa
 #   → build/qa/Build/Products/Debug QA/CLIPulse QA.app
