@@ -534,17 +534,27 @@ internal enum DemoDataProvider {
     /// (`ProviderUsageDays.fromCloud`): the last 30 days of Codex and Claude,
     /// the rows `get_daily_usage` returns.
     ///
-    /// They add up to the figures `generate()` gives each provider, because a
-    /// real account's do: the server's `provider_summary` sums these same rows
-    /// over the same windows. So today's rows hold today's cost and tokens,
-    /// today and the six days before hold the week's, and all 30 days hold the
-    /// 30-day cost, each to the cent and the token. The 30-day tokens, which
-    /// nothing else in Demo states, follow the week's tokens per dollar.
+    /// They add up to the figures `generate()` gives each provider. For cost,
+    /// a real account's rows do the same: the server's `provider_summary` sums
+    /// these rows' cost over the same windows. So today's rows hold today's
+    /// cost, today and the six days before hold the week's, and all 30 days
+    /// hold the 30-day cost, each to the cent. Their I/O tokens (input +
+    /// output) equal each provider's Today and This Week tokens, which is what
+    /// the Mac card shows, since it counts the rows' I/O. A real account's
+    /// `provider_summary` tokens are input + cached + output instead, so a real
+    /// iPhone card, which shows those, reads more than its chart's I/O
+    /// wherever a provider reports cache; Demo shows no such gap. The 30-day
+    /// tokens, which nothing else in Demo states, follow the week's tokens per
+    /// dollar.
     ///
     /// The days have the shape of Demo's year of history (`dailyUsage`, what
     /// the usage dashboard draws): the same idle days, and within the week and
     /// within the rest of the month the same busy and quiet days, scaled to
-    /// those figures. `DemoProviderCardHistoryTests` holds them to both.
+    /// those figures. Scaled, most of them are larger than the year's own
+    /// figures for the same days, so in Demo the usage dashboard and the
+    /// Activity heatmap show smaller days than the cards' charts, which a real
+    /// account's cannot. `DemoProviderCardHistoryTests` holds them to the shape
+    /// and the sums.
     static func providerCardHistory(
         providers: [ProviderUsage],
         now: Date = Date(),
@@ -649,15 +659,10 @@ extension AppState {
         // Demo is a signed-in account, and a signed-in account's provider
         // cards read its synced daily rows on every platform: the Mac card's
         // usage row and small chart, and the iPhone and iPad card's chart with
-        // its Token / Cost choice and the day it lists by model. These rows
-        // used to be the Mac's alone, so Try Demo on an iPhone or iPad, the
-        // Demo App Review uses, never drew that chart. Nothing else on the
-        // iPhone, iPad, Watch or widgets reads them in Demo: the Overview and
-        // the Cost Summary take the providers' own figures (which these rows
-        // add up to), the forecast is built only by a cloud refresh, the
-        // widget payload carries no daily rows, and a Watch never sees the
-        // phone's Demo. Not behind a platform check, so the Mac's tests run
-        // the iPhone's Demo too (`DemoProviderCardHistoryTests`).
+        // its Token / Cost choice and the day it lists by model. Not behind a
+        // platform check, so Try Demo on an iPhone or iPad (the Demo App
+        // Review uses) draws that chart, and the Mac's tests run the iPhone's
+        // Demo too (`DemoProviderCardHistoryTests`).
         dailyUsage = DemoDataProvider.providerCardHistory(providers: demo.providers)
         buildProviderDetails()
         updateCostSummary()

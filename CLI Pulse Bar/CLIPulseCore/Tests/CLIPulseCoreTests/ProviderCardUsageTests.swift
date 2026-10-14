@@ -725,8 +725,9 @@ final class ProviderCardTodayAgreesTests: XCTestCase {
 }
 
 /// Demo's account rows behind the provider cards (the Mac's, and the iPhone
-/// and iPad's chart) add up to the figures Demo gives each provider, as a real
-/// account's do (`provider_summary` sums the same rows over the same windows).
+/// and iPad's chart) add up to the figures Demo gives each provider: the cost
+/// as a real account's does (`provider_summary` sums the same rows' cost over
+/// the same windows), the tokens as the Mac card counts them (the rows' I/O).
 final class DemoProviderCardHistoryTests: XCTestCase {
 
     private func cents(_ value: Double) -> Int { Int((value * 100).rounded()) }
@@ -830,10 +831,13 @@ final class DemoProviderCardHistoryTests: XCTestCase {
     /// Try Demo on an iPhone or iPad (the Demo App Review uses) is the same
     /// signed-in account, so its cards get the same rows, and draw them the
     /// way `iOSEnhancedProviderCard` does: `ProviderUsageDays.fromCloud` over
-    /// `dailyUsage`, counting I/O. What the chart and a tapped day show then
-    /// agrees with the card's own Today and This Week and with the 30-Day
-    /// figure above the cards, as a real account's rows do, and only Codex and
-    /// Claude have a chart: nothing records Gemini's usage.
+    /// `dailyUsage`, counting I/O. The chart's and a tapped day's cost then
+    /// agree with the card's Today and This Week and with the 30-Day figure
+    /// above the cards, as a real account's rows do. Their I/O tokens agree
+    /// with the card's Today and This Week too, but only in Demo: a real
+    /// iPhone card's tokens are `provider_summary`'s input + cached + output,
+    /// more than the chart's I/O wherever a provider reports cache. Only Codex
+    /// and Claude have a chart: nothing records Gemini's usage.
     @MainActor
     func testDemoGivesTheIPhoneCardsTheSameRows() throws {
         let state = demoState()
@@ -853,12 +857,13 @@ final class DemoProviderCardHistoryTests: XCTestCase {
             XCTAssertEqual(days.scope, .allDevices, usage.provider)
             XCTAssertEqual(days.days.count, 30, usage.provider)
             let today = try XCTUnwrap(days.day(todayKey), usage.provider)
-            XCTAssertEqual(today.tokens, usage.today_usage, "\(usage.provider): the chart's today against the card's Today")
+            XCTAssertEqual(today.tokens, usage.today_usage,
+                           "\(usage.provider): Demo's I/O today against Demo's Today (equal only in Demo; a real iPhone's Today adds cache)")
             XCTAssertEqual(cents(today.cost), cents(usage.estimated_cost_today), usage.provider)
             let week = days.days.filter { windows.contains($0.dateKey, in: .week) }
             XCTAssertEqual(week.count, 7, usage.provider)
             XCTAssertEqual(week.reduce(0) { $0 + $1.tokens }, usage.week_usage,
-                           "\(usage.provider): the chart's week against the card's This Week")
+                           "\(usage.provider): Demo's I/O week against Demo's This Week (equal only in Demo; a real iPhone's adds cache)")
             XCTAssertEqual(cents(week.reduce(0) { $0 + $1.cost }), cents(usage.estimated_cost_week), usage.provider)
             XCTAssertEqual(cents(days.days.reduce(0) { $0 + $1.cost }), cents(usage.estimated_cost_30_day),
                            usage.provider)
