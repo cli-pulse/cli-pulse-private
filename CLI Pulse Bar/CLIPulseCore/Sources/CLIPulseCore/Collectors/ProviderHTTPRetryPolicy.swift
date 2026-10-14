@@ -121,7 +121,7 @@ public struct ProviderHTTPRetryPolicy: Sendable {
 public func httpDataWithRetry(
     _ request: URLRequest,
     retryPolicy: ProviderHTTPRetryPolicy,
-    session: URLSession = .shared) async throws -> (Data, URLResponse)
+    session: URLSession = CredentialedURLSession.shared) async throws -> (Data, URLResponse)
 {
     var attempt = 0
 

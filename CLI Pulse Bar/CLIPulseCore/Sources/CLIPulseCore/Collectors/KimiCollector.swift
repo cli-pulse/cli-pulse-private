@@ -82,7 +82,7 @@ public struct KimiCollector: ProviderCollector, Sendable {
         request.timeoutInterval = 15
         request.httpBody = try JSONSerialization.data(withJSONObject: ["scope": ["FEATURE_CODING"]])
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw CollectorError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, provider: "Kimi")
         }

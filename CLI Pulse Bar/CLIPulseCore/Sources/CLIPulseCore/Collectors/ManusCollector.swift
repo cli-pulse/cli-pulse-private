@@ -154,7 +154,7 @@ public struct ManusCollector: ProviderCollector, Sendable {
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
             + "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
             forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw CollectorError.httpError(
                 status: (response as? HTTPURLResponse)?.statusCode ?? 0, provider: "Manus")

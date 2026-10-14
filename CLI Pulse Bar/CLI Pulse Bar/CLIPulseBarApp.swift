@@ -93,6 +93,14 @@ struct CLIPulseBarApp: App {
         // so the first-run check above is unaffected.
         PrivacySettings.shared.mirrorForHelpers(in: runtimeEnvironment)
 
+        // 1.57: up to 1.56 the URL cache kept credentialed requests (tokens,
+        // a sign-in's password) and their answers in Cache.db. Empty it and
+        // the cookie jar once, before `AppState` sends anything; requests that
+        // carry a credential now go through a session that keeps nothing
+        // (`CredentialedURLSession`). Its done-flag has no app-owned prefix,
+        // so the first-run check above would not count it in any position.
+        CredentialedURLSession.purgeLegacyStorageIfNeeded()
+
         let state = AppState(runtimeEnvironment: runtimeEnvironment)
         _appState = StateObject(wrappedValue: state)
         if runtimeEnvironment.capabilities.allowsTelemetry {

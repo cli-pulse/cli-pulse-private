@@ -506,6 +506,24 @@ with CLI Pulse 1.55, and later releases follow them:
   Companion CLI are not sandboxed: they read the files named in this document
   directly.
 - **TLS 1.2+** for every network connection.
+- **Credentials are not written to disk caches.** Since v1.57 every request
+  that the Mac app, its background helper, and the iPhone and Apple Watch apps
+  send with a sign-in token, API key or cookie goes through a connection that
+  keeps no cache and no cookies. The direct-download build's built-in agent
+  keeps none of its requests on disk either. When you sign in on a web page,
+  that page opens in your browser, which keeps its own cookies as it does for
+  any website. Earlier versions could leave copies of such requests, and the
+  answers to them, in an app's own web cache, and cookies that providers set
+  in its cookie file. Each app, and the Mac's background helper, empties both
+  once, the first time it starts after updating to v1.57. Each Mac build
+  empties only its own: if you switched between the App Store build and the
+  direct-download build before v1.57, what the other build left stays until
+  that build runs v1.57 or later. You can delete that build's web cache
+  yourself. For the App Store build it is the folders
+  `~/Library/Containers/yyh.CLI-Pulse/Data/Library/Caches/yyh.CLI-Pulse` and
+  `~/Library/Containers/yyh.CLI-Pulse.helper/Data/Library/Caches/yyh.CLI-Pulse.helper`;
+  for the direct-download build, `~/Library/Caches/yyh.CLI-Pulse` and
+  `~/Library/Caches/yyh.CLI-Pulse.helper`.
 - **Supabase server-side encryption at rest** (AES-256) for the database and
   storage backing your account. We do **not** currently offer end-to-end
   encryption — what we store is usage numbers and the descriptive details listed

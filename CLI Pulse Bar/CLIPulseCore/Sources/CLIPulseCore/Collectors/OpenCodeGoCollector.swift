@@ -117,7 +117,7 @@ public struct OpenCodeGoCollector: ProviderCollector, Sendable {
         request.setValue(ua, forHTTPHeaderField: "User-Agent")
         request.setValue("https://opencode.ai", forHTTPHeaderField: "Origin")
         request.setValue("text/javascript, application/json;q=0.9, */*;q=0.8", forHTTPHeaderField: "Accept")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let text = String(data: data, encoding: .utf8) ?? ""
         if status == 401 || status == 403 || looksSignedOut(text) {
@@ -150,7 +150,7 @@ public struct OpenCodeGoCollector: ProviderCollector, Sendable {
         request.setValue(ua, forHTTPHeaderField: "User-Agent")
         request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                          forHTTPHeaderField: "Accept")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let text = String(data: data, encoding: .utf8) ?? ""
         if status == 401 || status == 403 || looksSignedOut(text) {

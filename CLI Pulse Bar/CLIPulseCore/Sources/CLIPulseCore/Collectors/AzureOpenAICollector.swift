@@ -255,7 +255,7 @@ public struct AzureOpenAICollector: ProviderCollector, Sendable {
         request.httpBody = try Self.validationRequestBody(
             deploymentName: deploymentName, apiVersion: apiVersion)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw CollectorError.httpError(
                 status: (response as? HTTPURLResponse)?.statusCode ?? 0, provider: "Azure OpenAI")

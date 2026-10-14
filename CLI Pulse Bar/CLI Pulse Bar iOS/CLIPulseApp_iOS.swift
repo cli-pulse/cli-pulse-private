@@ -32,6 +32,12 @@ struct CLIPulseApp: App {
             return
         }
         #endif
+        // 1.57: up to 1.56 the URL cache could keep the account's requests with
+        // its token, and the sign-in POSTs with their answers, in Cache.db. Empty
+        // it and the cookie jar once, before `AppState` sends anything;
+        // `APIClient` now uses a configuration that keeps nothing
+        // (`CredentialedURLSession`).
+        CredentialedURLSession.purgeLegacyStorageIfNeeded()
         SentryLogger.start(platform: .iOS)
         let state = AppState()
         _appState = StateObject(wrappedValue: state)

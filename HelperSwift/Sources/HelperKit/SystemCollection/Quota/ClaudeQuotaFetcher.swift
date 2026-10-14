@@ -324,12 +324,33 @@ public actor ClaudeQuotaFetcher {
 
     // MARK: - Live HTTP
 
-    /// Default HTTP hook using `URLSession.shared`. Tests inject a
-    /// closure that returns canned `(Data, HTTPURLResponse)` tuples.
+    /// The session `liveHTTP` sends through: it keeps nothing. These
+    /// requests carry a bearer token (Claude here, and Codex and Gemini,
+    /// whose fetchers default to `liveHTTP` too), and `URLSession.shared`
+    /// would write each one, `Authorization` header included, with its
+    /// answer to this binary's `~/Library/Caches/cli_pulse_helper/Cache.db`.
+    /// So: `ephemeral` (nothing on disk), no URL cache even in memory, no
+    /// cookie jar, no credential store. HelperKit cannot import
+    /// CLIPulseCore, so this mirrors `CredentialedURLSession` there, as
+    /// `SupabaseRPCCaller`'s session does; CLIPulseCore's
+    /// `CredentialedRequestsNoStoreTests` scans this package for any
+    /// session that could write to disk.
+    public static let liveSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.urlCredentialStorage = nil
+        return URLSession(configuration: configuration)
+    }()
+
+    /// Default HTTP hook, through `liveSession`. Tests inject a closure
+    /// that returns canned `(Data, HTTPURLResponse)` tuples.
     @Sendable
     public static func liveHTTP(_ request: URLRequest) async -> (Data, HTTPURLResponse)? {
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await liveSession.data(for: request)
             guard let http = response as? HTTPURLResponse else { return nil }
             return (data, http)
         } catch {

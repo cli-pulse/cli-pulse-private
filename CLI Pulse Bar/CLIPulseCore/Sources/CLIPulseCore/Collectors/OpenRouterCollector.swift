@@ -44,7 +44,7 @@ public struct OpenRouterCollector: ProviderCollector, Sendable {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 15
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             throw CollectorError.httpError(status: status, provider: "OpenRouter")
@@ -61,7 +61,7 @@ public struct OpenRouterCollector: ProviderCollector, Sendable {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 3
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             throw CollectorError.httpError(status: status, provider: "OpenRouter")

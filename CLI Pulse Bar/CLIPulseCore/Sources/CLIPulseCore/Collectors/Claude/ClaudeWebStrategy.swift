@@ -457,7 +457,7 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
         request.setValue("Mozilla/5.0 (Macintosh) CLIPulseBar", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 15
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw ClaudeStrategyError.parseFailed("non-HTTP response")
         }

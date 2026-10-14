@@ -245,7 +245,7 @@ public struct VertexAICollector: ProviderCollector, Sendable {
             .joined(separator: "&")
         request.httpBody = body.data(using: .utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 400 || status == 401 {
             let code = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
@@ -360,7 +360,7 @@ public struct VertexAICollector: ProviderCollector, Sendable {
             var request = URLRequest(url: url)
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
             request.timeoutInterval = 30
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await CredentialedURLSession.shared.data(for: request)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard (200...299).contains(status) else {
                 throw CollectorError.httpError(status: status, provider: "Vertex AI")

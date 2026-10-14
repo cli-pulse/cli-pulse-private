@@ -85,7 +85,7 @@ public struct OllamaCollector: ProviderCollector, Sendable {
         var request = URLRequest(url: url)
         request.timeoutInterval = 5
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw CollectorError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, provider: "Ollama")
         }
@@ -100,7 +100,7 @@ public struct OllamaCollector: ProviderCollector, Sendable {
         var request = URLRequest(url: url)
         request.timeoutInterval = 5
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return [] }
 
         return try OllamaCollector.parseRunning(data)

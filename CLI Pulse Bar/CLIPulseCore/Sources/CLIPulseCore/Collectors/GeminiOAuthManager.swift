@@ -1144,7 +1144,7 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
 
     static let defaultTokenDataLoader:
         TokenDataLoader = { request in
-            try await URLSession.shared.data(for: request)
+            try await CredentialedURLSession.shared.data(for: request)
         }
 
     // ── Configuration ────────────────────────────────────────────────

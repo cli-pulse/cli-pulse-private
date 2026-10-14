@@ -137,7 +137,7 @@ public struct CrossModelCollector: ProviderCollector, Sendable {
         request.timeoutInterval = 15
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         let http = response as? HTTPURLResponse
         let status = http?.statusCode ?? 0
         if status == 401 || status == 403 {
@@ -160,7 +160,7 @@ public struct CrossModelCollector: ProviderCollector, Sendable {
         request.timeoutInterval = 3
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        guard let (data, response) = try? await URLSession.shared.data(for: request) else { return nil }
+        guard let (data, response) = try? await CredentialedURLSession.shared.data(for: request) else { return nil }
         let http = response as? HTTPURLResponse
         guard http?.statusCode == 200,
               Self.sameOrigin(requestURL: url, responseURL: http?.url) else { return nil }

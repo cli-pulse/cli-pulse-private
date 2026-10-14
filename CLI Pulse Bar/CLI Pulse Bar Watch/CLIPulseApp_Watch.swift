@@ -13,6 +13,11 @@ struct CLIPulseWatchApp: App {
         // normal launch under a page's name.
         _ = WatchScreenshotLaunch.screenOrExit()
         #endif
+        // 1.57: up to 1.56 the URL cache could keep the account's requests with
+        // its token in Cache.db. Empty it and the cookie jar once, before
+        // `WatchAppState` (made with the first body) sends anything; `APIClient`
+        // now uses a configuration that keeps nothing (`CredentialedURLSession`).
+        CredentialedURLSession.purgeLegacyStorageIfNeeded()
         SentryLogger.start(platform: .watchOS)
         // The iPhone's display currency as the last context delivered it, so
         // the costs this Watch persisted do not show in dollars until

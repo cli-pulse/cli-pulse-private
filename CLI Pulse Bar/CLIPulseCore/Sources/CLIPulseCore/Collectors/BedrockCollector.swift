@@ -161,7 +161,7 @@ public struct BedrockCollector: ProviderCollector, Sendable {
         request.setValue("AWSInsightsIndexService.GetCostAndUsage", forHTTPHeaderField: "X-Amz-Target")
         AWSSigner.sign(request: &request, creds: creds, region: "us-east-1", service: "ce")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
             throw CollectorError.missingCredentials(CredentialProblem("AWS Bedrock", .credentialsRejectedBy("Cost Explorer")))

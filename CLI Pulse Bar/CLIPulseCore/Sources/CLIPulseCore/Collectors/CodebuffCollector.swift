@@ -132,7 +132,7 @@ public struct CodebuffCollector: ProviderCollector, Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpBody = try? JSONSerialization.data(withJSONObject: ["fingerprintId": "clipulse-usage"])
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw CollectorError.httpError(
                 status: (response as? HTTPURLResponse)?.statusCode ?? 0, provider: "Codebuff")
@@ -167,7 +167,7 @@ public struct CodebuffCollector: ProviderCollector, Sendable {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw CollectorError.httpError(
                 status: (response as? HTTPURLResponse)?.statusCode ?? 0, provider: "Codebuff")

@@ -122,19 +122,24 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
 
     // MARK: - API
 
-    private func fetchUsage(token: String) async throws -> OAuthUsageResponse {
-        guard let url = URL(string: "https://api.anthropic.com/api/oauth/usage") else {
-            throw ClaudeStrategyError.parseFailed("invalid URL")
-        }
-        var request = URLRequest(url: url)
+    static let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
+
+    /// The usage GET. Its own function so `CredentialedRequestsLocalCheckTests`
+    /// can send the same request through a caching session as its control.
+    static func usageRequest(token: String) -> URLRequest {
+        var request = URLRequest(url: usageURL)
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         request.setValue("CLIPulseBar", forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15
+        return request
+    }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+    /// Internal for `CredentialedRequestsLocalCheckTests`.
+    func fetchUsage(token: String) async throws -> OAuthUsageResponse {
+        let (data, response) = try await CredentialedURLSession.shared.data(for: Self.usageRequest(token: token))
         guard let http = response as? HTTPURLResponse else {
             throw ClaudeStrategyError.parseFailed("non-HTTP response")
         }

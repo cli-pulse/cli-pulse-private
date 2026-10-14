@@ -128,7 +128,8 @@ public actor APIClient {
     private var refreshToken: String?
     public private(set) var userId: String?
 
-    private let session: URLSession
+    /// Internal for `CredentialedRequestsNoStoreTests`, which pins what it keeps.
+    let session: URLSession
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
     private var providerAccountFlags: ProviderAccountFeatureFlags
@@ -176,12 +177,17 @@ public actor APIClient {
         self.supabaseURL = cloudConfiguration.url
         self.supabaseAnonKey = cloudConfiguration.anonKey
         self.runtimeEnvironment = runtimeEnvironment
-        // `session` injectable for tests (URLProtocol stub); production uses the
-        // configured default.
+        // `session` injectable for tests (URLProtocol stub). Production makes
+        // its own from the configuration that keeps nothing on disk
+        // (`CredentialedURLSession`): every request here carries the account's
+        // token, and the sign-in POSTs carry a password or a refresh token and
+        // get the new tokens back. Up to 1.56 this was
+        // `URLSessionConfiguration.default`, whose cache stored all of that in
+        // the app's Cache.db.
         if let session {
             self.session = session
         } else {
-            let config = URLSessionConfiguration.default
+            let config = CredentialedURLSession.makeConfiguration()
             config.timeoutIntervalForRequest = 15
             config.timeoutIntervalForResource = 30
             config.waitsForConnectivity = true

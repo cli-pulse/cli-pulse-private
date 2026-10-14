@@ -11,12 +11,15 @@ public actor HelperAPIClient {
 
     private let supabaseURL: String
     private let anonKey: String
-    private let session: URLSession
+    /// The session that keeps nothing (`CredentialedURLSession`): each RPC
+    /// carries this Mac's helper secret in its body. Internal for
+    /// `CredentialedRequestsNoStoreTests`.
+    let session: URLSession
 
     public init(
         supabaseURL: String,
         anonKey: String,
-        session: URLSession = .shared
+        session: URLSession = CredentialedURLSession.shared
     ) {
         self.supabaseURL = supabaseURL
         self.anonKey = anonKey
@@ -27,7 +30,7 @@ public actor HelperAPIClient {
     public init() {
         self.supabaseURL = SupabaseConstants.url
         self.anonKey = SupabaseConstants.anonKey
-        self.session = .shared
+        self.session = CredentialedURLSession.shared
     }
 
     // MARK: - Version reporting (observability only)
