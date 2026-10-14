@@ -13,8 +13,9 @@ import XCTest
 ///   a slash is a line-break opportunity. The card's line keeps it together.
 ///
 /// The layout itself was looked at on the simulator; these pin the rules it
-/// follows. Text is asserted in zh-Hans, ja and es: an English assertion
-/// passes with the lookup broken, because the fallback is English.
+/// follows, and `UsageDayModelRowsLayoutTests` below checks that the rows
+/// view follows them. Text is asserted in zh-Hans, ja and es: an English
+/// assertion passes with the lookup broken, because the fallback is English.
 final class UsageDayCardAccessibilityTests: XCTestCase {
     private var savedOverride: String?
 
@@ -74,6 +75,29 @@ final class UsageDayCardAccessibilityTests: XCTestCase {
             "29 sept: 2,02 US$ · 168,9 mil tokens de E/\u{2060}S")
     }
 
+    /// The line the card's day detail draws (`dayLine`, which the view
+    /// calls) is the joined one, in zh-Hans through the real catalogue: with
+    /// and without the cost, and unchanged where the count has no "I/O".
+    func testTheCardsDayLineKeepsIOOnOneLineInZhHans() {
+        LocaleOverrideStore.shared.set("zh-Hans")
+        let day = ProviderUsageDays.Day(dateKey: "2026-10-08", models: [
+            .init(model: "claude-opus-4-1", tokens: 1_200_000, cost: 4.10),
+            .init(model: "glm-4.6", tokens: 900_000, cost: 0, unpricedTokens: 900_000),
+        ])
+        let count = CostFormatter.formatUsage(day.tokens)
+
+        XCTAssertEqual(
+            ProviderUsageHistorySection.dayLine(day: day, basis: .inputOutput, showsCost: true),
+            day.dateText + "：" + day.costText + " · " + count + " I/\u{2060}O token")
+        XCTAssertEqual(
+            ProviderUsageHistorySection.dayLine(day: day, basis: .inputOutput, showsCost: false),
+            day.dateText + "：" + count + " I/\u{2060}O token")
+
+        let eachOnce = ProviderUsageHistorySection.dayLine(day: day, basis: .eachOnce, showsCost: true)
+        XCTAssertEqual(eachOnce, day.summary(basis: .eachOnce, showsCost: true))
+        XCTAssertFalse(eachOnce.contains("\u{2060}"), eachOnce)
+    }
+
     /// Only a slash with a letter on each side is joined: a date written with
     /// slashes, a figure, a slash at either end or beside a space keep theirs.
     func testOnlyASlashBetweenTwoLettersIsJoined() {
@@ -87,3 +111,58 @@ final class UsageDayCardAccessibilityTests: XCTestCase {
         XCTAssertEqual(keep("A/B/C"), "A/\u{2060}B/\u{2060}C")
     }
 }
+
+#if os(macOS)
+/// The rows view follows `stacksFigures`: hosted at a fixed width, the
+/// card's rows take two lines a model at an accessibility size and one
+/// below it, and the Mac panel's rows are the same height at both. Heights
+/// are counted in lines of the card's text at the same size, so a larger
+/// font is not mistaken for a second line.
+@MainActor
+final class UsageDayModelRowsLayoutTests: XCTestCase {
+    private let rows: [ProviderUsageDays.ModelRow] = [
+        .init(model: "claude-opus-4-1", tokens: 1_200_000, cost: 4.10),
+        .init(model: "claude-sonnet-4-5", tokens: 2_400_000, cost: 2.05),
+        .init(model: "claude-haiku-4-5", tokens: 600_000, cost: 0.28),
+        .init(model: "glm-4.6", tokens: 900_000, cost: 0, unpricedTokens: 900_000),
+    ]
+
+    private func height<Content: View>(_ content: Content, at size: DynamicTypeSize) -> CGFloat {
+        let host = NSHostingController(rootView: content
+            .environment(\.dynamicTypeSize, size)
+            .frame(width: 300))
+        return host.sizeThatFits(in: CGSize(width: 300, height: 10_000)).height
+    }
+
+    private func rowsHeight(_ style: UsageDayModelRows.Style, at size: DynamicTypeSize) -> CGFloat {
+        height(UsageDayModelRows(rows: rows, basis: .inputOutput, accent: .blue, showsCost: true, style: style),
+               at: size)
+    }
+
+    /// One line of the card's text.
+    private func lineHeight(at size: DynamicTypeSize) -> CGFloat {
+        height(Text(verbatim: "Mg").font(.caption), at: size)
+    }
+
+    func testTheCardsRowsStackAtAnAccessibilitySizeAndThePanelsNever() {
+        let models = CGFloat(rows.count)
+
+        let line = lineHeight(at: .large)
+        let card = rowsHeight(.card, at: .large)
+        XCTAssertGreaterThan(line, 0)
+        XCTAssertGreaterThan(card, 0)
+        XCTAssertLessThan(card, 2 * models * line,
+                          "at the default size each model is one line of the grid (\(card) pt, line \(line) pt)")
+
+        let axLine = lineHeight(at: .accessibility1)
+        let axCard = rowsHeight(.card, at: .accessibility1)
+        XCTAssertGreaterThanOrEqual(axCard, 2 * models * axLine,
+                                    "at AX1 each model's figures go under its name (\(axCard) pt, line \(axLine) pt)")
+
+        let panel = rowsHeight(.panel, at: .large)
+        XCTAssertGreaterThan(panel, 0)
+        XCTAssertEqual(rowsHeight(.panel, at: .accessibility1), panel,
+                       "the Mac panel keeps its grid at every size")
+    }
+}
+#endif

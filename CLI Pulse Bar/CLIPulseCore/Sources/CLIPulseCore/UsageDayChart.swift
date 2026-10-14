@@ -432,7 +432,7 @@ public struct ProviderUsageHistorySection: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
                 // Wraps at accessibility sizes; "I/O" stays on one line.
-                Text(Self.keepingSlashAbbreviationsUnbroken(day.summary(basis: days.basis, showsCost: showCost)))
+                Text(Self.dayLine(day: day, basis: days.basis, showsCost: showCost))
                     .font(.caption.weight(.semibold))
                     .monospacedDigit()
                 Spacer(minLength: 4)
@@ -466,6 +466,13 @@ public struct ProviderUsageHistorySection: View {
         .padding(10)
         .background(Color.primary.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    /// The day detail's line, "Oct 8: ≥$22.99 · 2.5M I/O tokens", with
+    /// "I/O" kept on one line when it wraps. VoiceOver reads the chart's own
+    /// value (`Day.summary`), which needs no joiner.
+    static func dayLine(day: ProviderUsageDays.Day, basis: ProviderUsageDays.TokenBasis, showsCost: Bool) -> String {
+        keepingSlashAbbreviationsUnbroken(day.summary(basis: basis, showsCost: showsCost))
     }
 
     /// `text` with a word joiner (U+2060) after each slash that stands
