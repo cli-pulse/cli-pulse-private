@@ -413,9 +413,11 @@ public struct CodexResetCreditsPresentation: Equatable, Sendable {
             let hours = (totalMinutes / 60) % 24
             let minutes = totalMinutes % 60
             if days > 0 {
-                if hours > 0 { self = .daysHours(days, hours) }
-                else if minutes > 0 { self = .daysMinutes(days, minutes) }
-                else { self = .days(days) }
+                if hours > 0 {
+                    self = .daysHours(days, hours)
+                } else {
+                    self = minutes > 0 ? .daysMinutes(days, minutes) : .days(days)
+                }
             } else if hours > 0 {
                 self = minutes > 0 ? .hoursMinutes(hours, minutes) : .hours(hours)
             } else {
