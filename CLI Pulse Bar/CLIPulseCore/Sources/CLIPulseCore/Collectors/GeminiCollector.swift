@@ -479,7 +479,7 @@ public struct GeminiCollector: ProviderCollector, Sendable {
             "grant_type": "refresh_token",
         ]).utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let accessToken = json["access_token"] as? String else {
@@ -522,7 +522,7 @@ public struct GeminiCollector: ProviderCollector, Sendable {
     typealias DataLoader = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
     static let liveLoader: DataLoader = { request in
-        try await URLSession.shared.data(for: request)
+        try await CredentialedURLSession.shared.data(for: request)
     }
 
     /// `loadCodeAssist`, then `retrieveUserQuota`, for one access token.

@@ -124,7 +124,7 @@ public struct GrokCollector: ProviderCollector, Sendable {
             + "(KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
             forHTTPHeaderField: "User-Agent")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         let http = response as? HTTPURLResponse
         let status = http?.statusCode ?? 0
         if status == 401 || status == 403 {

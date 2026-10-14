@@ -165,7 +165,7 @@ public struct StepFunCollector: ProviderCollector, Sendable {
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
             + "(KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
             forHTTPHeaderField: "user-agent")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
             throw CollectorError.missingCredentials(CredentialProblem("StepFun", .sessionExpiredOrUnauthorized))

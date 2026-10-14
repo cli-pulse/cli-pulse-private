@@ -91,7 +91,8 @@ extension EnvironmentValues {
 /// What keeps it off everything else: the QA runtime already refuses the
 /// helper, collectors, StoreKit, telemetry, widgets and production endpoints.
 /// On top of that, provider status checks are switched off, every request
-/// through the shared URL session is refused and listed in the manifest, and
+/// through `URLSession.shared` or the credentialed requests' session
+/// (`CredentialedURLSession.shared`) is refused and listed in the manifest, and
 /// the QA defaults domain is emptied for a reproducible run and restored as it
 /// was before the process exits.
 @MainActor
@@ -105,6 +106,11 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
     static func run(_ request: QARenderSnapshot.Request) -> Never {
         startWatchdog()
         URLProtocol.registerClass(QARenderRefusingURLProtocol.self)
+        // `registerClass` reaches `URLSession.shared` only; the collectors'
+        // session is handed the refuser before anything uses it.
+        if !CredentialedURLSession.installInterceptor(QARenderRefusingURLProtocol.self) {
+            log("warning: the credentialed requests' session was made before the renderer started; its requests are not refused")
+        }
         let app = NSApplication.shared
         app.setActivationPolicy(.prohibited)
         app.appearance = NSAppearance(
@@ -1810,13 +1816,14 @@ private struct QARenderMenuPicture: View {
     }
 }
 
-/// Refuses every request made through the shared URL session while the
-/// renderer runs, and remembers where it would have gone (scheme, host and
-/// path; never the query). The QA runtime already blocks production
-/// endpoints and collectors; this lists what reached `URLSession.shared`
-/// anyway. It does not see sessions built from their own configuration, such
-/// as APIClient's, so an empty list is not proof that nothing went out; the
-/// process's sockets are (docs/qa/macos-offscreen-renders.md).
+/// Refuses every request made through `URLSession.shared` or
+/// `CredentialedURLSession.shared` while the renderer runs, and remembers
+/// where it would have gone (scheme, host and path; never the query). The QA
+/// runtime already blocks production endpoints and collectors; this lists what
+/// reached either session anyway. It does not see other sessions built from
+/// their own configuration, such as APIClient's, so an empty list is not
+/// proof that nothing went out; the process's sockets are
+/// (docs/qa/macos-offscreen-renders.md).
 final class QARenderRefusingURLProtocol: URLProtocol {
     private static let lock = NSLock()
     private static var refusedURLs: [String] = []

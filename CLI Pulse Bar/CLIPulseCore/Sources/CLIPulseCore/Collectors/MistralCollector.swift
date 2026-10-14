@@ -143,7 +143,7 @@ public struct MistralCollector: ProviderCollector, Sendable {
         request.setValue("https://admin.mistral.ai", forHTTPHeaderField: "Origin")
         if let csrf { request.setValue(csrf, forHTTPHeaderField: "X-CSRFTOKEN") }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
             throw CollectorError.missingCredentials(CredentialProblem("Mistral", .sessionExpiredOrUnauthorized))

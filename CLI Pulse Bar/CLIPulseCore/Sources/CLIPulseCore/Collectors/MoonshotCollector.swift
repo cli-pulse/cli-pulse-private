@@ -101,7 +101,7 @@ public struct MoonshotCollector: ProviderCollector, Sendable {
         request.timeoutInterval = 15
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
             throw CollectorError.missingCredentials(CredentialProblem("Moonshot", .unauthorized))

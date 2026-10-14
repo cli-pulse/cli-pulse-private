@@ -31,7 +31,8 @@ public struct SupabaseAnonymousTelemetryTransport: AnonymousTelemetryTransport {
 
     private let endpoint: URL?
     private let anonKey: String
-    private let session: URLSession
+    /// Internal for `CredentialedRequestsNoStoreTests`.
+    let session: URLSession
 
     /// Resolved through the same `RuntimeCloudConfiguration` path as everything
     /// else, so a QA or quarantine build points at the invalid local URL and
@@ -39,7 +40,10 @@ public struct SupabaseAnonymousTelemetryTransport: AnonymousTelemetryTransport {
     /// would quietly poison the very numbers it exists to produce — and the QA
     /// runtime landed only two days ago, so this is a live hazard, not a
     /// theoretical one.
-    init(configuration: RuntimeCloudConfiguration, session: URLSession = .shared) {
+    /// The session that keeps nothing (`CredentialedURLSession`): the request
+    /// carries the anon key as its bearer, and a POST's body is stored with
+    /// it by a URL cache.
+    init(configuration: RuntimeCloudConfiguration, session: URLSession = CredentialedURLSession.shared) {
         self.endpoint = URL(string: "\(configuration.url)/rest/v1/rpc/record_anonymous_install")
         self.anonKey = configuration.anonKey
         self.session = session

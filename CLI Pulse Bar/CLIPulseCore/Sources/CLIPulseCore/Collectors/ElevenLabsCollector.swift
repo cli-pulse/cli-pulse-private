@@ -100,7 +100,7 @@ public struct ElevenLabsCollector: ProviderCollector, Sendable {
         // The quirk: ElevenLabs uses `xi-api-key`, not `Authorization: Bearer`.
         request.setValue(token, forHTTPHeaderField: "xi-api-key")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         switch status {
         case 200...299:

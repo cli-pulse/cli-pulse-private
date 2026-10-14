@@ -90,7 +90,7 @@ public struct CursorCollector: ProviderCollector, Sendable {
         request.setValue(cookie, forHTTPHeaderField: "Cookie")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         // A stale/expired session cookie comes back as 401/403. Surface a
         // clear "not signed in" state instead of a generic HTTP error so the

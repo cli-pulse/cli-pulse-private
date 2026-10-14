@@ -165,7 +165,7 @@ public struct AbacusCollector: ProviderCollector, Sendable {
             request.httpBody = Data("{}".utf8)
         }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         return try unwrapResult(data: data, status: status)
     }

@@ -294,7 +294,7 @@ public struct CodexCollector: ProviderCollector, Sendable {
             "scope": "openid profile email",
         ])
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             throw CollectorError.httpError(status: status, provider: "Codex")
@@ -314,11 +314,12 @@ public struct CodexCollector: ProviderCollector, Sendable {
 
     // MARK: - Usage API
 
-    private func fetchUsage(accessToken: String, accountId: String?) async throws -> UsageResponse {
-        guard let url = URL(string: "https://chatgpt.com/backend-api/wham/usage") else {
-            throw CollectorError.invalidURL("https://chatgpt.com/backend-api/wham/usage")
-        }
-        var request = URLRequest(url: url)
+    static let usageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
+
+    /// The usage GET. Its own function so `CredentialedRequestsLocalCheckTests`
+    /// can send the same request through a caching session as its control.
+    static func usageRequest(accessToken: String, accountId: String?) -> URLRequest {
+        var request = URLRequest(url: usageURL)
         request.httpMethod = "GET"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -327,8 +328,13 @@ public struct CodexCollector: ProviderCollector, Sendable {
             request.setValue(aid, forHTTPHeaderField: "ChatGPT-Account-Id")
         }
         request.timeoutInterval = 30
+        return request
+    }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+    /// Internal for `CredentialedRequestsLocalCheckTests`.
+    func fetchUsage(accessToken: String, accountId: String?) async throws -> UsageResponse {
+        let request = Self.usageRequest(accessToken: accessToken, accountId: accountId)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             throw CollectorError.httpError(status: status, provider: "Codex")

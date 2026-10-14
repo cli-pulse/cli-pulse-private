@@ -41,6 +41,6 @@ import Foundation
 
 extension GeminiStatusProbe {
     public static func defaultDataLoader(for request: URLRequest) async throws -> (Data, URLResponse) {
-        try await URLSession.shared.data(for: request)
+        try await CredentialedURLSession.shared.data(for: request)
     }
 }

@@ -124,7 +124,7 @@ public struct AlibabaTokenPlanCollector: ProviderCollector, Sendable {
         request.setValue(ua, forHTTPHeaderField: "User-Agent")
         request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                          forHTTPHeaderField: "Accept")
-        if let (data, response) = try? await URLSession.shared.data(for: request),
+        if let (data, response) = try? await CredentialedURLSession.shared.data(for: request),
            (response as? HTTPURLResponse)?.statusCode == 200,
            let html = String(data: data, encoding: .utf8),
            let token = extractSECToken(from: html) {
@@ -179,7 +179,7 @@ public struct AlibabaTokenPlanCollector: ProviderCollector, Sendable {
         request.setValue("https://bailian.console.aliyun.com", forHTTPHeaderField: "Origin")
         request.setValue(Self.dashboardURLString, forHTTPHeaderField: "Referer")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
             throw CollectorError.missingCredentials(CredentialProblem("Alibaba Token Plan", .loginRequired))

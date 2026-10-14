@@ -81,9 +81,11 @@ In render mode the process:
   telemetry, widgets and production endpoints, and in addition switches off
   notifications (the Alerts tab would ask macOS for permission, a prompt on
   screen) and provider status checks, and refuses every request through the
-  shared URL session, listing any in `blockedRequests`. That list only covers
-  `URLSession.shared`: a session built from its own configuration, such as
-  APIClient's, is not routed through it, so an empty list is not proof that
+  shared URL session and through the credentialed requests' session
+  (`CredentialedURLSession.shared`, which the collectors use), listing any in
+  `blockedRequests`. That list only covers those two: another session built
+  from its own configuration, such as APIClient's, is not routed through it,
+  so an empty list is not proof that
   nothing left the process. Sampling the process's sockets during a run
   (`lsof -nP -a -p <pid> -i`) is; it showed none in the runs so far;
 - empties the QA defaults domain for a reproducible run and restores it as it

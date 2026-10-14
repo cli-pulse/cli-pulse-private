@@ -1154,8 +1154,9 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
     public var renders: [Render]
     public var languageMenu: LanguageMenu?
     public var skipped: [Skipped]
-    /// Requests made through `URLSession.shared` that the renderer refused, as
-    /// scheme, host and path. Empty when none were made that way. A session
+    /// Requests made through `URLSession.shared` or
+    /// `CredentialedURLSession.shared` that the renderer refused, as scheme,
+    /// host and path. Empty when none were made that way. Another session
     /// built from its own configuration (APIClient's, for one) is not covered,
     /// so this is not proof that nothing left the process; watching its
     /// sockets (`lsof -i -p <pid>`) is.

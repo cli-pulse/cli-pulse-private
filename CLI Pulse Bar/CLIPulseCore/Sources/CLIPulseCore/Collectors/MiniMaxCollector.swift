@@ -70,7 +70,7 @@ public struct MiniMaxCollector: ProviderCollector, Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("CLIPulseBar", forHTTPHeaderField: "MM-API-Source")
         request.timeoutInterval = 15
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw CollectorError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, provider: "MiniMax")
         }
@@ -87,7 +87,7 @@ public struct MiniMaxCollector: ProviderCollector, Sendable {
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
         request.setValue("XMLHttpRequest", forHTTPHeaderField: "x-requested-with")
         request.timeoutInterval = 15
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw CollectorError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, provider: "MiniMax")
         }

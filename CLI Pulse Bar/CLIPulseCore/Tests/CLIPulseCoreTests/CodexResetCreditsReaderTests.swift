@@ -119,10 +119,11 @@ final class CodexResetCreditsReaderTests: XCTestCase {
     /// `URLSession.shared` writes the request, bearer token included, and the
     /// raw body, with the provider's credit IDs, to the app's on-disk
     /// Cache.db: chatgpt.com sends no Cache-Control, and a request's cache
-    /// policy does not stop a response being stored. The read has a session
-    /// of its own that keeps nothing, and the live read goes through it.
+    /// policy does not stop a response being stored. The live read goes
+    /// through the session that keeps nothing (`CredentialedURLSession`, whose
+    /// configuration `CredentialedRequestsNoStoreTests` pins).
     func testTheReadKeepsNothingOnDisk() throws {
-        let configuration = CodexResetCreditsFetcher.session.configuration
+        let configuration = CredentialedURLSession.shared.configuration
         XCTAssertNil(configuration.urlCache, "a URL cache stores the token and the body")
         XCTAssertNil(configuration.httpCookieStorage)
         XCTAssertFalse(configuration.httpShouldSetCookies)
@@ -131,10 +132,12 @@ final class CodexResetCreditsReaderTests: XCTestCase {
 
         // Which session the live read uses is a property of the source.
         let code = try Self.shippingCode(of: "Collectors/CodexResetCreditsReader.swift")
-        XCTAssertFalse(code.contains("URLSession.shared"), "the read must not go through the shared session")
+        XCTAssertNil(code.range(of: #"(?<![A-Za-z])URLSession\.shared"#, options: .regularExpression),
+                     "the read must not go through the shared session")
         let live = try XCTUnwrap(code.range(of: "public static let liveTransport: Transport = {"))
         let body = code[live.upperBound...].prefix(120)
-        XCTAssertTrue(body.contains("try await session.data(for:"), "the live read must use `session`")
+        XCTAssertTrue(body.contains("try await CredentialedURLSession.shared.data(for:"),
+                      "the live read must use the session that keeps nothing")
     }
 
     func testNoAccountHeaderWithoutAnAccountID() {

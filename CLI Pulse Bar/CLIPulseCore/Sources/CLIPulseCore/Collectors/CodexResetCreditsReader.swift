@@ -87,24 +87,12 @@ public enum CodexResetCreditsFetcher {
 
     public typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
-    /// The read's own session, which keeps nothing: no URL cache, no cookies,
-    /// no stored credentials. `URLSession.shared` would write the request,
-    /// bearer token included, and the raw body, with the provider's credit
-    /// IDs, to the app's on-disk `Cache.db`: chatgpt.com's backend sends no
-    /// `Cache-Control`, and a request's cache policy only governs reading from
-    /// a cache, never storing to it.
-    static let session: URLSession = {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.urlCache = nil
-        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        configuration.httpCookieStorage = nil
-        configuration.httpShouldSetCookies = false
-        configuration.urlCredentialStorage = nil
-        return URLSession(configuration: configuration)
-    }()
-
+    /// Through the session that keeps nothing (`CredentialedURLSession`):
+    /// `URLSession.shared` would write the request, bearer token included,
+    /// and the raw body, with the provider's credit IDs, to the app's on-disk
+    /// `Cache.db`.
     public static let liveTransport: Transport = { request in
-        try await session.data(for: request)
+        try await CredentialedURLSession.shared.data(for: request)
     }
 
     /// The GET. `chatGPTAccountID` is the `account_id` from the same auth.json
@@ -114,7 +102,7 @@ public enum CodexResetCreditsFetcher {
         chatGPTAccountID: String?,
         timeout: TimeInterval = budget
     ) -> URLRequest {
-        // Never answered from a cache. Not storing the answer is `session`'s
+        // Never answered from a cache. Not storing the answer is the session's
         // job: a cache policy cannot do that.
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         request.httpMethod = "GET"

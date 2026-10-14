@@ -279,7 +279,7 @@ public struct DeepgramCollector: ProviderCollector, Sendable {
         // Deepgram uses the custom "Token" auth scheme (NOT Bearer).
         request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw CollectorError.httpError(
                 status: (response as? HTTPURLResponse)?.statusCode ?? 0, provider: "Deepgram")

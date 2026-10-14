@@ -126,7 +126,7 @@ public struct WindsurfCollector: ProviderCollector, Sendable {
         request.setValue(auth.primaryOrgID, forHTTPHeaderField: "x-devin-primary-org-id")
         request.httpBody = Self.encodeRequest(authToken: auth.sessionToken, includeTopUpStatus: true)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CredentialedURLSession.shared.data(for: request)
         let s = (response as? HTTPURLResponse)?.statusCode ?? 0
         if s == 401 || s == 403 { throw CollectorError.missingCredentials(CredentialProblem("Windsurf", .sessionExpiredInvalid)) }
         guard s == 200 else { throw CollectorError.httpError(status: s, provider: "Windsurf") }
