@@ -291,6 +291,8 @@ struct WatchSessionDetailView: View {
                 }
             }
         }
-        .navigationTitle(session.displayName)
+        // Short, as the Quota detail's is: the header already reads
+        // "Codex · cli-pulse-ios", which as a Watch title scrolled.
+        .navigationTitle(session.provider)
     }
 }
