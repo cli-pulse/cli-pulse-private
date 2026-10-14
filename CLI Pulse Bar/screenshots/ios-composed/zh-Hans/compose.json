@@ -13,8 +13,8 @@
    "今日估算费用按服务商细分，另有近 30 天总额"
   ],
   "04_sessions": [
-   "每个会话都有账可查",
-   "活跃会话的用量、费用和请求数"
+   "运行中的会话，一目了然",
+   "当前活跃的 AI 工具，按服务商和项目列出"
   ],
   "05_alerts": [
    "配额不再突然见底",
@@ -25,7 +25,7 @@
   "01_overview.png": "ea8166ff7daf97e7834f21c4c798fa3d",
   "02_providers.png": "5d6151ede1df99dd066610dced0ce609",
   "03_cost.png": "bebac70e0b920270fcfa63ab1e6a9ed7",
-  "04_sessions.png": "2a76018fcf5e15007b342a852fc70fc1",
+  "04_sessions.png": "99a3543784369999b4f53504c50dd844",
   "05_alerts.png": "9c822d809b63e612264ba5b198f98fc0"
  },
  "faces": {
@@ -37,7 +37,7 @@
   "01_overview_1290x2796.png": "8b0b47034fcd005161ec47a3ee6b321a",
   "02_providers_1290x2796.png": "dd8480b3df24cd55f79e73aa9a3766d1",
   "03_cost_1290x2796.png": "a2bf4eadb86059e55d489e8fe4a67e9c",
-  "04_sessions_1290x2796.png": "04c420e9b15883eff98bad2c729182c8",
+  "04_sessions_1290x2796.png": "97b07ca8e21756adbf3aee7e5a081f0e",
   "05_alerts_1290x2796.png": "d183b2f091bfe3802d6ea0c5f6996991"
  },
  "subtitle_pt": 46,

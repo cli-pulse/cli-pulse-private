@@ -86,10 +86,11 @@ public enum ScreenshotLaunch {
         /// Whether the screen opens a session beside the list, where the layout
         /// has room for one: the iPad's Sessions tab is a list and a detail
         /// pane, and until a session is picked the pane says "Select a
-        /// session". Its rows carry name, provider, project and status; the
-        /// usage, cost and requests the set's caption names are in the
-        /// detail, one tap away for anyone. The iPhone's rows show them, and
-        /// its Sessions tab has no pane, so this changes nothing there.
+        /// session". Its rows carry name, provider, project and status, and
+        /// the detail adds its device and start time; since 1.57 (#673)
+        /// neither shows usage, cost or requests for a process-scan row, and
+        /// the set's caption names none. The iPhone's Sessions tab has no
+        /// pane, so this changes nothing there.
         public var opensSessionDetail: Bool {
             self == .sessions
         }

@@ -13,8 +13,8 @@
    "今日の推定コストをプロバイダー別に、​直近30日間の推定額も"
   ],
   "04_sessions": [
-   "CLI の実行をすべて記録",
-   "アクティブなセッションの​使用量、コスト、リクエスト数"
+   "いま実行中のセッション",
+   "AI ツールの実行状況を​プロバイダーとプロジェクトごとに表示"
   ],
   "05_alerts": [
    "上限の接近を見逃さない",
@@ -25,7 +25,7 @@
   "01_overview.png": "c66518ae762b290bc64a550d10f7142b",
   "02_providers.png": "55ffa9c1207a79df6c83b70da4c8fb44",
   "03_cost.png": "a821edfcedd8b0c241a8a69db99be68e",
-  "04_sessions.png": "50e97f8cf5d7805b2aeaef85830cc992",
+  "04_sessions.png": "ac9513efebbf1183337125dfa4d6053e",
   "05_alerts.png": "a1bd7af178ef18b30f5748ba9eb37dda"
  },
  "faces": {
@@ -37,7 +37,7 @@
   "01_overview_1290x2796.png": "63dd4f38d9958bd6f08a9290b5816fe2",
   "02_providers_1290x2796.png": "5e99572fdb6318a9929033803675ef0e",
   "03_cost_1290x2796.png": "8e8387e0ca2839858a0d5c8d03fb3512",
-  "04_sessions_1290x2796.png": "46db5308d0ac6a6c4b80dc526dcb7e54",
+  "04_sessions_1290x2796.png": "f9639ad6a446533e3c1781d8ea93d193",
   "05_alerts_1290x2796.png": "ff1d2a1a0cceb5c84efef02f9ce8aa46"
  },
  "subtitle_pt": 46,

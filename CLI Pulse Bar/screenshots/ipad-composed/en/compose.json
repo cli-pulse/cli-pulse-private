@@ -9,8 +9,8 @@
    "See what’s left before you hit the wall"
   ],
   "04_sessions": [
-   "Every CLI run tracked",
-   "Active sessions with usage, cost and requests"
+   "See what’s running",
+   "AI tools active right now, by provider and project"
   ],
   "05_alerts": [
    "Never miss a limit",
@@ -20,7 +20,7 @@
  "captures": {
   "01_overview.png": "c4783015e3cd962fa52218ce83638f09",
   "02_providers.png": "492d1029f079e1f894d298fc124c6a00",
-  "04_sessions.png": "8a36f6ea533fc8ac0a114f9453c2dfc9",
+  "04_sessions.png": "995e1530add7a2be2226737c3a95e615",
   "05_alerts.png": "4f3427cdec370281623377ecf7254444"
  },
  "faces": {
@@ -31,7 +31,7 @@
  "panels": {
   "01_overview_2064x2752.png": "d41d8a25aeb896ba30776a4f9abe2e75",
   "02_providers_2064x2752.png": "965e7b8a52970bfb7594a33ce5622000",
-  "04_sessions_2064x2752.png": "a87bc45cf690bb1608b8f6ea5d4d3bc0",
+  "04_sessions_2064x2752.png": "873ea10c838279d56f82a8f938e0d7e7",
   "05_alerts_2064x2752.png": "2c54f2d967a016779421e8d6d6246bbe"
  },
  "pillow": "10.4.0",

@@ -196,6 +196,9 @@ FRAMES: dict[str, SetFrame] = {f.key: f for f in (IPHONE, IPAD)}
 # which no producer raises where Demo had it) and the app's own words for things: the
 # tab names, 配额/配額/クォータ/할당량/cuota, 告警/警示/アラート/알림/alertas,
 # 会话/工作階段/セッション/세션/sesiones, "costo" in Spanish.
+# 04_sessions names no usage, cost or requests: since 1.57 (#673) every session
+# an iPhone, iPad or Watch lists is a running AI tool a Mac or the Companion
+# reported, shown as "Running" with no figures, in Demo as in production.
 COPY: dict[str, dict[str, tuple[str, str]]] = {
     "en": {
         "01_overview": ("Everything at a glance",
@@ -204,8 +207,8 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
                          "See what’s left before you hit the wall"),
         "03_cost": ("Where the money goes",
                     "Today’s estimated cost by provider, plus the total for the last 30 days"),
-        "04_sessions": ("Every CLI run tracked",
-                        "Active sessions with usage, cost and requests"),
+        "04_sessions": ("See what’s running",
+                        "AI tools active right now, by provider and project"),
         "05_alerts": ("Never miss a limit",
                       "Quota, session CPU and device CPU alerts"),
     },
@@ -213,28 +216,28 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "01_overview": ("关键数据，一屏总览", "用量、费用、会话和告警，打开就能看到"),
         "02_providers": ("实时掌握配额与费用", "离上限还有多远，一眼就知道"),
         "03_cost": ("钱都花在了哪里", "今日估算费用按服务商细分，另有近 30 天总额"),
-        "04_sessions": ("每个会话都有账可查", "活跃会话的用量、费用和请求数"),
+        "04_sessions": ("运行中的会话，一目了然", "当前活跃的 AI 工具，按服务商和项目列出"),
         "05_alerts": ("配额不再突然见底", "配额将尽、会话或设备 CPU 过高，都会告警"),
     },
     "zh-Hant": {
         "01_overview": ("一眼掌握全局", "用量、費用、工作階段與警示，一頁看完"),
         "02_providers": ("即時查看配額與費用", "用完之前，就知道還剩多少"),
         "03_cost": ("錢花在哪裡", "今日預估費用依服務商細分，另有近 30 天總額"),
-        "04_sessions": ("每次 CLI 執行都有紀錄", "活躍工作階段的用量、費用與請求數"),
+        "04_sessions": ("執行中的工作階段一覽", "目前運作中的 AI 工具，依服務商與專案列出"),
         "05_alerts": ("配額不再突然見底", "配額將盡、工作階段或裝置的 CPU 使用率過高，都會發出警示"),
     },
     "ja": {
         "01_overview": ("すべてをひと目で", "使用量、コスト、セッション、アラートを\u200bひとつの画面に"),
         "02_providers": ("クォータとコストを把握", "上限に達する前に、\u200b残りがわかる"),
         "03_cost": ("コストの内訳がわかる", "今日の推定コストをプロバイダー別に、\u200b直近30日間の推定額も"),
-        "04_sessions": ("CLI の実行をすべて記録", "アクティブなセッションの\u200b使用量、コスト、リクエスト数"),
+        "04_sessions": ("いま実行中のセッション", "AI ツールの実行状況を\u200bプロバイダーとプロジェクトごとに表示"),
         "05_alerts": ("上限の接近を見逃さない", "クォータ残量の低下、\u200bセッションやデバイスの CPU 高負荷を通知"),
     },
     "ko": {
         "01_overview": ("모든 것을 한눈에", "사용량, 비용, 세션, 알림을 한 화면에서"),
         "02_providers": ("실시간 할당량과 비용", "한도까지 얼마나 남았는지 바로 확인하세요"),
         "03_cost": ("비용, 어디에 쓰이나요?", "공급자별 오늘 추정 비용과 최근 30일 합계"),
-        "04_sessions": ("모든 CLI 실행을 기록", "활성 세션의 사용량, 비용, 요청 수"),
+        "04_sessions": ("지금 실행 중인 세션", "공급자와 프로젝트별 AI 도구 실행 현황"),
         "05_alerts": ("할당량이 바닥나기 전에", "세션과 기기의 CPU 사용률이 높을 때도 알려 드려요"),
     },
     "es": {
@@ -244,8 +247,8 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
                          "Consulta cuánto te queda antes de llegar al límite"),
         "03_cost": ("En qué se va tu dinero",
                     "Costo estimado de hoy por proveedor, más el total de los últimos 30 días"),
-        "04_sessions": ("Cada ejecución, registrada",
-                        "Sesiones activas con su uso, costo y solicitudes"),
+        "04_sessions": ("Mira qué está en ejecución",
+                        "Herramientas de IA activas, por proveedor y proyecto"),
         "05_alerts": ("Sin sorpresas con la cuota",
                       "Alertas de cuota y de picos de CPU, por sesión y por dispositivo"),
     },

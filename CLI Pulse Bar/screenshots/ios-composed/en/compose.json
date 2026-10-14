@@ -13,8 +13,8 @@
    "Today’s estimated cost by provider, plus the total for the last 30 days"
   ],
   "04_sessions": [
-   "Every CLI run tracked",
-   "Active sessions with usage, cost and requests"
+   "See what’s running",
+   "AI tools active right now, by provider and project"
   ],
   "05_alerts": [
    "Never miss a limit",
@@ -25,7 +25,7 @@
   "01_overview.png": "32396de5ef07e40a5bd53c16240454ae",
   "02_providers.png": "82c25b7b07815441d3ff447707055494",
   "03_cost.png": "983026960721f3a530bfde61bdb37e51",
-  "04_sessions.png": "6660f8b752c176510cbe070d131ad573",
+  "04_sessions.png": "3b2b8465980bda7d36cbf6f4498de39d",
   "05_alerts.png": "27d2265e02afbab438c448dc9b9a6547"
  },
  "faces": {
@@ -37,7 +37,7 @@
   "01_overview_1290x2796.png": "d16883368d179da8295e51f38c2c2085",
   "02_providers_1290x2796.png": "918a6efd969deda8a6e24eeed5332308",
   "03_cost_1290x2796.png": "d7fe66f336904092e9c523c09cb9f607",
-  "04_sessions_1290x2796.png": "3cb7224c7f37542171f14b18f02e265d",
+  "04_sessions_1290x2796.png": "1e6f480f6223a35a948e6b5373f9b07c",
   "05_alerts_1290x2796.png": "b4147cdbae5b09bee8c2829f70ff16ee"
  },
  "subtitle_pt": 46,

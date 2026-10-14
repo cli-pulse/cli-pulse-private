@@ -100,8 +100,8 @@ final class ScreenshotLaunchTests: XCTestCase {
     /// and requests"). Every Demo session is now a process-scan row, as every
     /// cloud session is, and the pane, like the row, hides those figures for
     /// one: they are runtime run through a formula. No account sees them on an
-    /// iPhone or iPad any more, so the caption needs new words before the
-    /// next reshoot; the shots in the store were captured before this.
+    /// iPhone or iPad any more, so the 1.57 reshoot gave 04_sessions a caption
+    /// that names none ("See what's running").
     func test_theIPadSessionsScreenOpensTheFirstActiveSession() throws {
         XCTAssertEqual(Launch.Screen.allCases.filter(\.opensSessionDetail), [.sessions])
 
