@@ -254,6 +254,80 @@ public enum QARenderSnapshot {
     /// accounts for (`QAExperienceSeed`).
     public static let providerEditorKinds: [ProviderKind] = [.codex, .claude, .gemini]
 
+    /// v1.57: the usage panel's provider mode is drawn for the two providers
+    /// the scanner reads, Codex with its chart in tokens and Claude in cost
+    /// (`providerPanelMetric`), from `DemoDataProvider.providerPanelSample`.
+    public static let providerPanelKinds: [ProviderKind] = [.codex, .claude]
+
+    /// The metric the provider panel of `kind` is drawn in, so the review set
+    /// shows both.
+    public static func providerPanelMetric(_ kind: ProviderKind) -> UsageChartMetric {
+        kind == .claude ? .cost : .tokens
+    }
+
+    /// 30 days of scan rows for one provider, for the provider-panel renders:
+    /// several models a day, idle days and quieter weekends. Deterministic
+    /// (`DemoDataProvider.unit`, a SplitMix64 step), so every language draws
+    /// the same figures. Demo mode has no local scan and never shows these.
+    ///
+    /// Codex rows follow OpenAI's convention, input including the cached
+    /// input. One Codex model is priced at a borrowed rate ("≈"), and Claude
+    /// has a third-party model behind Claude Code that has no rate on a few
+    /// days, so the renders show both marks and the coverage line.
+    public static func providerPanelSample(
+        _ kind: ProviderKind, days: Int = 30, today: Date = Date(), timeZone: TimeZone = .current
+    ) -> [CostUsageScanResult.DailyEntry] {
+        struct Model {
+            let name: String
+            let share: Double          // of the day's tokens
+            let usdPerMillion: Double? // nil: no rate
+            let approximate: Bool
+        }
+        let isCodex = kind == .codex
+        let models: [Model] = isCodex
+            ? [Model(name: "gpt-5.1-codex", share: 0.64, usdPerMillion: 0.30, approximate: false),
+               Model(name: "gpt-5-codex", share: 0.27, usdPerMillion: 0.30, approximate: false),
+               Model(name: "gpt-5.1-codex-mini", share: 0.09, usdPerMillion: 0.06, approximate: true)]
+            : [Model(name: "claude-sonnet-4-5", share: 0.70, usdPerMillion: 0.55, approximate: false),
+               Model(name: "claude-opus-4-1", share: 0.22, usdPerMillion: 2.70, approximate: false),
+               Model(name: "claude-haiku-4-5", share: 0.08, usdPerMillion: 0.18, approximate: false),
+               Model(name: "glm-4.6", share: 0.12, usdPerMillion: nil, approximate: false)]
+        let salt: UInt64 = isCodex ? 40 : 60
+        let peak = isCodex ? 21_000_000.0 : 34_000_000.0
+        let calendar = DayKey.calendar(in: timeZone)
+        var rows: [CostUsageScanResult.DailyEntry] = []
+        for offset in 0..<max(1, days) {
+            guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }
+            let key = DayKey.string(from: date, in: timeZone)
+            guard DemoDataProvider.unit(offset, salt + 1) < 0.86 else { continue }   // an idle day
+            let weekday = calendar.component(.weekday, from: date)
+            let weekend = weekday == 1 || weekday == 7
+            let dayTokens = peak * (weekend ? 0.3 : 1) * (0.25 + 0.75 * DemoDataProvider.unit(offset, salt + 2))
+            for (index, model) in models.enumerated() {
+                // The third-party model only on some days; the cheaper ones not every day.
+                let presence = DemoDataProvider.unit(offset, salt + 10 + UInt64(index))
+                if model.usdPerMillion == nil, presence > 0.25 { continue }
+                if index > 0, presence > 0.8 { continue }
+                let tokens = Int(dayTokens * model.share * (0.7 + 0.6 * DemoDataProvider.unit(offset, salt + 20 + UInt64(index))))
+                guard tokens > 0 else { continue }
+                let output = tokens / (isCodex ? 160 : 40)
+                let cost = model.usdPerMillion.map { (Double(tokens) / 1e6 * $0 * 100).rounded() / 100 }
+                if isCodex {
+                    let input = tokens - output
+                    rows.append(.init(date: key, provider: kind.rawValue, model: model.name,
+                                      inputTokens: input, cachedTokens: input * 9 / 10, outputTokens: output,
+                                      costUSD: cost, priceIsApproximate: model.approximate))
+                } else {
+                    let cached = (tokens - output) * 93 / 100
+                    rows.append(.init(date: key, provider: kind.rawValue, model: model.name,
+                                      inputTokens: tokens - output - cached, cachedTokens: cached,
+                                      outputTokens: output, costUSD: cost, priceIsApproximate: model.approximate))
+                }
+            }
+        }
+        return rows
+    }
+
     /// Every surface, in drawing order. The order is also the state order:
     /// everything signed out comes before Demo mode is entered, because the
     /// renderer, like the app, has no way back out of it.
@@ -275,7 +349,9 @@ public enum QARenderSnapshot {
         surfaces += [.demoUpgradePrompt, .demoAgentSetupRerun, .demoRetiredProviderNotice]
         surfaces += [.about, .subscription]
         surfaces += providerEditorKinds.map { .providerEditor($0) }
-        surfaces += [.usageDashboardPanel, .firstRunWelcome]
+        surfaces.append(.usageDashboardPanel)
+        surfaces += providerPanelKinds.map { .providerUsagePanel($0) }
+        surfaces += [.providerUsageCardHistory, .firstRunWelcome]
         surfaces.append(.codexResetCreditsStates)
         return surfaces
     }
@@ -683,6 +759,11 @@ public enum QARenderSurface: Hashable {
     case subscription
     case providerEditor(ProviderKind)
     case usageDashboardPanel
+    /// v1.57: the usage panel's provider mode, one provider's last 30 days.
+    case providerUsagePanel(ProviderKind)
+    /// v1.57: the iPhone provider card's history section with a day tapped,
+    /// drawn on the Mac at an iPhone card's width.
+    case providerUsageCardHistory
     case firstRunWelcome
     /// v1.57: the Codex card's limit-reset-credits line in each state it
     /// draws (`CodexResetCreditsRow`), at the card's width. Demo mode shows
@@ -706,8 +787,10 @@ public enum QARenderSurface: Hashable {
         switch self {
         case .about, .subscription, .providerEditor, .firstRunWelcome, .codexResetCreditsStates:
             return .window
-        case .usageDashboardPanel:
+        case .usageDashboardPanel, .providerUsagePanel:
             return .panel
+        case .providerUsageCardHistory:
+            return .window
         default:
             return .popover
         }
@@ -733,6 +816,8 @@ public enum QARenderSurface: Hashable {
         case .subscription: return "window-subscription"
         case .providerEditor(let kind): return "window-provider-\(Self.slug(kind.rawValue))"
         case .usageDashboardPanel: return "panel-usage-dashboard"
+        case .providerUsagePanel(let kind): return "panel-provider-usage-\(Self.slug(kind.rawValue))"
+        case .providerUsageCardHistory: return "component-provider-card-history"
         case .firstRunWelcome: return "window-first-run-welcome"
         case .codexResetCreditsStates: return "card-codex-reset-credits"
         }

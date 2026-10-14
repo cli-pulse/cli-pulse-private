@@ -676,6 +676,17 @@ public enum CostFormatter {
     /// The prefix for a figure that includes an approximate price.
     public static let approximateMark = "≈"
 
+    /// v1.57: `format`, marked "≥" when some of the tokens behind it had no
+    /// rate, so the figure is a lower bound, or else "≈" when part of it was
+    /// charged at a borrowed rate. A missing cost is the bigger error, so "≥"
+    /// wins when both apply (`CostCoverage.Fidelity`). A symbol, like "$".
+    public static func format(_ cost: Double, approximate: Bool, atLeast: Bool) -> String {
+        atLeast ? atLeastMark + format(cost) : format(cost, approximate: approximate)
+    }
+
+    /// The prefix for a figure that is a lower bound.
+    public static let atLeastMark = "≥"
+
     /// A compact token count. Kept under this name for its many call sites;
     /// the one implementation is `TokenFormatter.format`.
     public static func formatUsage(_ usage: Int) -> String {

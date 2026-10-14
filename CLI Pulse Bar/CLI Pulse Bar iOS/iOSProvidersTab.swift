@@ -472,15 +472,14 @@ struct iOSEnhancedProviderCard: View {
                 // v1.30 F3 — per-provider daily usage history (last 30 days),
                 // shown only when there's history. `dailyUsage` is passed in
                 // from AppState (this card has no environment object).
-                let usageHistory = ProviderUsageHistory.series(from: dailyUsage, provider: provider.provider)
-                if usageHistory.contains(where: { $0.ioTokens > 0 }) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(L10n.widget.usageTitle)
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        ProviderUsageHistoryChart(points: usageHistory, accent: providerColor)
-                    }
-                    .padding(.top, 2)
+                // v1.57 (P1-2): tokens or cost, and a tapped day lists its
+                // models (`get_daily_usage` is day × model already).
+                let usageDays = ProviderUsageDays.fromCloud(
+                    dailyUsage, provider: provider.provider, basis: .inputOutput,
+                    todayKey: DayKey.string(from: Date()))
+                if usageDays.hasUsage {
+                    ProviderUsageHistorySection(days: usageDays, accent: providerColor, showCost: showCost)
+                        .padding(.top, 2)
                 }
             }
         }

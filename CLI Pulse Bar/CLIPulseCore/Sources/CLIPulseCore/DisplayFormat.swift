@@ -108,6 +108,9 @@ public enum DisplayFormat {
         case full
         /// Month and day in digits, for a narrow column: "9/17", "17/9".
         case numeric
+        /// Abbreviated month and day, no year, for a day of a recent window:
+        /// "Sep 17", "9月17日", "17 sept".
+        case monthDay
     }
 
     /// A stored day key ("2026-09-17") as a date to read, or nil when the key
@@ -134,6 +137,7 @@ public enum DisplayFormat {
         switch dayStyle {
         case .full: return base.year().month(.abbreviated).day()
         case .numeric: return base.month(.defaultDigits).day()
+        case .monthDay: return base.month(.abbreviated).day()
         }
     }
 

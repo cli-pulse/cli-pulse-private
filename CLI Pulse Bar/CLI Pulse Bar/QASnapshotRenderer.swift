@@ -915,6 +915,12 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             await state.refreshUsageArchive(force: true)
             await captureUsageDashboardPanel(surface, index: index)
 
+        case .providerUsagePanel(let kind):
+            await captureProviderUsagePanel(kind, surface: surface, index: index)
+
+        case .providerUsageCardHistory:
+            await captureProviderCardHistory(surface, index: index)
+
         case .firstRunWelcome:
             await captureWindow(
                 FirstRunWelcomeView(onDismiss: {}), surface: surface, index: index,
@@ -1169,7 +1175,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
     /// 440 and 520 points, always dark, with a close button. Its see-through
     /// HUD backdrop is drawn over an opaque dark fill here.
     private func captureUsageDashboardPanel(_ surface: QARenderSurface, index: Int) async {
-        let panel = UsageDashboardView(archive: state.usageArchive, scrollable: false)
+        // `onSelectProvider` as the panel passes it: its By Provider rows open
+        // that provider's history and carry a chevron saying so.
+        let panel = UsageDashboardView(archive: state.usageArchive, scrollable: false, onSelectProvider: { _ in })
             .frame(width: 480)
             .overlay(alignment: .topTrailing) {
                 Image(systemName: "xmark.circle.fill")
@@ -1186,6 +1194,88 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 + " The Demo archive is cloud-shaped and includes Gemini; the real panel reads this Mac's"
                 + " local-scan archive, which holds only what the scanner records (Claude and Codex),"
                 + " so the \"Claude + Codex\" caption is true there. The headline counts up over 2.2 s."
+        )
+    }
+
+    /// v1.57: the usage panel's provider mode as `DashboardPanelController`
+    /// shows it, always dark, from the deterministic sample rows
+    /// (`QARenderSnapshot.providerPanelSample`): Demo mode has no local scan.
+    /// Codex is drawn with its chart in tokens, one scope, 480 points wide.
+    /// Claude is drawn in cost as a signed-in Mac with synced rows sees it,
+    /// with the This Mac | All devices switch, at 440 points, the narrowest
+    /// the panel gets, where that header is tightest.
+    private func captureProviderUsagePanel(_ kind: ProviderKind, surface: QARenderSurface, index: Int) async {
+        let metric = QARenderSnapshot.providerPanelMetric(kind)
+        let defaults = UserDefaults.standard
+        let previous = defaults.string(forKey: UsageChartMetric.defaultsKey)
+        defaults.set(metric.rawValue, forKey: UsageChartMetric.defaultsKey)
+        defer { defaults.set(previous, forKey: UsageChartMetric.defaultsKey) }
+
+        let data = ProviderUsageDays.fromScan(
+            QARenderSnapshot.providerPanelSample(kind), provider: kind.rawValue,
+            todayKey: DayKey.string(from: Date()))
+        // Claude's render selects the latest day with a model that has no
+        // rate, so its "No rate" row and the day's "≥" are reviewed too.
+        let day = kind == .claude
+            ? data.days.last { day in day.models.contains { $0.hasNoRate } }?.dateKey
+            : nil
+        let scopes: [UsageDataScope] = kind == .claude ? [.thisMac, .allDevices] : [.thisMac]
+        let width: CGFloat = kind == .claude ? 440 : 480
+        let panel = ProviderUsagePanelView(
+            data: data, availableScopes: scopes, scope: .constant(.thisMac),
+            needsFolderAccess: false, onShowAllProviders: {}, initialSelection: day)
+            .frame(width: width)
+            .overlay(alignment: .topTrailing) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+            }
+            .environment(\.colorScheme, .dark)
+            .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        await capture(
+            panel, surface: surface, index: index,
+            prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: surface.id) },
+            note: "The usage panel's provider mode, \(Int(width)) points wide, from sample scan rows"
+                + " (QARenderSnapshot.providerPanelSample), chart in \(metric.rawValue), scopes "
+                + scopes.map(\.rawValue).joined(separator: " + ") + "; "
+                + (day == nil ? "the latest day with usage" : "the latest day with a model that has no rate")
+                + " is selected. The real panel reads this Mac's scan."
+        )
+    }
+
+    /// v1.57: the iPhone provider card's history section with a day tapped,
+    /// drawn here at an iPhone card's width from the Claude sample rows
+    /// counted in I/O tokens, as the card counts them. A component on the Mac,
+    /// not the iPhone screen.
+    private func captureProviderCardHistory(_ surface: QARenderSurface, index: Int) async {
+        // As the iPhone gets them: synced rows (`get_daily_usage`), the cost
+        // each device uploaded, every device's ("All devices"). A model with
+        // no rate arrives with a cost of 0 (`APIClient.syncDailyUsage`), so
+        // the latest day with one is tapped: its cost shows as unknown.
+        let synced = QARenderSnapshot.providerPanelSample(.claude).map {
+            DailyUsage(date: $0.date, provider: $0.provider, model: $0.model,
+                       inputTokens: $0.inputTokens, cachedTokens: $0.cachedTokens,
+                       outputTokens: $0.outputTokens, cost: $0.costUSD ?? 0)
+        }
+        let data = ProviderUsageDays.fromCloud(
+            synced, provider: ProviderKind.claude.rawValue,
+            basis: .inputOutput, todayKey: DayKey.string(from: Date()))
+        let day = data.days.last { day in day.models.contains { $0.costIsUnknown } }?.dateKey
+            ?? data.latestActiveDayKey
+        let section = ProviderUsageHistorySection(
+            days: data, accent: PulseTheme.providerColor(ProviderKind.claude.rawValue),
+            showCost: true, initialSelection: day)
+            .padding()
+            .background(PulseTheme.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(16)
+            .frame(width: 375)
+        await captureWindow(
+            section, surface: surface, index: index,
+            note: "The iPhone card's usage-history section (ProviderUsageHistorySection), 375 points wide,"
+                + " from the Claude sample rows as synced rows, in I/O tokens, the latest day with a model"
+                + " whose synced cost is unknown tapped. Drawn on the Mac."
         )
     }
 

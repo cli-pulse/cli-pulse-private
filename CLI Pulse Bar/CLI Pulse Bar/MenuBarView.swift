@@ -168,6 +168,9 @@ struct MenuBarView: View {
         .frame(width: 380, height: effectiveHeight)
         .onAppear {
             reloadAgentSetupState()
+            // The slide-out usage panel's provider mode reads this state's
+            // scan and synced rows (`UsagePanelModel.follow`).
+            DashboardPanelController.shared.attach(state)
             // The first probe after launch. The focus hook below only runs on a
             // change, and until something probes, `helperPresent` is false and
             // the Overview's Yield Score card cannot show its prompt.
