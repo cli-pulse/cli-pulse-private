@@ -22,7 +22,8 @@
 #       - CLIPULSE_SPM_DIR=off;
 #       - the project has no Package.resolved;
 #       - the directory would be inside ~/Documents or ~/Desktop (iCloud stamps FinderInfo on
-#         the Sentry framework, which fails codesign --deep --strict);
+#         the Sentry framework, which fails codesign --deep --strict) or $TMPDIR (purged by
+#         age, which can leave a marker over missing files), or its parent cannot be created;
 #       - the resolve fails (a warning, with its log): no network, or a Package.resolved that
 #         no longer satisfies the package requirements. The build then behaves as before.
 #     Returns 1 only when another process holds the resolve lock for too long.
@@ -30,14 +31,22 @@
 #
 # Run (one xcodebuild, with SPM_ARGS and COMPILER_INDEX_STORE_ENABLE=NO appended):
 #   scripts/lib/build_env.sh xcodebuild build -project "CLI Pulse Bar/CLI Pulse Bar.xcodeproj" ...
+#   Run the copy in the checkout you are building. The key comes from this checkout's files, so
+#   a project elsewhere (-project, or without it the current directory, as xcodebuild finds it)
+#   gets only a warning and no shared packages.
 #
 # The directory: ${CLIPULSE_SPM_ROOT:-~/Library/Caches/CLIPulse-build}/SourcePackages-<8 hex>,
 # the sha256 of the project's Package.resolved, its package references (project.pbxproj's
 # XCRemote/XCLocalSwiftPackageReference sections) and CLIPulseCore's package requirements (its
 # `.package(` lines). A branch that bumps a package therefore gets its own directory instead of
-# re-resolving the one every other checkout builds from. CLIPULSE_SPM_DIR=<dir> names one
-# directory instead; it is re-resolved whenever the key changes, so never give one to trees that
-# differ in packages. Several worktrees building one after another can share CLIPULSE_SPM_ROOT.
+# re-resolving the one every other checkout builds from. Every checkout with the same packages
+# shares that directory by default, worktrees included, also when they build at the same time.
+# Each build rewrites the directory's workspace-state.json (measured 2026-10-15), and two builds
+# from different worktrees on one directory at once have not been measured, so work that builds
+# in several worktrees concurrently gives each its own CLIPULSE_SPM_ROOT.
+# CLIPULSE_SPM_DIR=<dir> names one directory instead; it is re-resolved whenever the key
+# changes, so never give one to trees that differ in packages. A relative CLIPULSE_SPM_ROOT or
+# CLIPULSE_SPM_DIR is taken from the current directory.
 #
 # Resolution happens here, once per directory, under the mkdir lock <dir>.lock, with
 # -onlyUsePackageVersionsFromResolvedFile. <dir>/.clipulse-resolved (the key) marks a finished
@@ -94,11 +103,17 @@ _build_lock_reap() {
 }
 
 # build_lock_take <lock dir> <what>: wait for, then take, a mkdir lock (pid inside). 0 taken,
-# 1 gave up after CLIPULSE_BUILD_LOCK_WAIT seconds.
+# 1 gave up after CLIPULSE_BUILD_LOCK_WAIT seconds, 2 the lock cannot be created at all.
 build_lock_take() {
     local lock="$1" what="$2" holder age now rc stuck=0 next_note=0
     local deadline=$(( $(date +%s) + ${CLIPULSE_BUILD_LOCK_WAIT:-2400} ))
     while ! mkdir "$lock" 2>/dev/null; do
+        if [[ ! -d "$lock" ]]; then
+            # No lock there, yet mkdir failed: once more in case its holder just left, then it
+            # is a missing or unwritable parent, which waiting does not fix.
+            mkdir "$lock" 2>/dev/null && break
+            [[ -d "$lock" ]] || { echo "✗ Cannot create $lock" >&2; return 2; }
+        fi
         now=$(date +%s)
         if (( now >= deadline )); then
             echo "✗ $lock is still held ($(cat "$lock/what" 2>/dev/null || echo '?'), pid $(cat "$lock/pid" 2>/dev/null || echo '?')); gave up after ${CLIPULSE_BUILD_LOCK_WAIT:-2400}s" >&2
@@ -123,7 +138,10 @@ build_lock_take() {
         fi
         if (( rc == 1 )); then sleep 1; else sleep 5; fi
     done
-    echo "$$" >"$lock/pid"
+    # This shell's own pid: inside a ( subshell ) $$ is still the parent's, and a subshell killed
+    # mid-resolve would then leave a lock that looks held for as long as the parent lives.
+    # shellcheck disable=SC2016
+    echo "$(exec sh -c 'echo $PPID')" >"$lock/pid"
     echo "$what" >"$lock/what"
 }
 
@@ -148,7 +166,7 @@ spm_cache_key() {
 }
 
 spm_cache_args() {
-    local app="$1" a key dir marker lock log rpid
+    local app="$1" a key dir marker lock log rpid rc
     shift
     SPM_ARGS=()
     [[ "${CI:-}" == "true" ]] && return 0
@@ -163,16 +181,30 @@ spm_cache_args() {
     fi
     dir="${CLIPULSE_SPM_DIR:-${CLIPULSE_SPM_ROOT:-$HOME/Library/Caches/CLIPulse-build}/SourcePackages-${key:0:8}}"
     dir="${dir%/}"
+    case "$dir" in /*) ;; *) dir="$PWD/$dir" ;; esac
     case "$dir/" in
         "$HOME/Documents/"*|"$HOME/Desktop/"*)
             echo "⚠ $dir is in iCloud's Documents or Desktop; packages resolve into the derived data instead" >&2
             return 0 ;;
     esac
+    if [[ -n "${TMPDIR:-}" && ( "$dir/" == "${TMPDIR%/}/"* || "$dir/" == "/private${TMPDIR%/}/"* ) ]]; then
+        echo "⚠ $dir is in \$TMPDIR, which macOS purges by age; packages resolve into the derived data instead" >&2
+        return 0
+    fi
     marker="$dir/.clipulse-resolved"
     if [[ "$(cat "$marker" 2>/dev/null || true)" != "$key" ]]; then
         lock="$dir.lock"
-        mkdir -p "$(dirname "$dir")"
-        build_lock_take "$lock" "resolving packages for $app" || return 1
+        if ! mkdir -p "$(dirname "$dir")"; then
+            echo "⚠ Cannot create $(dirname "$dir"); packages resolve into the derived data instead" >&2
+            return 0
+        fi
+        rc=0
+        build_lock_take "$lock" "resolving packages for $app" || rc=$?
+        if (( rc == 2 )); then
+            echo "⚠ Packages resolve into the derived data instead" >&2
+            return 0
+        fi
+        (( rc == 0 )) || return 1
         # Someone else may have finished the same resolve while this waited.
         if [[ "$(cat "$marker" 2>/dev/null || true)" != "$key" ]]; then
             log="$dir.resolve.log"
@@ -208,6 +240,19 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     set -euo pipefail
     [[ "${1:-}" == "xcodebuild" ]] || { echo "usage: $0 xcodebuild <args...>  (or source it)" >&2; exit 2; }
     shift
-    spm_cache_args "$(cd "$(dirname "$0")/../.." && pwd)/CLI Pulse Bar" "$@" || exit 1
+    # The project xcodebuild will build: -project, else the one in the current directory. The
+    # key is this checkout's, so another checkout's project must not get this directory.
+    project="CLI Pulse Bar.xcodeproj" prev=""
+    for a in "$@"; do
+        [[ "$prev" == "-project" ]] && project="$a"
+        prev="$a"
+    done
+    own="$(cd "$(dirname "$0")/../.." && pwd -P)/CLI Pulse Bar"
+    if [[ "$(basename "$project")" == "CLI Pulse Bar.xcodeproj" &&
+          "$(cd "$(dirname "$project")" 2>/dev/null && pwd -P || true)" == "$own" ]]; then
+        spm_cache_args "$own" "$@" || exit 1
+    else
+        echo "⚠ $0 shares packages only for $own/CLI Pulse Bar.xcodeproj, not $project (from $PWD); this build resolves into its derived data. Run the build_env.sh of the checkout you are building." >&2
+    fi
     exec xcodebuild "$@" "${SPM_ARGS[@]+"${SPM_ARGS[@]}"}" COMPILER_INDEX_STORE_ENABLE=NO
 fi

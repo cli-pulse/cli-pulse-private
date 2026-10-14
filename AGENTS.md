@@ -868,10 +868,21 @@ non-release `xcodebuild` runs share one resolved copy,
 `capture_ios_screenshots.sh` does): it resolves once under a lock, adds
 `-clonedSourcePackagesDirPath <dir> -disableAutomaticPackageResolution` and
 `COMPILER_INDEX_STORE_ENABLE=NO`, and leaves `Package.resolved` alone (measured
-2026-10-15). Keep one derived data per checkout; worktrees that build one after
-another can share the packages (`CLIPULSE_SPM_ROOT`). Never move or rename that
-directory (its `workspace-state.json` holds absolute paths), and delete it only
-when no build is using it. `CLIPULSE_SPM_DIR=off` turns it off; CI is unchanged.
+2026-10-15). Run the helper of the checkout you are building; for another
+checkout's project it warns and adds no packages. Keep one derived data per
+checkout.
+
+By default every checkout with the same packages shares that one directory,
+worktrees included, and also when they build at the same time: nothing holds a
+lock during the build, and neither `capture_ios_screenshots.sh` nor the QA build
+runs under `heavy.sh`. Each build rewrites the directory's `workspace-state.json`,
+and two worktrees building on one directory at once has not been measured (only
+one after the other, 2026-10-15). When you build in several
+worktrees concurrently, give each checkout its own root, e.g.
+`CLIPULSE_SPM_ROOT="$HOME/Library/Caches/CLIPulse-build/<worktree>"`. Never move
+or rename the directory (its `workspace-state.json` holds absolute paths), and
+delete it only when no build is using it. `CLIPULSE_SPM_DIR=off` turns it off;
+CI is unchanged.
 Signed and release builds (`build-appstore.sh`, `build_signed_app.sh`,
 `build-release.sh`, the Developer ID DMG) stay cold and do not use it.
 
