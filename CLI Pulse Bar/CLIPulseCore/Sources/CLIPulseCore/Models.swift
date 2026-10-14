@@ -734,7 +734,7 @@ public struct SessionRecord: Codable, Identifiable, Sendable, Hashable {
     /// Display name for the Sessions panel row. Process-scan rows have
     /// `name` = the command line truncated (the Companion CLI, 48 chars) or
     /// its executable's name (LocalScanner), which surfaces unfriendly
-    /// strings like `/Users/jason/Library/Application Support/C...`
+    /// strings like `/Users/<you>/Library/Application Support/C...`
     /// or `./Codex Computer Use.app/Contents/Shar...`. Replace with
     /// "{provider} · {project}" when we have provider info, falling
     /// back to "{provider} process" if the project is empty or
