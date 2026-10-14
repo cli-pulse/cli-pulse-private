@@ -192,6 +192,11 @@ public struct UsageMetricPicker: View {
 /// its rank. A grid, so the cost and token columns line up whatever their
 /// widths in each language. The unit is left out of the rows: the day's
 /// line above them names it ("tokens", "I/O tokens"), and VoiceOver reads it.
+///
+/// On the iPhone card at accessibility text sizes each model's figures go on
+/// the line under its name instead (`stacksFigures`): in a row the figures
+/// keep their full width and the name takes what is left, which on an
+/// iPhone 17 Pro was "claude…us-4-1" at AX1 and "…" alone at AX5.
 @available(iOS 17.0, macOS 13.0, *)
 public struct UsageDayModelRows: View {
     public enum Style: Sendable {
@@ -206,6 +211,8 @@ public struct UsageDayModelRows: View {
     public let accent: Color
     public let showsCost: Bool
     public let style: Style
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     public init(
         rows: [ProviderUsageDays.ModelRow],
@@ -225,10 +232,28 @@ public struct UsageDayModelRows: View {
     /// fixed number of rows so the panel does not change height from day to day.
     public static let panelRowHeight: CGFloat = 20
 
+    /// Whether each model's figures go on the line under its name: the
+    /// iPhone card at accessibility text sizes, where a row of name, cost and
+    /// tokens leaves the name no room. The Mac panel's sizes are fixed.
+    static func stacksFigures(style: Style, dynamicTypeSize: DynamicTypeSize) -> Bool {
+        style == .card && dynamicTypeSize.isAccessibilitySize
+    }
+
     public var body: some View {
+        if Self.stacksFigures(style: style, dynamicTypeSize: dynamicTypeSize) {
+            stackedRows
+        } else {
+            gridRows
+        }
+    }
+
+    private var orderedRows: [(offset: Int, element: ProviderUsageDays.ModelRow)] {
+        Array(ProviderUsageDays.displayOrder(rows, showsCost: showsCost).enumerated())
+    }
+
+    private var gridRows: some View {
         Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: style == .panel ? 0 : 6) {
-            ForEach(Array(ProviderUsageDays.displayOrder(rows, showsCost: showsCost).enumerated()),
-                    id: \.element.id) { index, row in
+            ForEach(orderedRows, id: \.element.id) { index, row in
                 GridRow {
                     RoundedRectangle(cornerRadius: 1)
                         .fill(accent.opacity(Self.rankOpacity(index)))
@@ -245,25 +270,70 @@ public struct UsageDayModelRows: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityLabel(accessibilityText(row))
                     if showsCost {
-                        Text(row.costText)
-                            .font(valueFont)
-                            .monospacedDigit()
-                            .foregroundStyle(row.hasNoRate || row.costIsUnknown ? Color.secondary : Color.primary)
-                            .fixedSize()
+                        costText(row)
                             .gridColumnAlignment(.trailing)
-                            .help(row.costHelp)
-                            .accessibilityHidden(true)
                     }
-                    Text(CostFormatter.formatUsage(row.tokens))
-                        .font(valueFont)
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .fixedSize()
+                    tokensText(row)
                         .gridColumnAlignment(.trailing)
-                        .accessibilityHidden(true)
                 }
             }
         }
+    }
+
+    /// The iPhone card at accessibility sizes: the name on the card's whole
+    /// width, wrapping rather than truncating, and its figures under it, side
+    /// by side while they fit and one under the other when they do not. The
+    /// bar runs down the name and its figures, so each model reads as one.
+    private var stackedRows: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(orderedRows, id: \.element.id) { index, row in
+                HStack(alignment: .top, spacing: 8) {
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(accent.opacity(Self.rankOpacity(index)))
+                        .frame(width: 3)
+                        .frame(maxHeight: .infinity)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(row.model)
+                            .font(nameFont)
+                            .fixedSize(horizontal: false, vertical: true)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 8) { figures(row) }
+                            VStack(alignment: .leading, spacing: 2) { figures(row) }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                // One VoiceOver element per row, read with its unit.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(accessibilityText(row))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func figures(_ row: ProviderUsageDays.ModelRow) -> some View {
+        if showsCost { costText(row) }
+        tokensText(row)
+    }
+
+    private func costText(_ row: ProviderUsageDays.ModelRow) -> some View {
+        Text(row.costText)
+            .font(valueFont)
+            .monospacedDigit()
+            .foregroundStyle(row.hasNoRate || row.costIsUnknown ? Color.secondary : Color.primary)
+            .fixedSize()
+            .help(row.costHelp)
+            .accessibilityHidden(true)
+    }
+
+    private func tokensText(_ row: ProviderUsageDays.ModelRow) -> some View {
+        Text(CostFormatter.formatUsage(row.tokens))
+            .font(valueFont)
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .fixedSize()
+            .accessibilityHidden(true)
     }
 
     private func accessibilityText(_ row: ProviderUsageDays.ModelRow) -> String {
@@ -342,7 +412,8 @@ public struct ProviderUsageHistorySection: View {
     private func dayDetail(_ day: ProviderUsageDays.Day) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text(day.summary(basis: days.basis, showsCost: showCost))
+                // Wraps at accessibility sizes; "I/O" stays on one line.
+                Text(Self.keepingSlashAbbreviationsUnbroken(day.summary(basis: days.basis, showsCost: showCost)))
                     .font(.caption.weight(.semibold))
                     .monospacedDigit()
                 Spacer(minLength: 4)
@@ -376,6 +447,25 @@ public struct ProviderUsageHistorySection: View {
         .padding(10)
         .background(Color.primary.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    /// `text` with a word joiner (U+2060) after each slash that stands
+    /// between two letters, so "I/O" (Spanish "E/S") is never split over two
+    /// lines: a slash is a line-break opportunity, and when the day's line
+    /// wraps at accessibility text sizes it read "2.5M I/" over "O tokens".
+    /// The joiner is invisible and VoiceOver passes over it.
+    static func keepingSlashAbbreviationsUnbroken(_ text: String) -> String {
+        guard text.contains("/") else { return text }
+        let characters = Array(text)
+        var result = ""
+        for (index, character) in characters.enumerated() {
+            result.append(character)
+            if character == "/", index > 0, index + 1 < characters.count,
+               characters[index - 1].isLetter, characters[index + 1].isLetter {
+                result.append("\u{2060}")
+            }
+        }
+        return result
     }
 }
 #endif
