@@ -338,6 +338,13 @@ final class CodexResetCreditsTests: XCTestCase {
         XCTAssertFalse(presentation.accessibilityLabel.contains("1 天 6 小时"), "the compact form is not spoken")
     }
 
+    /// A time left, spelled out so the older CI compiler need not infer a
+    /// long literal sum.
+    private static func left(days: Int = 0, hours: Int = 0, minutes: Int = 0, seconds: Int = 0) -> TimeInterval {
+        let total: Int = ((days * 24 + hours) * 60 + minutes) * 60 + seconds
+        return TimeInterval(total)
+    }
+
     /// The ASCII numbers in `text`, in order: "6 天 4 小时" and "6天4小时后过期"
     /// are both [6, 4].
     private static func numbers(_ text: String) -> [Int] {
@@ -350,16 +357,20 @@ final class CodexResetCreditsTests: XCTestCase {
     /// minutes, shown "6 天 23 小时", was spoken "7天".
     func testVoiceOverSpeaksTheChipsUnitsInChinese() throws {
         LocaleOverrideStore.shared.set("zh-Hans")
-        let presentation = try presentation([
-            Self.credit("a", expiresIn: 6 * 86_400 + 4 * 3_600 + 31 * 60),
-            Self.credit("b", expiresIn: 6 * 86_400 + 23 * 3_600 + 45 * 60),
-            Self.credit("c", expiresIn: 86_400 + 5 * 60),
-        ])
+        let credits: [CodexRateLimitResetCredit] = [
+            Self.credit("a", expiresIn: Self.left(days: 6, hours: 4, minutes: 31)),
+            Self.credit("b", expiresIn: Self.left(days: 6, hours: 23, minutes: 45)),
+            Self.credit("c", expiresIn: Self.left(days: 1, minutes: 5)),
+        ]
+        let presentation = try presentation(credits)
+        let items: [CodexResetCreditsPresentation.Item] = presentation.items
+        let shown: [String] = items.map { $0.compactExpiryText }
+        let spokenAll: [String] = items.map { $0.spokenExpiryText }
         // Soonest first.
-        XCTAssertEqual(presentation.items.map(\.compactExpiryText), ["1 天 5 分钟", "6 天 4 小时", "6 天 23 小时"])
-        XCTAssertEqual(presentation.items.map { Self.numbers($0.spokenExpiryText) }, [[1, 5], [6, 4], [6, 23]],
-                       presentation.items.map(\.spokenExpiryText).joined(separator: " | "))
-        let spoken = presentation.items[1].spokenExpiryText
+        XCTAssertEqual(shown, ["1 天 5 分钟", "6 天 4 小时", "6 天 23 小时"])
+        let expectedNumbers: [[Int]] = [[1, 5], [6, 4], [6, 23]]
+        XCTAssertEqual(spokenAll.map { Self.numbers($0) }, expectedNumbers, spokenAll.joined(separator: " | "))
+        let spoken = spokenAll[1]
         XCTAssertTrue(spoken.hasSuffix("小时后过期") && spoken.contains("天"), spoken)
         XCTAssertFalse(spoken.contains("6 天 4 小时"), "the compact form is not spoken: \(spoken)")
         XCTAssertTrue(presentation.accessibilityLabel.contains(spoken), presentation.accessibilityLabel)
@@ -367,15 +378,19 @@ final class CodexResetCreditsTests: XCTestCase {
 
     func testVoiceOverSpeaksTheChipsUnitsInJapanese() throws {
         LocaleOverrideStore.shared.set("ja")
-        let presentation = try presentation([
-            Self.credit("a", expiresIn: 6 * 86_400 + 4 * 3_600 + 31 * 60),
-            Self.credit("b", expiresIn: 2 * 3_600 + 59 * 60 + 1),
-        ])
+        let credits: [CodexRateLimitResetCredit] = [
+            Self.credit("a", expiresIn: Self.left(days: 6, hours: 4, minutes: 31)),
+            Self.credit("b", expiresIn: Self.left(hours: 2, minutes: 59, seconds: 1)),
+        ]
+        let presentation = try presentation(credits)
+        let items: [CodexResetCreditsPresentation.Item] = presentation.items
+        let shown: [String] = items.map { $0.compactExpiryText }
+        let spokenAll: [String] = items.map { $0.spokenExpiryText }
         // Soonest first; 2 h 59 min 1 s is whole minutes rounded up, on both.
-        XCTAssertEqual(presentation.items.map(\.compactExpiryText), ["3 時間", "6 日 4 時間"])
-        XCTAssertEqual(presentation.items.map { Self.numbers($0.spokenExpiryText) }, [[3], [6, 4]],
-                       presentation.items.map(\.spokenExpiryText).joined(separator: " | "))
-        let spoken = presentation.items[1].spokenExpiryText
+        XCTAssertEqual(shown, ["3 時間", "6 日 4 時間"])
+        let expectedNumbers: [[Int]] = [[3], [6, 4]]
+        XCTAssertEqual(spokenAll.map { Self.numbers($0) }, expectedNumbers, spokenAll.joined(separator: " | "))
+        let spoken = spokenAll[1]
         XCTAssertTrue(spoken.hasPrefix("あと ") && spoken.hasSuffix("時間で期限切れ") && spoken.contains("日"), spoken)
         XCTAssertFalse(spoken.contains("6 日 4 時間"), "the compact form is not spoken: \(spoken)")
     }
