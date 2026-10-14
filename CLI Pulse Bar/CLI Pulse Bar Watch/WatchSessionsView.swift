@@ -133,6 +133,9 @@ struct SessionCard: View {
                     }
                 }
             }
+            // The card spans the page whether or not it has a figures line
+            // (that line's spacer used to stretch it).
+            Spacer(minLength: 0)
         }
         .padding(8)
         .background(WatchTheme.cardFillStrong, in: RoundedRectangle(cornerRadius: WatchTheme.cardRadius))

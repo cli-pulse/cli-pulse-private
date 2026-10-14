@@ -459,47 +459,53 @@ struct iOSSessionRow: View {
                 SessionStatusBadge(session: session, tier: freshnessTier)
             }
 
+            // A row with no figures to show (a scan row's are its runtime)
+            // keeps its time on the line above, not on a line of its own.
+            let showsFigures = !session.hasProcessHeuristicMetrics || session.error_count > 0
+
             // A scan row's title already names its provider and project
             // ("Codex · cli-pulse-ios"), so its line keeps only the
             // confidence; no row shows a producer's placeholder project.
-            if !session.titleNamesProviderAndProject || session.collection_confidence != nil {
-                HStack(spacing: 14) {
-                    if !session.titleNamesProviderAndProject {
-                        Label(session.provider, systemImage: "cpu")
-                        if let project = session.displayProject {
-                            Label(project, systemImage: "folder")
+            HStack(spacing: 14) {
+                if !session.titleNamesProviderAndProject {
+                    Label(session.provider, systemImage: "cpu")
+                    if let project = session.displayProject {
+                        Label(project, systemImage: "folder")
+                    }
+                }
+                if let conf = session.collection_confidence {
+                    ConfidenceBadge(confidence: conf)
+                }
+                if !showsFigures {
+                    Spacer(minLength: 8)
+                    lastActive
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+
+            if showsFigures {
+                HStack(spacing: 18) {
+                    // Same gate as macOS: process-scan rows (`local-` and
+                    // `proc-`) have heuristic metrics that mislead at long
+                    // uptimes. Hide the trio for those rows; the badge tells
+                    // the story.
+                    if !session.hasProcessHeuristicMetrics {
+                        metricItem(label: L10n.detail.usage, value: CostFormatter.formatUsage(session.total_usage))
+                        if showCost {
+                            metricItem(label: L10n.detail.cost, value: CostFormatter.format(session.estimated_cost), color: .green)
+                        }
+                        if session.hasMeaningfulRequestCount {
+                            metricItem(label: L10n.detail.requests, value: "\(session.requests)")
                         }
                     }
-                    if let conf = session.collection_confidence {
-                        ConfidenceBadge(confidence: conf)
+                    if session.error_count > 0 {
+                        metricItem(label: L10n.detail.errors, value: "\(session.error_count)", color: .red)
                     }
+                    Spacer()
+                    lastActive
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            }
-
-            HStack(spacing: 18) {
-                // Same gate as macOS: process-scan rows (`local-` and
-                // `proc-`) have heuristic metrics that mislead at long
-                // uptimes. Hide the trio for those rows; the badge tells
-                // the story.
-                if !session.hasProcessHeuristicMetrics {
-                    metricItem(label: L10n.detail.usage, value: CostFormatter.formatUsage(session.total_usage))
-                    if showCost {
-                        metricItem(label: L10n.detail.cost, value: CostFormatter.format(session.estimated_cost), color: .green)
-                    }
-                    if session.hasMeaningfulRequestCount {
-                        metricItem(label: L10n.detail.requests, value: "\(session.requests)")
-                    }
-                }
-                if session.error_count > 0 {
-                    metricItem(label: L10n.detail.errors, value: "\(session.error_count)", color: .red)
-                }
-                Spacer()
-                Text(RelativeTime.format(session.last_active_at))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
             }
         }
         .padding(12)
@@ -513,6 +519,12 @@ struct iOSSessionRow: View {
                     lineWidth: 1
                 )
         )
+    }
+
+    private var lastActive: some View {
+        Text(RelativeTime.format(session.last_active_at))
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
     }
 
     private func metricItem(label: String, value: String, color: Color = .primary) -> some View {
