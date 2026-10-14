@@ -9,7 +9,8 @@
 //
 // Not verbatim: the base URL is fixed to chatgpt.com, as CLI Pulse's own
 // `/wham/usage` request is (upstream reads `chatgpt_base_url` from Codex's
-// config.toml); the User-Agent is CLI Pulse's; the 4 s is a budget for the
+// config.toml); the User-Agent is CLI Pulse's, and there is no `originator`
+// header (upstream sends "Codex Desktop"); the 4 s is a budget for the
 // whole read, not only URLSession's idle timeout; the read goes through an
 // ephemeral session that stores nothing; a failure is an outcome, never a
 // thrown error; and the read runs after the quota is returned, not before it.
@@ -120,10 +121,12 @@ public enum CodexResetCreditsFetcher {
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("CLIPulseBar", forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        // The two headers upstream sends this endpoint; OpenAI's own Codex
-        // clients send them, and it is undocumented which it requires.
+        // Upstream sends this endpoint two headers OpenAI's own Codex clients
+        // send. `OpenAI-Beta` stays. `originator` does not: its value names
+        // OpenAI's Codex Desktop app, and CLI Pulse does not present itself as
+        // another app. The endpoint answered a signed-in account the same
+        // credits without it (2026-10-14, `CodexResetCreditsLocalCheckTests`).
         request.setValue("codex-1", forHTTPHeaderField: "OpenAI-Beta")
-        request.setValue("Codex Desktop", forHTTPHeaderField: "originator")
         if let chatGPTAccountID, !chatGPTAccountID.isEmpty {
             request.setValue(chatGPTAccountID, forHTTPHeaderField: "ChatGPT-Account-ID")
         }

@@ -110,7 +110,9 @@ final class CodexResetCreditsReaderTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
         XCTAssertEqual(request.value(forHTTPHeaderField: "ChatGPT-Account-ID"), "account-123")
         XCTAssertEqual(request.value(forHTTPHeaderField: "OpenAI-Beta"), "codex-1")
-        XCTAssertEqual(request.value(forHTTPHeaderField: "originator"), "Codex Desktop")
+        // Upstream names OpenAI's Codex Desktop app here; CLI Pulse names no
+        // other app, and the endpoint answers without it.
+        XCTAssertNil(request.value(forHTTPHeaderField: "originator"), "CLI Pulse must not present itself as another app")
         XCTAssertEqual(request.value(forHTTPHeaderField: "User-Agent"), "CLIPulseBar")
     }
 
