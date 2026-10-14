@@ -1044,8 +1044,14 @@ public struct CostSummary: Sendable {
     public let thirtyDayTokens: Int
     /// Subscription utilization (API equiv cost vs subscription cost)
     public let utilization: [SubscriptionUtilization]
-    /// Per-model cost breakdown for 30-day period
+    /// Per-model cost breakdown for 30-day period. Always this Mac's own
+    /// scan: synced rows are not broken down here.
     public let costByModel: [ModelCostDetail]
+    /// v1.57: some provider's 30-day figure above is the account's, larger
+    /// than what this Mac counted (another device's usage is in it), so
+    /// `costByModel`, which is this Mac's alone, does not add up to it and
+    /// has to say whose it is.
+    public let thirtyDayIncludesOtherDevices: Bool
     /// v1.51: how much of the cost figure above the app could actually price.
     ///
     /// Defaults to `.unknown` on purpose. Every call site that does not set it
@@ -1071,6 +1077,7 @@ public struct CostSummary: Sendable {
         thirtyDayTokens: Int = 0,
         utilization: [SubscriptionUtilization] = [],
         costByModel: [ModelCostDetail] = [],
+        thirtyDayIncludesOtherDevices: Bool = false,
         coverage: CostCoverage = .unknown,
         todayCoverage: CostCoverage = .unknown
     ) {
@@ -1086,6 +1093,7 @@ public struct CostSummary: Sendable {
         self.thirtyDayTokens = thirtyDayTokens
         self.utilization = utilization
         self.costByModel = costByModel
+        self.thirtyDayIncludesOtherDevices = thirtyDayIncludesOtherDevices
         self.coverage = coverage
         self.todayCoverage = todayCoverage
     }
@@ -1104,10 +1112,16 @@ public struct CostSummary: Sendable {
     ///
     /// v1.56: a fourth state. A scan with no unpriced tokens but some priced at
     /// a borrowed rate said "Exact" above figures now marked "≈".
+    ///
+    /// v1.57: not "Exact" when a 30-day figure holds another device's synced
+    /// cost (`thirtyDayIncludesOtherDevices`): how that part was priced is
+    /// not in the synced rows, the composition the `.estimated` badge
+    /// describes. "Partial" and "≈" still hold, for this Mac's part.
     public var fidelity: CostCoverage.Fidelity {
         guard isPrecise else { return .estimated }
         if coverage.shouldDisclose { return .partial }
-        return coverage.hasApproximatePrices ? .approximate : .exact
+        if coverage.hasApproximatePrices { return .approximate }
+        return thirtyDayIncludesOtherDevices ? .estimated : .exact
     }
 
     /// v1.56: whether a figure for `provider` that sums this scan's days (the

@@ -1923,6 +1923,22 @@
 "yield.commits_count_one" = "%d コミット";
 "onboarding_wizard.undetected_providers_one" = "対応エージェントのうち %d 個が見つかりませんでした";
 "providers.messages_short_one" = "%@ メッセージ";
+
+/* Provider card: usage totals, scope, daily chart and hideable sections (v1.57) */
+"provider_card.thirty_days" = "30日間";
+"provider_card.scope_this_mac_help" = "この Mac のセッションログから集計しています。";
+"provider_card.scope_all_devices_help" = "アカウントにサインインしているすべてのデバイスから同期した値です。この Mac の集計が同期済みの値より多い場合は、この Mac の値を表示します。";
+"provider_card.messages_this_mac" = "メッセージ数はこの Mac の分だけです。";
+"provider_card.chart_tokens_help" = "過去 30 日間の 1 日ごとの入力 + 出力トークン。最も多い日: %@。";
+"provider_card.chart_cost_help" = "過去 30 日間の 1 日ごとの推定コスト。最も多い日: %@。";
+"provider_card.sections_menu" = "カードに表示";
+"provider_card.sections_all_shown" = "すべて表示中";
+"provider_card.sections_hidden_count" = "非表示: %d";
+"provider_card.show_all_sections" = "すべてのセクションを表示";
+"provider_card.sections_hint" = "非表示にしたセクションは、再起動や言語の変更後も非表示のままです。更新とアラートはこれまでどおり行われます。";
+"provider_card.section_plan_and_source" = "プランとソース";
+"provider_card.section_usage_totals" = "使用量の合計";
+"provider_card.section_daily_chart" = "日別グラフ";
 "providers.tracked_count_one" = "%d 件を追跡中";
 "watch.active_count_one" = "%d 件アクティブ";
 "menu_bar.tier_migration_one" = "無料プランに収まるよう、最も使用頻度の高い %d 個のプロバイダーを残しました。%d 個を無効にしました — 「設定 › プロバイダー」で編集できます。";

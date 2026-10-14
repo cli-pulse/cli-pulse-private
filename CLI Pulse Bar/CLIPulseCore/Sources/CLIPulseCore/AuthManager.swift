@@ -870,6 +870,10 @@ extension AppState {
         alerts = []
         providerDetails = []
         costSummary = CostSummary()
+        // v1.57: the account's synced daily rows. The provider cards read
+        // them only while signed in, but a different account signing in
+        // would otherwise see these until its own fetch lands.
+        dailyUsage = []
         tierLimitWarning = nil
         lastRefresh = nil
         locallySupplementedProviders = []

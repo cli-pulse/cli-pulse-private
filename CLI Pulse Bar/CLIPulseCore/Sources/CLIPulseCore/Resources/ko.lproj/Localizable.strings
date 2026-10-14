@@ -1880,6 +1880,22 @@
 "yield.commits_count_one" = "커밋 %d개";
 "onboarding_wizard.undetected_providers_one" = "CLI Pulse에 최적화된 에이전트 중 %d개를 찾지 못했습니다";
 "providers.messages_short_one" = "%@ 메시지";
+
+/* Provider card: usage totals, scope, daily chart and hideable sections (v1.57) */
+"provider_card.thirty_days" = "30일";
+"provider_card.scope_this_mac_help" = "이 Mac의 세션 로그에서 집계합니다.";
+"provider_card.scope_all_devices_help" = "계정에 로그인한 모든 기기에서 동기화된 값입니다. 이 Mac에서 집계한 값이 지금까지 동기화된 값보다 크면 이 Mac의 값을 표시합니다.";
+"provider_card.messages_this_mac" = "메시지 수는 이 Mac에서만 집계됩니다.";
+"provider_card.chart_tokens_help" = "최근 30일간 일별 입력 + 출력 토큰. 가장 많은 날: %@.";
+"provider_card.chart_cost_help" = "최근 30일간 일별 추정 비용. 가장 많은 날: %@.";
+"provider_card.sections_menu" = "카드에 표시";
+"provider_card.sections_all_shown" = "모두 표시됨";
+"provider_card.sections_hidden_count" = "숨김: %d개";
+"provider_card.show_all_sections" = "모든 섹션 표시";
+"provider_card.sections_hint" = "숨긴 섹션은 다시 시작하거나 언어를 바꿔도 계속 숨겨집니다. 새로고침과 알림은 그대로 동작합니다.";
+"provider_card.section_plan_and_source" = "요금제 및 소스";
+"provider_card.section_usage_totals" = "사용량 합계";
+"provider_card.section_daily_chart" = "일별 차트";
 "providers.tracked_count_one" = "%d개 추적 중";
 "watch.active_count_one" = "%d개 활성";
 "menu_bar.tier_migration_one" = "무료 플랜에 맞추기 위해 가장 많이 사용하는 공급자 %d개를 유지했습니다. %d개는 비활성화되었습니다 — 설정 › 공급자에서 편집하세요.";

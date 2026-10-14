@@ -607,6 +607,27 @@ public enum L10n {
         public static var zedCredentialsExpired: String { tr("collector_status.zed_credentials_expired") }
     }
 
+    /// v1.57: the Mac provider card's usage row, what its scope means, its
+    /// small chart and the sections that can be hidden
+    /// (`ProviderCardSection`). The scope's own name is the usage panel's
+    /// (`UsageDataScope.label`).
+    public enum providerCard {
+        public static var thirtyDays: String { tr("provider_card.thirty_days") }
+        public static var scopeThisMacHelp: String { tr("provider_card.scope_this_mac_help") }
+        public static var scopeAllDevicesHelp: String { tr("provider_card.scope_all_devices_help") }
+        public static var messagesThisMac: String { tr("provider_card.messages_this_mac") }
+        public static func chartTokensHelp(_ highest: String) -> String { tr("provider_card.chart_tokens_help", highest) }
+        public static func chartCostHelp(_ highest: String) -> String { tr("provider_card.chart_cost_help", highest) }
+        public static var sectionsMenu: String { tr("provider_card.sections_menu") }
+        public static var sectionsAllShown: String { tr("provider_card.sections_all_shown") }
+        public static func sectionsHiddenCount(_ count: Int) -> String { tr("provider_card.sections_hidden_count", count) }
+        public static var showAllSections: String { tr("provider_card.show_all_sections") }
+        public static var sectionsHint: String { tr("provider_card.sections_hint") }
+        public static var sectionPlanAndSource: String { tr("provider_card.section_plan_and_source") }
+        public static var sectionUsageTotals: String { tr("provider_card.section_usage_totals") }
+        public static var sectionDailyChart: String { tr("provider_card.section_daily_chart") }
+    }
+
     public enum providers {
         public static var title: String { tr("providers.title") }
         public static var showAll: String { tr("providers.show_all") }

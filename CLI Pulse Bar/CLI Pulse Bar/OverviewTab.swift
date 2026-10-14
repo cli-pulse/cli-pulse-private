@@ -660,7 +660,7 @@ struct OverviewTab: View {
 
             // Model-level cost breakdown with bar chart
             if !providerState.costSummary.costByModel.isEmpty {
-                DisclosureGroup(L10n.cost.byModel) {
+                DisclosureGroup {
                     let sorted = providerState.costSummary.costByModel.sorted { $0.cost > $1.cost }
                     let maxCost = sorted.first?.cost ?? 1
                     ForEach(sorted.prefix(10)) { item in
@@ -693,6 +693,18 @@ struct OverviewTab: View {
                                     .frame(width: maxCost > 0 ? geo.size.width * CGFloat(item.cost / maxCost) : 0, height: 3)
                             }
                             .frame(height: 3)
+                        }
+                    }
+                } label: {
+                    // v1.57: the rows are this Mac's alone. When a 30-day
+                    // figure above is the account's (another device's usage
+                    // is in it), they do not add up to it, so they say whose
+                    // they are.
+                    HStack(spacing: 4) {
+                        Text(L10n.cost.byModel)
+                        if providerState.costSummary.thirtyDayIncludesOtherDevices {
+                            Text("· " + UsageDataScope.thisMac.label)
+                                .foregroundStyle(.tertiary)
                         }
                     }
                 }

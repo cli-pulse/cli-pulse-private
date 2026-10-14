@@ -12,6 +12,7 @@ struct ProviderSettingsSection: View {
     @State private var expandedKinds: Set<ProviderKind> = []
     @State private var accountPendingRemoval: ProviderConfig?
     @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
+    @AppStorage(ProviderCardVisibility.defaultsKey) private var hiddenSectionsRaw = ""
 
     /// Providers that the tier-migration auto-disabled. Read once per render
     /// from UserDefaults so the lock badge stays in sync even when the UI
@@ -158,6 +159,8 @@ struct ProviderSettingsSection: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(PulseTheme.accent)
+
+                cardSectionsRow(kind)
             }
             .padding(.top, 6)
             .padding(.leading, 6)
@@ -185,6 +188,37 @@ struct ProviderSettingsSection: View {
         .padding(8)
         .background(PulseTheme.cardBackground.opacity(0.3))
         .clipShape(RoundedRectangle(cornerRadius: 7))
+    }
+
+    /// v1.57 P1-1b: which sections this provider's card shows on the
+    /// Providers tab. The card's right-click menu holds the same list.
+    private func cardSectionsRow(
+        _ kind: ProviderKind
+    ) -> some View {
+        let visibility = ProviderCardVisibility(storedValue: hiddenSectionsRaw)
+        let hidden = visibility.hiddenSections(for: kind).count
+        return HStack(spacing: 6) {
+            Image(systemName: "rectangle.on.rectangle")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(L10n.providerCard.sectionsMenu)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 4)
+            Menu {
+                ProviderCardSectionsMenuItems(kind: kind)
+            } label: {
+                Text(hidden > 0
+                     ? L10n.providerCard.sectionsHiddenCount(hidden)
+                     : L10n.providerCard.sectionsAllShown)
+                    .font(.system(size: 9))
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .accessibilityLabel(L10n.providerCard.sectionsMenu)
+        }
+        .help(L10n.providerCard.sectionsHint)
     }
 
     private func accountRow(

@@ -218,6 +218,43 @@ final class UsagePanelModelTests: XCTestCase {
         XCTAssertEqual(model.scope(for: "Codex"), .thisMac)
     }
 
+    /// v1.57: clicking a provider card's chart opens the panel on the scope
+    /// the card's figures are labelled with (`prefer`), not the panel's own
+    /// first choice, and the days shown are the days the card drew from.
+    func testACardOpensThePanelOnTheScopeItNames() {
+        let entries = [entry("2026-10-06", "Codex", tokens: 500, cost: 1)]
+        let rows = [DailyUsage(date: "2026-10-06", provider: "Codex", model: "m", inputTokens: 900,
+                               cachedTokens: 0, outputTokens: 0, cost: 2)]
+        let cloud = CurrentValueSubject<[DailyUsage], Never>(rows)
+        let model = UsagePanelModel(notificationCenter: NotificationCenter(), now: fixedNow, loadArchive: { DailyUsageArchive() })
+        model.follow(scan: Just(CostUsageScanResult(entries: entries)).eraseToAnyPublisher(),
+                     cloud: cloud.eraseToAnyPublisher(), needsFolderAccess: Just(false).eraseToAnyPublisher())
+        let windows = ProviderUsageWindows(now: fixedNow())
+        let signedIn = ProviderCardUsageBuilder.build(
+            provider: "Codex", usage: nil, scanEntries: entries, cloudRows: rows, readsCloud: true, windows: windows)
+        XCTAssertEqual(signedIn.scope, .allDevices)
+        XCTAssertEqual(model.scope(for: "Codex"), .thisMac, "the panel on its own starts on This Mac")
+
+        model.prefer(signedIn.scope, for: "Codex")
+        XCTAssertEqual(model.scope(for: "Codex"), .allDevices)
+        let shown = model.days(for: "Codex", in: model.scope(for: "Codex"))
+        let bars = signedIn.chartDays(.cost)
+        XCTAssertEqual(shown.days.map(\.dateKey), bars.map(\.dateKey))
+        XCTAssertEqual(shown.day("2026-10-06")?.cost, bars.first { $0.dateKey == "2026-10-06" }?.cost)
+        XCTAssertEqual(shown.day("2026-10-06")?.tokens, 900)
+
+        // Signed out, the card names This Mac, and the panel follows it.
+        let signedOut = ProviderCardUsageBuilder.build(
+            provider: "Codex", usage: nil, scanEntries: entries, cloudRows: rows, readsCloud: false, windows: windows)
+        model.prefer(signedOut.scope, for: "Codex")
+        XCTAssertEqual(model.scope(for: "Codex"), .thisMac)
+        // A scope with nothing in it is not kept: the panel shows the one
+        // that has usage.
+        model.prefer(.allDevices, for: "Codex")
+        cloud.send([])
+        XCTAssertEqual(model.scope(for: "Codex"), .thisMac)
+    }
+
     func testTheCardOffersTheHistoryOnlyWhenThereIsUsage() {
         let now = fixedNow()
         let scan = CostUsageScanResult(entries: [entry("2026-10-06", "Claude", tokens: 10, cost: nil)])

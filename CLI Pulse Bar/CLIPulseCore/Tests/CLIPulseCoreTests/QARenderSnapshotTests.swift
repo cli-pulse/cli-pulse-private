@@ -552,6 +552,13 @@ final class QARenderSnapshotTests: XCTestCase {
         XCTAssertTrue(catalog.contains(.providerUsageCardHistory))
         XCTAssertEqual(QARenderSurface.providerUsagePanel(.codex).id, "panel-provider-usage-codex")
         XCTAssertEqual(QARenderSurface.providerUsagePanel(.codex).kind, .panel)
+        // The panel as a Demo card's chart opens it, for both cards that
+        // draw one.
+        for kind in [ProviderKind.codex, .claude] {
+            XCTAssertTrue(catalog.contains(.providerCardPanel(kind)), "\(kind) card's panel is not rendered")
+        }
+        XCTAssertEqual(QARenderSurface.providerCardPanel(.claude).id, "panel-provider-card-claude")
+        XCTAssertEqual(QARenderSurface.providerCardPanel(.claude).kind, .panel)
     }
 
     /// The provider-panel renders draw from sample rows that are the same on

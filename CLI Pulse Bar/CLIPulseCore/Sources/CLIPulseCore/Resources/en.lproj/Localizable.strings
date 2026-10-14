@@ -1922,6 +1922,22 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "yield.commits_count_one" = "%d commit";
 "onboarding_wizard.undetected_providers_one" = "%d optimized agent not found";
 "providers.messages_short_one" = "%@ msg";
+
+/* Provider card: usage totals, scope, daily chart and hideable sections (v1.57) */
+"provider_card.thirty_days" = "30 Days";
+"provider_card.scope_this_mac_help" = "Counted from this Mac's session logs.";
+"provider_card.scope_all_devices_help" = "Synced from every device signed in to your account. Where this Mac has counted more than has synced so far, its own count is shown.";
+"provider_card.messages_this_mac" = "Messages are counted on this Mac only.";
+"provider_card.chart_tokens_help" = "Input + output tokens per day, last 30 days. Highest day: %@.";
+"provider_card.chart_cost_help" = "Estimated cost per day, last 30 days. Highest day: %@.";
+"provider_card.sections_menu" = "Show on Card";
+"provider_card.sections_all_shown" = "All shown";
+"provider_card.sections_hidden_count" = "Hidden: %d";
+"provider_card.show_all_sections" = "Show All Sections";
+"provider_card.sections_hint" = "Hidden sections stay hidden after a restart or a language change. Refreshes and alerts carry on as before.";
+"provider_card.section_plan_and_source" = "Plan and Source";
+"provider_card.section_usage_totals" = "Usage Totals";
+"provider_card.section_daily_chart" = "Daily Chart";
 "providers.tracked_count_one" = "%d tracked";
 "watch.active_count_one" = "%d active";
 "menu_bar.tier_migration_one" = "Kept your %d most-used providers to fit the free plan. Disabled %d — edit in Settings › Providers.";

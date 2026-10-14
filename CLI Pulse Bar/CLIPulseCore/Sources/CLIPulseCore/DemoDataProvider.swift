@@ -494,6 +494,98 @@ internal enum DemoDataProvider {
         }
         return rows
     }
+
+    /// The account's synced daily rows behind each Demo provider card's
+    /// usage row and small chart on the Mac (`ProviderCardUsageBuilder`): the
+    /// last 30 days of Codex and Claude, the rows `get_daily_usage` returns.
+    ///
+    /// They add up to the figures `generate()` gives each provider, because a
+    /// real account's do: the server's `provider_summary` sums these same rows
+    /// over the same windows. So today's rows hold today's cost and tokens,
+    /// today and the six days before hold the week's, and all 30 days hold the
+    /// 30-day cost, each to the cent and the token. The 30-day tokens, which
+    /// nothing else in Demo states, follow the week's tokens per dollar.
+    ///
+    /// The days have the shape of Demo's year of history (`dailyUsage`, what
+    /// the usage dashboard draws): the same idle days, and within the week and
+    /// within the rest of the month the same busy and quiet days, scaled to
+    /// those figures. `DemoProviderCardHistoryTests` holds them to both.
+    static func providerCardHistory(
+        providers: [ProviderUsage],
+        now: Date = Date(),
+        timeZone: TimeZone = .current
+    ) -> [DailyUsage] {
+        let windows = ProviderUsageWindows(now: now, timeZone: timeZone)
+        // Newest first: offset 0 is today.
+        let keys = Array(windows.dayKeys.reversed())
+        let year = dailyUsage(days: 365, today: now, calendar: DayKey.calendar(in: timeZone))
+
+        var rows: [DailyUsage] = []
+        for usage in providers {
+            let history = year.filter { $0.provider == usage.provider }
+            guard let model = history.first?.model,
+                  usage.estimated_cost_30_day > 0, usage.estimated_cost_week > 0 else { continue }
+            var historyTokens: [String: Int] = [:]
+            for row in history {
+                historyTokens[row.date, default: 0] += row.inputTokens + row.cachedTokens + row.outputTokens
+            }
+            let todayCents = Int((usage.estimated_cost_today * 100).rounded())
+            let weekCents = Int((usage.estimated_cost_week * 100).rounded())
+            let monthCents = Int((usage.estimated_cost_30_day * 100).rounded())
+            let todayTokens = usage.today_usage
+            let weekTokens = usage.week_usage
+            let monthTokens = Int((Double(weekTokens) * Double(monthCents) / Double(weekCents)).rounded())
+
+            var tokens = Array(repeating: 0, count: keys.count)
+            var cents = Array(repeating: 0, count: keys.count)
+            tokens[0] = todayTokens
+            cents[0] = todayCents
+            for (span, tokenTotal, centTotal) in [
+                (1..<7, weekTokens - todayTokens, weekCents - todayCents),
+                (7..<keys.count, monthTokens - weekTokens, monthCents - weekCents),
+            ] {
+                let offsets = Array(span)
+                var weights = offsets.map { Double(historyTokens[keys[$0]] ?? 0) }
+                if weights.allSatisfy({ $0 == 0 }) { weights = offsets.map { _ in 1 } }
+                for (index, share) in Self.apportion(tokenTotal, by: weights).enumerated() {
+                    tokens[offsets[index]] = share
+                }
+                for (index, share) in Self.apportion(centTotal, by: weights).enumerated() {
+                    cents[offsets[index]] = share
+                }
+            }
+            for offset in keys.indices where tokens[offset] > 0 || cents[offset] > 0 {
+                let io = tokens[offset]
+                let output = io * 12 / 100
+                rows.append(DailyUsage(
+                    date: keys[offset], provider: usage.provider, model: model,
+                    inputTokens: io - output,
+                    // Codex's input holds its cached input; Claude's cache is
+                    // counted beside it. Only the card's I/O (input + output)
+                    // is read from these.
+                    cachedTokens: usage.provider == "Codex" ? (io - output) * 6 / 10 : io * 3,
+                    outputTokens: output,
+                    cost: Double(cents[offset]) / 100))
+            }
+        }
+        return rows
+    }
+
+    /// `total` split in proportion to `weights` in whole units, adding up to
+    /// `total` exactly: each takes its floor, and the units left over go to
+    /// the largest remainders.
+    static func apportion(_ total: Int, by weights: [Double]) -> [Int] {
+        let sum = weights.reduce(0, +)
+        guard total > 0, sum > 0 else { return weights.map { _ in 0 } }
+        let exact = weights.map { Double(total) * $0 / sum }
+        var shares = exact.map { Int($0.rounded(.down)) }
+        let left = total - shares.reduce(0, +)
+        let order = exact.indices.sorted {
+            (exact[$0] - Double(shares[$0]), -$0) > (exact[$1] - Double(shares[$1]), -$1)
+        }
+        for index in order.prefix(left) { shares[index] += 1 }
+        return shares
+    }
 }
 
 extension AppState {
@@ -519,6 +611,12 @@ extension AppState {
         refreshThisMacPairing()
 
         applyDemoData(demo)
+        #if os(macOS)
+        // Demo is a signed-in account, and on the Mac a signed-in provider
+        // card reads the account's daily rows. The iPhone's cards draw their
+        // own chart from the same rows and are left as they were.
+        dailyUsage = DemoDataProvider.providerCardHistory(providers: demo.providers)
+        #endif
         buildProviderDetails()
         updateCostSummary()
         publishWidgetData()

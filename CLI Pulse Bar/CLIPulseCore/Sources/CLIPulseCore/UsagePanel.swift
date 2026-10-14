@@ -167,6 +167,14 @@ public final class UsagePanelModel: ObservableObject {
         UsageDataScope.allCases.filter { days(for: provider, in: $0).hasUsage }
     }
 
+    /// v1.57: shows `provider` on `scope` from now on, as picking it in the
+    /// panel does. A provider card opening the panel passes the scope its own
+    /// figures are labelled with, so the panel starts where the card is. Like
+    /// a pick, it holds only while that scope has usage (`scope(for:)`).
+    public func prefer(_ scope: UsageDataScope, for provider: String) {
+        scopeChoice[provider] = scope
+    }
+
     /// The scope shown for `provider`: the one picked, while it has usage,
     /// else This Mac when it has usage, else All devices when it has, else
     /// This Mac (whose empty state says why).
