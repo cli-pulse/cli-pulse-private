@@ -338,6 +338,103 @@ final class CodexResetCreditsTests: XCTestCase {
         XCTAssertFalse(presentation.accessibilityLabel.contains("1 天 6 小时"), "the compact form is not spoken")
     }
 
+    /// A time left, spelled out so the older CI compiler need not infer a
+    /// long literal sum.
+    private static func left(days: Int = 0, hours: Int = 0, minutes: Int = 0, seconds: Int = 0) -> TimeInterval {
+        let total: Int = ((days * 24 + hours) * 60 + minutes) * 60 + seconds
+        return TimeInterval(total)
+    }
+
+    /// The ASCII numbers in `text`, in order: "6 天 4 小时" and "6天4小时后过期"
+    /// are both [6, 4].
+    private static func numbers(_ text: String) -> [Int] {
+        text.split(whereSeparator: { !("0"..."9").contains($0) }).compactMap { Int($0) }
+    }
+
+    /// The words between the numbers, in order: "1 天 5 分钟" and "1天5分钟"
+    /// are both ["天", "分钟"], and "1天5小时" is not. Where the chip and the
+    /// formatter spell the units alike (Chinese, Japanese, Korean), this tells
+    /// minutes spoken as hours, which `numbers` alone cannot.
+    private static func unitWords(_ text: String) -> [String] {
+        text.split(whereSeparator: { ("0"..."9").contains($0) || $0.isWhitespace || $0.isPunctuation })
+            .map(String.init)
+    }
+
+    /// VoiceOver reads the chip's own units. A formatter given the time left
+    /// rounds the last unit it keeps, so 6 days, 4 hours and 31 minutes,
+    /// shown "6 天 4 小时", was spoken "6天5小时", and 6 days 23 hours 45
+    /// minutes, shown "6 天 23 小时", was spoken "7天".
+    func testVoiceOverSpeaksTheChipsUnitsInChinese() throws {
+        LocaleOverrideStore.shared.set("zh-Hans")
+        let credits: [CodexRateLimitResetCredit] = [
+            Self.credit("a", expiresIn: Self.left(days: 6, hours: 4, minutes: 31)),
+            Self.credit("b", expiresIn: Self.left(days: 6, hours: 23, minutes: 45)),
+            Self.credit("c", expiresIn: Self.left(days: 1, minutes: 5)),
+        ]
+        let presentation = try presentation(credits)
+        let items: [CodexResetCreditsPresentation.Item] = presentation.items
+        let shown: [String] = items.map { $0.compactExpiryText }
+        let spokenAll: [String] = items.map { $0.spokenExpiryText }
+        // Soonest first.
+        XCTAssertEqual(shown, ["1 天 5 分钟", "6 天 4 小时", "6 天 23 小时"])
+        let expectedNumbers: [[Int]] = [[1, 5], [6, 4], [6, 23]]
+        XCTAssertEqual(spokenAll.map { Self.numbers($0) }, expectedNumbers, spokenAll.joined(separator: " | "))
+        // Days and minutes: the minutes are spoken as minutes, not hours.
+        XCTAssertTrue(spokenAll[0].contains("分钟") && !spokenAll[0].contains("小时"), spokenAll[0])
+        let spoken = spokenAll[1]
+        XCTAssertTrue(spoken.hasSuffix("小时后过期") && spoken.contains("天"), spoken)
+        XCTAssertFalse(spoken.contains("6 天 4 小时"), "the compact form is not spoken: \(spoken)")
+        XCTAssertTrue(presentation.accessibilityLabel.contains(spoken), presentation.accessibilityLabel)
+    }
+
+    func testVoiceOverSpeaksTheChipsUnitsInJapanese() throws {
+        LocaleOverrideStore.shared.set("ja")
+        let credits: [CodexRateLimitResetCredit] = [
+            Self.credit("a", expiresIn: Self.left(days: 6, hours: 4, minutes: 31)),
+            Self.credit("b", expiresIn: Self.left(hours: 2, minutes: 59, seconds: 1)),
+            Self.credit("c", expiresIn: Self.left(days: 1, minutes: 5)),
+        ]
+        let presentation = try presentation(credits)
+        let items: [CodexResetCreditsPresentation.Item] = presentation.items
+        let shown: [String] = items.map { $0.compactExpiryText }
+        let spokenAll: [String] = items.map { $0.spokenExpiryText }
+        // Soonest first; 2 h 59 min 1 s is whole minutes rounded up, on both.
+        XCTAssertEqual(shown, ["3 時間", "1 日 5 分", "6 日 4 時間"])
+        let expectedNumbers: [[Int]] = [[3], [1, 5], [6, 4]]
+        XCTAssertEqual(spokenAll.map { Self.numbers($0) }, expectedNumbers, spokenAll.joined(separator: " | "))
+        // Days and minutes: the minutes are spoken as minutes, not hours.
+        XCTAssertTrue(spokenAll[1].contains("分") && !spokenAll[1].contains("時間"), spokenAll[1])
+        let spoken = spokenAll[2]
+        XCTAssertTrue(spoken.hasPrefix("あと ") && spoken.hasSuffix("時間で期限切れ") && spoken.contains("日"), spoken)
+        XCTAssertFalse(spoken.contains("6 日 4 時間"), "the compact form is not spoken: \(spoken)")
+    }
+
+    /// Every countdown up to ten days, minute steps that cross each unit
+    /// boundary: the spoken numbers are the chip's numbers in every language,
+    /// and where both spell the units alike, so are the units: "1 天 5 分钟"
+    /// is never spoken "1天5小时".
+    func testSpokenCountdownNeverRoundsAwayFromTheChip() throws {
+        let sameUnitWords: Set<String> = ["ja", "ko", "zh-Hans", "zh-Hant"]
+        for language in LocaleOverrideStore.shippedLocalizations {
+            LocaleOverrideStore.shared.set(language)
+            var mismatches: [String] = []
+            var kinds: Set<String> = []
+            for minutes in stride(from: 1, through: 10 * 24 * 60, by: 7) {
+                let units = CodexResetCreditsPresentation.CountdownUnits(totalMinutes: minutes)
+                kinds.insert(String("\(units)".prefix { $0 != "(" }))
+                let shown = units.compactText
+                let spoken = try XCTUnwrap(CodexResetCreditsPresentation.spokenCountdownText(units), "\(minutes)")
+                if Self.numbers(spoken) != Self.numbers(shown)
+                    || (sameUnitWords.contains(language) && Self.unitWords(spoken) != Self.unitWords(shown)) {
+                    mismatches.append("\(minutes) min: \(shown) / \(spoken)")
+                }
+            }
+            XCTAssertEqual(Array(mismatches.prefix(5)), [], "\(language): \(mismatches.count) countdowns spoken differently")
+            // The sweep reaches every form the chip has.
+            XCTAssertEqual(kinds, ["daysHours", "daysMinutes", "days", "hoursMinutes", "hours", "minutes"], language)
+        }
+    }
+
     /// The title names the credits in every language. Under the 5-hour and
     /// Weekly bars, whose detail says "resets in 3d 4h", a bare "limit reset"
     /// reads as when the quota resets, and the countdowns beside it as that

@@ -1999,8 +1999,8 @@ internal final class DataRefreshManager {
             var r = rollup[entry.provider, default: Rollup()]
             // v1.9.4 second revision: uniform `input + output` for every
             // provider. Cache tokens excluded from the displayed count (cost
-            // still uses full per-component pricing — see `AppState.totalTokens`
-            // for the rationale).
+            // still uses full per-component pricing — see
+            // `CostUsageScanResult.totalTokens(for:)` for the rationale).
             let entryTokens = entry.inputTokens + entry.outputTokens
             if entry.date == todayKey {
                 r.todayCost += entry.costUSD ?? 0

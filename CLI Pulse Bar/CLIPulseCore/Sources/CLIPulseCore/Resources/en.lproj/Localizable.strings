@@ -1541,6 +1541,8 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "providers.claude_metric_help" = "Messages = user + assistant log events (including streaming chunks) — matches Claude Code's UI convention. I/O tokens = input + output; cache reads and writes are not included, but the cost estimate prices them at their own rates.";
 "providers.claude_no_scan_help" = "No local Claude scan data for this window yet. Grant access in Settings › CLI Tool Access, then click Force Rescan.";
 "providers.codex_io_tokens_help" = "Input + output tokens. Input already includes cached input, the way OpenAI counts it. The cost estimate prices cached input at the cached-input rate.";
+"providers.claude_io_tokens_help" = "Input + output tokens. Cache reads and writes are not included; the cost estimate prices them at their own rates.";
+"providers.io_tokens_help" = "Input + output tokens. Whether input includes cached input depends on how the provider counts it.";
 "providers.no_scan_help" = "No local scan data for this window yet.";
 "providers.api_token_count_help" = "Token count reported by the provider's API.";
 "common.disabled" = "disabled";

@@ -1529,6 +1529,8 @@
 "providers.claude_metric_help" = "訊息數 = 使用者 + 助理日誌事件（含串流分塊）— 與 Claude Code 介面的統計方式一致。I/O token = 輸入 + 輸出，不含快取讀取與快取寫入，但費用預估會依它們各自的單價計入。";
 "providers.claude_no_scan_help" = "此時間範圍尚無本機 Claude 掃描資料。請在「設定 › CLI 工具存取權限」中授權，然後點按「強制重新掃描」。";
 "providers.codex_io_tokens_help" = "輸入 + 輸出 token。輸入已包含快取輸入，與 OpenAI 的計算方式一致。費用預估對快取輸入採用快取輸入的單價。";
+"providers.claude_io_tokens_help" = "輸入 + 輸出 token。不含快取讀取與快取寫入，但費用預估會依它們各自的單價計入。";
+"providers.io_tokens_help" = "輸入 + 輸出 token。輸入是否包含快取輸入，取決於服務商的計算方式。";
 "providers.no_scan_help" = "此時間範圍尚無本機掃描資料。";
 "providers.api_token_count_help" = "由服務商 API 回報的 token 數。";
 "common.disabled" = "已停用";

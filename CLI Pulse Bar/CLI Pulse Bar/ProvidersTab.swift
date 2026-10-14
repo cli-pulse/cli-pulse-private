@@ -545,15 +545,6 @@ struct EnhancedProviderCard: View {
     /// redraw, in `body`.
     @AppStorage(ProviderCardVisibility.defaultsKey) private var hiddenSectionsRaw = ""
 
-    /// v1.57: what the small chart draws, worked out once a redraw.
-    private struct CardChart {
-        let bars: [ProviderUsageDays.Day]
-        let metric: UsageChartMetric
-        /// The tallest bar, for the help text.
-        var highest: Double { bars.map { $0.value(metric) }.max() ?? 0 }
-        var hasData: Bool { highest > 0 }
-    }
-
     /// v1.57: Today, This Week and 30 Days, and the chart, under one rule
     /// (`ProviderCardUsageBuilder`): this Mac's own count signed out; signed
     /// in, day by day the larger of it and the account's synced one, which
@@ -673,9 +664,8 @@ struct EnhancedProviderCard: View {
                     primary: ProviderCardUsage.tokenBasis.tokensText(tokens),
                     value: CostFormatter.formatUsage(tokens),
                     secondary: nil,
-                    breakdownTooltip: provider.provider == ProviderKind.codex.rawValue
-                        ? L10n.providers.codexIOTokensHelp
-                        : L10n.cost.ioTokensHelp
+                    // What this provider's input holds, naming no other.
+                    breakdownTooltip: ProviderUsageDays.ioTokensHelp(provider: provider.provider)
                 )
             }
             return CardMetric(primary: "—", secondary: nil,
@@ -719,7 +709,7 @@ struct EnhancedProviderCard: View {
     /// the usage panel (#667's provider mode), in the scope the card names,
     /// as CodexBar's chart does: the card's one way into the panel while the
     /// chart is drawn (`ProviderCardUsage.panelEntry`).
-    private func sparkline(_ usage: ProviderCardUsage, chart: CardChart) -> some View {
+    private func sparkline(_ usage: ProviderCardUsage, chart: ProviderCardUsage.Chart) -> some View {
         let highest = chart.highest
         let help = chart.metric == .cost
             ? L10n.providerCard.chartCostHelp(CostFormatter.format(highest))
@@ -768,7 +758,7 @@ struct EnhancedProviderCard: View {
     /// free to shrink rather than run past the card.
     @ViewBuilder
     private func usageSection(
-        _ usage: ProviderCardUsage, chart: CardChart, chartVisible: Bool, totalsVisible: Bool
+        _ usage: ProviderCardUsage, chart: ProviderCardUsage.Chart, chartVisible: Bool, totalsVisible: Bool
     ) -> some View {
         // A provider nothing counts usage for (Gemini's quota alone) has no
         // row: three dashes and three more say nothing the quota bars do not.
@@ -813,7 +803,7 @@ struct EnhancedProviderCard: View {
     /// taller than 1.54's card. Laid out, it still takes up to 160 points
     /// where the figures leave the room.
     private func usageChartBeside(
-        _ usage: ProviderCardUsage, chart: CardChart?, notesMessages: Bool
+        _ usage: ProviderCardUsage, chart: ProviderCardUsage.Chart?, notesMessages: Bool
     ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .top, spacing: 8) {
@@ -834,7 +824,7 @@ struct EnhancedProviderCard: View {
 
     /// Layout 2: the figures and the scope on a row, the chart under them.
     private func usageChartBelow(
-        _ usage: ProviderCardUsage, chart: CardChart, notesMessages: Bool
+        _ usage: ProviderCardUsage, chart: ProviderCardUsage.Chart, notesMessages: Bool
     ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .top, spacing: 8) {
@@ -851,7 +841,7 @@ struct EnhancedProviderCard: View {
     /// Layout 3: the scope on a line of its own (beside the messages note
     /// when there is one), the figures free to shrink to the card's width.
     private func usageNarrow(
-        _ usage: ProviderCardUsage, chart: CardChart?, notesMessages: Bool
+        _ usage: ProviderCardUsage, chart: ProviderCardUsage.Chart?, notesMessages: Bool
     ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             if !notesMessages, usage.hasScope {
@@ -944,7 +934,7 @@ struct EnhancedProviderCard: View {
         let visibility = ProviderCardVisibility(storedValue: hiddenSectionsRaw)
         let kind = config.kind
         let chartMetric = ProviderCardUsage.chartMetric(storedMetric: chartMetricRaw, showsCost: showCost)
-        let chart = CardChart(bars: usage.chartDays(chartMetric), metric: chartMetric)
+        let chart = usage.chart(chartMetric)
         let chartVisible = visibility.isVisible(.dailyChart, for: kind) && chart.hasData
         // The usage panel opens from the chart while the card draws it, else
         // from a button in the header: one way in at a time.

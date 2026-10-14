@@ -720,6 +720,8 @@ public enum L10n {
         public static var claudeMetricHelp: String { tr("providers.claude_metric_help") }
         public static var claudeNoScanHelp: String { tr("providers.claude_no_scan_help") }
         public static var codexIOTokensHelp: String { tr("providers.codex_io_tokens_help") }
+        public static var claudeIOTokensHelp: String { tr("providers.claude_io_tokens_help") }
+        public static var ioTokensHelp: String { tr("providers.io_tokens_help") }
         public static var noScanHelp: String { tr("providers.no_scan_help") }
         public static var apiTokenCountHelp: String { tr("providers.api_token_count_help") }
         public static func percentUsed(_ a0: Int) -> String { tr("providers.percent_used", a0) }

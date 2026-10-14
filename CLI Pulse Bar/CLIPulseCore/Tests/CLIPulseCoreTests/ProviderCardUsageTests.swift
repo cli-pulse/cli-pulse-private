@@ -121,11 +121,32 @@ final class ProviderCardUsageTests: XCTestCase {
         XCTAssertEqual(tokenDays.last?.tokens, 25_000)
         XCTAssertEqual(tokenDays.first { $0.dateKey == key(12) }?.tokens, 8_000)
         XCTAssertEqual(u.chartDays(.cost).last?.cost, 4.5)
-        XCTAssertEqual(u.chartMaximum(.tokens), 30_000)
-        XCTAssertTrue(u.chartHasData(.cost))
+        // The chart the card draws: these bars, scaled to the tallest.
+        XCTAssertEqual(u.chart(.tokens).bars, tokenDays)
+        XCTAssertEqual(u.chart(.tokens).highest, 30_000)
+        XCTAssertEqual(u.chart(.cost).highest, 6.0)
+        XCTAssertTrue(u.chart(.cost).hasData)
         // Today's bar is the Today figure, in either measure.
         XCTAssertEqual(tokenDays.last.map { Double($0.tokens) }, u.today.ioTokens.map(Double.init))
         XCTAssertEqual(u.chartDays(.cost).last?.cost, u.today.cost)
+    }
+
+    /// Tokens and cost each take their own larger source (the builder's
+    /// doc): today this Mac has counted tokens it has not synced yet, while
+    /// another device's pricier model makes the account's day cost more.
+    func testTokensAndCostEachTakeTheirOwnLargerSource() {
+        let u = ProviderCardUsageBuilder.build(
+            provider: "Codex", usage: nil,
+            scanEntries: [scan(0, io: 30_000, cost: 2.0)],
+            cloudRows: [row(0, io: 25_000, cost: 4.5)],
+            readsCloud: true, windows: windows)
+        XCTAssertEqual(u.today.ioTokens, 30_000, "this Mac's tokens")
+        XCTAssertEqual(u.today.cost, 4.5, "the account's cost")
+        XCTAssertEqual(u.week.ioTokens, 30_000)
+        XCTAssertEqual(u.week.cost, 4.5)
+        // Each bar is still one source's whole day.
+        XCTAssertEqual(u.chart(.tokens).bars.last?.cost, 2.0)
+        XCTAssertEqual(u.chart(.cost).bars.last?.tokens, 25_000)
     }
 
     /// The figures are the chart's bars added up. A window taken whole (the
@@ -208,7 +229,7 @@ final class ProviderCardUsageTests: XCTestCase {
             cloudRows: [row(0, "Claude", model: ScanEntry.messageBucketModel, io: 9_999, cost: 0)],
             readsCloud: true, windows: windows)
         XCTAssertNil(u.today.ioTokens)
-        XCTAssertFalse(u.chartHasData(.tokens))
+        XCTAssertFalse(u.chart(.tokens).hasData)
     }
 
     // MARK: - Cost
@@ -732,7 +753,7 @@ final class DemoProviderCardHistoryTests: XCTestCase {
             XCTAssertEqual(card.week.ioTokens, usage.week_usage, usage.provider)
             let thirty = try XCTUnwrap(card.thirtyDays.ioTokens)
             XCTAssertGreaterThan(thirty, usage.week_usage)
-            XCTAssertTrue(card.chartHasData(.tokens))
+            XCTAssertTrue(card.chart(.tokens).hasData)
             XCTAssertTrue(Set(own.map(\.date)).isSubset(of: Set(windows.dayKeys)))
             checked += 1
         }
@@ -801,7 +822,7 @@ final class DemoProviderCardHistoryTests: XCTestCase {
             usesProviderTokenCounts: !(usage?.metadata?.supports_quota ?? false))
         XCTAssertEqual(codex.scope, .allDevices)
         XCTAssertTrue(codex.hasScope)
-        XCTAssertTrue(codex.chartHasData(.tokens))
+        XCTAssertTrue(codex.chart(.tokens).hasData)
         XCTAssertEqual(codex.today.cost ?? -1, 1.03, accuracy: 0.0001)
         XCTAssertEqual(codex.today.ioTokens, 85_900)
     }

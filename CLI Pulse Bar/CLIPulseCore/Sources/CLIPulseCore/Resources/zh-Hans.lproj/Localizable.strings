@@ -1526,9 +1526,11 @@
 "pairing.not_connected" = "未连接";
 "providers.tracked_count" = "正在追踪 %d 个";
 "providers.messages_short" = "%@ 条消息";
-"providers.claude_metric_help" = "消息数 = 用户 + 助手日志事件（含流式分块）— 与 Claude Code 界面的统计口径一致。I/O token = 输入 + 输出，不含缓存读取和缓存写入；费用预估按它们各自的单价计入。";
+"providers.claude_metric_help" = "消息数 = 用户 + 助手日志事件（含流式分块）— 与 Claude Code 界面的统计口径一致。I/O token = 输入 + 输出，不含缓存读取和缓存写入，但费用预估会按它们各自的单价计入。";
 "providers.claude_no_scan_help" = "此时间窗口暂无本地 Claude 扫描数据。请在「设置 › CLI 工具访问」中授权，然后点按「强制重扫」。";
 "providers.codex_io_tokens_help" = "输入 + 输出 token。输入已包含缓存输入，与 OpenAI 的统计口径一致。费用预估中，缓存输入按缓存输入的单价计算。";
+"providers.claude_io_tokens_help" = "输入 + 输出 token。不含缓存读取和缓存写入，但费用预估会按它们各自的单价计入。";
+"providers.io_tokens_help" = "输入 + 输出 token。输入是否包含缓存输入，取决于服务商的统计口径。";
 "providers.no_scan_help" = "此时间窗口暂无本地扫描数据。";
 "providers.api_token_count_help" = "由服务商 API 报告的 token 数。";
 "common.disabled" = "已禁用";

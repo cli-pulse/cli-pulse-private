@@ -493,6 +493,30 @@ public extension ProviderUsageDays.ModelRow {
 }
 
 public extension ProviderUsageDays {
+    /// What the window's tokens count, for the line under the panel's total:
+    /// each token once, as the Usage Dashboard counts; or, opened from a
+    /// provider card, the card's input + output, as this provider counts its
+    /// input.
+    var tokenBasisHelp: String {
+        switch basis {
+        case .eachOnce: return L10n.providerPanel.tokenBasis
+        case .inputOutput: return Self.ioTokensHelp(provider: provider)
+        }
+    }
+
+    /// What "I/O tokens" count for `provider`, naming no other provider:
+    /// Codex's input already includes its cached input, Claude's leaves cache
+    /// out, and anything else's input is as that provider counts it. The
+    /// Overview, which adds Claude and Codex together, says both
+    /// (`L10n.cost.ioTokensHelp`); a card and the panel it opens show one.
+    static func ioTokensHelp(provider: String) -> String {
+        switch provider {
+        case ProviderKind.codex.rawValue: return L10n.providers.codexIOTokensHelp
+        case ProviderKind.claude.rawValue: return L10n.providers.claudeIOTokensHelp
+        default: return L10n.providers.ioTokensHelp
+        }
+    }
+
     /// The window's total, cost then tokens, in the counting `basis` names:
     /// "$23.83 · 2M tokens", or "$23.83 · 2M I/O tokens".
     var totalValueText: String {

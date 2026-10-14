@@ -350,6 +350,8 @@ public struct UsageDashboardView: View {
     @State private var archive: DailyUsageArchive?
     @State private var animatedTokens: Double = 0
     @State private var didAnimateCountUp = false
+    /// False only in the QA renderer, which draws the settled headline.
+    @Environment(\.countsUp) private var countsUp
     private let providedArchive: DailyUsageArchive?
     /// When false, the content is laid out at its natural height with no
     /// ScrollView — the slide-out panel sizes its window to this height so
@@ -434,8 +436,10 @@ public struct UsageDashboardView: View {
         }
         let target = Double(DailyUsageStats.totalTokens(a))
         // Count-up is a ONE-TIME reveal — background refreshes update the value
-        // without replaying the 2.2s sweep every ~2 min.
-        if didAnimateCountUp {
+        // without replaying the 2.2s sweep every ~2 min. The QA renderer
+        // turns it off (`countsUp`): its pictures are taken before 2.2 s.
+        if didAnimateCountUp || !countsUp {
+            didAnimateCountUp = true
             animatedTokens = target
         } else {
             didAnimateCountUp = true
