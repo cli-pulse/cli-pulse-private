@@ -13,13 +13,17 @@ import XCTest
 ///
 ///     CLIPULSE_LOCAL_RESET_CREDITS_CHECK=1 swift test --filter CodexResetCreditsLocalCheckTests
 ///
-/// Read-only: two GETs of `/wham/rate-limit-reset-credits` (the app's request,
-/// then the same request with the `originator` header upstream sends). If the
-/// app's read ever fails while the second answers, OpenAI has started to
-/// require that header. Nothing is redeemed, nothing
-/// is written, the sign-in is never refreshed. The output is counts, rounded
-/// countdowns and short digests only: never a token, an account or credit ID,
-/// an email or a body.
+/// Read-only: three GETs of `/wham/rate-limit-reset-credits`. The app's
+/// request, then two variants of it with one header changed: with the
+/// `originator` header upstream sends, and without `OpenAI-Beta`. The variants
+/// run whether or not the app's read succeeds. If the app's read fails while
+/// the request with `originator` answers, OpenAI has started to require that
+/// header, and the output says so; likewise if only the request without
+/// `OpenAI-Beta` answers. Nothing is redeemed, nothing is written, the sign-in
+/// is never refreshed, and the keychain is never read (a Mac without a
+/// readable auth.json skips). The output is counts, rounded countdowns and
+/// short digests only: never a token, an account or credit ID, an email or a
+/// body.
 final class CodexResetCreditsLocalCheckTests: XCTestCase {
     /// What the app's own read sent and got, held in memory for the comparison.
     private final class Capture: @unchecked Sendable {
@@ -44,6 +48,13 @@ final class CodexResetCreditsLocalCheckTests: XCTestCase {
     func testTheCreditsThisMacReadsMatchTheEndpointsAnswer() async throws {
         guard ProcessInfo.processInfo.environment["CLIPULSE_LOCAL_RESET_CREDITS_CHECK"] == "1" else {
             throw XCTSkip("set CLIPULSE_LOCAL_RESET_CREDITS_CHECK=1 to ask OpenAI with this Mac's Codex sign-in")
+        }
+        // The collector falls back to bridged credentials, a keychain read,
+        // when auth.json cannot be read, and inside `swift test` that can
+        // prompt or hang. With the file readable that fallback never runs.
+        guard FileManager.default.isReadableFile(atPath: Self.authFilePath) else {
+            print("LOCAL_RESET_CREDITS no readable Codex auth.json on this Mac")
+            throw XCTSkip("no readable Codex auth.json on this Mac")
         }
         // The collector's own read of auth.json, in memory: no refresh, no write.
         guard let auth = CodexCollector().readAuthFile(), let token = auth.accessToken else {
@@ -77,6 +88,9 @@ final class CodexResetCreditsLocalCheckTests: XCTestCase {
             throw XCTSkip("stale credential")
         case .failed(let failure):
             print("LOCAL_RESET_CREDITS app read: failed (\(failure)), http \(capture.status.map(String.init) ?? "none")")
+            // The case the variants exist for: is one header the cause?
+            let variants = await Self.probeVariants(token: token, accountID: auth.accountId, now: now, appCredits: nil)
+            print("LOCAL_RESET_CREDITS diagnosis: \(Self.diagnosis(withOriginator: variants.withOriginator, withoutBeta: variants.withoutBeta))")
             XCTFail("the app's read failed: \(failure)")
             return
         }
@@ -100,22 +114,92 @@ final class CodexResetCreditsLocalCheckTests: XCTestCase {
         XCTAssertEqual(appIDs, Self.digest(raw.ids))
         XCTAssertEqual(appExpiries, Self.digest(raw.expiries))
 
-        // 3. Once more with the header upstream adds, everything else the same.
-        var upstream = CodexResetCreditsFetcher.request(accessToken: token, chatGPTAccountID: auth.accountId)
-        XCTAssertNil(upstream.value(forHTTPHeaderField: "originator"), "the app's request sends no originator")
-        upstream.setValue("Codex Desktop", forHTTPHeaderField: "originator")
+        // 3. The variants, each with one header changed and everything else
+        //    the same, so a later release can see which headers matter.
+        _ = await Self.probeVariants(token: token, accountID: auth.accountId, now: now, appCredits: inventory.credits.map(\.id))
+    }
+
+    /// The same path the collector reads: `$CODEX_HOME/auth.json`, else
+    /// `~/.codex/auth.json` in the real home (not the sandbox container).
+    private static var authFilePath: String {
+        let home = ProcessInfo.processInfo.environment["CODEX_HOME"].flatMap { $0.isEmpty ? nil : $0 }
+            ?? (realUserHome() as NSString).appendingPathComponent(".codex")
+        return (home as NSString).appendingPathComponent("auth.json")
+    }
+
+    /// What one variant got: its status and whether the body decodes.
+    private struct Probe {
+        let status: Int?
+        let decodes: Bool
+        var answers: Bool { status.map { (200..<300).contains($0) } == true && decodes }
+    }
+
+    /// The app's request with `originator` added, then without `OpenAI-Beta`.
+    /// `appCredits` is the app's read when it succeeded, to say whether a
+    /// variant lists the same credits; nil when it failed.
+    private static func probeVariants(
+        token: String,
+        accountID: String?,
+        now: Date,
+        appCredits: [String]?
+    ) async -> (withOriginator: Probe, withoutBeta: Probe) {
+        let withOriginator = await probe("with upstream's originator", token: token, accountID: accountID, now: now, appCredits: appCredits) { request in
+            XCTAssertNil(request.value(forHTTPHeaderField: "originator"), "the app's request sends no originator")
+            request.setValue("Codex Desktop", forHTTPHeaderField: "originator")
+        }
+        let withoutBeta = await probe("without OpenAI-Beta", token: token, accountID: accountID, now: now, appCredits: appCredits) { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "OpenAI-Beta"), "codex-1", "the app's request sends OpenAI-Beta")
+            request.setValue(nil, forHTTPHeaderField: "OpenAI-Beta")
+        }
+        return (withOriginator, withoutBeta)
+    }
+
+    /// One more GET of the app's request with one header changed. Prints the
+    /// status, whether the body decodes and whether it lists the app's
+    /// credits: never the body.
+    private static func probe(
+        _ label: String,
+        token: String,
+        accountID: String?,
+        now: Date,
+        appCredits: [String]?,
+        change: (inout URLRequest) -> Void
+    ) async -> Probe {
+        var request = CodexResetCreditsFetcher.request(accessToken: token, chatGPTAccountID: accountID)
+        change(&request)
         do {
-            let (data, response) = try await CodexResetCreditsFetcher.liveTransport(upstream)
+            let (data, response) = try await CodexResetCreditsFetcher.liveTransport(request)
             let status = (response as? HTTPURLResponse)?.statusCode
             let decoded = try? CodexRateLimitResetCreditsSnapshot.decode(data, now: now)
-            let same = decoded.map { $0.availableInventory(at: now).credits.map(\.id) == inventory.credits.map(\.id) }
-            print("LOCAL_RESET_CREDITS with upstream's originator: http \(status.map(String.init) ?? "none"), decodes \(decoded == nil ? "no" : "yes"), same credits \(same.map { $0 ? "yes" : "no" } ?? "n/a")")
+            let same: String
+            if let decoded, let appCredits {
+                same = decoded.availableInventory(at: now).credits.map(\.id) == appCredits ? "yes" : "no"
+            } else {
+                same = "n/a"
+            }
+            print("LOCAL_RESET_CREDITS \(label): http \(status.map(String.init) ?? "none"), decodes \(decoded == nil ? "no" : "yes"), same credits \(same)")
+            return Probe(status: status, decodes: decoded != nil)
         } catch {
-            print("LOCAL_RESET_CREDITS with upstream's originator: transport error \((error as? URLError)?.code.rawValue ?? -1)")
+            print("LOCAL_RESET_CREDITS \(label): transport error \((error as? URLError)?.code.rawValue ?? -1)")
+            return Probe(status: nil, decodes: false)
         }
     }
 
-    /// "8d 9h · 15d 8h", minutes rounded up as the card's countdown is, in a
+    /// Why the app's read failed, as far as the variants can tell.
+    private static func diagnosis(withOriginator: Probe, withoutBeta: Probe) -> String {
+        switch (withOriginator.answers, withoutBeta.answers) {
+        case (true, false):
+            return "the request with upstream's originator answers and the app's does not => the endpoint now requires originator"
+        case (false, true):
+            return "the request without OpenAI-Beta answers and the app's does not => the endpoint now rejects OpenAI-Beta: codex-1"
+        case (true, true):
+            return "both variants answer and the app's request did not => not a header; the failure did not repeat (rerun)"
+        case (false, false):
+            return "neither variant answers either => not a header: the sign-in, the account or the server"
+        }
+    }
+
+    /// "2d 4h · 6d 1h", minutes rounded up as the card's countdown is, in a
     /// fixed spelling so it compares with any other reader's.
     private static func countdowns(_ expiries: [Date?], now: Date) -> String {
         expiries.map { expiry -> String in
