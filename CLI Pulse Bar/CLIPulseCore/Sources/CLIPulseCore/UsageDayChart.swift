@@ -382,16 +382,20 @@ public struct ProviderUsageHistorySection: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                // Whose usage it is: the synced rows are every device's.
-                Text(L10n.widget.usageTitle + " · " + days.scope.label)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer()
-                if showCost {
-                    UsageMetricPicker(metric: Binding(get: { metric }, set: { metricRaw = $0.rawValue }))
-                        .controlSize(.mini)
+            // The title and the picker share a line while both fit whole.
+            // The scope is the section's truth label, so when they do not
+            // (accessibility text sizes: Japanese lost "All devices" to "…"
+            // at AX1, English at AX5) the picker goes under the title, which
+            // wraps.
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    title.fixedSize()
+                    Spacer(minLength: 8)
+                    picker
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    title.fixedSize(horizontal: false, vertical: true)
+                    picker
                 }
             }
             UsageDayBarsChart(
@@ -407,6 +411,21 @@ public struct ProviderUsageHistorySection: View {
             }
         }
         .animation(.easeInOut(duration: 0.15), value: selection)
+    }
+
+    /// Whose usage it is: the synced rows are every device's.
+    private var title: some View {
+        Text(L10n.widget.usageTitle + " · " + days.scope.label)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private var picker: some View {
+        if showCost {
+            UsageMetricPicker(metric: Binding(get: { metric }, set: { metricRaw = $0.rawValue }))
+                .controlSize(.mini)
+        }
     }
 
     private func dayDetail(_ day: ProviderUsageDays.Day) -> some View {
