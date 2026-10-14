@@ -106,10 +106,12 @@ final class ProviderCardUsageTests: XCTestCase {
         XCTAssertEqual(u.scope, .allDevices)
         XCTAssertEqual(u.today.cost, 4.5)
         XCTAssertEqual(u.today.ioTokens, 25_000)
-        XCTAssertEqual(u.week.cost, 8.5, "the account's week is larger than this Mac's $8")
-        XCTAssertEqual(u.week.ioTokens, 45_000)
-        XCTAssertEqual(u.thirtyDays.cost, 9.5)
-        XCTAssertEqual(u.thirtyDays.ioTokens, 53_000)
+        // Day by day: today the account's $4.50, day 2 this Mac's $6 (it
+        // has not synced all of it). The account's own week ($8.50) is less.
+        XCTAssertEqual(u.week.cost ?? -1, 10.5, accuracy: 0.0001)
+        XCTAssertEqual(u.week.ioTokens, 55_000)
+        XCTAssertEqual(u.thirtyDays.cost ?? -1, 11.5, accuracy: 0.0001)
+        XCTAssertEqual(u.thirtyDays.ioTokens, 63_000)
         // Day by day: day 2 is this Mac's 30K (more than the 20K synced),
         // today the account's, and day 12 only the account has.
         let tokenDays = u.chartDays(.tokens)
@@ -124,6 +126,49 @@ final class ProviderCardUsageTests: XCTestCase {
         // Today's bar is the Today figure, in either measure.
         XCTAssertEqual(tokenDays.last.map { Double($0.tokens) }, u.today.ioTokens.map(Double.init))
         XCTAssertEqual(u.chartDays(.cost).last?.cost, u.today.cost)
+    }
+
+    /// The figures are the chart's bars added up. A window taken whole (the
+    /// larger of this Mac's month and the account's) dropped this Mac's
+    /// unsynced days whenever the account held more over the month: This
+    /// Week read 120 beside seven bars adding up to 170.
+    func testTheFiguresAreTheBarsAddedUp() {
+        // This Mac's last three days have not synced (an upload failed);
+        // the account holds another Mac's busy month.
+        let entries = [
+            scan(0, io: 50, cost: 5), scan(1, io: 30, cost: 3), scan(2, io: 40, cost: 4),
+            scan(4, io: 10, cost: 1),
+        ]
+        let rows = [
+            row(0, io: 20, cost: 2), row(4, io: 60, cost: 6), row(5, io: 10, cost: 1),
+            row(9, io: 300, cost: 30), row(20, io: 160, cost: 16),
+        ]
+        let u = ProviderCardUsageBuilder.build(
+            provider: "Codex", usage: usage(today: 5, week: 9, thirty: 55),
+            scanEntries: entries, cloudRows: rows, readsCloud: true, windows: windows)
+        for metric in UsageChartMetric.allCases {
+            let bars = u.chartDays(metric)
+            func sum(_ window: ProviderUsageWindow) -> Double {
+                bars.filter { windows.contains($0.dateKey, in: window) }.reduce(0) { $0 + $1.value(metric) }
+            }
+            func figure(_ window: ProviderUsageWindow) -> Double {
+                metric == .cost ? u.cell(window).cost ?? -1 : Double(u.cell(window).ioTokens ?? -1)
+            }
+            for window in ProviderUsageWindow.allCases {
+                XCTAssertEqual(figure(window), sum(window), accuracy: 0.0001, "\(metric) \(window)")
+            }
+        }
+        XCTAssertEqual(u.today.ioTokens, 50)
+        XCTAssertEqual(u.week.ioTokens, 190, "50 + 30 + 40 + 60 + 10: every unsynced day of this Mac's")
+        XCTAssertEqual(u.thirtyDays.ioTokens, 650)
+        XCTAssertEqual(u.thirtyDays.cost ?? -1, 65, accuracy: 0.0001, "more than the account's $55")
+        // The account's own figure is a floor: before its rows arrive, the
+        // card shows it rather than this Mac's alone.
+        let early = ProviderCardUsageBuilder.build(
+            provider: "Codex", usage: usage(today: 5, week: 9, thirty: 55),
+            scanEntries: entries, cloudRows: [], readsCloud: true, windows: windows)
+        XCTAssertEqual(early.thirtyDays.cost ?? -1, 55, accuracy: 0.0001)
+        XCTAssertEqual(early.week.cost ?? -1, 13, accuracy: 0.0001, "this Mac's $13 is more than the account's $9")
     }
 
     func testTheLargerIsTakenNeverTheSum() {
@@ -210,6 +255,33 @@ final class ProviderCardUsageTests: XCTestCase {
         XCTAssertEqual(u.today.ioTokens, 1_200)
         XCTAssertEqual(u.week.ioTokens, 9_000)
         XCTAssertNil(u.thirtyDays.ioTokens, "nothing counts 30 days for it")
+        // Its figures are the API's count for the key, wherever it was
+        // used: neither "This Mac" nor "All devices".
+        XCTAssertFalse(u.hasScope)
+        // A count of 0 is a count: "0", not the "—" of nothing counting.
+        let quiet = ProviderCardUsageBuilder.build(
+            provider: "OpenRouter", usage: usage("OpenRouter", todayUsage: 0, weekUsage: 40),
+            scanEntries: [], cloudRows: [], readsCloud: true, usesProviderTokenCounts: true,
+            windows: windows)
+        XCTAssertEqual(quiet.today.ioTokens, 0)
+        // Its cost: today and the week are the collector's; nothing covers 30
+        // days (signed out, no 30-day figure), so that cost is "—", not a
+        // $0.00 below Today's $1.20.
+        let costed = ProviderCardUsageBuilder.build(
+            provider: "OpenRouter",
+            usage: usage("OpenRouter", today: 1.2, week: 5.0, thirty: 0, todayUsage: 12_000, weekUsage: 40_000),
+            scanEntries: [], cloudRows: [], readsCloud: false, usesProviderTokenCounts: true,
+            windows: windows)
+        XCTAssertEqual(costed.today.cost, 1.2)
+        XCTAssertEqual(costed.week.cost, 5.0)
+        XCTAssertNil(costed.thirtyDays.cost)
+        XCTAssertNil(costed.thirtyDays.ioTokens)
+        // With a 30-day figure from the account, it has one.
+        let synced = ProviderCardUsageBuilder.build(
+            provider: "OpenRouter", usage: usage("OpenRouter", today: 1.2, week: 5.0, thirty: 18),
+            scanEntries: [], cloudRows: [], readsCloud: true, usesProviderTokenCounts: true,
+            windows: windows)
+        XCTAssertEqual(synced.thirtyDays.cost, 18)
         let quota = ProviderCardUsageBuilder.build(
             provider: "OpenRouter", usage: usage("OpenRouter", todayUsage: 37),
             scanEntries: [], cloudRows: [], readsCloud: true, windows: windows)
@@ -319,13 +391,97 @@ final class ProviderCardUsageTests: XCTestCase {
         // The scope's name is the panel's (`UsageDataScope`), one string.
         XCTAssertEqual(UsageDataScope.thisMac.label, "这台 Mac")
         XCTAssertEqual(UsageDataScope.allDevices.label, "所有设备")
-        XCTAssertEqual(ProviderCardUsage.scopeHelp(.thisMac), "根据这台 Mac 的会话日志统计。")
+        // This Mac reads as the panel's This Mac (one string); All devices is
+        // the card's own, with its day-by-day rule.
+        XCTAssertEqual(ProviderCardUsage.scopeHelp(.thisMac), "根据这台 Mac 上的日志统计。")
+        XCTAssertEqual(ProviderCardUsage.scopeHelp(.thisMac), L10n.providerPanel.scopeThisMacHelp)
+        XCTAssertEqual(ProviderCardUsage.scopeHelp(.allDevices),
+                       "同步自登录了你账户的所有设备。如果这台 Mac 统计到的比已同步的多，则显示这台 Mac 的统计。")
+        XCTAssertEqual(L10n.providerCard.sectionsAllShown, "已全部显示")
         XCTAssertEqual(L10n.providerCard.thirtyDays, "30 天")
         XCTAssertEqual(ProviderCardSection.dailyChart.title, "每日图表")
         XCTAssertEqual(L10n.providerCard.sectionsHiddenCount(2), "已隐藏 2 项")
         XCTAssertTrue(L10n.providerCard.chartTokensHelp("12K").contains("12K"))
+        XCTAssertEqual(L10n.providerCard.chartCostHelp("$3"), "最近 30 天每天的预估费用。单日最高：$3。")
         LocaleOverrideStore.shared.set("ja")
         XCTAssertEqual(UsageDataScope.allDevices.label, "すべてのデバイス")
+    }
+
+    /// The card's unit is the panel's: "I/O", which Spanish calls "E/S".
+    func testTheCardsTokenUnitIsThePanels() {
+        let saved = LocaleOverrideStore.shared.override
+        defer { LocaleOverrideStore.shared.set(saved) }
+        XCTAssertEqual(ProviderCardUsage.tokenBasis, .inputOutput)
+        LocaleOverrideStore.shared.set("es")
+        XCTAssertEqual(ProviderCardUsage.tokenBasis.tokensText(85_900), CostFormatter.formatUsage(85_900) + " E/S")
+        LocaleOverrideStore.shared.set("ja")
+        XCTAssertEqual(ProviderCardUsage.tokenBasis.tokensText(85_900), "85.9K I/O")
+    }
+
+    /// The card names a scope only for figures from days the panel shows.
+    func testTheScopeIsNamedOnlyForTheScansOrTheAccountsDays() {
+        let signedOut = ProviderCardUsageBuilder.build(
+            provider: "Codex", usage: nil, scanEntries: [scan(3, io: 10, cost: 1)], cloudRows: [],
+            readsCloud: false, windows: windows)
+        XCTAssertTrue(signedOut.hasScope)
+        let accountOnly = ProviderCardUsageBuilder.build(
+            provider: "Codex", usage: nil, scanEntries: [], cloudRows: [row(3, io: 10, cost: 1)],
+            readsCloud: true, windows: windows)
+        XCTAssertTrue(accountOnly.hasScope)
+        let collectorOnly = ProviderCardUsageBuilder.build(
+            provider: "Mistral", usage: usage("Mistral", today: 1, week: 2, todayUsage: 10, weekUsage: 20),
+            scanEntries: [], cloudRows: [], readsCloud: true, usesProviderTokenCounts: true, windows: windows)
+        XCTAssertTrue(collectorOnly.hasAnyFigure)
+        XCTAssertFalse(collectorOnly.hasScope)
+    }
+
+    /// West of UTC in the evening, `get_daily_usage`'s 30 days, counted back
+    /// from the server's UTC date, start a day after the user's 30 do. The
+    /// app asks for one more, and the card keeps the user's own 30 days.
+    func testTheAccountsRowsCoverTheUsersOldestDayWestOfUTC() {
+        let pacific = TimeZone(identifier: "America/Los_Angeles")!
+        // 2026-10-14 20:00 in California, 2026-10-15 03:00 UTC.
+        let evening = Date(timeIntervalSince1970: 1_792_033_200)
+        let w = ProviderUsageWindows(now: evening, timeZone: pacific)
+        XCTAssertEqual(w.todayKey, "2026-10-14")
+        XCTAssertEqual(w.startKey(.thirtyDays), "2026-09-15")
+        // The server's first day for a fetch of `days`, from its UTC date.
+        let utc = TimeZone(identifier: "UTC")!
+        func serverFirstDay(_ days: Int) -> String {
+            let calendar = DayKey.calendar(in: utc)
+            let first = calendar.date(byAdding: .day, value: -(days - 1), to: evening)!
+            return DayKey.string(from: first, in: utc)
+        }
+        XCTAssertEqual(serverFirstDay(30), "2026-09-16", "30 days from the UTC date miss the oldest day")
+        XCTAssertLessThanOrEqual(serverFirstDay(AppState.dailyUsageFetchDays), w.startKey(.thirtyDays))
+        // Every zone, at every hour: the fetch reaches the user's oldest day.
+        for offsetHours in -12...14 {
+            let zone = TimeZone(secondsFromGMT: offsetHours * 3_600)!
+            for hour in stride(from: 0, to: 24, by: 1) {
+                let instant = evening.addingTimeInterval(Double(hour) * 3_600)
+                let zoneWindows = ProviderUsageWindows(now: instant, timeZone: zone)
+                let calendar = DayKey.calendar(in: utc)
+                let first = calendar.date(byAdding: .day, value: -(AppState.dailyUsageFetchDays - 1), to: instant)!
+                XCTAssertLessThanOrEqual(DayKey.string(from: first, in: utc), zoneWindows.startKey(.thirtyDays),
+                                         "UTC\(offsetHours) +\(hour)h")
+            }
+        }
+        // The rows such a fetch returns: the oldest day counts, a day before
+        // it (a fetch reaching further) does not.
+        let rows = [
+            DailyUsage(date: "2026-09-14", provider: "Codex", model: "gpt-5.5",
+                       inputTokens: 900, cachedTokens: 0, outputTokens: 0, cost: 9),
+            DailyUsage(date: "2026-09-15", provider: "Codex", model: "gpt-5.5",
+                       inputTokens: 100, cachedTokens: 0, outputTokens: 0, cost: 1),
+            DailyUsage(date: "2026-10-14", provider: "Codex", model: "gpt-5.5",
+                       inputTokens: 20, cachedTokens: 0, outputTokens: 0, cost: 0.2),
+        ]
+        let u = ProviderCardUsageBuilder.build(
+            provider: "Codex", usage: nil, scanEntries: [], cloudRows: rows, readsCloud: true, windows: w)
+        XCTAssertEqual(u.thirtyDays.ioTokens, 120)
+        XCTAssertEqual(u.thirtyDays.cost ?? -1, 1.2, accuracy: 0.0001)
+        XCTAssertEqual(u.chartDays(.tokens).first?.dateKey, "2026-09-15")
+        XCTAssertEqual(u.chartDays(.tokens).first?.tokens, 100)
     }
 }
 
@@ -457,6 +613,61 @@ final class ProviderCardTodayAgreesTests: XCTestCase {
         XCTAssertEqual(s.fidelity, .exact)
     }
 
+    /// This Mac has counted days the account has not received (an upload
+    /// failed) while the account holds more over the month: the card, the
+    /// cost bar and the Overview all count those days, and the 30 days are
+    /// the card's bars added up.
+    func testThisMacsUnsyncedDaysCountEverywhere() {
+        let scan = CostUsageScanResult(entries: [
+            entry(0, io: 5_000, cost: 1.0), entry(1, io: 30_000, cost: 3.0), entry(2, io: 40_000, cost: 4.0),
+        ])
+        let rows = [row(0, io: 2_000, cost: 0.5), row(4, io: 60_000, cost: 6.0), row(9, io: 300_000, cost: 30.0)]
+        let s = shown(scan: scan, rows: rows, accountToday: 0.5, accountWeek: 6.5, account30: 36.5)
+        XCTAssertEqual(s.cardToday, 1.0, accuracy: 0.0001)
+        XCTAssertEqual(s.barToday, 1.0, accuracy: 0.0001)
+        XCTAssertEqual(s.card30, 44.0, accuracy: 0.0001, "1 + 3 + 4 + 6 + 30, more than the account's $36.50")
+        XCTAssertEqual(s.overview30Row, s.card30, accuracy: 0.0001)
+        XCTAssertEqual(s.cardTodayTokens, 5_000)
+        XCTAssertEqual(s.overviewTodayTokens, 5_000)
+
+        let state = AppState()
+        state.isAuthenticated = true
+        state.costUsageScanResult = scan
+        state.dailyUsage = rows
+        state.providers = [cloudProvider("Codex", today: 0.5, week: 6.5, thirty: 36.5, scan: scan)]
+        state.updateCostSummary()
+        XCTAssertEqual(state.costSummary.thirtyDayTokens, 435_000, "5K + 30K + 40K + 60K + 300K")
+        let card = ProviderCardUsageBuilder.build(
+            provider: "Codex", usage: state.providers[0], scanEntries: scan.entries,
+            cloudRows: rows, readsCloud: true)
+        XCTAssertEqual(card.chartDays(.cost).reduce(0) { $0 + $1.cost }, s.card30, accuracy: 0.0001)
+    }
+
+    /// A failed fetch of the account's rows keeps the last good ones: the
+    /// cards would otherwise drop to this Mac's figures under "All devices"
+    /// until the next refresh. An answer with no rows replaces them.
+    func testAFailedFetchKeepsTheAccountsRows() {
+        let suite = "ProviderCardTodayAgreesTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        // Not the app's bundle: quarantined, so nothing reaches the real
+        // widgets' data.
+        let state = AppState(
+            runtimeEnvironment: .resolveForTesting(
+                infoDictionary: ["CFBundleIdentifier": "com.example.clipulse"], environment: [:]),
+            defaults: defaults,
+            performLaunchSetup: false)
+        XCTAssertFalse(state.runtimeEnvironment.capabilities.allowsWidgetPublishing)
+        state.isAuthenticated = true
+        let rows = [row(0, io: 25_000, cost: 4.5)]
+        state.adoptFetchedDailyUsage(rows)
+        XCTAssertEqual(state.dailyUsage.map(\.id), rows.map(\.id))
+        XCTAssertEqual(state.adoptFetchedDailyUsage(nil).map(\.id), rows.map(\.id))
+        XCTAssertEqual(state.dailyUsage.map(\.id), rows.map(\.id), "a failed fetch is not an empty account")
+        state.adoptFetchedDailyUsage([])
+        XCTAssertTrue(state.dailyUsage.isEmpty)
+    }
+
     /// Signed out there is no account: this Mac's own figures, and synced
     /// rows left over from an account are not read.
     func testSignedOutShowsThisMacEverywhere() {
@@ -582,12 +793,31 @@ final class DemoProviderCardHistoryTests: XCTestCase {
             performLaunchSetup: false)
         state.enterDemoMode()
         XCTAssertEqual(Set(state.dailyUsage.map(\.provider)), ["Codex", "Claude"])
+        let usage = state.providers.first { $0.provider == "Codex" }
+        // As `EnhancedProviderCard.cardUsage` builds it.
         let codex = ProviderCardUsageBuilder.build(
-            provider: "Codex", usage: state.providers.first { $0.provider == "Codex" },
-            scanEntries: [], cloudRows: state.dailyUsage, readsCloud: state.isAuthenticated)
+            provider: "Codex", usage: usage,
+            scanEntries: [], cloudRows: state.dailyUsage, readsCloud: state.isAuthenticated,
+            usesProviderTokenCounts: !(usage?.metadata?.supports_quota ?? false))
         XCTAssertEqual(codex.scope, .allDevices)
+        XCTAssertTrue(codex.hasScope)
         XCTAssertTrue(codex.chartHasData(.tokens))
         XCTAssertEqual(codex.today.cost ?? -1, 1.03, accuracy: 0.0001)
+        XCTAssertEqual(codex.today.ioTokens, 85_900)
+    }
+
+    /// On the Mac, Demo's providers carry the metadata their collectors
+    /// attach, as a real Mac's do, so the card draws what production draws:
+    /// a quota provider's I/O ("85.9K I/O"), not an API's own count.
+    func testDemoOnTheMacCarriesItsCollectorsMetadata() throws {
+        let providers = DemoDataProvider.generate().providers
+        for name in ["Codex", "Claude", "Gemini"] {
+            let metadata = try XCTUnwrap(providers.first { $0.provider == name }?.metadata, name)
+            XCTAssertEqual(metadata.display_name, name)
+            XCTAssertEqual(metadata.category, "cloud", name)
+            XCTAssertTrue(metadata.supports_quota, name)
+            XCTAssertFalse(metadata.supports_exact_cost, name)
+        }
     }
 
     func testApportionAddsUpExactly() {

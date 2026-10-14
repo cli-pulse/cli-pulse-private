@@ -79,7 +79,8 @@ public enum ProviderCardSection: String, CaseIterable, Identifiable, Sendable {
 /// An identifier this version does not know, written by a newer one, is kept
 /// as it is when anything else changes: going back a version and forward again
 /// does not lose the choice. Only "Show All Sections" drops it, as it drops
-/// everything else on that card.
+/// everything else on that card, and that is offered only while a section
+/// this version draws is hidden (`hasHiddenSections`).
 public struct ProviderCardVisibility: Equatable, Sendable {
     /// The `cli_pulse_` prefix keeps it in `UnsandboxedDataMigration`'s
     /// allow-list.
@@ -151,9 +152,13 @@ public struct ProviderCardVisibility: Equatable, Sendable {
         hiddenByProvider[provider.rawValue] = nil
     }
 
-    /// Whether "Show All Sections" would change anything for `provider`.
+    /// Whether "Show All Sections" would show anything on `provider`'s card:
+    /// a section this version draws is hidden. An identifier a newer version
+    /// wrote, alone, hides nothing here: the menu says "All shown" and its
+    /// "Show All Sections" is off, so it is not cleared by a click that
+    /// changes nothing on screen.
     public func hasHiddenSections(for provider: ProviderKind) -> Bool {
-        !(hiddenByProvider[provider.rawValue]?.isEmpty ?? true)
+        !hiddenSections(for: provider).isEmpty
     }
 
     /// Whether `provider`'s card draws the limit reset credits line (#666):

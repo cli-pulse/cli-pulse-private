@@ -3,8 +3,15 @@ import Foundation
 /// The three windows a provider card adds up: today, the rolling week (today
 /// and the six days before it) and the last 30 days (today and the 29 before
 /// it). The same windows the server's `provider_summary` uses
-/// (`v_today - 6`, `v_today - 29`), so a figure from either side covers the
-/// same days.
+/// (`v_today - 6`, `v_today - 29`, from the day the app sends as
+/// `p_user_today`).
+///
+/// `get_daily_usage` counts its days back from the server's own date, which
+/// is UTC, not from the user's. West of UTC in the evening that date is
+/// already tomorrow, and 30 days from it leave out the user's oldest day, so
+/// the app asks for one day more (`AppState.dailyUsageFetchDays`) and keeps
+/// the rows of these keys: a figure from either side then covers the same
+/// days.
 public enum ProviderUsageWindow: CaseIterable, Sendable {
     case today
     case week
@@ -102,6 +109,12 @@ public struct ProviderCardUsage: Sendable, Equatable {
     public let account: ProviderUsageDays?
     public let scope: UsageDataScope
 
+    /// How the card counts tokens: input + output ("I/O"), as every figure
+    /// on the card says. The usage panel a card opens counts the same way
+    /// (`DashboardPanelController.toggle(provider:state:scope:basis:)`), so
+    /// the click lands on the card's numbers.
+    public static let tokenBasis: ProviderUsageDays.TokenBasis = .inputOutput
+
     public init(
         today: Cell, week: Cell, thirtyDays: Cell,
         thisMac: ProviderUsageDays, account: ProviderUsageDays?, scope: UsageDataScope
@@ -123,10 +136,22 @@ public struct ProviderCardUsage: Sendable, Equatable {
     }
 
     /// The chart's bars for `metric`, oldest first: day by day, whichever of
-    /// this Mac's day and the account's is larger in `metric`, the rule the
-    /// figures beside the chart use. So today's bar is the Today figure, and
-    /// each bar is one source's day as the panel lists it, never a mix of two.
+    /// this Mac's day and the account's is larger in `metric`. The figures
+    /// beside the chart are these bars added up (`ProviderCardUsageBuilder`),
+    /// so This Week is the last seven bars and 30 Days all of them, and each
+    /// bar is one source's day as the panel lists it, never a mix of two.
     public func chartDays(_ metric: UsageChartMetric) -> [ProviderUsageDays.Day] {
+        Self.dailyMaxima(metric, thisMac: thisMac, account: account)
+    }
+
+    /// Day by day, the larger in `metric` of this Mac's day and the
+    /// account's. The larger, never the sum: the account's day already holds
+    /// what this Mac uploaded. A day this Mac has counted and not yet synced
+    /// (today, or every day since an upload failed) is this Mac's; a day only
+    /// the account has (another device's) is the account's.
+    static func dailyMaxima(
+        _ metric: UsageChartMetric, thisMac: ProviderUsageDays, account: ProviderUsageDays?
+    ) -> [ProviderUsageDays.Day] {
         let local = thisMac.days
         guard let synced = account?.days, !synced.isEmpty else { return local }
         guard !local.isEmpty else { return synced }
@@ -135,6 +160,16 @@ public struct ProviderCardUsage: Sendable, Equatable {
             guard let other = byKey[day.dateKey] else { return day }
             return other.value(metric) > day.value(metric) ? other : day
         }
+    }
+
+    /// Whether the figures come from days the usage panel can show: this
+    /// Mac's scan or the account's synced rows. A provider whose figures are
+    /// only what its own collector reports (an API key's usage, which the
+    /// provider counts for the key, wherever it was used) has neither, and
+    /// its card names no scope: "This Mac" or "All devices" would not be
+    /// true of those figures.
+    public var hasScope: Bool {
+        thisMac.hasUsage || (account?.hasUsage ?? false)
     }
 
     /// Whether any window has a figure. A card with none (a provider nothing
@@ -170,12 +205,14 @@ public struct ProviderCardUsage: Sendable, Equatable {
         showsCost ? UsageChartMetric.stored(storedMetric) : .tokens
     }
 
-    /// What the card's scope label means, on hover. Signed in, the card takes
-    /// this Mac's own count where it is larger than what has synced so far,
-    /// which the panel's own words for the scope do not say.
+    /// What the card's scope label means, on hover. This Mac reads as the
+    /// panel's This Mac does (one string). Signed in, the card takes this
+    /// Mac's own day where it is larger than what has synced so far, which
+    /// the panel's words for All devices do not say, so that one is the
+    /// card's own.
     public static func scopeHelp(_ scope: UsageDataScope) -> String {
         switch scope {
-        case .thisMac: return L10n.providerCard.scopeThisMacHelp
+        case .thisMac: return L10n.providerPanel.scopeThisMacHelp
         case .allDevices: return L10n.providerCard.scopeAllDevicesHelp
         }
     }
@@ -202,20 +239,29 @@ public struct ProviderCardUsage: Sendable, Equatable {
     }
 }
 
-/// Builds `ProviderCardUsage`, and the per-provider figures the Providers tab's
-/// cost bar and the Overview's Cost Summary add up, from one rule, so the same
-/// provider's Today (and 30 days) reads the same on all three.
+/// Builds `ProviderCardUsage`, the card the Providers tab draws for a
+/// provider. The Providers tab's cost bar and the Overview's Cost Summary add
+/// up the same cards (`AppState.updateCostSummary`), so the same provider's
+/// Today (and 30 days) reads the same on all three.
 ///
-/// The rule is the one the card's Today already used (`applyCostScan`): for
-/// each window, the larger of this Mac's own count and the account's synced
-/// one. Signed in, the synced figure holds every device, this Mac's earlier
+/// The rule: day by day, the larger of this Mac's own count and the account's
+/// synced one (`ProviderCardUsage.dailyMaxima`), added up over each window.
+/// Signed in, a synced day holds every device's usage, this Mac's earlier
 /// uploads included, so the larger one is every device's usage with this
-/// Mac's latest refresh in it; signed out there is no synced figure and the
-/// rule leaves this Mac's own. The larger is taken, never the sum, because the
-/// synced figure already contains what this Mac sent.
+/// Mac's latest count in it; signed out there is no synced day and the rule
+/// leaves this Mac's own. The larger is taken, never the sum, because the
+/// synced day already contains what this Mac sent.
 ///
-/// The chart takes the larger day by day (`ProviderCardUsage.chartDays`), from
-/// the days the usage panel lists (`ProviderUsageDays`).
+/// Day by day, not window by window: when this Mac has counted days the
+/// account has not received yet (an upload failed, or the next sync has not
+/// run) while the account holds more over the month, the larger window would
+/// drop this Mac's unsynced days. The figures are the chart's bars added up,
+/// so This Week is never less than its seven bars.
+///
+/// The account's own window figures (`provider_summary`, the same rows
+/// summed by the server) are a floor under each cost: they are what the card
+/// shows before the daily rows arrive, and what a provider with no rows (an
+/// API key's collector) reports.
 public enum ProviderCardUsageBuilder {
 
     /// - Parameters:
@@ -241,28 +287,49 @@ public enum ProviderCardUsageBuilder {
     ) -> ProviderCardUsage {
         let local = scanEntries.filter { $0.provider == provider }
         let cloud = readsCloud ? cloudRows.filter { $0.provider == provider } : []
-        let reportsCost = Self.reportsCost(usage: usage, localEntries: local, windows: windows)
+        let thisMac = ProviderUsageDays.fromScan(
+            local, provider: provider, basis: ProviderCardUsage.tokenBasis,
+            days: ProviderUsageWindow.thirtyDays.dayCount,
+            todayKey: windows.todayKey, timeZone: windows.timeZone)
+        let account = readsCloud
+            ? ProviderUsageDays.fromCloud(
+                cloud, provider: provider, basis: ProviderCardUsage.tokenBasis,
+                days: ProviderUsageWindow.thirtyDays.dayCount,
+                todayKey: windows.todayKey, timeZone: windows.timeZone)
+            : nil
+        let tokenDays = ProviderCardUsage.dailyMaxima(.tokens, thisMac: thisMac, account: account)
+        let costDays = ProviderCardUsage.dailyMaxima(.cost, thisMac: thisMac, account: account)
+        let reportsCost = Self.reportsCost(usage: usage, localEntries: local, cloudRows: cloud, windows: windows)
 
         func cell(_ window: ProviderUsageWindow) -> ProviderCardUsage.Cell {
             let inWindow = local.filter { windows.contains($0.date, in: window) }
-            var tokens = max(
-                Self.localIOTokens(inWindow),
-                Self.cloudIOTokens(cloud.filter { windows.contains($0.date, in: window) })
-            )
-            if usesProviderTokenCounts, let usage {
-                switch window {
-                case .today: tokens = max(tokens, usage.today_usage)
-                case .week: tokens = max(tokens, usage.week_usage)
-                case .thirtyDays: break
-                }
+            let hasRows = !inWindow.isEmpty || cloud.contains { windows.contains($0.date, in: window) }
+            var tokens = tokenDays
+                .filter { windows.contains($0.dateKey, in: window) }
+                .reduce(0) { $0 + $1.tokens }
+            // The provider's collector counts today and the week itself; no
+            // collector counts 30 days.
+            let countsOwnTokens = usesProviderTokenCounts && usage != nil && window != .thirtyDays
+            if countsOwnTokens, let usage {
+                tokens = max(tokens, window == .today ? usage.today_usage : usage.week_usage)
             }
+            let summary = Self.summaryCost(window, usage: usage)
+            let rowCost = costDays
+                .filter { windows.contains($0.dateKey, in: window) }
+                .reduce(0) { $0 + $1.cost }
+            // Today and the week are reported by every collector that reports
+            // a cost; 30 days only by this Mac's scan, the account's rows or
+            // the account's 30-day figure. With none of them, a 30-day cost
+            // of $0.00 beside a Today of $1.20 would be a figure nothing
+            // counted: "—".
+            let coversWindow = window != .thirtyDays || hasRows || summary > 0
             let messages = inWindow.reduce(0) { $0 + $1.messageCount }
             return ProviderCardUsage.Cell(
-                cost: reportsCost
-                    ? Self.cost(window, localEntries: inWindow, usage: usage)
-                    : nil,
+                cost: reportsCost && coversWindow ? max(rowCost, summary) : nil,
                 costIsApproximate: inWindow.contains { $0.priceIsApproximate },
-                ioTokens: tokens > 0 ? tokens : nil,
+                // A collector's own count of 0 is a count: "0", as before.
+                // Nothing counting the window is "—".
+                ioTokens: tokens > 0 ? tokens : (countsOwnTokens ? 0 : nil),
                 messages: messages > 0 ? messages : nil
             )
         }
@@ -271,90 +338,33 @@ public enum ProviderCardUsageBuilder {
             today: cell(.today),
             week: cell(.week),
             thirtyDays: cell(.thirtyDays),
-            thisMac: ProviderUsageDays.fromScan(
-                local, provider: provider, basis: .inputOutput,
-                days: ProviderUsageWindow.thirtyDays.dayCount,
-                todayKey: windows.todayKey, timeZone: windows.timeZone),
-            account: readsCloud
-                ? ProviderUsageDays.fromCloud(
-                    cloud, provider: provider, basis: .inputOutput,
-                    days: ProviderUsageWindow.thirtyDays.dayCount,
-                    todayKey: windows.todayKey, timeZone: windows.timeZone)
-                : nil,
+            thisMac: thisMac,
+            account: account,
             scope: readsCloud ? .allDevices : .thisMac
         )
     }
 
-    /// `provider`'s cost for `window` under the rule: what its card shows, and
-    /// what the cost bar and the Cost Summary add up.
-    public static func cost(
-        _ window: ProviderUsageWindow,
-        provider: String,
-        usage: ProviderUsage?,
-        scanEntries: [CostUsageScanResult.DailyEntry],
-        windows: ProviderUsageWindows
-    ) -> Double {
-        cost(
-            window,
-            localEntries: scanEntries.filter {
-                $0.provider == provider && windows.contains($0.date, in: window)
-            },
-            usage: usage
-        )
-    }
-
-    /// `provider`'s input + output tokens for `window` under the rule.
-    public static func ioTokens(
-        _ window: ProviderUsageWindow,
-        provider: String,
-        scanEntries: [CostUsageScanResult.DailyEntry],
-        cloudRows: [DailyUsage],
-        windows: ProviderUsageWindows
-    ) -> Int {
-        max(
-            localIOTokens(scanEntries.filter {
-                $0.provider == provider && windows.contains($0.date, in: window)
-            }),
-            cloudIOTokens(cloudRows.filter {
-                $0.provider == provider && windows.contains($0.date, in: window)
-            })
-        )
-    }
-
-    /// `localEntries` are already this provider's, inside the window.
-    static func cost(
-        _ window: ProviderUsageWindow,
-        localEntries: [CostUsageScanResult.DailyEntry],
-        usage: ProviderUsage?
-    ) -> Double {
-        let local = localEntries.compactMap(\.costUSD).reduce(0, +)
-        let synced: Double
+    /// The account's (or the provider's collector's) own figure for `window`.
+    static func summaryCost(_ window: ProviderUsageWindow, usage: ProviderUsage?) -> Double {
         switch window {
-        case .today: synced = usage?.estimated_cost_today ?? 0
-        case .week: synced = usage?.estimated_cost_week ?? 0
-        case .thirtyDays: synced = usage?.estimated_cost_30_day ?? 0
+        case .today: return usage?.estimated_cost_today ?? 0
+        case .week: return usage?.estimated_cost_week ?? 0
+        case .thirtyDays: return usage?.estimated_cost_30_day ?? 0
         }
-        return max(local, synced)
-    }
-
-    static func localIOTokens(_ entries: [CostUsageScanResult.DailyEntry]) -> Int {
-        entries.reduce(0) { $0 + max(0, $1.inputTokens) + max(0, $1.outputTokens) }
-    }
-
-    static func cloudIOTokens(_ rows: [DailyUsage]) -> Int {
-        rows.filter { $0.model != ScanEntry.messageBucketModel }
-            .reduce(0) { $0 + max(0, $1.inputTokens) + max(0, $1.outputTokens) }
     }
 
     /// Whether anything reports a cost for this provider: this Mac's logs
-    /// within the 30 days, a cost figure, or a cost status other than
-    /// "Unavailable" (what every quota-only collector writes).
+    /// within the 30 days, the account's rows with a cost, a cost figure, or
+    /// a cost status other than "Unavailable" (what every quota-only
+    /// collector writes).
     static func reportsCost(
         usage: ProviderUsage?,
         localEntries: [CostUsageScanResult.DailyEntry],
+        cloudRows: [DailyUsage],
         windows: ProviderUsageWindows
     ) -> Bool {
         if localEntries.contains(where: { windows.contains($0.date, in: .thirtyDays) }) { return true }
+        if cloudRows.contains(where: { $0.cost > 0 && windows.contains($0.date, in: .thirtyDays) }) { return true }
         guard let usage else { return false }
         if usage.estimated_cost_today > 0 || usage.estimated_cost_week > 0 || usage.estimated_cost_30_day > 0 {
             return true

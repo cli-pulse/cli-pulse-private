@@ -74,10 +74,13 @@ final class ProviderCardSectionsTests: XCTestCase {
         let newer = "zz-newer-section"
         XCTAssertNil(ProviderCardSection(rawValue: newer), "pick an identifier no section has")
         var v = ProviderCardVisibility(storedValue: #"{"Codex":["\#(newer)"]}"#)
-        XCTAssertTrue(v.hasHiddenSections(for: .codex))
         XCTAssertTrue(v.hiddenSections(for: .codex).isEmpty, "not one this version can draw")
+        // Settings says "All shown", and Show All is off: clicking it would
+        // change nothing on screen and lose the newer version's choice.
+        XCTAssertFalse(v.hasHiddenSections(for: .codex))
         v.setVisible(false, .pace, for: .codex)
         XCTAssertEqual(v.storedValue, #"{"Codex":["pace","\#(newer)"]}"#)
+        XCTAssertTrue(v.hasHiddenSections(for: .codex))
     }
 
     /// Codex's limit reset credits (#666) are a section of Codex's card

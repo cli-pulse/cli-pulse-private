@@ -1614,6 +1614,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "provider_panel.est_total" = "Total est. · últimos %d días";
 "provider_panel.total" = "Total · últimos %d días";
 "provider_panel.total_value" = "%1$@ · %2$@ tokens";
+"provider_panel.total_io_value" = "%1$@ · %2$@ tokens de E/S";
 "provider_panel.top_model" = "Modelo con mayor costo: %@";
 "provider_panel.model_tokens" = "%@ tokens";
 "provider_panel.model_io_tokens" = "%@ E/S";
@@ -1896,16 +1897,15 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 
 /* Provider card: usage totals, scope, daily chart and hideable sections (v1.57) */
 "provider_card.thirty_days" = "30 días";
-"provider_card.scope_this_mac_help" = "Contado a partir de los registros de sesión de este Mac.";
-"provider_card.scope_all_devices_help" = "Sincronizado desde todos los dispositivos con tu cuenta. Si este Mac ha contado más de lo que se ha sincronizado hasta ahora, se muestra su propio recuento.";
-"provider_card.messages_this_mac" = "Los mensajes se cuentan solo en este Mac.";
-"provider_card.chart_tokens_help" = "Tokens de entrada + salida por día, últimos 30 días. Día más alto: %@.";
-"provider_card.chart_cost_help" = "Costo estimado por día, últimos 30 días. Día más alto: %@.";
+"provider_card.scope_all_devices_help" = "Sincronizado desde todos los dispositivos con sesión iniciada en tu cuenta. Si este Mac ha contado más de lo que se ha sincronizado hasta ahora, se muestra su propio recuento.";
+"provider_card.messages_this_mac" = "El recuento de mensajes es solo de este Mac.";
+"provider_card.chart_tokens_help" = "Tokens de entrada + salida por día, últimos 30 días. Máximo diario: %@.";
+"provider_card.chart_cost_help" = "Costo estimado por día, últimos 30 días. Máximo diario: %@.";
 "provider_card.sections_menu" = "Mostrar en la tarjeta";
 "provider_card.sections_all_shown" = "Todas visibles";
 "provider_card.sections_hidden_count" = "Ocultas: %d";
 "provider_card.show_all_sections" = "Mostrar todas las secciones";
-"provider_card.sections_hint" = "Las secciones ocultas siguen ocultas tras reiniciar o cambiar de idioma. Las actualizaciones y las alertas siguen como antes.";
+"provider_card.sections_hint" = "Las secciones ocultas siguen ocultas tras reiniciar o cambiar de idioma. Las actualizaciones y las alertas funcionan igual que antes.";
 "provider_card.section_plan_and_source" = "Plan y fuente";
 "provider_card.section_usage_totals" = "Totales de uso";
 "provider_card.section_daily_chart" = "Gráfica diaria";

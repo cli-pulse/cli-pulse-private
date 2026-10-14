@@ -1659,6 +1659,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "provider_panel.est_total" = "Est. total · last %d days";
 "provider_panel.total" = "Total · last %d days";
 "provider_panel.total_value" = "%1$@ · %2$@ tokens";
+"provider_panel.total_io_value" = "%1$@ · %2$@ I/O tokens";
 "provider_panel.top_model" = "Top model by cost: %@";
 "provider_panel.model_tokens" = "%@ tokens";
 "provider_panel.model_io_tokens" = "%@ I/O";
@@ -1925,9 +1926,8 @@ This switch used to also enable remote CLI sessions and remote permission approv
 
 /* Provider card: usage totals, scope, daily chart and hideable sections (v1.57) */
 "provider_card.thirty_days" = "30 Days";
-"provider_card.scope_this_mac_help" = "Counted from this Mac's session logs.";
 "provider_card.scope_all_devices_help" = "Synced from every device signed in to your account. Where this Mac has counted more than has synced so far, its own count is shown.";
-"provider_card.messages_this_mac" = "Messages are counted on this Mac only.";
+"provider_card.messages_this_mac" = "Message counts are from this Mac only.";
 "provider_card.chart_tokens_help" = "Input + output tokens per day, last 30 days. Highest day: %@.";
 "provider_card.chart_cost_help" = "Estimated cost per day, last 30 days. Highest day: %@.";
 "provider_card.sections_menu" = "Show on Card";

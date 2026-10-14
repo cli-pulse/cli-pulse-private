@@ -1647,6 +1647,7 @@
 "provider_panel.est_total" = "预估合计 · 最近 %d 天";
 "provider_panel.total" = "合计 · 最近 %d 天";
 "provider_panel.total_value" = "%1$@ · %2$@ token";
+"provider_panel.total_io_value" = "%1$@ · %2$@ I/O token";
 "provider_panel.top_model" = "费用最高的模型：%@";
 "provider_panel.model_tokens" = "%@ token";
 "provider_panel.model_io_tokens" = "%@ I/O";
@@ -1913,16 +1914,15 @@
 
 /* Provider card: usage totals, scope, daily chart and hideable sections (v1.57) */
 "provider_card.thirty_days" = "30 天";
-"provider_card.scope_this_mac_help" = "根据这台 Mac 的会话日志统计。";
-"provider_card.scope_all_devices_help" = "来自登录你账户的所有设备的同步数据。如果这台 Mac 统计到的比已同步的多，则显示它自己的统计。";
+"provider_card.scope_all_devices_help" = "同步自登录了你账户的所有设备。如果这台 Mac 统计到的比已同步的多，则显示这台 Mac 的统计。";
 "provider_card.messages_this_mac" = "消息数仅统计这台 Mac。";
-"provider_card.chart_tokens_help" = "过去 30 天每天的输入 + 输出 token。最高的一天：%@。";
-"provider_card.chart_cost_help" = "过去 30 天每天的预估费用。最高的一天：%@。";
-"provider_card.sections_menu" = "卡片上显示";
-"provider_card.sections_all_shown" = "全部显示";
+"provider_card.chart_tokens_help" = "最近 30 天每天的输入 + 输出 token。单日最高：%@。";
+"provider_card.chart_cost_help" = "最近 30 天每天的预估费用。单日最高：%@。";
+"provider_card.sections_menu" = "在卡片上显示";
+"provider_card.sections_all_shown" = "已全部显示";
 "provider_card.sections_hidden_count" = "已隐藏 %d 项";
-"provider_card.show_all_sections" = "显示全部分区";
-"provider_card.sections_hint" = "隐藏的分区在重启或切换语言后仍保持隐藏。刷新和告警照常进行。";
+"provider_card.show_all_sections" = "显示全部区块";
+"provider_card.sections_hint" = "隐藏的区块在重启或切换语言后仍保持隐藏。刷新和告警照常进行。";
 "provider_card.section_plan_and_source" = "方案与来源";
 "provider_card.section_usage_totals" = "用量合计";
 "provider_card.section_daily_chart" = "每日图表";

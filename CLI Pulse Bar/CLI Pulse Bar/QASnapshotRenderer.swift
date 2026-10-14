@@ -1251,10 +1251,12 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
     /// v1.57: the usage panel's provider mode as clicking a Demo provider
     /// card's small chart opens it. The panel's model follows the state the
     /// card reads (Demo's synced rows; Demo has no local scan) and is opened
-    /// on the scope the card's figures are labelled with, as
-    /// `DashboardPanelController.toggle(provider:state:scope:)` opens it,
-    /// with the chart in what the card's chart shows (the stored Token/Cost
-    /// choice). 480 points wide, the latest day with usage selected.
+    /// on the scope the card's figures are labelled with and counting tokens
+    /// as the card does (I/O), as
+    /// `DashboardPanelController.toggle(provider:state:scope:basis:)` opens
+    /// it, with the chart in what the card's chart shows (the stored
+    /// Token/Cost choice). 480 points wide, the latest day with usage
+    /// selected.
     private func captureProviderCardPanel(_ kind: ProviderKind, surface: QARenderSurface, index: Int) async {
         let provider = kind.rawValue
         // As `EnhancedProviderCard.cardUsage` builds it.
@@ -1272,7 +1274,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             showsCost: state.showCost)
         let model = UsagePanelModel()
         model.follow(state)
-        model.prefer(card.scope, for: provider)
+        model.open(provider, scope: card.scope, basis: ProviderCardUsage.tokenBasis)
         model.mode = .provider(provider)
         let scope = model.scope(for: provider)
         let panel = ProviderUsagePanelView(
@@ -1294,9 +1296,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: surface.id) },
             note: "The usage panel as clicking the Demo \(provider) card's small chart opens it, 480 points"
                 + " wide: Demo's synced rows, opened on the card's scope (\(card.scope.rawValue), shown:"
-                + " \(scope.rawValue)), chart in \(metric.rawValue) as the card's is. The card counts I/O"
-                + " tokens and the panel each token once (it says so under the total), so Claude's token"
-                + " figures differ from the card's by its cache; costs and days are the same."
+                + " \(scope.rawValue)), chart in \(metric.rawValue) as the card's is, tokens counted as the"
+                + " card counts them (I/O, as the panel says under its total): its days and total are the"
+                + " card's figures."
         )
     }
 

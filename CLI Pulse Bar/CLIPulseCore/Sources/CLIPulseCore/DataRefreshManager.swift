@@ -2701,14 +2701,15 @@ extension AppState {
         if let scan = costUsageScanResult, !scan.entries.isEmpty {
             // Use precise data from local JSONL log scanning.
             //
-            // v1.57: every per-provider figure here goes through the rule the
-            // provider cards use (`ProviderCardUsageBuilder`): for each window,
-            // the larger of this Mac's own count and the account's synced one.
-            // This used to take this Mac's count whenever it had one, so on an
-            // account used on two Macs the Providers tab's cost bar and the
-            // Overview said this Mac's Today while the Codex card beside them
-            // said both Macs'. The 30 days are the server's 30 days (today and
-            // the 29 before), not the scan's 31 day keys.
+            // v1.57: every per-provider figure here is the provider card's
+            // (`ProviderCardUsageBuilder`, built here as the card builds it):
+            // day by day, the larger of this Mac's own count and the
+            // account's synced one, added up over the window. This used to
+            // take this Mac's count whenever it had one, so on an account used
+            // on two Macs the Providers tab's cost bar and the Overview said
+            // this Mac's Today while the Codex card beside them said both
+            // Macs'. The 30 days are the server's 30 days (today and the 29
+            // before), not the scan's 31 day keys.
             let windows = ProviderUsageWindows(now: Date())
             let todayKey = windows.todayKey
             let windowEntries = scan.entries.filter { windows.contains($0.date, in: .thirtyDays) }
@@ -2718,44 +2719,57 @@ extension AppState {
             for provider in providers where usageByProvider[provider.provider] == nil {
                 usageByProvider[provider.provider] = provider
             }
-            func ruleCost(_ window: ProviderUsageWindow, _ name: String) -> Double {
-                ProviderCardUsageBuilder.cost(
-                    window, provider: name, usage: usageByProvider[name],
-                    scanEntries: windowEntries, windows: windows)
+            let cardNames = Set(windowEntries.map(\.provider))
+                .union(cloudRows.map(\.provider))
+                .union(providers.filter {
+                    $0.estimated_cost_today > 0 || $0.estimated_cost_week > 0 || $0.estimated_cost_30_day > 0
+                }.map(\.provider))
+            var cards: [String: ProviderCardUsage] = [:]
+            for name in cardNames {
+                cards[name] = ProviderCardUsageBuilder.build(
+                    provider: name, usage: usageByProvider[name],
+                    scanEntries: windowEntries, cloudRows: cloudRows,
+                    readsCloud: isAuthenticated, windows: windows)
             }
 
             var todayByProv: [String: Double] = [:]
-            let todayNames = Set(todayEntries.map(\.provider))
-                .union(providers.filter { $0.estimated_cost_today > 0 }.map(\.provider))
-            for name in todayNames {
-                todayByProv[name] = ruleCost(.today, name)
+            let todayScanNames = Set(todayEntries.map(\.provider))
+            for (name, card) in cards {
+                let cost = card.today.cost ?? 0
+                if cost > 0 || todayScanNames.contains(name) {
+                    todayByProv[name] = cost
+                }
             }
             let todayByProvider = todayByProv.map { ($0.key, $0.value) }
             let todayTotal = todayByProv.values.reduce(0, +)
 
             var thirtyDayByProv: [String: Double] = [:]
-            let thirtyDayNames = Set(windowEntries.map(\.provider))
-                .union(providers.filter {
-                    $0.estimated_cost_30_day > 0 || $0.estimated_cost_week > 0
-                }.map(\.provider))
-            for name in thirtyDayNames {
-                var cost = ruleCost(.thirtyDays, name)
+            let windowScanNames = Set(windowEntries.map(\.provider))
+            for (name, card) in cards {
+                var cost = card.thirtyDays.cost ?? 0
                 // v1.10.6: prefer the real 30-day cost from the server (sourced
                 // from `daily_usage_metrics`) over the old week*4.3
                 // extrapolation. Fall back to week*4.3 only for older servers
-                // whose 30-day sum is missing, and only when this Mac counted
-                // nothing either.
+                // whose 30-day sum is missing, and only when nothing counted
+                // the 30 days either. The card shows "—" there instead
+                // (nothing counted that window); this bar's figure is labelled
+                // an estimate ("30-Day Est.").
                 if cost <= 0, let usage = usageByProvider[name],
                    usage.estimated_cost_30_day <= 0, usage.estimated_cost_week > 0 {
                     cost = usage.estimated_cost_week * 4.3
                 }
-                thirtyDayByProv[name] = cost
+                if cost > 0 || windowScanNames.contains(name) {
+                    thirtyDayByProv[name] = cost
+                }
             }
             let thirtyDayByProvider = thirtyDayByProv.map { ($0.key, $0.value) }
             let thirtyDayTotal = thirtyDayByProv.values.reduce(0, +)
-            // Whether a 30-day figure is the account's and holds more than
-            // this Mac counted: the By Model rows below, this Mac's alone, then
-            // say whose they are. Half a cent of slack for the sums' rounding.
+            // Whether a 30-day figure holds more than this Mac counted: the By
+            // Model rows below, this Mac's alone, then say whose they are.
+            // Usually because another device's synced usage is in it; also
+            // when the figure is the week x 4.3 estimate, or a provider this
+            // Mac does not scan. Either way By Model does not add up to it.
+            // Half a cent of slack for the sums' rounding.
             var thisMacThirtyDay: [String: Double] = [:]
             for entry in windowEntries {
                 thisMacThirtyDay[entry.provider, default: 0] += entry.costUSD ?? 0
@@ -2764,18 +2778,11 @@ extension AppState {
                 cost > (thisMacThirtyDay[name] ?? 0) + 0.005
             }
 
-            // Token totals, provider by provider under the same rule.
-            let tokenProviders = Set(windowEntries.map(\.provider))
-                .union(cloudRows.map(\.provider))
-            func ruleTokens(_ window: ProviderUsageWindow) -> Int {
-                tokenProviders.reduce(0) { total, name in
-                    total + ProviderCardUsageBuilder.ioTokens(
-                        window, provider: name, scanEntries: windowEntries,
-                        cloudRows: cloudRows, windows: windows)
-                }
-            }
-            let todayTokens = ruleTokens(.today)
-            let thirtyDayTokens = ruleTokens(.thirtyDays)
+            // Token totals, provider by provider under the same rule: this
+            // Mac's scan and the account's rows (I/O), not a collector's own
+            // count.
+            let todayTokens = cards.values.reduce(0) { $0 + ($1.today.ioTokens ?? 0) }
+            let thirtyDayTokens = cards.values.reduce(0) { $0 + ($1.thirtyDays.ioTokens ?? 0) }
 
             // Subscription utilization (API equiv cost vs subscription price):
             // the provider's 30-day figure above. A plan covers the account,
@@ -3099,9 +3106,26 @@ extension AppState {
         }
     }
 
-    private func refreshCostForecast() async {
-        let usage = await api.fetchDailyUsage(days: 30)
-        dailyUsage = usage
+    /// How many days of the account's daily rows a refresh fetches: the
+    /// provider cards' 30 and one more. `get_daily_usage` counts its days
+    /// back from the server's date, which is UTC: west of UTC in the evening
+    /// that is already tomorrow, and 30 days from it leave out the user's
+    /// oldest day (today − 29), which `provider_summary`'s 30-day cost, keyed
+    /// to the user's own today, includes. Everything that reads the rows
+    /// (`ProviderUsageDays.fromCloud`, the card's windows,
+    /// `CostForecastEngine`) keeps only the day keys it asks for, so the
+    /// extra day never adds to a figure.
+    nonisolated static let dailyUsageFetchDays = ProviderUsageWindow.thirtyDays.dayCount + 1
+
+    /// Takes the result of fetching the account's daily rows. Rows replace
+    /// what is held, and the Cost Summary is rebuilt from them; a failed
+    /// fetch (`nil`) keeps the last good rows, so the provider cards and the
+    /// Overview do not drop to this Mac's own figures under an "All devices"
+    /// label until the next refresh. Returns the rows now held.
+    @discardableResult
+    func adoptFetchedDailyUsage(_ fetched: [DailyUsage]?) -> [DailyUsage] {
+        guard let fetched else { return dailyUsage }
+        dailyUsage = fetched
         // v1.57: the account's daily rows are half of the rule the Cost
         // Summary shares with the provider cards, and they arrive after the
         // summary was built. Rebuilt here, the summary's tokens catch up with
@@ -3109,13 +3133,21 @@ extension AppState {
         updateCostSummary()
         applyCostSummaryToDashboard()
         publishWidgetData()
+        return fetched
+    }
+
+    private func refreshCostForecast() async {
+        let fetched = await api.fetchDailyUsageRows(days: Self.dailyUsageFetchDays)
+        let usage = adoptFetchedDailyUsage(fetched)
         // v1.42 Pulse Cat M0: fill the pet ledger's cloud-only families
         // (Gemini etc. have no local JSONL) — medium confidence, never
         // overwrites a higher-confidence local slice. Stamp at fetch-completion
         // time so a stale overlapping fetch can't win the tie-break (Codex F3).
         #if os(macOS)
-        let fetchedAt = PetLedgerManager.nowMs()
-        Task { await PetLedgerManager.shared.mergeCloud(usage, observedAtUnixMs: fetchedAt) }
+        if let fetched {
+            let fetchedAt = PetLedgerManager.nowMs()
+            Task { await PetLedgerManager.shared.mergeCloud(fetched, observedAtUnixMs: fetchedAt) }
+        }
         #endif
         // Codex review on PR #17 manual verify: Forecast was
         // showing ~$8.6 spent so far / ~$37.4 month-end while

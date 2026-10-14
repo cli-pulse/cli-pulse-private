@@ -102,6 +102,18 @@ internal enum DemoDataProvider {
         // Summary's rows ($23.82 and $8.51) came to a cent less than its
         // 30-day total ($32.34). `testTheCostSummaryRowsAddUpToItsTotals`
         // holds the rows to the total.
+        //
+        // v1.57: on the Mac, Codex, Gemini and Claude carry the metadata their
+        // collectors attach (a cloud provider with quota windows and no exact
+        // cost), as every real Mac's do: the local collectors run there and
+        // their metadata survives the merge with the account's figures. The
+        // Mac card reads it: a quota provider's tokens are I/O ("85.9K I/O"),
+        // where one without it reads as an API's own count ("85.9K"). Demo
+        // had none, so the store screenshots and the card's height
+        // measurement showed a Codex row production never draws. The iPhone
+        // reads the account's figures, which carry no metadata, so Demo's
+        // stay without it there. `testDemoOnTheMacCarriesItsCollectorsMetadata`
+        // holds it to the collectors.
         let providers = [
             ProviderUsage(provider: "Codex", today_usage: 85900, week_usage: 462000,
                           estimated_cost_today: 1.03, estimated_cost_week: 5.54,
@@ -110,14 +122,16 @@ internal enum DemoDataProvider {
                           quota: 100, remaining: 8,
                           tiers: [TierDTO(name: "Weekly", quota: 100, remaining: 8)],
                           status_text: "92% used",
-                          trend: trend(base: 85000, salt: 201), recent_sessions: [], recent_errors: []),
+                          trend: trend(base: 85000, salt: 201), recent_sessions: [], recent_errors: [],
+                          metadata: macCollectorMetadata("Codex")),
             ProviderUsage(provider: "Gemini", today_usage: 0, week_usage: 0,
                           estimated_cost_today: 0, estimated_cost_week: 0,
                           cost_status_today: "Unavailable", cost_status_week: "Unavailable",
                           quota: 100, remaining: 29,
                           tiers: [TierDTO(name: "Pro", quota: 100, remaining: 29)],
                           status_text: "71% used",
-                          trend: [], recent_sessions: [], recent_errors: []),
+                          trend: [], recent_sessions: [], recent_errors: [],
+                          metadata: macCollectorMetadata("Gemini")),
             ProviderUsage(provider: "Claude", today_usage: 24800, week_usage: 132000,
                           estimated_cost_today: 0.37, estimated_cost_week: 1.98,
                           estimated_cost_30_day: 8.51,
@@ -126,7 +140,8 @@ internal enum DemoDataProvider {
                           tiers: [TierDTO(name: "5h Window", quota: 100, remaining: 47),
                                   TierDTO(name: "Weekly", quota: 100, remaining: 69)],
                           status_text: "53% used",
-                          trend: trend(base: 24000, salt: 203), recent_sessions: [], recent_errors: []),
+                          trend: trend(base: 24000, salt: 203), recent_sessions: [], recent_errors: [],
+                          metadata: macCollectorMetadata("Claude")),
         ]
 
         // Session names are identifiers, the way a real one reads (a command or
@@ -493,6 +508,19 @@ internal enum DemoDataProvider {
             }
         }
         return rows
+    }
+
+    /// The metadata `name`'s collector attaches (CodexCollector,
+    /// ClaudeSourceStrategy, GeminiCollector: a cloud provider with quota
+    /// windows and no exact cost), on the Mac, where those collectors run;
+    /// nil elsewhere, where the account's figures carry none.
+    static func macCollectorMetadata(_ name: String) -> ProviderMetadata? {
+        #if os(macOS)
+        return ProviderMetadata(display_name: name, category: "cloud",
+                                supports_exact_cost: false, supports_quota: true)
+        #else
+        return nil
+        #endif
     }
 
     /// The account's synced daily rows behind each Demo provider card's

@@ -255,6 +255,40 @@ final class UsagePanelModelTests: XCTestCase {
         XCTAssertEqual(model.scope(for: "Codex"), .thisMac)
     }
 
+    /// A provider card opens the panel counting tokens as the card does
+    /// (input + output), so the panel's total is the card's 30 Days; the
+    /// Usage Dashboard's rows open it counting each token once, as the
+    /// dashboard does. Claude's cache tells the two apart.
+    func testACardOpensThePanelCountingAsTheCardCounts() {
+        let entries = [CostUsageScanResult.DailyEntry(
+            date: "2026-10-06", provider: "Claude", model: "m",
+            inputTokens: 1_000, cachedTokens: 9_000, outputTokens: 200, costUSD: 2)]
+        let model = UsagePanelModel(notificationCenter: NotificationCenter(), now: fixedNow, loadArchive: { DailyUsageArchive() })
+        model.follow(scan: Just(CostUsageScanResult(entries: entries)).eraseToAnyPublisher(),
+                     cloud: Just([DailyUsage]()).eraseToAnyPublisher(), needsFolderAccess: Just(false).eraseToAnyPublisher())
+        XCTAssertEqual(model.providerBasis, .eachOnce)
+        let eachOnce = model.days(for: "Claude", in: .thisMac)
+        XCTAssertEqual(eachOnce.totalTokens, 10_200, "each once: input, cache and output")
+
+        let card = ProviderCardUsageBuilder.build(
+            provider: "Claude", usage: nil, scanEntries: entries, cloudRows: [], readsCloud: false,
+            windows: ProviderUsageWindows(now: fixedNow()))
+        model.open("Claude", scope: card.scope, basis: ProviderCardUsage.tokenBasis)
+        let shown = model.days(for: "Claude", in: model.scope(for: "Claude"))
+        XCTAssertEqual(shown.basis, .inputOutput)
+        XCTAssertEqual(shown.totalTokens, card.thirtyDays.ioTokens, "the panel's total is the card's 30 Days")
+        XCTAssertEqual(shown.totalTokens, 1_200)
+        XCTAssertEqual(shown.totalCost, card.thirtyDays.cost ?? -1, accuracy: 0.0001)
+
+        // The total names the count it is in: Spanish says E/S.
+        let saved = LocaleOverrideStore.shared.override
+        defer { LocaleOverrideStore.shared.set(saved) }
+        LocaleOverrideStore.shared.set("es")
+        XCTAssertTrue(shown.totalValueText.hasSuffix(" tokens de E/S"), shown.totalValueText)
+        XCTAssertTrue(eachOnce.totalValueText.hasSuffix(" tokens"), eachOnce.totalValueText)
+        XCTAssertFalse(eachOnce.totalValueText.contains("E/S"))
+    }
+
     func testTheCardOffersTheHistoryOnlyWhenThereIsUsage() {
         let now = fixedNow()
         let scan = CostUsageScanResult(entries: [entry("2026-10-06", "Claude", tokens: 10, cost: nil)])

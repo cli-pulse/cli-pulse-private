@@ -1601,6 +1601,7 @@
 "provider_panel.est_total" = "추정 합계 · 최근 %d일";
 "provider_panel.total" = "합계 · 최근 %d일";
 "provider_panel.total_value" = "%1$@ · %2$@ 토큰";
+"provider_panel.total_io_value" = "%1$@ · %2$@ I/O 토큰";
 "provider_panel.top_model" = "비용이 가장 많이 든 모델: %@";
 "provider_panel.model_tokens" = "%@ 토큰";
 "provider_panel.model_io_tokens" = "%@ I/O";
@@ -1883,8 +1884,7 @@
 
 /* Provider card: usage totals, scope, daily chart and hideable sections (v1.57) */
 "provider_card.thirty_days" = "30일";
-"provider_card.scope_this_mac_help" = "이 Mac의 세션 로그에서 집계합니다.";
-"provider_card.scope_all_devices_help" = "계정에 로그인한 모든 기기에서 동기화된 값입니다. 이 Mac에서 집계한 값이 지금까지 동기화된 값보다 크면 이 Mac의 값을 표시합니다.";
+"provider_card.scope_all_devices_help" = "계정에 로그인한 모든 기기에서 동기화된 데이터입니다. 이 Mac에서 집계한 값이 지금까지 동기화된 값보다 크면 이 Mac의 값을 표시합니다.";
 "provider_card.messages_this_mac" = "메시지 수는 이 Mac에서만 집계됩니다.";
 "provider_card.chart_tokens_help" = "최근 30일간 일별 입력 + 출력 토큰. 가장 많은 날: %@.";
 "provider_card.chart_cost_help" = "최근 30일간 일별 추정 비용. 가장 많은 날: %@.";

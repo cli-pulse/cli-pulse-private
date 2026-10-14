@@ -217,6 +217,11 @@ struct ProviderSettingsSection: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             .accessibilityLabel(L10n.providerCard.sectionsMenu)
+            // The label replaces the button's visible text for VoiceOver;
+            // the value reads it back ("Hidden: 2").
+            .accessibilityValue(hidden > 0
+                                ? L10n.providerCard.sectionsHiddenCount(hidden)
+                                : L10n.providerCard.sectionsAllShown)
         }
         .help(L10n.providerCard.sectionsHint)
     }

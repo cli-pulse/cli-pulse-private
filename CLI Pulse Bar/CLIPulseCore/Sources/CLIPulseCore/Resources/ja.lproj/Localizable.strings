@@ -1660,6 +1660,7 @@
 "provider_panel.est_total" = "推定合計 · 過去 %d 日間";
 "provider_panel.total" = "合計 · 過去 %d 日間";
 "provider_panel.total_value" = "%1$@ · %2$@ トークン";
+"provider_panel.total_io_value" = "%1$@ · %2$@ I/O トークン";
 "provider_panel.top_model" = "コストが最も高いモデル: %@";
 "provider_panel.model_tokens" = "%@ トークン";
 "provider_panel.model_io_tokens" = "%@ I/O";
@@ -1926,11 +1927,10 @@
 
 /* Provider card: usage totals, scope, daily chart and hideable sections (v1.57) */
 "provider_card.thirty_days" = "30日間";
-"provider_card.scope_this_mac_help" = "この Mac のセッションログから集計しています。";
-"provider_card.scope_all_devices_help" = "アカウントにサインインしているすべてのデバイスから同期した値です。この Mac の集計が同期済みの値より多い場合は、この Mac の値を表示します。";
+"provider_card.scope_all_devices_help" = "アカウントにサインインしているすべてのデバイスから同期されたデータです。この Mac の集計が同期済みの値より多い場合は、この Mac の値を表示します。";
 "provider_card.messages_this_mac" = "メッセージ数はこの Mac の分だけです。";
 "provider_card.chart_tokens_help" = "過去 30 日間の 1 日ごとの入力 + 出力トークン。最も多い日: %@。";
-"provider_card.chart_cost_help" = "過去 30 日間の 1 日ごとの推定コスト。最も多い日: %@。";
+"provider_card.chart_cost_help" = "過去 30 日間の 1 日ごとの推定コスト。最も高い日: %@。";
 "provider_card.sections_menu" = "カードに表示";
 "provider_card.sections_all_shown" = "すべて表示中";
 "provider_card.sections_hidden_count" = "非表示: %d";

@@ -1047,10 +1047,13 @@ public struct CostSummary: Sendable {
     /// Per-model cost breakdown for 30-day period. Always this Mac's own
     /// scan: synced rows are not broken down here.
     public let costByModel: [ModelCostDetail]
-    /// v1.57: some provider's 30-day figure above is the account's, larger
-    /// than what this Mac counted (another device's usage is in it), so
-    /// `costByModel`, which is this Mac's alone, does not add up to it and
-    /// has to say whose it is.
+    /// v1.57: some provider's 30-day figure above is larger than what this
+    /// Mac's scan counted, so `costByModel`, which is this Mac's alone, does
+    /// not add up to it and has to say whose it is. Usually because the
+    /// figure is the account's and another device's usage is in it; also
+    /// when it is the week x 4.3 estimate (an older server with no 30-day
+    /// sum), or a provider this Mac does not scan. Either way the figure is
+    /// not all priced from this Mac's logs, so it is not called exact.
     public let thirtyDayIncludesOtherDevices: Bool
     /// v1.51: how much of the cost figure above the app could actually price.
     ///

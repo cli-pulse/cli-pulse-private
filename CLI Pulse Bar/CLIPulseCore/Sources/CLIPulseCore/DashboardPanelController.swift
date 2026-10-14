@@ -64,13 +64,19 @@ public final class DashboardPanelController {
 
     /// One provider's usage history, toggled the same way. `scope`: the
     /// scope the provider card's figures are labelled with, which the panel
-    /// opens on (`UsagePanelModel.prefer(_:for:)`). Clicking again while
-    /// that provider is shown hides the panel and leaves the scope alone.
-    public func toggle(provider: String, state: AppState, scope: UsageDataScope? = nil) {
+    /// opens on (`UsagePanelModel.prefer(_:for:)`). `basis`: how the panel
+    /// counts tokens; a provider card passes its own
+    /// (`ProviderCardUsage.tokenBasis`), so the panel's days and total are
+    /// the card's figures. Clicking again while that provider is shown hides
+    /// the panel and leaves both alone.
+    public func toggle(
+        provider: String, state: AppState, scope: UsageDataScope? = nil,
+        basis: ProviderUsageDays.TokenBasis = .eachOnce
+    ) {
         attach(state)
         let mode = UsagePanelModel.Mode.provider(provider)
-        if let scope, !(isVisible && model.mode == mode) {
-            model.prefer(scope, for: provider)
+        if !(isVisible && model.mode == mode) {
+            model.open(provider, scope: scope, basis: basis)
         }
         toggle(mode)
     }

@@ -474,7 +474,8 @@ public enum L10n {
         public static func dayTokens(_ day: String, _ tokens: String) -> String {
             tr("provider_panel.day_tokens", day, tokens)
         }
-        /// The iPhone card's selected day, counted in I/O tokens like the card.
+        /// A selected day counted in I/O tokens, as the cards count: the
+        /// iPhone card's, and the Mac panel's opened from a provider card.
         public static func dayIOSummary(_ day: String, _ cost: String, _ tokens: String) -> String {
             tr("provider_panel.day_io_summary", day, cost, tokens)
         }
@@ -489,6 +490,11 @@ public enum L10n {
         /// The window's total: cost, tokens.
         public static func totalValue(_ cost: String, _ tokens: String) -> String {
             tr("provider_panel.total_value", cost, tokens)
+        }
+        /// v1.57: the window's total when the panel counts I/O tokens, as it
+        /// does opened from a provider card: cost, tokens.
+        public static func totalIOValue(_ cost: String, _ tokens: String) -> String {
+            tr("provider_panel.total_io_value", cost, tokens)
         }
         public static func topModel(_ model: String) -> String { tr("provider_panel.top_model", model) }
         public static func modelTokens(_ tokens: String) -> String { tr("provider_panel.model_tokens", tokens) }
@@ -613,7 +619,6 @@ public enum L10n {
     /// (`UsageDataScope.label`).
     public enum providerCard {
         public static var thirtyDays: String { tr("provider_card.thirty_days") }
-        public static var scopeThisMacHelp: String { tr("provider_card.scope_this_mac_help") }
         public static var scopeAllDevicesHelp: String { tr("provider_card.scope_all_devices_help") }
         public static var messagesThisMac: String { tr("provider_card.messages_this_mac") }
         public static func chartTokensHelp(_ highest: String) -> String { tr("provider_card.chart_tokens_help", highest) }

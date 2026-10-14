@@ -8,7 +8,8 @@ import XCTest
 // (民國) 0115-09-17, and one in Thailand (Buddhist by default) 2569-09-17.
 //
 // This file deliberately calls only APIs that existed before the fix, so it
-// can be run against the old code as a control.
+// can be run against the old code as a control. (v1.57: except where the API
+// it called is gone, `ProviderUsageHistory`; those lines say so.)
 
 /// Functions that take a calendar: pass one that numbers years differently and
 /// the key must still be Gregorian. Only the calendar's time zone may matter.
@@ -41,7 +42,10 @@ final class DayKeyInjectedCalendarTests: XCTestCase {
             XCTAssertEqual(APIClient.localTodayKey(now: instant, calendar: cal), "2026-09-17", id)
             XCTAssertEqual(DateRange.ymd(instant, calendar: cal), "2026-09-17", id)
             XCTAssertEqual(DateRange.rollingWeekStartYMD(from: instant, calendar: cal), "2026-09-11", id)
-            XCTAssertEqual(ProviderUsageHistory.currentLocalDayKey(calendar: cal, now: instant), "2026-09-17", id)
+            // v1.57: the provider cards' (and the usage panel's) today, from
+            // the calendar's time zone alone. It replaced v1.30's usage
+            // history, whose own today this line used to check.
+            XCTAssertEqual(ProviderUsageWindows(now: instant, timeZone: cal.timeZone).todayKey, "2026-09-17", id)
         }
     }
 
@@ -57,6 +61,10 @@ final class DayKeyInjectedCalendarTests: XCTestCase {
 
     /// The usage-history chart on a Japanese-calendar iPhone: the server's rows
     /// are Gregorian, so a window ending at "0008-09-17" showed all zeros.
+    ///
+    /// v1.57: the charts read `ProviderUsageDays` now (the iPhone card, the
+    /// Mac card and the panel it opens); v1.30's `ProviderUsageHistory`,
+    /// which this used to call, is gone. The same rows, the same days.
     func test_usage_history_finds_the_servers_rows_under_the_japanese_calendar() {
         let jp = calendar(.japanese, "Asia/Tokyo")
         let rows = [
@@ -65,10 +73,11 @@ final class DayKeyInjectedCalendarTests: XCTestCase {
             DailyUsage(date: "2026-09-17", provider: "Codex", model: "gpt-5",
                        inputTokens: 300, cachedTokens: 0, outputTokens: 40, cost: 2),
         ]
-        let today = ProviderUsageHistory.currentLocalDayKey(calendar: jp, now: instant)
-        let series = ProviderUsageHistory.series(from: rows, provider: "Codex", days: 3, todayKey: today, calendar: jp)
-        XCTAssertEqual(series.map(\.dateKey), ["2026-09-15", "2026-09-16", "2026-09-17"])
-        XCTAssertEqual(series.map(\.ioTokens), [0, 120, 340])
+        let today = ProviderUsageWindows(now: instant, timeZone: jp.timeZone).todayKey
+        let days = ProviderUsageDays.fromCloud(
+            rows, provider: "Codex", basis: .inputOutput, days: 3, todayKey: today, timeZone: jp.timeZone)
+        XCTAssertEqual(days.days.map(\.dateKey), ["2026-09-15", "2026-09-16", "2026-09-17"])
+        XCTAssertEqual(days.days.map(\.tokens), [0, 120, 340])
     }
 
     /// Demo mode feeds the same archive the heatmap reads with Gregorian keys.
