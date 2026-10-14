@@ -529,8 +529,10 @@ internal enum DemoDataProvider {
     }
 
     /// The account's synced daily rows behind each Demo provider card's
-    /// usage row and small chart on the Mac (`ProviderCardUsageBuilder`): the
-    /// last 30 days of Codex and Claude, the rows `get_daily_usage` returns.
+    /// usage row and small chart on the Mac (`ProviderCardUsageBuilder`), and
+    /// behind the iPhone and iPad card's chart and the day it lists by model
+    /// (`ProviderUsageDays.fromCloud`): the last 30 days of Codex and Claude,
+    /// the rows `get_daily_usage` returns.
     ///
     /// They add up to the figures `generate()` gives each provider, because a
     /// real account's do: the server's `provider_summary` sums these same rows
@@ -644,12 +646,19 @@ extension AppState {
         refreshThisMacPairing()
 
         applyDemoData(demo)
-        #if os(macOS)
-        // Demo is a signed-in account, and on the Mac a signed-in provider
-        // card reads the account's daily rows. The iPhone's cards draw their
-        // own chart from the same rows and are left as they were.
+        // Demo is a signed-in account, and a signed-in account's provider
+        // cards read its synced daily rows on every platform: the Mac card's
+        // usage row and small chart, and the iPhone and iPad card's chart with
+        // its Token / Cost choice and the day it lists by model. These rows
+        // used to be the Mac's alone, so Try Demo on an iPhone or iPad, the
+        // Demo App Review uses, never drew that chart. Nothing else on the
+        // iPhone, iPad, Watch or widgets reads them in Demo: the Overview and
+        // the Cost Summary take the providers' own figures (which these rows
+        // add up to), the forecast is built only by a cloud refresh, the
+        // widget payload carries no daily rows, and a Watch never sees the
+        // phone's Demo. Not behind a platform check, so the Mac's tests run
+        // the iPhone's Demo too (`DemoProviderCardHistoryTests`).
         dailyUsage = DemoDataProvider.providerCardHistory(providers: demo.providers)
-        #endif
         buildProviderDetails()
         updateCostSummary()
         publishWidgetData()

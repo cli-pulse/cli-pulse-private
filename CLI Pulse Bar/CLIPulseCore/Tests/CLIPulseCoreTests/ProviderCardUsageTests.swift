@@ -724,9 +724,9 @@ final class ProviderCardTodayAgreesTests: XCTestCase {
     }
 }
 
-/// Demo's account rows behind the Mac cards add up to the figures Demo gives
-/// each provider, as a real account's do (`provider_summary` sums the same
-/// rows over the same windows).
+/// Demo's account rows behind the provider cards (the Mac's, and the iPhone
+/// and iPad's chart) add up to the figures Demo gives each provider, as a real
+/// account's do (`provider_summary` sums the same rows over the same windows).
 final class DemoProviderCardHistoryTests: XCTestCase {
 
     private func cents(_ value: Double) -> Int { Int((value * 100).rounded()) }
@@ -825,6 +825,167 @@ final class DemoProviderCardHistoryTests: XCTestCase {
         XCTAssertTrue(codex.chart(.tokens).hasData)
         XCTAssertEqual(codex.today.cost ?? -1, 1.03, accuracy: 0.0001)
         XCTAssertEqual(codex.today.ioTokens, 85_900)
+    }
+
+    /// Try Demo on an iPhone or iPad (the Demo App Review uses) is the same
+    /// signed-in account, so its cards get the same rows, and draw them the
+    /// way `iOSEnhancedProviderCard` does: `ProviderUsageDays.fromCloud` over
+    /// `dailyUsage`, counting I/O. What the chart and a tapped day show then
+    /// agrees with the card's own Today and This Week and with the 30-Day
+    /// figure above the cards, as a real account's rows do, and only Codex and
+    /// Claude have a chart: nothing records Gemini's usage.
+    @MainActor
+    func testDemoGivesTheIPhoneCardsTheSameRows() throws {
+        let state = demoState()
+        let now = Date()
+        let todayKey = DayKey.string(from: now)
+        let windows = ProviderUsageWindows(now: now)
+        var drawn: [String] = []
+        for usage in state.providers {
+            // As `iOSEnhancedProviderCard` builds it.
+            let days = ProviderUsageDays.fromCloud(
+                state.dailyUsage, provider: usage.provider, basis: .inputOutput, todayKey: todayKey)
+            guard usage.estimated_cost_30_day > 0 else {
+                XCTAssertFalse(days.hasUsage, "\(usage.provider) has a chart no real account's rows draw")
+                continue
+            }
+            XCTAssertTrue(days.hasUsage, usage.provider)
+            XCTAssertEqual(days.scope, .allDevices, usage.provider)
+            XCTAssertEqual(days.days.count, 30, usage.provider)
+            let today = try XCTUnwrap(days.day(todayKey), usage.provider)
+            XCTAssertEqual(today.tokens, usage.today_usage, "\(usage.provider): the chart's today against the card's Today")
+            XCTAssertEqual(cents(today.cost), cents(usage.estimated_cost_today), usage.provider)
+            let week = days.days.filter { windows.contains($0.dateKey, in: .week) }
+            XCTAssertEqual(week.count, 7, usage.provider)
+            XCTAssertEqual(week.reduce(0) { $0 + $1.tokens }, usage.week_usage,
+                           "\(usage.provider): the chart's week against the card's This Week")
+            XCTAssertEqual(cents(week.reduce(0) { $0 + $1.cost }), cents(usage.estimated_cost_week), usage.provider)
+            XCTAssertEqual(cents(days.days.reduce(0) { $0 + $1.cost }), cents(usage.estimated_cost_30_day),
+                           usage.provider)
+            for day in days.days where day.hasUsage {
+                // A tapped day lists its one model, priced, as a real
+                // account's priced model is: never the dash of a synced row
+                // that arrived with no cost.
+                XCTAssertEqual(day.models.count, 1, "\(usage.provider) \(day.dateKey)")
+                XCTAssertFalse(day.hasUnknownCost, "\(usage.provider) \(day.dateKey) has tokens and no cost")
+                XCTAssertGreaterThan(day.tokens, 0, "\(usage.provider) \(day.dateKey) has a cost and no tokens")
+            }
+            drawn.append(usage.provider)
+        }
+        XCTAssertEqual(Set(drawn), ["Codex", "Claude"])
+        // The Providers tab's Today and 30-Day Est. above the cards are the
+        // same rows added up.
+        func rowCents(_ window: ProviderUsageWindow) -> Int {
+            cents(state.dailyUsage.filter { windows.contains($0.date, in: window) }.reduce(0) { $0 + $1.cost })
+        }
+        XCTAssertEqual(cents(state.costSummary.todayTotal), rowCents(.today))
+        XCTAssertEqual(cents(state.costSummary.thirtyDayTotal), rowCents(.thirtyDays))
+    }
+
+    /// No day of Demo's rows, whenever Demo is entered, has tokens with no
+    /// cost or a cost with no tokens: the iPhone's day detail would show it
+    /// as a synced row whose cost is unknown, which a priced model's row
+    /// never is. Checked over two months of days, since each day's cents are
+    /// the month's shared out by that day's weight.
+    func testNoDayHasTokensWithoutACost() {
+        let tz = TimeZone(identifier: "America/Los_Angeles")!
+        let providers = DemoDataProvider.generate().providers
+        for day in 0..<60 {
+            let now = Date(timeIntervalSince1970: 1_791_342_000 + Double(day) * 86_400)
+            for row in DemoDataProvider.providerCardHistory(providers: providers, now: now, timeZone: tz) {
+                let io = row.inputTokens + row.outputTokens
+                XCTAssertEqual(io > 0, row.cost > 0, "\(row.provider) \(row.date) entered \(now)")
+            }
+        }
+    }
+
+    /// The card's chart in zh-Hans, as Try Demo draws it: the section title
+    /// and the day a tap selects, with Demo's own figures.
+    @MainActor
+    func testDemosIPhoneCardInZhHans() throws {
+        let saved = LocaleOverrideStore.shared.override
+        defer { LocaleOverrideStore.shared.set(saved) }
+        LocaleOverrideStore.shared.set("zh-Hans")
+        let state = demoState()
+        let todayKey = DayKey.string(from: Date())
+        let days = ProviderUsageDays.fromCloud(
+            state.dailyUsage, provider: "Codex", basis: .inputOutput, todayKey: todayKey)
+        // `ProviderUsageHistorySection`'s title.
+        XCTAssertEqual(L10n.widget.usageTitle + " · " + days.scope.label, "用量 · 所有设备")
+        let today = try XCTUnwrap(days.day(todayKey))
+        XCTAssertTrue(today.dateText.hasSuffix("日"), today.dateText)
+        XCTAssertEqual(today.summary(basis: days.basis, showsCost: true),
+                       today.dateText + "：" + CostFormatter.format(1.03) + " · 85.9K I/O token")
+        XCTAssertEqual(today.summary(basis: days.basis, showsCost: false),
+                       today.dateText + "：85.9K I/O token")
+        // The Token / Cost picker beside the title.
+        XCTAssertEqual(UsageChartMetric.tokens.label, "token")
+        XCTAssertEqual(UsageChartMetric.cost.label, "费用")
+        XCTAssertEqual(L10n.providerPanel.closeDay, "隐藏当天明细")
+    }
+
+    /// The tests above run on the Mac, the only place `swift test` runs. They
+    /// speak for the iPhone and iPad only while Demo gives the rows on every
+    /// platform alike, and while the iPhone and iPad card read them as the
+    /// tests do. Both are read from the sources here.
+    func testTheIPhoneReadsDemosRowsAsTheseTestsDo() throws {
+        let demo = try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/DemoDataProvider.swift"),
+            encoding: .utf8)
+        let lines = demo.components(separatedBy: "\n")
+        let start = try XCTUnwrap(lines.firstIndex { $0.contains("public func enterDemoMode()") },
+                                  "enterDemoMode moved; recheck where Demo gives the rows")
+        let end = try XCTUnwrap(lines[start...].firstIndex { $0 == "    }" }, "enterDemoMode has no end")
+        let body = lines[start..<end]
+        let assignment = try XCTUnwrap(
+            body.firstIndex { $0.contains("dailyUsage = DemoDataProvider.providerCardHistory(providers: demo.providers)") },
+            "enterDemoMode no longer gives the cards Demo's rows")
+        var depth = 0
+        for line in lines[start..<assignment] {
+            let code = line.trimmingCharacters(in: .whitespaces)
+            if code.hasPrefix("#if") { depth += 1 }
+            if code.hasPrefix("#endif") { depth -= 1 }
+        }
+        XCTAssertEqual(depth, 0, "Demo's rows are behind a compile-time check: not every platform's Demo gets them")
+
+        let tab = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.deletingLastPathComponent()
+                .appendingPathComponent("CLI Pulse Bar iOS/iOSProvidersTab.swift"),
+            encoding: .utf8))
+        // The iPad grid's card and the iPhone list's card.
+        XCTAssertEqual(tab.components(separatedBy: "dailyUsage: state.dailyUsage").count - 1, 2,
+                       "an iPhone or iPad provider card no longer gets the account's rows")
+        let read = try NSRegularExpression(
+            pattern: #"ProviderUsageDays\.fromCloud\(\s*dailyUsage,\s*provider: provider\.provider,\s*basis: \.inputOutput,"#)
+        XCTAssertNotNil(read.firstMatch(in: tab, range: NSRange(tab.startIndex..., in: tab)),
+                        "the iPhone card reads its rows another way; make these tests read them that way")
+    }
+
+    @MainActor
+    private func demoState() -> AppState {
+        let suite = "DemoProviderCardHistoryTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let state = AppState(
+            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            defaults: defaults,
+            performLaunchSetup: false)
+        state.enterDemoMode()
+        return state
+    }
+
+    /// `CLI Pulse Bar/CLIPulseCore`.
+    private static var coreRoot: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // CLIPulseCoreTests
+            .deletingLastPathComponent()   // Tests
+            .deletingLastPathComponent()   // CLIPulseCore
+    }
+
+    private static func codeOnly(_ text: String) -> String {
+        text.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
     }
 
     /// On the Mac, Demo's providers carry the metadata their collectors
