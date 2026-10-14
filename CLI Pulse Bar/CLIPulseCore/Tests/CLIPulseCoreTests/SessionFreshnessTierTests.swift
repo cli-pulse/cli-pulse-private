@@ -51,8 +51,8 @@ final class SessionFreshnessTierTests: XCTestCase {
 
     func test_process_session_at_exact_window_is_activeProcess() {
         let now = referenceNow
-        // 180s window — boundary inclusive.
-        let s = make(id: "proc-12345", ageSeconds: 180, now: now)
+        // 300s window (two 120 s producer cycles + a minute) — boundary inclusive.
+        let s = make(id: "proc-12345", ageSeconds: 300, now: now)
         XCTAssertEqual(C.classify(s, now: now), .activeProcess)
     }
 
@@ -61,8 +61,18 @@ final class SessionFreshnessTierTests: XCTestCase {
         // helper has stopped refreshing — don't demote to Recent
         // (which is a JSONL-only signal), just hide.
         let now = referenceNow
-        let s = make(id: "proc-12345", ageSeconds: 200, now: now)
+        let s = make(id: "proc-12345", ageSeconds: 301, now: now)
         XCTAssertEqual(C.classify(s, now: now), .hidden)
+    }
+
+    func test_local_scanner_session_is_classified_like_a_proc_one() {
+        // LocalScanner's rows (the Developer ID app and the LoginItem
+        // helper) are `local-<pid>`. They read "Recent activity" while
+        // the classifier tested for `proc-` alone.
+        let now = referenceNow
+        XCTAssertEqual(C.classify(make(id: "local-12345", ageSeconds: 30, now: now), now: now), .activeProcess)
+        XCTAssertEqual(C.classify(make(id: "local-12345", ageSeconds: 300, now: now), now: now), .activeProcess)
+        XCTAssertEqual(C.classify(make(id: "local-12345", ageSeconds: 600, now: now), now: now), .hidden)
     }
 
     // MARK: - JSONL-synthesized sessions
@@ -97,13 +107,13 @@ final class SessionFreshnessTierTests: XCTestCase {
         XCTAssertEqual(C.classify(s, now: now), .hidden)
     }
 
-    // MARK: - cloud rows from other devices (no prefix)
+    // MARK: - rows with no prefix
 
     func test_cloud_row_without_prefix_uses_jsonl_age_tiers() {
-        // Cloud sessions uploaded by other devices may not carry the
-        // `proc-` / `jsonl-` prefix. Treat them as JSONL-equivalent —
-        // we don't know whether a remote process is alive, only what
-        // Supabase last persisted.
+        // No producer uploads a row without a scan prefix today (every
+        // cloud session is `local-` or `proc-`), but one that did would
+        // be treated as JSONL-equivalent — we don't know whether a
+        // remote process is alive, only what Supabase last persisted.
         let now = referenceNow
         let id = "cloud-uuid-from-other-device"
         let fresh = make(id: id, ageSeconds: 60, now: now)
@@ -403,28 +413,34 @@ final class SessionFreshnessTierTests: XCTestCase {
         XCTAssertEqual(count, 0)
     }
 
-    // MARK: - intentional divergence from filterCurrent
+    // MARK: - against filterCurrent
 
-    /// Documents that the classifier intentionally diverges from the
-    /// older `filterCurrent` 300s rule:
-    ///   * Process-confirmed rows are TIGHTER (180s) — helper refreshes
-    ///     them every cycle, so a stale `proc-` row is genuinely dead.
-    ///   * JSONL rows older than 300s are LOOSER — `filterCurrent`
-    ///     drops them, the new tier system shows them in the Recent
-    ///     section up to 30 min.
-    /// `filterCurrent` itself is unchanged so the cloud merge route
-    /// keeps its prior contract; the partition is the new surface.
-    func test_classifier_diverges_from_filterCurrent_at_proc_180_to_300() {
+    /// Process-scan rows (`local-` and `proc-`) read Running exactly as long
+    /// as `filterCurrent`'s 300 s rule keeps them, so a row a refresh lists
+    /// is never hidden from the list before the next refresh.
+    ///
+    /// It used to be tighter (180 s), on the premise that the helper
+    /// rewrites its rows every 60 s. Every producer's default cycle is
+    /// 120 s, so with the app's 2-minute refresh a live process could be
+    /// 240 s old in the list and was hidden.
+    func test_classifier_agrees_with_filterCurrent_on_scan_rows() {
         let now = referenceNow
-        let s = make(id: "proc-1", ageSeconds: 200, now: now)
-        // filterCurrent (300s window) keeps it…
-        XCTAssertEqual(
-            SessionFreshnessFilter.filterCurrent([s], now: now).count, 1
-        )
-        // …but the new tier classifier hides it (process window 180s).
-        XCTAssertEqual(C.classify(s, now: now), .hidden)
+        for id in ["proc-1", "local-1"] {
+            for age: TimeInterval in [200, 240, 300] {
+                let s = make(id: id, ageSeconds: age, now: now)
+                XCTAssertEqual(SessionFreshnessFilter.filterCurrent([s], now: now).count, 1, "\(id) at \(age) s")
+                XCTAssertEqual(C.classify(s, now: now), .activeProcess, "\(id) at \(age) s")
+            }
+            let stale = make(id: id, ageSeconds: 301, now: now)
+            XCTAssertEqual(SessionFreshnessFilter.filterCurrent([stale], now: now).count, 0, id)
+            XCTAssertEqual(C.classify(stale, now: now), .hidden, id)
+        }
     }
 
+    /// JSONL rows older than 300 s are LOOSER: `filterCurrent` drops
+    /// them, the tier system shows them in the Recent section up to
+    /// 30 min. `filterCurrent` itself is unchanged so the cloud merge
+    /// route keeps its prior contract; the partition is the new surface.
     func test_classifier_keeps_jsonl_past_filterCurrent_window() {
         let now = referenceNow
         let s = make(id: "jsonl-claude-a", ageSeconds: 600, now: now)

@@ -114,20 +114,21 @@ public enum AlertGenerator {
             }
 
             // Rule 3: Session requests >= 400 (long-running)
-            // Skips every process-scan row: LocalScanner's `local-<pid>` and
-            // the Python helper's `proc-<pid>`. A scan row's `requests` is
-            // only its runtime / 45, so any process open five hours reaches
-            // 400, Claude.app and other GUI apps included. v1.16.1 meant to
-            // skip these rows (helper/system_collector.py) but tested for
-            // `proc-` alone, which LocalScanner never writes, so on a Mac the
-            // alert kept firing.
+            // Skips every process-scan row (`SessionRecord.isProcessScanRow`):
+            // LocalScanner's `local-<pid>` and the Companion CLI's
+            // `proc-<pid>`. A scan row's `requests` is only its runtime / 45,
+            // so any process open five hours reaches 400, Claude.app and
+            // other GUI apps included. v1.16.1 meant to skip these rows
+            // (helper/system_collector.py) but tested for `proc-` alone,
+            // which LocalScanner never writes, so on a Mac the alert kept
+            // firing.
             //
             // This rule therefore never fires in the shipped app. Its one
             // caller, HelperDaemon.collect, passes LocalScanner.scan().sessions,
             // and every one of those is a scan row. Only a session with a real
-            // id would raise it, and no caller passes one.
-            let isProcessDetected = session.id.hasPrefix(LocalScanner.sessionIDPrefix)
-                || session.id.hasPrefix("proc-")
+            // id would raise it, and no caller passes one. Integrations no
+            // longer offers it as a webhook event (`WebhookEventFilter`).
+            let isProcessDetected = session.isProcessScanRow
             if !isProcessDetected, session.requests >= 400 {
                 alerts.append([
                     "id": "session-long-\(sid)",

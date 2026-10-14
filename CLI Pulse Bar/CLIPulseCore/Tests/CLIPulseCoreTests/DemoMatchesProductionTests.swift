@@ -251,7 +251,7 @@ final class DemoMatchesProductionTests: XCTestCase {
                 """)
         }
         // Positive control: the rule still covers sessions.
-        XCTAssertGreaterThanOrEqual(onMac.count, 3, "Demo's Mac sessions: \(onMac)")
+        XCTAssertGreaterThanOrEqual(onMac.count, 2, "Demo's Mac sessions: \(onMac)")
 
         let daemon = Self.codeOnly(try String(
             contentsOf: Self.appSourceRoot.appendingPathComponent("CLIPulseHelper/HelperDaemon.swift"), encoding: .utf8))
@@ -397,10 +397,74 @@ final class DemoMatchesProductionTests: XCTestCase {
                                      "\(alert.id) was raised after the refresh that shows it")
         }
 
-        // Positive control: the case this is about. Demo still has Recent rows
-        // now, so the Sessions screens keep their second section.
-        let recent = SessionFreshnessTierClassifier.partition(demo.sessions, now: Date()).recent
-        XCTAssertFalse(recent.isEmpty, "Demo has no Recent session; this test checks less than it says")
+        // Positive control: there are sessions for the filter to keep.
+        XCTAssertFalse(demo.sessions.isEmpty, "Demo has no session; this test checks less than it says")
+    }
+
+    /// Every session in the cloud is a process-scan row, with its producer's
+    /// id: `local-<pid>` from the LoginItem helper (LocalScanner) on a Mac,
+    /// `proc-<pid>` from the Companion CLI on a Mac and from the desktop app
+    /// off one. Such a row reads Running while its producer rewrites it and is
+    /// hidden after, never Recent, and the Sessions tab hides its usage, cost
+    /// and requests. Demo's ids were "s1"…"s5", which no producer writes, so
+    /// Demo drew every session as log activity ("Recent activity", with
+    /// figures), as the tab drew a Developer ID Mac's rows while it tested for
+    /// `proc-` alone, and kept two rows to fill a Recent section no account
+    /// can have.
+    func testDemoSessionsAreProcessScanRowsAsEveryCloudSessionIs() throws {
+        let demo = DemoDataProvider.generate()
+        let systems = Dictionary(uniqueKeysWithValues: demo.devices.map { ($0.name, $0.system) })
+        XCTAssertFalse(demo.sessions.isEmpty, "Demo has no sessions; this test checks nothing")
+        let now = Date()
+        for session in demo.sessions {
+            XCTAssertTrue(session.isProcessScanRow, "\(session.name) has an id no producer writes: \(session.id)")
+            let system = try XCTUnwrap(systems[session.device_name], "\(session.name) is on no Demo device")
+            if !system.hasPrefix("macOS") {
+                XCTAssertTrue(session.id.hasPrefix(SessionRecord.companionScanIDPrefix),
+                              "\(session.name) on \(system): only the desktop app writes sessions there, as proc-")
+            } else if session.estimated_cost > 0 {
+                XCTAssertTrue(session.id.hasPrefix(SessionRecord.localScanIDPrefix),
+                              "\(session.name) has the LoginItem helper's flat-rate cost, so its id is local-")
+            }
+            XCTAssertEqual(SessionFreshnessTierClassifier.classify(session, now: now), .activeProcess,
+                           "\(session.name) does not read Running")
+            XCTAssertTrue(session.hasProcessHeuristicMetrics, "\(session.name) shows usage, cost and requests")
+        }
+        XCTAssertEqual(SessionFreshnessTierClassifier.partition(demo.sessions, now: now).recent.map(\.name), [],
+                       "a Recent row, which no cloud session can be")
+
+        // The production half: the ids each producer writes and uploads.
+        let repoRoot = Self.appSourceRoot.deletingLastPathComponent()
+        let scanner = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/LocalScanner.swift"), encoding: .utf8))
+        XCTAssertTrue(scanner.contains(#"id: "\(Self.sessionIDPrefix)\(pid)","#), "LocalScanner names its rows another way")
+        XCTAssertTrue(scanner.contains("static let sessionIDPrefix = SessionRecord.localScanIDPrefix"),
+                      "LocalScanner's prefix is no longer the shared one")
+        let daemon = Self.codeOnly(try String(
+            contentsOf: Self.appSourceRoot.appendingPathComponent("CLIPulseHelper/HelperDaemon.swift"), encoding: .utf8))
+        XCTAssertTrue(daemon.contains(#""id": session.id,"#), "the LoginItem helper uploads its rows under another id")
+        let python = try String(
+            contentsOf: repoRoot.appendingPathComponent("helper/system_collector.py"), encoding: .utf8)
+        XCTAssertTrue(python.contains(#"session_id=f"proc-{row['pid']}","#), "the Companion CLI names its rows another way")
+    }
+
+    /// The badge each Demo session shows, in a language other than English:
+    /// the status pill, "运行中", which the views draw for `.activeProcess`,
+    /// not the log-activity chip, "最近活动", that Demo's rows used to show.
+    func testDemoSessionsBadgeAsRunningInZhHans() {
+        let store = LocaleOverrideStore.shared
+        let previous = store.override
+        store.set("zh-Hans")
+        defer { store.set(previous) }
+        let demo = DemoDataProvider.generate()
+        XCTAssertFalse(demo.sessions.isEmpty)
+        let now = Date()
+        for session in demo.sessions {
+            let tier = SessionFreshnessTierClassifier.classify(session, now: now)
+            XCTAssertEqual(tier, .activeProcess, session.name)
+            XCTAssertEqual(L10n.status.localized(session.status), "运行中", session.name)
+            XCTAssertNotEqual(tier.badge, FreshnessTier.activeJsonl.badge, session.name)
+        }
     }
 
     /// The refresh is recent enough that the rows written at it are still
@@ -408,8 +472,8 @@ final class DemoMatchesProductionTests: XCTestCase {
     /// real iPhone is in this state between two automatic refreshes.
     func testDemosRefreshIsOneARealIPhoneIsBetween() throws {
         XCTAssertGreaterThan(DemoDataProvider.refreshAge, 0)
-        XCTAssertLessThan(DemoDataProvider.refreshAge, SessionFreshnessTierClassifier.jsonlActiveWindow,
-                          "the rows written at Demo's refresh are no longer Active")
+        XCTAssertLessThan(DemoDataProvider.refreshAge, SessionFreshnessTierClassifier.processFreshnessWindow,
+                          "the rows written at Demo's refresh no longer read Running")
         let appState = Self.codeOnly(try String(
             contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/AppState.swift"), encoding: .utf8))
         let declaration = try NSRegularExpression(
@@ -484,9 +548,11 @@ final class DemoMatchesProductionTests: XCTestCase {
     /// one on helper-heartbeat, a process scan on a Linux server, which
     /// nothing raises. On a Mac the LoginItem helper's skip used to test for
     /// `proc-` alone, while its LocalScanner rows are `local-`, so the rule
-    /// fired there for every process open five hours. It skips both now, and
+    /// fired there for every detected AI tool open five hours. It skips every
+    /// scan row now (`SessionRecord.isProcessScanRow`), and
     /// `AlertGeneratorTests.testLongRunAlertSkipsALocalScannerSession` runs it
-    /// on such a row.
+    /// on such a row. The Companion CLI's rule is as dead: its sync passes it
+    /// only the scan's `proc-` rows.
     func testDemoRaisesNoLongRunningAlert() throws {
         let demo = DemoDataProvider.generate()
         let raised = demo.alerts.filter { $0.type == "Session Too Long" || $0.id.hasPrefix("session-long-") }
@@ -513,13 +579,22 @@ final class DemoMatchesProductionTests: XCTestCase {
                       "the Python helper's long-running rule no longer skips process-scan rows")
         XCTAssertTrue(python.contains(#"session_id=f"proc-{row['pid']}","#),
                       "the Python helper's scan no longer names its rows proc-")
+        // ...and its sync passes the rule only the scan's rows, so it never fires.
+        let companion = try String(
+            contentsOf: Self.appSourceRoot.deletingLastPathComponent().appendingPathComponent("helper/cli_pulse_helper.py"),
+            encoding: .utf8)
+        XCTAssertTrue(companion.contains("collected_sessions = collect_sessions()")
+                      && companion.contains("collect_alerts(collected_sessions, device_snapshot, device_id=config.device_id)"),
+                      "the Companion CLI's sync passes the alert rules other sessions; can the long-running rule fire?")
         let generator = Self.codeOnly(try String(
             contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/AlertGenerator.swift"),
             encoding: .utf8))
         XCTAssertTrue(generator.contains("if !isProcessDetected, session.requests >= 400 {"),
                       "the Swift helper's long-running rule changed; recheck which sessions raise it")
-        XCTAssertTrue(generator.contains("let isProcessDetected = session.id.hasPrefix(LocalScanner.sessionIDPrefix)"),
+        XCTAssertTrue(generator.contains("let isProcessDetected = session.isProcessScanRow"),
                       "the Swift helper's long-running rule no longer skips LocalScanner's rows, the only ones it is passed")
+        XCTAssertTrue(SessionRecord.isProcessScanID("\(SessionRecord.localScanIDPrefix)4242"),
+                      "the skip does not cover LocalScanner's rows")
         let scanner = Self.codeOnly(try String(
             contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/LocalScanner.swift"),
             encoding: .utf8))
@@ -532,9 +607,9 @@ final class DemoMatchesProductionTests: XCTestCase {
     /// device id (`cpu-spike-<id>`, which also groups and suppresses it),
     /// with no device name, which helper_sync stores as sent. The desktop
     /// app, which reports Linux and Windows machines, has no device-CPU rule,
-    /// and the Python helper whose keys Demo's alert carried is not shipped
-    /// (docs/ARCHITECTURE.md). Demo had the alert on lab-server-01, an Ubuntu
-    /// server.
+    /// and the Python helper whose keys Demo's alert carried, the Companion
+    /// CLI, ships only as a macOS package (docs/ARCHITECTURE.md). Demo had the
+    /// alert on lab-server-01, an Ubuntu server.
     func testTheDeviceCPUAlertIsOneTheMacHelperRaises() throws {
         let demo = DemoDataProvider.generate()
         let raised = demo.alerts.filter { $0.type == "Usage Spike" && $0.source_kind == "device" }
@@ -854,12 +929,14 @@ final class DemoMatchesProductionTests: XCTestCase {
     /// cloud route passes both through: it raises the sessions figure only to
     /// the rows it lists, never lowers it, and leaves the alerts figure as the
     /// server sent it. helper_sync turns a session 'Ended' only ten minutes
-    /// after its process is gone, so the Sessions tab's Recent rows still
-    /// count; and the quota alert is the app's own, raised as it refreshes
-    /// and never uploaded (the app only reads and updates alert rows), so it
-    /// is not counted. Demo's tiles read 3 and 3, the Active section and the
-    /// merged list, where this account's dashboard reads 5 and 2; a Watch
-    /// then said 3 sessions on its Pulse chip and "5 Running" on its Live page.
+    /// after its process is gone, so a row the Sessions tab no longer lists
+    /// still counts until then; and the quota alert is the app's own, raised
+    /// as it refreshes and never uploaded (the app only reads and updates
+    /// alert rows), so it is not counted. Demo's tiles once read 3 and 3, the
+    /// Active section and the merged list, where that account's dashboard
+    /// read 5 and 2; a Watch then said 3 sessions on its Pulse chip and
+    /// "5 Running" on its Live page. Every Demo session is now running, so
+    /// the tile, "N running" and the list agree.
     func testTheOverviewTilesCountWhatDashboardSummaryCounts() throws {
         let demo = DemoDataProvider.generate()
         XCTAssertEqual(demo.dashboard.active_sessions, demo.sessions.filter { $0.status == "Running" }.count,
@@ -871,9 +948,12 @@ final class DemoMatchesProductionTests: XCTestCase {
         let cloudRows = demo.alerts.filter { !$0.id.hasPrefix("quota-") }
         XCTAssertEqual(demo.dashboard.unresolved_alerts, cloudRows.filter { !$0.is_resolved }.count,
                        "the Alerts tile counts an alert the cloud does not hold")
-        // Positive controls: the cases this is about, where a tile and a list differ.
-        XCTAssertFalse(SessionFreshnessTierClassifier.partition(demo.sessions, now: Date()).recent.isEmpty,
-                       "Demo has no Recent session; this test checks less than it says")
+        let running = demo.sessions.filter {
+            SessionFreshnessTierClassifier.classify($0, now: Date()) == .activeProcess
+        }
+        XCTAssertEqual(demo.dashboard.active_sessions, running.count,
+                       "the Sessions tile and the Sessions tab's \"N running\" disagree, which Demo has no row to explain")
+        // Positive control: the case this is about, where a tile and a list differ.
         XCTAssertTrue(demo.alerts.contains { $0.id.hasPrefix("quota-") && !$0.is_resolved },
                       "Demo has no quota alert; this test checks less than it says")
 
@@ -1116,8 +1196,8 @@ final class DemoCostSummaryRowsTests: XCTestCase {
     }
 
     /// Demo shows its own refresh as the last one ("Updated 1 min ago"), not
-    /// the moment it was entered: its Recent sessions are older than a
-    /// refresh keeps, so only an earlier refresh can have left them.
+    /// the moment it was entered: its sessions and alerts are dated at or
+    /// before that refresh, as a real account's are between two refreshes.
     func testDemoShowsItsRefreshAsTheLastOne() throws {
         let state = AppState(
             runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
@@ -1129,8 +1209,12 @@ final class DemoCostSummaryRowsTests: XCTestCase {
                        "Demo's last refresh is not the refresh its data came from")
         XCTAssertEqual(SessionFreshnessFilter.filterCurrent(state.sessions, now: lastRefresh).count,
                        state.sessions.count, "a session the refresh shown would have dropped")
-        // Positive control: there are Recent rows for it to explain.
-        XCTAssertFalse(SessionFreshnessTierClassifier.partition(state.sessions, now: Date()).recent.isEmpty)
+        // Positive control: there are sessions it wrote.
+        let written = state.sessions.compactMap { sharedISO8601Parse($0.last_active_at) }
+        XCTAssertFalse(written.isEmpty, "Demo shows no session")
+        for date in written {
+            XCTAssertEqual(date.timeIntervalSince(lastRefresh), 0, accuracy: 1, "a session not written at the refresh")
+        }
     }
 }
 

@@ -211,7 +211,9 @@ struct iOSSessionsTab: View {
                         .foregroundStyle(PulseTheme.providerColor(session.provider))
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(session.name)
+                        // The iPhone row's title: a process-scan row's
+                        // provider and project, not its command line.
+                        Text(session.displayName)
                             .font(.subheadline.weight(.medium))
                             .lineLimit(1)
                         // One line: beside a long badge ("En ejecución") the
@@ -292,8 +294,13 @@ struct SessionStatusBadge: View {
 // MARK: - Managed session detail (iOS)
 
 
-// MARK: - Session Detail View (existing analytics view, unchanged)
+// MARK: - Session Detail View
 
+/// A session's detail: the iPhone pushes it, the iPad shows it beside the list.
+/// It follows the row: the row's title (`displayName`), its badge, and for a
+/// process-scan row none of the usage, cost or requests the row hides
+/// (`SessionRecord.hasProcessHeuristicMetrics`), nor the cost badge that
+/// describes them. Those figures are runtime x a formula, not usage.
 struct SessionDetailView: View {
     let session: SessionRecord
     let showCost: Bool
@@ -311,7 +318,7 @@ struct SessionDetailView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(session.name)
+                        Text(session.displayName)
                             .font(.title3.weight(.bold))
                         HStack(spacing: 6) {
                             // The badge the session's row shows: on iPad the
@@ -323,7 +330,9 @@ struct SessionDetailView: View {
                             if let conf = session.collection_confidence {
                                 ConfidenceBadge(confidence: conf)
                             }
-                            CostStatusBadge(status: session.cost_status)
+                            if !session.hasProcessHeuristicMetrics {
+                                CostStatusBadge(status: session.cost_status)
+                            }
                         }
                     }
                     Spacer()
@@ -340,27 +349,34 @@ struct SessionDetailView: View {
                     detailItem(label: L10n.detail.started, value: RelativeTime.format(session.started_at), icon: "clock")
                 }
 
-                Divider()
+                // Metrics, as the row shows them: a process-scan row's are
+                // left out, and so is the request count the row leaves out.
+                if !session.hasProcessHeuristicMetrics || session.error_count > 0 {
+                    Divider()
 
-                // Metrics
-                LazyVGrid(columns: [
-                    GridItem(.flexible()),
-                    GridItem(.flexible()),
-                    GridItem(.flexible()),
-                ], spacing: 16) {
-                    metricBox(title: L10n.detail.usage, value: CostFormatter.formatUsage(session.total_usage))
-                    if showCost {
-                        metricBox(title: L10n.detail.cost, value: CostFormatter.format(session.estimated_cost), color: .green)
-                    }
-                    metricBox(title: L10n.detail.requests, value: "\(session.requests)")
-                    if session.error_count > 0 {
-                        metricBox(title: L10n.detail.errors, value: "\(session.error_count)", color: .red)
+                    LazyVGrid(columns: [
+                        GridItem(.flexible()),
+                        GridItem(.flexible()),
+                        GridItem(.flexible()),
+                    ], spacing: 16) {
+                        if !session.hasProcessHeuristicMetrics {
+                            metricBox(title: L10n.detail.usage, value: CostFormatter.formatUsage(session.total_usage))
+                            if showCost {
+                                metricBox(title: L10n.detail.cost, value: CostFormatter.format(session.estimated_cost), color: .green)
+                            }
+                            if session.hasMeaningfulRequestCount {
+                                metricBox(title: L10n.detail.requests, value: "\(session.requests)")
+                            }
+                        }
+                        if session.error_count > 0 {
+                            metricBox(title: L10n.detail.errors, value: "\(session.error_count)", color: .red)
+                        }
                     }
                 }
             }
             .padding(24)
         }
-        .navigationTitle(session.name)
+        .navigationTitle(session.displayName)
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -445,9 +461,10 @@ struct iOSSessionRow: View {
             .lineLimit(1)
 
             HStack(spacing: 18) {
-                // Same gate as macOS: proc-* rows have heuristic
-                // metrics that mislead at long uptimes. Hide the
-                // trio for those rows; tier badge tells the story.
+                // Same gate as macOS: process-scan rows (`local-` and
+                // `proc-`) have heuristic metrics that mislead at long
+                // uptimes. Hide the trio for those rows; the badge tells
+                // the story.
                 if !session.hasProcessHeuristicMetrics {
                     metricItem(label: L10n.detail.usage, value: CostFormatter.formatUsage(session.total_usage))
                     if showCost {

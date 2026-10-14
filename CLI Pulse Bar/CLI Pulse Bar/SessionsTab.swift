@@ -2108,10 +2108,10 @@ struct SessionRow: View {
             .foregroundStyle(.secondary)
             .lineLimit(1)
 
-            // Metrics. Proc-* rows have heuristic-derived metrics
-            // (total_usage / cost / requests are all functions of
-            // elapsed_seconds and CPU), so showing "86038 requests"
-            // next to an 8-hour Claude Code process is misleading.
+            // Metrics. Process-scan rows (`local-` and `proc-`) have
+            // heuristic-derived metrics (total_usage / cost / requests
+            // are all functions of elapsed_seconds and CPU), so showing
+            // "640 requests" next to an 8-hour Claude.app is misleading.
             // Hide the entire trio for those rows; the row label and
             // green "running" badge already convey "this is alive."
             // JSONL-synthesized + cloud rows show metrics as before.

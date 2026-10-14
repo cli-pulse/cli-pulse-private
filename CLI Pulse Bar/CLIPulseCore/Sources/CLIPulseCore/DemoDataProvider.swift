@@ -17,14 +17,18 @@ internal enum DemoDataProvider {
     ///
     /// Every route runs its sessions through `SessionFreshnessFilter
     /// .filterCurrent` when it refreshes, which drops a row last active more
-    /// than five minutes earlier. So a row the Sessions tab files under Recent
-    /// (five to thirty minutes old) appears only between refreshes, once the
-    /// rows a refresh kept have aged past five minutes. Demo had Recent rows
-    /// 12 and 20 minutes old beside rows active "just now" and a last refresh
-    /// of "just now", which no refresh can leave. Now its data is one refresh
-    /// that ran 90 seconds earlier, inside the iPhone's default two-minute
-    /// interval: the active rows were written at that refresh, and the Recent
-    /// rows a little before it, so they are five to six minutes old now.
+    /// than five minutes earlier, so everything Demo lists was written within
+    /// five minutes of one refresh. That refresh ran 90 seconds ago, inside
+    /// the iPhone's default two-minute interval, as a real phone's last one
+    /// did, and its sessions were written at it.
+    ///
+    /// Demo used to keep two sessions written four and five minutes before
+    /// the refresh, so that they read "Recent" now. Only a row with no scan
+    /// prefix could: every session in the cloud is a process-scan row, which
+    /// reads Running while its producer rewrites it and is hidden after
+    /// (`SessionFreshnessTierClassifier`). Demo's rows had no prefix ("s1"),
+    /// so they all read "Recent activity", as a Developer ID Mac's did while
+    /// the classifier tested for `proc-` alone.
     static let refreshAge: TimeInterval = 90
 
     static func generate() -> DemoData {
@@ -171,18 +175,28 @@ internal enum DemoDataProvider {
         // the runtime gives (142 over two hours, where a scan counts 160).
         // `testASessionOnAMacCostsTheHelpersFlatRateOrNothing` holds the cost.
         //
-        // Two sessions sit in the Sessions tab's Recent tier (last written 5
-        // to 30 minutes ago, SessionFreshnessTierClassifier): api-gateway,
-        // last written just before build-box's helper stopped syncing, and a
-        // finished docs-refresh. Without them the Active section was the
-        // whole list and the lower half of the screen was empty. They were 20
-        // and 12 minutes old, which no refresh keeps: the cloud route drops a
-        // row last active more than five minutes before it refreshes. Now they
-        // stopped about four and five minutes before Demo's refresh
-        // (`refreshAge`), so they are past five minutes only now, 90 seconds
-        // on, as a real Recent row can be. The running sessions were written
-        // at the refresh. `testDemoIsOneRefreshTheCloudRouteCouldHaveKept`
-        // holds every row to the filter.
+        // Every session is a process-scan row with its producer's id, as
+        // every session in the cloud is: the MacBook Pro's rows come from
+        // the LoginItem helper (`local-<pid>`, the flat-rate cost above),
+        // lab-server-01's from the desktop app (`proc-<pid>`).
+        // So each reads Running, with its provider and project for a title
+        // and none of the figures above, which the Sessions tab hides for a
+        // scan row (`SessionRecord.hasProcessHeuristicMetrics`); they are
+        // still the ones a scan writes, because the Overview's tiles and the
+        // CPU alert below read them. The rows had ids no producer writes
+        // ("s1"), so the Sessions tab drew them as log activity, "Recent
+        // activity" with Usage, Cost and Requests, as it drew a Developer ID
+        // Mac's rows while it tested for `proc-` alone.
+        //
+        // All of them were written at the refresh. Demo had two more,
+        // api-gateway on build-box and a finished docs-refresh, last written
+        // four and five minutes before it, to fill a Recent section. A scan
+        // row that old is hidden, not Recent (the section is for logs written
+        // in the last 30 minutes, which no cloud row is), so they were
+        // dropped rather than drawn where no account can see them.
+        // `testDemoIsOneRefreshTheCloudRouteCouldHaveKept` holds every row to
+        // the filter and `testDemoSessionsAreProcessScanRowsAsEveryCloudSessionIs`
+        // to their producers' ids.
         //
         // No session has errors or a "failed" status: every producer (both
         // helpers, the local scanners, the desktop app) writes error_count 0
@@ -196,36 +210,24 @@ internal enum DemoDataProvider {
         // drew Syncing and Idle badges no account can get.
         let busyStarted: TimeInterval = -7200  // ios-dashboard, which the CPU alert names
         let sessions = [
-            SessionRecord(id: "s1", name: "ios-dashboard", provider: "Codex",
+            SessionRecord(id: "local-48213", name: "ios-dashboard", provider: "Codex",
                           project: "cli-pulse-ios", device_name: "MacBook Pro",
                           started_at: timestamp(busyStarted), last_active_at: timestamp(),
                           status: "Running", total_usage: 24500, estimated_cost: 0.049,
                           cost_status: "Estimated", requests: 160, error_count: 0,
                           collection_confidence: "high"),
-            SessionRecord(id: "s2", name: "helper-heartbeat", provider: "Gemini",
+            SessionRecord(id: "proc-3120", name: "helper-heartbeat", provider: "Gemini",
                           project: "cli-pulse-helper", device_name: "lab-server-01",
                           started_at: timestamp(-7 * 3600), last_active_at: timestamp(),
                           status: "Running", total_usage: 37800, estimated_cost: 0,
                           cost_status: "Estimated", requests: 560, error_count: 0,
                           collection_confidence: "medium"),
-            SessionRecord(id: "s3", name: "api-gateway", provider: "Codex",
-                          project: "backend-api", device_name: "build-box",
-                          started_at: timestamp(-6290), last_active_at: timestamp(-290),
-                          status: "Running", total_usage: 9600, estimated_cost: 0.0192,
-                          cost_status: "Estimated", requests: 133, error_count: 0,
-                          collection_confidence: "high"),
-            SessionRecord(id: "s4", name: "provider-adapters", provider: "Claude",
+            SessionRecord(id: "local-48977", name: "provider-adapters", provider: "Claude",
                           project: "provider-layer", device_name: "MacBook Pro",
                           started_at: timestamp(-3600), last_active_at: timestamp(),
                           status: "Running", total_usage: 6200, estimated_cost: 0.0186,
                           cost_status: "Estimated", requests: 80, error_count: 0,
                           collection_confidence: "low"),
-            SessionRecord(id: "s5", name: "docs-refresh", provider: "Claude",
-                          project: "cli-pulse-docs", device_name: "MacBook Pro",
-                          started_at: timestamp(-2210), last_active_at: timestamp(-230),
-                          status: "Running", total_usage: 4100, estimated_cost: 0.0123,
-                          cost_status: "Estimated", requests: 44, error_count: 0,
-                          collection_confidence: "high"),
         ]
 
         // CPU figures agree with the alerts below. The MacBook Pro's
@@ -234,8 +236,8 @@ internal enum DemoDataProvider {
         // present, not a contradiction. lab-server-01 reads 91% and has no
         // alert, because the desktop app, which reports it, has no device-CPU
         // rule. Each device last synced no earlier than its sessions were
-        // written, since its sync wrote them: build-box with api-gateway,
-        // just before its helper stopped syncing.
+        // written, since its sync wrote them. build-box lists none: its
+        // helper last synced six minutes ago, and found nothing running.
         //
         // Every device reads "Online", the one status the cloud stores:
         // register_helper, the desktop's sign-in and every heartbeat and sync
@@ -293,9 +295,11 @@ internal enum DemoDataProvider {
         //
         // On a Mac the LoginItem helper's skip used to test for `proc-`
         // alone, which its LocalScanner rows (`local-`) never carry, so it
-        // raised the alert for every process open five hours: the false alarm
-        // v1.16.1 set out to remove. It skips both prefixes now, so no
-        // producer raises it for any session Demo shows.
+        // raised the alert for every detected AI tool (Claude.app included)
+        // open five hours: the false alarm v1.16.1 set out to remove. It
+        // skips every scan row now (`SessionRecord.isProcessScanRow`), so no
+        // producer raises it for any session Demo shows, and Integrations no
+        // longer offers it as a webhook event.
         // `testDemoRaisesNoLongRunningAlert`.
         //
         // The cloud's rows, in the order `APIClient.alerts` asks for them
@@ -305,9 +309,9 @@ internal enum DemoDataProvider {
             // Swift helper, AlertGenerator.generate device-CPU rule (85% of
             // the Mac): keyed to the helper's device id, with no device name,
             // which helper_sync stores as sent. It was lab-server-01's, with
-            // the Python helper's keys; but the Python helper is not shipped
-            // (docs/ARCHITECTURE.md), and the desktop app, which reports
-            // Linux machines, has no device-CPU rule.
+            // the Python helper's keys; but that helper, the Companion CLI,
+            // ships only as a macOS package, and the desktop app, which
+            // reports Linux machines, has no device-CPU rule.
             // `testTheDeviceCPUAlertIsOneTheMacHelperRaises`.
             AlertRecord(id: "cpu-spike-\(busyMac.id)", type: "Usage Spike", severity: "Warning",
                         title: "Device CPU usage is elevated",
@@ -334,7 +338,9 @@ internal enum DemoDataProvider {
             // ios-dashboard shows 24.5K. Raised at the helper's first scan, 30
             // seconds in (a burst at launch, quiet since), 24.5K holds it.
             // `testTheSessionCPUAlertComesFromASessionThatCouldRaiseIt`.
-            AlertRecord(id: "session-spike-s1-3f9a2c1e", type: "Usage Spike", severity: "Warning",
+            // Its id and suppression key carry the session's id and a digest
+            // of it and its start (`AlertGenerator.alertSessionIDSuffix`).
+            AlertRecord(id: "session-spike-\(busy.id)-3f9a2c1e", type: "Usage Spike", severity: "Warning",
                         title: "\(busy.name) is consuming high CPU",
                         message: "Using ~46% of total system CPU (10 cores) for \(busy.provider).",
                         created_at: timestamp(busyStarted + 30), is_read: false, is_resolved: false,
@@ -344,7 +350,7 @@ internal enum DemoDataProvider {
                         related_provider: busy.provider, related_device_name: nil,
                         source_kind: "session", source_id: nil,
                         grouping_key: "Usage Spike:\(busy.provider)",
-                        suppression_key: "Usage Spike:s1-3f9a2c1e"),
+                        suppression_key: "Usage Spike:\(busy.id)-3f9a2c1e"),
         ]
         // Then the quota alert, last: the cloud route appends the alerts it
         // raises itself after the cloud's rows (DataRefreshManager,
@@ -383,13 +389,12 @@ internal enum DemoDataProvider {
             total_requests_today: 0,
             // `dashboard_summary` counts every session whose status is
             // 'Running', with no time window, and helper_sync turns a row
-            // 'Ended' only ten minutes after its process is gone. So all five
-            // rows count, the two in the Sessions tab's Recent section too, and
-            // the cloud route never bumps the tile down (DataRefreshManager
-            // raises it to the rows it lists, five here). The tile reads 5 while
-            // the Sessions tab's Active section lists 3, as on a real phone.
-            // It read 3, the Active section, which no account shows: a Watch
-            // then said 3 on its Pulse chip and "5 Running" on its Live page.
+            // 'Ended' only ten minutes after its process is gone; the cloud
+            // route never bumps the tile down (DataRefreshManager raises it to
+            // the rows it lists). Every Demo row was written at the refresh, so
+            // the tile, the Sessions tab's "N running" and its list all read 3.
+            // (A real account whose process ended a few minutes ago reads one
+            // more on the tile than in the list until helper_sync ends it.)
             // `testTheOverviewTilesCountWhatDashboardSummaryCounts`.
             active_sessions: sessions.filter { $0.status == "Running" }.count,
             // `dashboard_summary` counts the rows whose status is 'Online'.
@@ -631,8 +636,8 @@ extension AppState {
         serverOnline = true
         let demo = DemoDataProvider.generate()
         // The refresh Demo's data came from, a little before now, not the
-        // moment it was entered: its Recent sessions are older than a refresh
-        // keeps, so only an earlier refresh can have left them.
+        // moment it was entered: a real account is between two refreshes, and
+        // its sessions and alerts are dated at or before the last one.
         lastRefresh = demo.refreshedAt
         // Demo mode cannot pair, so Settings — and every screenshot of it —
         // shows the paired account without a repair line.

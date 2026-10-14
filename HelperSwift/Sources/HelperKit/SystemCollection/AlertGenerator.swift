@@ -63,7 +63,10 @@ public struct CollectedAlert: Codable, Sendable, Equatable {
 }
 
 /// Generates `CollectedAlert` rows from session + device data.
-/// Mirrors `helper/system_collector.py::collect_alerts` 1:1:
+/// Mirrors the rules of `helper/system_collector.py::collect_alerts`, not all
+/// of its ids: the device-CPU alert here is `cpu-spike-<epoch>`, one row per
+/// cycle, where Python's has been `cpu-spike-{device_id}`, one row per
+/// device, since v1.15 (as CLIPulseCore's `AlertGenerator`). The rules:
 ///
 ///   - Device CPU spike: `device.cpu_usage >= 85` → "Usage Spike" warn
 ///   - Per-session CPU spike: `session.cpu_usage >= 80` → "Usage Spike" warn
@@ -99,17 +102,13 @@ public struct AlertGenerator: Sendable {
         let nowISO = formatter.string(from: now)
         let nowEpochInt = Int(now.timeIntervalSince1970)
 
-        // Device-level CPU spike. NOTE: alert_id mirrors Python's
-        // `cpu-spike-{int(now.timestamp())}` — INTENTIONAL parity with
-        // helper/system_collector.py:323. A sustained spike across
-        // multiple collection cycles will produce multiple alert
-        // rows (one per cycle, distinct timestamp). Server-side
-        // dedup in the Supabase Alerts panel handles this. If we
-        // want true single-row-per-spike semantics in the future,
-        // both Python and Swift need to switch to a stable id like
-        // "device-cpu-spike" — that's a cross-platform schema change,
-        // tracked separately. (Phase 4E Slice 2b Gemini P1 noted +
-        // accepted as parity-with-Python.)
+        // Device-level CPU spike. NOTE: alert_id is the Python helper's
+        // pre-v1.15 `cpu-spike-{int(now.timestamp())}`, kept from Phase 4E
+        // Slice 2b (Gemini P1, accepted as parity-with-Python). Python has
+        // since moved to the stable `cpu-spike-{device_id}`, as CLIPulseCore's
+        // AlertGenerator has, so this one is no longer at parity: a sustained
+        // spike here produces one alert row per cycle. Nothing outside the
+        // tests calls this generator (see the doc above), so no user sees it.
         if device.cpuUsage >= Self.deviceCpuSpikeThreshold {
             alerts.append(CollectedAlert(
                 alertId: "cpu-spike-\(nowEpochInt)",
