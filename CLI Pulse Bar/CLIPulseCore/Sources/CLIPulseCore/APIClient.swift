@@ -2884,8 +2884,19 @@ public actor APIClient {
 
     /// Fetch daily usage data from Supabase (for iOS/Android display).
     public func fetchDailyUsage(days: Int = 30) async -> [DailyUsage] {
+        await fetchDailyUsageRows(days: days) ?? []
+    }
+
+    /// `get_daily_usage`, telling a failed read from an account with no rows.
+    ///
+    /// Signed out, the account has no rows: `[]`. A request that fails (no
+    /// network, an HTTP error, a body that is not rows) is `nil`, so a caller
+    /// that keeps the rows on screen can keep the last good ones instead of
+    /// showing an empty account until the next refresh. v1.57: the Mac's
+    /// provider cards and Cost Summary read these rows (`AppState.dailyUsage`).
+    public func fetchDailyUsageRows(days: Int = 30) async -> [DailyUsage]? {
         guard userId != nil else { return [] }
-        guard let url = URL(string: "\(supabaseURL)/rest/v1/rpc/get_daily_usage") else { return [] }
+        guard let url = URL(string: "\(supabaseURL)/rest/v1/rpc/get_daily_usage") else { return nil }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -2899,12 +2910,12 @@ public actor APIClient {
         do {
             let (data, response) = try await session.data(for: request)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            guard (200...299).contains(status) else { return [] }
+            guard (200...299).contains(status) else { return nil }
 
-            guard let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+            guard let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return nil }
             return Self.dailyUsageRows(from: items)
         } catch {
-            return []
+            return nil
         }
     }
 

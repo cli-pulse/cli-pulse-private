@@ -41,6 +41,15 @@ public final class UsagePanelModel: ObservableObject {
     @Published public private(set) var needsFolderAccess = false
     /// The scope picked for a provider that has both.
     @Published public var scopeChoice: [String: UsageDataScope] = [:]
+    /// v1.57: how the provider mode counts tokens, set by where it was
+    /// opened from. A provider card opens it in the card's own count
+    /// (`ProviderCardUsage.tokenBasis`, input + output), so the days and the
+    /// total are the figures that were clicked; the Usage Dashboard's By
+    /// Provider rows open it counting each token once, as the dashboard
+    /// counts. The panel says which under its total.
+    @Published public var providerBasis: ProviderUsageDays.TokenBasis = .eachOnce {
+        didSet { if providerBasis != oldValue { daysCache = [:] } }
+    }
 
     private let loadArchive: @Sendable () async -> DailyUsageArchive
     private let now: () -> Date
@@ -152,12 +161,14 @@ public final class UsagePanelModel: ObservableObject {
 
     private var todayKey: String { DayKey.string(from: now()) }
 
-    /// `provider`'s days in `scope`.
+    /// `provider`'s days in `scope`, counted in `providerBasis`.
     public func days(for provider: String, in scope: UsageDataScope) -> ProviderUsageDays {
         let today = todayKey
         let key = "\(today)|\(scope.rawValue)|\(provider)"
         if let built = daysCache[key] { return built }
-        let built = Self.days(provider: provider, scope: scope, scan: scanEntries, cloud: cloudRows, todayKey: today)
+        let built = Self.days(
+            provider: provider, scope: scope, scan: scanEntries, cloud: cloudRows, todayKey: today,
+            basis: providerBasis)
         daysCache[key] = built
         return built
     }
@@ -165,6 +176,22 @@ public final class UsagePanelModel: ObservableObject {
     /// The scopes with usage for `provider` in the window, This Mac first.
     public func availableScopes(for provider: String) -> [UsageDataScope] {
         UsageDataScope.allCases.filter { days(for: provider, in: $0).hasUsage }
+    }
+
+    /// v1.57: shows `provider` on `scope` from now on, as picking it in the
+    /// panel does. A provider card opening the panel passes the scope its own
+    /// figures are labelled with, so the panel starts where the card is. Like
+    /// a pick, it holds only while that scope has usage (`scope(for:)`).
+    public func prefer(_ scope: UsageDataScope, for provider: String) {
+        scopeChoice[provider] = scope
+    }
+
+    /// v1.57: what opening `provider`'s history from a provider card sets
+    /// before the panel shows it: the scope the card names (when it names
+    /// one), and the card's way of counting tokens.
+    public func open(_ provider: String, scope: UsageDataScope?, basis: ProviderUsageDays.TokenBasis) {
+        if let scope { prefer(scope, for: provider) }
+        providerBasis = basis
     }
 
     /// The scope shown for `provider`: the one picked, while it has usage,
@@ -178,11 +205,12 @@ public final class UsagePanelModel: ObservableObject {
 
     static func days(
         provider: String, scope: UsageDataScope,
-        scan: [CostUsageScanResult.DailyEntry], cloud: [DailyUsage], todayKey: String) -> ProviderUsageDays
+        scan: [CostUsageScanResult.DailyEntry], cloud: [DailyUsage], todayKey: String,
+        basis: ProviderUsageDays.TokenBasis = .eachOnce) -> ProviderUsageDays
     {
         switch scope {
-        case .thisMac: return .fromScan(scan, provider: provider, todayKey: todayKey)
-        case .allDevices: return .fromCloud(cloud, provider: provider, todayKey: todayKey)
+        case .thisMac: return .fromScan(scan, provider: provider, basis: basis, todayKey: todayKey)
+        case .allDevices: return .fromCloud(cloud, provider: provider, basis: basis, todayKey: todayKey)
         }
     }
 
@@ -426,9 +454,7 @@ public struct ProviderUsagePanelView: View {
             Text(showCost ? L10n.providerPanel.estTotal(Self.windowDays) : L10n.providerPanel.total(Self.windowDays))
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
-            Text(showCost
-                 ? L10n.providerPanel.totalValue(data.totalCostText, CostFormatter.formatUsage(data.totalTokens))
-                 : L10n.providerPanel.modelTokens(CostFormatter.formatUsage(data.totalTokens)))
+            Text(showCost ? data.totalValueText : data.basis.tokensText(data.totalTokens))
                 .font(.system(size: 17, weight: .semibold))
                 .monospacedDigit()
                 .lineLimit(1)
@@ -462,7 +488,9 @@ public struct ProviderUsagePanelView: View {
                     .padding(.top, 3)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(L10n.providerPanel.tokenBasis)
+                // What the tokens count: each once, or, opened from a provider
+                // card, the card's input + output.
+                Text(data.basis == .inputOutput ? L10n.cost.ioTokensHelp : L10n.providerPanel.tokenBasis)
                 // The header names the scope; this says what it means.
                 Text(scopeHelp)
             }
@@ -578,7 +606,12 @@ struct UsagePanelContent: View {
             if let archive = model.archive {
                 UsageDashboardView(
                     archive: archive, scrollable: false, showsCodexHistoryLine: true,
-                    onSelectProvider: { provider in model.mode = .provider(provider) })
+                    onSelectProvider: { provider in
+                        // The dashboard counts each token once; so does the
+                        // provider it opens.
+                        model.providerBasis = .eachOnce
+                        model.mode = .provider(provider)
+                    })
             } else {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 400)
             }

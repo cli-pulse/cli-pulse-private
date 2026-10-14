@@ -474,7 +474,8 @@ public enum L10n {
         public static func dayTokens(_ day: String, _ tokens: String) -> String {
             tr("provider_panel.day_tokens", day, tokens)
         }
-        /// The iPhone card's selected day, counted in I/O tokens like the card.
+        /// A selected day counted in I/O tokens, as the cards count: the
+        /// iPhone card's, and the Mac panel's opened from a provider card.
         public static func dayIOSummary(_ day: String, _ cost: String, _ tokens: String) -> String {
             tr("provider_panel.day_io_summary", day, cost, tokens)
         }
@@ -489,6 +490,11 @@ public enum L10n {
         /// The window's total: cost, tokens.
         public static func totalValue(_ cost: String, _ tokens: String) -> String {
             tr("provider_panel.total_value", cost, tokens)
+        }
+        /// v1.57: the window's total when the panel counts I/O tokens, as it
+        /// does opened from a provider card: cost, tokens.
+        public static func totalIOValue(_ cost: String, _ tokens: String) -> String {
+            tr("provider_panel.total_io_value", cost, tokens)
         }
         public static func topModel(_ model: String) -> String { tr("provider_panel.top_model", model) }
         public static func modelTokens(_ tokens: String) -> String { tr("provider_panel.model_tokens", tokens) }
@@ -605,6 +611,26 @@ public enum L10n {
         public static var zedKeychainNeedsApproval: String { tr("collector_status.zed_keychain_needs_approval") }
         public static func zedKeychainReadFailed(_ a0: Int) -> String { tr("collector_status.zed_keychain_read_failed", a0) }
         public static var zedCredentialsExpired: String { tr("collector_status.zed_credentials_expired") }
+    }
+
+    /// v1.57: the Mac provider card's usage row, what its scope means, its
+    /// small chart and the sections that can be hidden
+    /// (`ProviderCardSection`). The scope's own name is the usage panel's
+    /// (`UsageDataScope.label`).
+    public enum providerCard {
+        public static var thirtyDays: String { tr("provider_card.thirty_days") }
+        public static var scopeAllDevicesHelp: String { tr("provider_card.scope_all_devices_help") }
+        public static var messagesThisMac: String { tr("provider_card.messages_this_mac") }
+        public static func chartTokensHelp(_ highest: String) -> String { tr("provider_card.chart_tokens_help", highest) }
+        public static func chartCostHelp(_ highest: String) -> String { tr("provider_card.chart_cost_help", highest) }
+        public static var sectionsMenu: String { tr("provider_card.sections_menu") }
+        public static var sectionsAllShown: String { tr("provider_card.sections_all_shown") }
+        public static func sectionsHiddenCount(_ count: Int) -> String { tr("provider_card.sections_hidden_count", count) }
+        public static var showAllSections: String { tr("provider_card.show_all_sections") }
+        public static var sectionsHint: String { tr("provider_card.sections_hint") }
+        public static var sectionPlanAndSource: String { tr("provider_card.section_plan_and_source") }
+        public static var sectionUsageTotals: String { tr("provider_card.section_usage_totals") }
+        public static var sectionDailyChart: String { tr("provider_card.section_daily_chart") }
     }
 
     public enum providers {

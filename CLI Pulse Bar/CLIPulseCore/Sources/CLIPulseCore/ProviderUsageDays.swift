@@ -493,6 +493,16 @@ public extension ProviderUsageDays.ModelRow {
 }
 
 public extension ProviderUsageDays {
+    /// The window's total, cost then tokens, in the counting `basis` names:
+    /// "$23.83 · 2M tokens", or "$23.83 · 2M I/O tokens".
+    var totalValueText: String {
+        let count = CostFormatter.formatUsage(totalTokens)
+        switch basis {
+        case .eachOnce: return L10n.providerPanel.totalValue(totalCostText, count)
+        case .inputOutput: return L10n.providerPanel.totalIOValue(totalCostText, count)
+        }
+    }
+
     /// The window's total cost, marked as a day's is.
     var totalCostText: String {
         if totalCost == 0, hasUnknownCost, !hasUnpriced { return Self.unknownCostText }

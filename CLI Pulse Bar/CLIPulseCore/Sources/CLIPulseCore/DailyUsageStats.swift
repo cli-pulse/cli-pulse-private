@@ -1,5 +1,5 @@
 // DailyUsageStats — pure, unit-testable derivations over DailyUsageArchive
-// (v1.40 PR-4). Mirrors the ProviderUsageHistory idiom: static funcs, explicit
+// (v1.40 PR-4). Static funcs, explicit
 // clock inputs (todayKey), no stored state. Heatmap intensity is COST-keyed vs
 // the peak day — the token-monitor formula (MIT) that makes the grids read like
 // the screenshots the owner likes.

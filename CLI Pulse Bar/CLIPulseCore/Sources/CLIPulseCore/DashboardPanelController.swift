@@ -9,8 +9,9 @@
 // the card, the popover closing, or the app resigning active dismisses it.
 //
 // v1.57 (P1-2): two modes (`UsagePanelModel.Mode`). The Overview's Activity
-// card opens the Usage Dashboard for every provider; a provider card's
-// usage-history button opens that provider's last 30 days. The content is
+// card opens the Usage Dashboard for every provider; a provider card's small
+// chart (or, while the card draws none, a button in its header) opens that
+// provider's last 30 days. The content is
 // live (D11): the archive is read again whenever it is written, and the
 // provider mode follows the refresh's scan. The panel follows its content's
 // height as that changes.
@@ -61,10 +62,23 @@ public final class DashboardPanelController {
         toggle(.allProviders)
     }
 
-    /// One provider's usage history, toggled the same way.
-    public func toggle(provider: String, state: AppState) {
+    /// One provider's usage history, toggled the same way. `scope`: the
+    /// scope the provider card's figures are labelled with, which the panel
+    /// opens on (`UsagePanelModel.prefer(_:for:)`). `basis`: how the panel
+    /// counts tokens; a provider card passes its own
+    /// (`ProviderCardUsage.tokenBasis`), so the panel's days and total are
+    /// the card's figures. Clicking again while that provider is shown hides
+    /// the panel and leaves both alone.
+    public func toggle(
+        provider: String, state: AppState, scope: UsageDataScope? = nil,
+        basis: ProviderUsageDays.TokenBasis = .eachOnce
+    ) {
         attach(state)
-        toggle(.provider(provider))
+        let mode = UsagePanelModel.Mode.provider(provider)
+        if !(isVisible && model.mode == mode) {
+            model.open(provider, scope: scope, basis: basis)
+        }
+        toggle(mode)
     }
 
     private func toggle(_ mode: UsagePanelModel.Mode) {

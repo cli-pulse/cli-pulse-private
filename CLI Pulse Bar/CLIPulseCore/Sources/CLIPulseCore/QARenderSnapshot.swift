@@ -259,6 +259,10 @@ public enum QARenderSnapshot {
     /// (`providerPanelMetric`), from `DemoDataProvider.providerPanelSample`.
     public static let providerPanelKinds: [ProviderKind] = [.codex, .claude]
 
+    /// v1.57: the usage panel as a Demo provider card's small chart opens it
+    /// (`providerCardPanel`): the providers whose Demo cards draw a chart.
+    public static let providerCardPanelKinds: [ProviderKind] = [.codex, .claude]
+
     /// The metric the provider panel of `kind` is drawn in, so the review set
     /// shows both.
     public static func providerPanelMetric(_ kind: ProviderKind) -> UsageChartMetric {
@@ -351,6 +355,7 @@ public enum QARenderSnapshot {
         surfaces += providerEditorKinds.map { .providerEditor($0) }
         surfaces.append(.usageDashboardPanel)
         surfaces += providerPanelKinds.map { .providerUsagePanel($0) }
+        surfaces += providerCardPanelKinds.map { .providerCardPanel($0) }
         surfaces += [.providerUsageCardHistory, .firstRunWelcome]
         surfaces.append(.codexResetCreditsStates)
         return surfaces
@@ -761,6 +766,9 @@ public enum QARenderSurface: Hashable {
     case usageDashboardPanel
     /// v1.57: the usage panel's provider mode, one provider's last 30 days.
     case providerUsagePanel(ProviderKind)
+    /// v1.57: the same panel as clicking a Demo provider card's small chart
+    /// opens it: the data that card reads, on the scope it names.
+    case providerCardPanel(ProviderKind)
     /// v1.57: the iPhone provider card's history section with a day tapped,
     /// drawn on the Mac at an iPhone card's width.
     case providerUsageCardHistory
@@ -787,7 +795,7 @@ public enum QARenderSurface: Hashable {
         switch self {
         case .about, .subscription, .providerEditor, .firstRunWelcome, .codexResetCreditsStates:
             return .window
-        case .usageDashboardPanel, .providerUsagePanel:
+        case .usageDashboardPanel, .providerUsagePanel, .providerCardPanel:
             return .panel
         case .providerUsageCardHistory:
             return .window
@@ -817,6 +825,7 @@ public enum QARenderSurface: Hashable {
         case .providerEditor(let kind): return "window-provider-\(Self.slug(kind.rawValue))"
         case .usageDashboardPanel: return "panel-usage-dashboard"
         case .providerUsagePanel(let kind): return "panel-provider-usage-\(Self.slug(kind.rawValue))"
+        case .providerCardPanel(let kind): return "panel-provider-card-\(Self.slug(kind.rawValue))"
         case .providerUsageCardHistory: return "component-provider-card-history"
         case .firstRunWelcome: return "window-first-run-welcome"
         case .codexResetCreditsStates: return "card-codex-reset-credits"

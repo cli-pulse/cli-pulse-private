@@ -918,6 +918,10 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         case .providerUsagePanel(let kind):
             await captureProviderUsagePanel(kind, surface: surface, index: index)
 
+        case .providerCardPanel(let kind):
+            enterDemoIfNeeded()
+            await captureProviderCardPanel(kind, surface: surface, index: index)
+
         case .providerUsageCardHistory:
             await captureProviderCardHistory(surface, index: index)
 
@@ -1241,6 +1245,60 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 + scopes.map(\.rawValue).joined(separator: " + ") + "; "
                 + (day == nil ? "the latest day with usage" : "the latest day with a model that has no rate")
                 + " is selected. The real panel reads this Mac's scan."
+        )
+    }
+
+    /// v1.57: the usage panel's provider mode as clicking a Demo provider
+    /// card's small chart opens it. The panel's model follows the state the
+    /// card reads (Demo's synced rows; Demo has no local scan) and is opened
+    /// on the scope the card's figures are labelled with and counting tokens
+    /// as the card does (I/O), as
+    /// `DashboardPanelController.toggle(provider:state:scope:basis:)` opens
+    /// it, with the chart in what the card's chart shows (the stored
+    /// Token/Cost choice). 480 points wide, the latest day with usage
+    /// selected.
+    private func captureProviderCardPanel(_ kind: ProviderKind, surface: QARenderSurface, index: Int) async {
+        let provider = kind.rawValue
+        // As `EnhancedProviderCard.cardUsage` builds it.
+        let usage = state.providers.first { $0.provider == provider }
+        let card = ProviderCardUsageBuilder.build(
+            provider: provider,
+            usage: usage,
+            scanEntries: state.costUsageScanResult?.entries ?? [],
+            cloudRows: state.dailyUsage,
+            readsCloud: state.isAuthenticated,
+            usesProviderTokenCounts: !(usage?.metadata?.supports_quota ?? false)
+        )
+        let metric = ProviderCardUsage.chartMetric(
+            storedMetric: UserDefaults.standard.string(forKey: UsageChartMetric.defaultsKey),
+            showsCost: state.showCost)
+        let model = UsagePanelModel()
+        model.follow(state)
+        model.open(provider, scope: card.scope, basis: ProviderCardUsage.tokenBasis)
+        model.mode = .provider(provider)
+        let scope = model.scope(for: provider)
+        let panel = ProviderUsagePanelView(
+            data: model.days(for: provider, in: scope),
+            availableScopes: model.availableScopes(for: provider),
+            scope: .constant(scope),
+            needsFolderAccess: model.needsFolderAccess, onShowAllProviders: {})
+            .frame(width: 480)
+            .overlay(alignment: .topTrailing) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+            }
+            .environment(\.colorScheme, .dark)
+            .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        await capture(
+            panel, surface: surface, index: index,
+            prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: surface.id) },
+            note: "The usage panel as clicking the Demo \(provider) card's small chart opens it, 480 points"
+                + " wide: Demo's synced rows, opened on the card's scope (\(card.scope.rawValue), shown:"
+                + " \(scope.rawValue)), chart in \(metric.rawValue) as the card's is, tokens counted as the"
+                + " card counts them (I/O, as the panel says under its total): its days and total are the"
+                + " card's figures."
         )
     }
 

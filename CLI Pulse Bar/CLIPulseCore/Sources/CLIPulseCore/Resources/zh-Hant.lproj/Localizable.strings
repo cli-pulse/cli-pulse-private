@@ -1647,6 +1647,7 @@
 "provider_panel.est_total" = "預估總計 · 最近 %d 天";
 "provider_panel.total" = "總計 · 最近 %d 天";
 "provider_panel.total_value" = "%1$@ · %2$@ token";
+"provider_panel.total_io_value" = "%1$@ · %2$@ I/O token";
 "provider_panel.top_model" = "費用最高的模型：%@";
 "provider_panel.model_tokens" = "%@ token";
 "provider_panel.model_io_tokens" = "%@ I/O";
@@ -1910,6 +1911,21 @@
 "yield.commits_count_one" = "%d 次提交";
 "onboarding_wizard.undetected_providers_one" = "另有 %d 個最佳化支援的 AI 工具未找到";
 "providers.messages_short_one" = "%@ 則訊息";
+
+/* Provider card: usage totals, scope, daily chart and hideable sections (v1.57) */
+"provider_card.thirty_days" = "30 天";
+"provider_card.scope_all_devices_help" = "同步自登入你帳號的所有裝置。如果這台 Mac 統計到的比已同步的多，則顯示這台 Mac 的統計。";
+"provider_card.messages_this_mac" = "訊息數僅統計這台 Mac。";
+"provider_card.chart_tokens_help" = "最近 30 天每天的輸入 + 輸出 token。單日最高：%@。";
+"provider_card.chart_cost_help" = "最近 30 天每天的預估費用。單日最高：%@。";
+"provider_card.sections_menu" = "在卡片上顯示";
+"provider_card.sections_all_shown" = "已全部顯示";
+"provider_card.sections_hidden_count" = "已隱藏 %d 項";
+"provider_card.show_all_sections" = "顯示全部區塊";
+"provider_card.sections_hint" = "隱藏的區塊在重新啟動或切換語言後仍保持隱藏。重新整理和警示照常進行。";
+"provider_card.section_plan_and_source" = "方案與來源";
+"provider_card.section_usage_totals" = "用量合計";
+"provider_card.section_daily_chart" = "每日圖表";
 "providers.tracked_count_one" = "正在追蹤 %d 個";
 "watch.active_count_one" = "%d 個活躍";
 "menu_bar.tier_migration_one" = "已保留你最常用的 %d 個服務商以符合免費方案限制，並停用了其餘 %d 個——可在「設定 › 服務商」中編輯。";

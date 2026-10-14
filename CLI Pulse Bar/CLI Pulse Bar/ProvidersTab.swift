@@ -537,29 +537,76 @@ struct EnhancedProviderCard: View {
     /// Prefer real token counts from the JSONL scan when available.
     private var isQuotaProvider: Bool { provider.metadata?.supports_quota ?? false }
 
+    /// v1.57: the chart measures what the usage panel was last set to.
+    @AppStorage(UsageChartMetric.defaultsKey) private var chartMetricRaw = UsageChartMetric.tokens.rawValue
+    /// The pointer is over the small chart, which opens the usage panel.
+    @State private var isChartHovered = false
+    /// v1.57: the sections hidden on each provider's card. Read once a
+    /// redraw, in `body`.
+    @AppStorage(ProviderCardVisibility.defaultsKey) private var hiddenSectionsRaw = ""
+
+    /// v1.57: what the small chart draws, worked out once a redraw.
+    private struct CardChart {
+        let bars: [ProviderUsageDays.Day]
+        let metric: UsageChartMetric
+        /// The tallest bar, for the help text.
+        var highest: Double { bars.map { $0.value(metric) }.max() ?? 0 }
+        var hasData: Bool { highest > 0 }
+    }
+
+    /// v1.57: Today, This Week and 30 Days, and the chart, under one rule
+    /// (`ProviderCardUsageBuilder`): this Mac's own count signed out; signed
+    /// in, day by day the larger of it and the account's synced one, which
+    /// is what the Providers tab's cost bar and the Overview add up as well.
+    private var cardUsage: ProviderCardUsage {
+        ProviderCardUsageBuilder.build(
+            provider: provider.provider,
+            usage: provider,
+            scanEntries: state.costUsageScanResult?.entries ?? [],
+            cloudRows: state.dailyUsage,
+            readsCloud: state.isAuthenticated,
+            usesProviderTokenCounts: !isQuotaProvider
+        )
+    }
+
+    /// One of the usage row's three figures. `fixed` keeps it at its natural
+    /// width (the layouts `usageSection` tries first); the last layout lets
+    /// it shrink its headline instead of running past the card's edge.
     @ViewBuilder
-    private func usageColumn(header: String, metric: CardMetric, cost: Double, approximateCost: Bool) -> some View {
+    private func usageColumn(header: String, cell: ProviderCardUsage.Cell, fixed: Bool = true) -> some View {
+        let metric = metric(for: cell)
         VStack(alignment: .leading, spacing: 2) {
             Text(header)
                 .font(.system(size: 9))
                 .foregroundStyle(.tertiary)
-            Text(metric.primary)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .lineLimit(1)
+            Text(metric.headline)
+                .lineLimit(1)
+                .minimumScaleFactor(fixed ? 1 : 0.7)
                 .help(metric.breakdownTooltip)
             if let sub = metric.secondary {
                 Text(sub)
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
                     .help(metric.breakdownTooltip)
             }
             if showCost {
                 // v1.56: "≈" when part of the cost was charged at a rate
-                // borrowed from a neighbouring model.
-                Text(CostFormatter.format(cost, approximate: approximateCost))
+                // borrowed from a neighbouring model. v1.57: "—" when nothing
+                // reports a cost for this provider, rather than a "$0.00"
+                // that reads as "free"; a figure says on hover that it is an
+                // estimate, as the cost bar's "Est." and the panel's do.
+                Text(cell.cost.map { CostFormatter.format($0, approximate: cell.costIsApproximate) } ?? "—")
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(cell.cost == nil ? Color.secondary : Color.green)
+                    .lineLimit(1)
+                    .help(cell.cost == nil ? "" : L10n.usageDashboard.costDisclaimer)
             }
         }
+        .fixedSize(horizontal: fixed, vertical: false)
+        // One VoiceOver stop a figure: "Today, 85.9K I/O, $1.03".
+        .accessibilityElement(children: .combine)
     }
 
     /// v1.9.4 display model:
@@ -573,32 +620,46 @@ struct EnhancedProviderCard: View {
     /// `input` already includes cached input, so this figure includes cache
     /// for Codex and not for Claude. Each help text says which.
     private struct CardMetric {
-        let primary: String           // e.g. "234 msgs" or "3.1M I/O tokens"
-        let secondary: String?        // e.g. "320K I/O tokens"
+        let primary: String           // e.g. "234 msgs" or "3.1M I/O"
+        /// The number inside `primary` ("234", "3.1M"), drawn larger than
+        /// the words around it, which is what lets three figures and the
+        /// chart share one row. nil draws all of `primary` large ("—").
+        var value: String? = nil
+        let secondary: String?        // e.g. "320K I/O"
         let breakdownTooltip: String
+
+        /// `primary`, the number in the headline size and the unit around
+        /// it (in whichever order the language puts them) smaller.
+        var headline: AttributedString {
+            var text = AttributedString(primary)
+            text.font = .system(size: 14, weight: .bold, design: .rounded)
+            guard let value, let range = text.range(of: value), value != primary else { return text }
+            text.font = .system(size: 10, weight: .semibold, design: .rounded)
+            text.foregroundColor = .secondary
+            text[range].font = .system(size: 14, weight: .bold, design: .rounded)
+            text[range].foregroundColor = .primary
+            return text
+        }
     }
 
     private var isClaude: Bool { provider.provider == "Claude" }
 
-    private func metric(for date: Date?, weekRolling: Bool = false) -> CardMetric {
-        let msgs: Int? = {
-            if weekRolling { return state.scanMessagesThisWeek(for: provider.provider) }
-            return state.scanMessages(for: provider.provider, onDate: date ?? Date())
-        }()
-        let tokens: Int? = {
-            if weekRolling { return state.scanTokensThisWeek(for: provider.provider) }
-            return state.scanTokens(for: provider.provider, onDate: date ?? Date())
-        }()
+    private func metric(for cell: ProviderCardUsage.Cell) -> CardMetric {
+        let tokens = cell.ioTokens
 
         if isClaude {
-            if let msgs {
+            if let msgs = cell.messages {
                 return CardMetric(
                     primary: L10n.providers.messagesShort(msgs),
-                    secondary: tokens.map { "\(CostFormatter.formatUsage($0)) I/O" },
+                    value: CostFormatter.formatUsage(msgs),
+                    // The panel's words for the unit ("I/O", Spanish "E/S").
+                    secondary: tokens.map { ProviderCardUsage.tokenBasis.tokensText($0) },
                     breakdownTooltip: L10n.providers.claudeMetricHelp
                 )
             }
-            if isQuotaProvider {
+            // Signed in on a Mac that does not scan, the account's tokens are
+            // all there is: shown, rather than a dash beside a cost.
+            if isQuotaProvider, tokens == nil {
                 return CardMetric(primary: "—", secondary: nil,
                                   breakdownTooltip: L10n.providers.claudeNoScanHelp)
             }
@@ -606,10 +667,11 @@ struct EnhancedProviderCard: View {
 
         // Codex and other quota providers: lead with I/O tokens. Only Codex
         // and Claude are scanned today; the general text covers anything else.
-        if isQuotaProvider {
+        if isQuotaProvider || isClaude {
             if let tokens {
                 return CardMetric(
-                    primary: "\(CostFormatter.formatUsage(tokens)) I/O",
+                    primary: ProviderCardUsage.tokenBasis.tokensText(tokens),
+                    value: CostFormatter.formatUsage(tokens),
                     secondary: nil,
                     breakdownTooltip: provider.provider == ProviderKind.codex.rawValue
                         ? L10n.providers.codexIOTokensHelp
@@ -620,13 +682,206 @@ struct EnhancedProviderCard: View {
                               breakdownTooltip: L10n.providers.noScanHelp)
         }
 
-        // Non-quota providers: token count stored in today_usage/week_usage.
-        let raw = weekRolling ? provider.week_usage : provider.today_usage
+        // Non-quota providers: the collector's own token count (today_usage /
+        // week_usage), joined by the rule above.
         return CardMetric(
-            primary: CostFormatter.formatUsage(raw),
+            primary: tokens.map(CostFormatter.formatUsage) ?? "—",
             secondary: nil,
             breakdownTooltip: L10n.providers.apiTokenCountHelp
         )
+    }
+
+    /// The scope of the usage row and its chart, top right of the row: the
+    /// panel's name for it, and on hover what it means. Nothing for figures
+    /// that come from no scope the panel shows (`ProviderCardUsage.hasScope`:
+    /// an API key's own count), where "This Mac" or "All devices" would not
+    /// be true; the figure's own hover says where it comes from.
+    @ViewBuilder
+    private func scopeLabel(_ usage: ProviderCardUsage) -> some View {
+        if usage.hasScope {
+            Text(usage.scope.label)
+                .font(.system(size: 9))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .help(ProviderCardUsage.scopeHelp(usage.scope))
+        }
+    }
+
+    /// Opens this provider's last 30 days in the usage panel (#667's
+    /// provider mode), in the scope the card names and counting tokens as the
+    /// card does, so the panel's days and total are the figures clicked.
+    private func openPanel(_ usage: ProviderCardUsage) {
+        DashboardPanelController.shared.toggle(
+            provider: provider.provider, state: state, scope: usage.scope, basis: ProviderCardUsage.tokenBasis)
+    }
+
+    /// The small chart. Clicking it opens this provider's last 30 days in
+    /// the usage panel (#667's provider mode), in the scope the card names,
+    /// as CodexBar's chart does: the card's one way into the panel while the
+    /// chart is drawn (`ProviderCardUsage.panelEntry`).
+    private func sparkline(_ usage: ProviderCardUsage, chart: CardChart) -> some View {
+        let highest = chart.highest
+        let help = chart.metric == .cost
+            ? L10n.providerCard.chartCostHelp(CostFormatter.format(highest))
+            : L10n.providerCard.chartTokensHelp(CostFormatter.formatUsage(Int(highest)))
+        return Button {
+            openPanel(usage)
+        } label: {
+            ProviderUsageSparkline(days: chart.bars, metric: chart.metric, accent: providerColor)
+                .frame(height: 28)
+                // A faint plate under the pointer says the bars can be
+                // clicked; it takes no room, so no layout moves.
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.primary.opacity(isChartHovered ? 0.07 : 0))
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isChartHovered = $0 }
+        .help(help + "\n" + L10n.providerPanel.open)
+        // Every card has one: VoiceOver names whose it is, then reads the
+        // chart.
+        .accessibilityLabel(L10n.providerPanel.openFor(provider.provider))
+        .accessibilityValue(help)
+    }
+
+    /// The usage row's three figures.
+    private func usageCells(_ usage: ProviderCardUsage, fixed: Bool) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            usageColumn(header: L10n.dashboard.today, cell: usage.today, fixed: fixed)
+            usageColumn(header: L10n.providers.thisWeek, cell: usage.week, fixed: fixed)
+            usageColumn(header: L10n.providerCard.thirtyDays, cell: usage.thirtyDays, fixed: fixed)
+        }
+    }
+
+    /// v1.57 P1-1: Today · This Week · 30 Days, each with tokens (Claude:
+    /// messages first) and cost, and the 30-day chart beside them, which
+    /// replace v1.30's two figures and the 90-point chart under the card.
+    ///
+    /// Three layouts, the first that fits: the chart beside the figures, so
+    /// the row is no taller than the two figures it replaced; the chart under
+    /// them, when long figures leave it too little room; and, when even the
+    /// figures and the scope do not fit side by side (a month of Claude
+    /// messages in Japanese or Spanish), the scope on a line of its own, or
+    /// beside the messages note when there is one, and the figures' headlines
+    /// free to shrink rather than run past the card.
+    @ViewBuilder
+    private func usageSection(
+        _ usage: ProviderCardUsage, chart: CardChart, chartVisible: Bool, totalsVisible: Bool
+    ) -> some View {
+        // A provider nothing counts usage for (Gemini's quota alone) has no
+        // row: three dashes and three more say nothing the quota bars do not.
+        let showsTotals = totalsVisible && usage.hasAnyFigure
+        // Claude's messages are this Mac's alone; beside tokens and cost from
+        // every device the card has to say so.
+        let notesMessages = isClaude && usage.messagesAreThisMacOnly
+        if showsTotals, chartVisible {
+            ViewThatFits(in: .horizontal) {
+                usageChartBeside(usage, chart: chart, notesMessages: notesMessages)
+                usageChartBelow(usage, chart: chart, notesMessages: notesMessages)
+                usageNarrow(usage, chart: chart, notesMessages: notesMessages)
+            }
+        } else if showsTotals {
+            ViewThatFits(in: .horizontal) {
+                usageChartBeside(usage, chart: nil, notesMessages: notesMessages)
+                usageNarrow(usage, chart: nil, notesMessages: notesMessages)
+            }
+        } else if chartVisible {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    // With the figures hidden, the caption says what the bars
+                    // measure; the colour alone (green for cost) does not.
+                    Text(L10n.providerCard.sectionDailyChart + " · " + chart.metric.label)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    scopeLabel(usage)
+                }
+                sparkline(usage, chart: chart)
+            }
+        }
+    }
+
+    /// Layout 1: the figures, and the scope over the chart beside them
+    /// (`chart` nil: no chart, the scope alone).
+    ///
+    /// The chart asks for its minimum width, 72 points, as its ideal:
+    /// `ViewThatFits` picks a layout by ideal size, so an ideal of 120 moved
+    /// the chart under a month of Codex's I/O figures in Spanish, 32 points
+    /// taller than 1.54's card. Laid out, it still takes up to 160 points
+    /// where the figures leave the room.
+    private func usageChartBeside(
+        _ usage: ProviderCardUsage, chart: CardChart?, notesMessages: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .top, spacing: 8) {
+                usageCells(usage, fixed: true)
+                Spacer(minLength: 0)
+                VStack(alignment: .trailing, spacing: 3) {
+                    scopeLabel(usage)
+                        .fixedSize()
+                    if let chart {
+                        sparkline(usage, chart: chart)
+                            .frame(minWidth: 72, idealWidth: 72, maxWidth: 160)
+                    }
+                }
+            }
+            if notesMessages { messagesNote }
+        }
+    }
+
+    /// Layout 2: the figures and the scope on a row, the chart under them.
+    private func usageChartBelow(
+        _ usage: ProviderCardUsage, chart: CardChart, notesMessages: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .top, spacing: 8) {
+                usageCells(usage, fixed: true)
+                Spacer(minLength: 0)
+                scopeLabel(usage)
+                    .fixedSize()
+            }
+            sparkline(usage, chart: chart)
+            if notesMessages { messagesNote }
+        }
+    }
+
+    /// Layout 3: the scope on a line of its own (beside the messages note
+    /// when there is one), the figures free to shrink to the card's width.
+    private func usageNarrow(
+        _ usage: ProviderCardUsage, chart: CardChart?, notesMessages: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if !notesMessages, usage.hasScope {
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    scopeLabel(usage)
+                }
+            }
+            usageCells(usage, fixed: false)
+            if let chart {
+                sparkline(usage, chart: chart)
+            }
+            if notesMessages {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    messagesNote
+                    scopeLabel(usage)
+                        .fixedSize()
+                }
+            }
+        }
+    }
+
+    /// "Messages are counted on this Mac only." Wraps to the card's width;
+    /// its ideal width is none, so it never decides which layout fits.
+    private var messagesNote: some View {
+        Text(L10n.providerCard.messagesThisMac)
+            .font(.system(size: 9))
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
     /// v1.44 W3: collector outcome + one next step, or nothing at all.
@@ -683,6 +938,22 @@ struct EnhancedProviderCard: View {
     }
 
     var body: some View {
+        // v1.57: the usage row, its chart and the hidden sections, worked out
+        // once a redraw.
+        let usage = cardUsage
+        let visibility = ProviderCardVisibility(storedValue: hiddenSectionsRaw)
+        let kind = config.kind
+        let chartMetric = ProviderCardUsage.chartMetric(storedMetric: chartMetricRaw, showsCost: showCost)
+        let chart = CardChart(bars: usage.chartDays(chartMetric), metric: chartMetric)
+        let chartVisible = visibility.isVisible(.dailyChart, for: kind) && chart.hasData
+        // The usage panel opens from the chart while the card draws it, else
+        // from a button in the header: one way in at a time.
+        let chartDrawn = config.isEnabled && chartVisible
+        let panelEntry = ProviderCardUsage.panelEntry(
+            chartDrawn: chartDrawn,
+            // Asked only when the answer matters: a drawn chart has usage.
+            panelHasHistory: !chartDrawn && UsagePanelModel.hasHistory(
+                provider: provider.provider, scan: state.costUsageScanResult, cloud: state.dailyUsage))
         VStack(alignment: .leading, spacing: 8) {
             // Header row
             HStack(spacing: 8) {
@@ -725,12 +996,12 @@ struct EnhancedProviderCard: View {
 
                 // v1.57 (P1-2): this provider's last 30 days by day and
                 // model, in the panel that slides out of the popover. Only
-                // where there is usage to show; adds no height to the card.
-                if UsagePanelModel.hasHistory(provider: provider.provider,
-                                              scan: state.costUsageScanResult,
-                                              cloud: state.dailyUsage) {
+                // where there is usage to show, and only while the card draws
+                // no chart (hidden, or nothing in it): the chart itself opens
+                // the panel otherwise. Adds no height to the card.
+                if panelEntry == .headerButton {
                     Button {
-                        DashboardPanelController.shared.toggle(provider: provider.provider, state: state)
+                        openPanel(usage)
                     } label: {
                         Image(systemName: "chart.bar.xaxis")
                             .font(.system(size: 11))
@@ -796,7 +1067,7 @@ struct EnhancedProviderCard: View {
             // this provider's service components (● name · Operational) + an
             // "Open Status Page" link. Renders nothing for providers without a
             // known status page; fetches only when expanded.
-            if let kind = ProviderKind(rawValue: provider.provider) {
+            if let kind = ProviderKind(rawValue: provider.provider), visibility.isVisible(.serviceStatus, for: config.kind) {
                 ProviderStatusComponentsView(provider: kind)
             }
 
@@ -812,44 +1083,57 @@ struct EnhancedProviderCard: View {
             }
 
             if config.isEnabled {
-                // Source + Plan row
-                HStack(spacing: 8) {
-                    if let accountLabel {
-                        Label(accountLabel, systemImage: "envelope")
-                            .font(.system(size: 8))
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
+                // Source + Plan row. The quota badge at its end belongs to
+                // the Quota section: it stays while Plan and Source is
+                // hidden, and goes with the quota bars.
+                let showsPlanAndSource = visibility.isVisible(.planAndSource, for: kind)
+                let showsQuota = visibility.isVisible(.quota, for: kind)
+                let showsResetCredits = visibility.showsResetCredits(
+                    for: kind, hasQuotaTiers: !detail.tiers.isEmpty)
+                if showsPlanAndSource || showsQuota {
+                    HStack(spacing: 8) {
+                        if showsPlanAndSource {
+                            if let accountLabel {
+                                Label(accountLabel, systemImage: "envelope")
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                            }
+                            if let plan = detail.planType {
+                                StatusBadge(text: L10n.providers.planDisplay(plan), color: plan == "Paid" ? .green : .orange)
+                            }
+                            Text(L10n.providers.sourceLabel(detail.sourceType.localizedName))
+                                .font(.system(size: 8))
+                                .foregroundStyle(.tertiary)
+                        }
+                        Spacer()
+                        if showsQuota {
+                            quotaBadge
+                        }
                     }
-                    if let plan = detail.planType {
-                        StatusBadge(text: L10n.providers.planDisplay(plan), color: plan == "Paid" ? .green : .orange)
-                    }
-                    Text(L10n.providers.sourceLabel(detail.sourceType.localizedName))
-                        .font(.system(size: 8))
-                        .foregroundStyle(.tertiary)
-                    Spacer()
-                    quotaBadge
                 }
 
-                // Usage stats — v1.9.4 layout:
-                //   Today:           This Week:
-                //   234 msgs         1,840 msgs        (Claude hero)
-                //   320K I/O tokens  2.4M I/O tokens   (Claude sub)
-                //   $7.40            $461.20           (cost, always)
-                // Codex / other quota providers: primary line is I/O tokens,
-                // no sub line. Hover the primary line for a token-breakdown
-                // tooltip explaining what's included/excluded.
-                let today = metric(for: Date())
-                let week = metric(for: nil, weekRolling: true)
-                HStack(spacing: 12) {
-                    usageColumn(header: L10n.dashboard.today, metric: today, cost: provider.estimated_cost_today,
-                                approximateCost: state.scanPriceIsApproximate(for: provider.provider, onDate: Date()))
-                    usageColumn(header: L10n.providers.thisWeek, metric: week, cost: provider.estimated_cost_week,
-                                approximateCost: state.scanPriceIsApproximateThisWeek(for: provider.provider))
-                    Spacer()
-                }
+                // Usage — v1.57 layout (P1-1):
+                //   Today        This Week     30 Days       All devices
+                //   234 msgs     1,840 msgs    7.1K msgs     ▁▃▅▂▇▆▃▁ (chart)
+                //   320K I/O     2.4M I/O      9.1M I/O
+                //   $7.40        $46.20        $201.10
+                // Claude leads with messages; Codex and other quota providers
+                // with I/O tokens. Hover a figure for what it includes.
+                usageSection(
+                    usage, chart: chart, chartVisible: chartVisible,
+                    totalsVisible: visibility.isVisible(.usageTotals, for: kind))
 
                 // Usage tiers
-                if !detail.tiers.isEmpty {
+                if !showsQuota {
+                    // Hidden from this card (Settings › Providers, or the
+                    // card's menu): nothing drawn, nothing else changes.
+                    // Codex's reset credits are a section of their own and
+                    // stay unless they are hidden too.
+                    if showsResetCredits {
+                        resetCreditsRow
+                    }
+                } else if !detail.tiers.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(detail.tiers) { tier in
                             if let creditsLeft = tier.creditsLeftText {
@@ -867,10 +1151,8 @@ struct EnhancedProviderCard: View {
                                 )
                             }
                         }
-                        if config.kind == .codex {
-                            CodexResetCreditsCardRow(
-                                accountIDs: accountConfigs.map(\.accountID) + [config.accountID]
-                            )
+                        if showsResetCredits {
+                            resetCreditsRow
                         }
                     }
                 } else if let quota = provider.quota,
@@ -930,7 +1212,7 @@ struct EnhancedProviderCard: View {
                 }
 
                 // Recent sessions
-                if !provider.recent_sessions.isEmpty {
+                if !provider.recent_sessions.isEmpty, visibility.isVisible(.recentSessions, for: kind) {
                     HStack(spacing: 4) {
                         Image(systemName: "terminal")
                             .font(.system(size: 8))
@@ -948,7 +1230,7 @@ struct EnhancedProviderCard: View {
                 // the row is simply absent. Safe in this vertically-
                 // stacked card list (Gemini R1 CRITICAL applies only to
                 // equal-height grids/HStacks — verified inapplicable).
-                if let paceSummary = provider.paceSummary() {
+                if visibility.isVisible(.pace, for: kind), let paceSummary = provider.paceSummary() {
                     HStack(spacing: 4) {
                         Image(systemName: "gauge.with.needle")
                             .font(.system(size: 8))
@@ -960,19 +1242,9 @@ struct EnhancedProviderCard: View {
                     }
                 }
 
-                // v1.30 F3 — per-provider daily usage history (last 30 days),
-                // shown only when there's history. Data is already cached on
-                // AppState.dailyUsage (no extra fetch).
-                let usageHistory = ProviderUsageHistory.series(from: state.dailyUsage, provider: provider.provider)
-                if usageHistory.contains(where: { $0.ioTokens > 0 }) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(L10n.widget.usageTitle)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(.secondary)
-                        ProviderUsageHistoryChart(points: usageHistory, accent: providerColor)
-                    }
-                    .padding(.top, 2)
-                }
+                // v1.30 F3's 90-point usage chart under the card is now the
+                // small chart in the usage row above (v1.57 P1-1). The panel
+                // that slides out of the popover is where a day is read.
             }
         }
         .padding(10)
@@ -983,10 +1255,26 @@ struct EnhancedProviderCard: View {
                 .stroke(providerColor.opacity(config.isEnabled ? 0.2 : 0.05), lineWidth: 1)
         )
         .opacity(config.isEnabled ? 1.0 : 0.6)
+        // v1.57 P1-1b: right-click a card to choose what it shows. The same
+        // choice is in Settings › Providers.
+        .contextMenu {
+            // The toggles at the menu's first level, under its name.
+            Section(L10n.providerCard.sectionsMenu) {
+                ProviderCardSectionsMenuItems(kind: config.kind)
+            }
+        }
         // v1.10 P3-3: VoiceOver summary when the card is focused.
         // `.contain` so nested UsageBars keep their own drill-in accessibility.
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilitySummary)
+    }
+
+    /// v1.57: Codex's limit reset credits (#666), a section of the card's
+    /// own (`ProviderCardSection.resetCredits`), under the quota bars.
+    private var resetCreditsRow: some View {
+        CodexResetCreditsCardRow(
+            accountIDs: accountConfigs.map(\.accountID) + [config.accountID]
+        )
     }
 
     private var accessibilitySummary: String {
@@ -1086,5 +1374,40 @@ struct EnhancedProviderCard: View {
                 StatusBadge(text: L10n.quota.ok, color: .green)
             }
         }
+    }
+}
+
+// MARK: - Card sections (v1.57 P1-1b)
+
+/// The checkable list of a provider card's sections, and "Show All
+/// Sections". The card's right-click menu and Settings › Providers both show
+/// it, and both write the one stored choice (`ProviderCardVisibility`), so
+/// the card redraws the moment either changes it.
+struct ProviderCardSectionsMenuItems: View {
+    let kind: ProviderKind
+    @AppStorage(ProviderCardVisibility.defaultsKey) private var hiddenSectionsRaw = ""
+
+    var body: some View {
+        let visibility = ProviderCardVisibility(storedValue: hiddenSectionsRaw)
+        ForEach(ProviderCardSection.sections(for: kind)) { section in
+            Toggle(
+                section.title,
+                isOn: Binding(
+                    get: { visibility.isVisible(section, for: kind) },
+                    set: { isVisible in
+                        var updated = ProviderCardVisibility(storedValue: hiddenSectionsRaw)
+                        updated.setVisible(isVisible, section, for: kind)
+                        hiddenSectionsRaw = updated.storedValue
+                    }
+                )
+            )
+        }
+        Divider()
+        Button(L10n.providerCard.showAllSections) {
+            var updated = ProviderCardVisibility(storedValue: hiddenSectionsRaw)
+            updated.restoreDefaults(for: kind)
+            hiddenSectionsRaw = updated.storedValue
+        }
+        .disabled(!visibility.hasHiddenSections(for: kind))
     }
 }
