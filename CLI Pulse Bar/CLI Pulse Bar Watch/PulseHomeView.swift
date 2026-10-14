@@ -329,10 +329,10 @@ struct PulseHomeView: View {
         // dashboard_summary fetch or the iPhone's relay), whose request count
         // is always 0 (APIClient.dashboardSummary(from:)), so on the Watch the
         // card holds the week cost alone, and nothing when costs are hidden.
-        if OverviewFormatters.showsRequestsMetric(route: state.refreshRoute) || state.showCost {
+        if OverviewFormatters.showsRequestsMetric(route: state.refreshRoute, sessions: state.sessions) || state.showCost {
             WatchCard {
                 VStack(spacing: 6) {
-                    if OverviewFormatters.showsRequestsMetric(route: state.refreshRoute) {
+                    if OverviewFormatters.showsRequestsMetric(route: state.refreshRoute, sessions: state.sessions) {
                         WatchMetricRow(
                             label: L10n.dashboard.requests,
                             value: "\(dash.total_requests_today)",

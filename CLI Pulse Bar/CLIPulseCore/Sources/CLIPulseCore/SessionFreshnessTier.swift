@@ -85,7 +85,10 @@ public enum SessionFreshnessTierClassifier {
     /// refresh, by default two minutes later (`AppState.refreshInterval`):
     /// up to 240 s. A minute more covers a late upload. That is 300 s, the
     /// window `SessionFreshnessFilter.filterCurrent` keeps a row for, so a
-    /// scan row a refresh lists reads Running until the next refresh.
+    /// row its producer rewrote on its normal cycle reads Running until the
+    /// next refresh. (A row the refresh lists at 181–300 s old, from a
+    /// producer that missed a cycle, can be hidden before then: the tab
+    /// classifies again as it draws.)
     ///
     /// It was 180 s, for a helper heartbeat of 60 s that no producer has: on
     /// the default cadences a live process dropped out of the list between

@@ -83,11 +83,18 @@ final class DemoMatchesProductionTests: XCTestCase {
     /// (and has a count) just as local mode does; signed in and paired, Demo,
     /// and the iPhone (whose route the Watch also decides) do not.
     func testTheRequestsTileShowsOnlyWhereSomethingCountsRequests() throws {
+        // A Claude log row, whose count its row shows, so only the route decides.
+        let counted = [SessionRecord(
+            id: "jsonl-claude-abc", name: "Claude session", provider: "Claude", project: "cli-pulse",
+            device_name: "MacBook Pro", started_at: "2026-10-14T00:00:00Z",
+            last_active_at: "2026-10-14T00:05:00Z", status: "Running", total_usage: 4_100,
+            estimated_cost: 0.01, cost_status: "Estimated", requests: 44, error_count: 0)]
+        XCTAssertEqual(OverviewFormatters.requestCount(in: counted), 44, "the row's count no longer counts")
         func shows(signedIn: Bool, demo: Bool = false, paired: Bool,
                    localMode: Bool = false, mac: Bool) -> Bool {
             OverviewFormatters.showsRequestsMetric(route: RefreshRouter.decide(
                 isAuthenticated: signedIn, isDemoMode: demo, isPaired: paired,
-                isLocalMode: localMode, isMacOS: mac))
+                isLocalMode: localMode, isMacOS: mac), sessions: counted)
         }
         XCTAssertTrue(shows(signedIn: false, paired: false, localMode: true, mac: true),
                       "local mode counts requests and lost its tile")
@@ -579,13 +586,29 @@ final class DemoMatchesProductionTests: XCTestCase {
                       "the Python helper's long-running rule no longer skips process-scan rows")
         XCTAssertTrue(python.contains(#"session_id=f"proc-{row['pid']}","#),
                       "the Python helper's scan no longer names its rows proc-")
-        // ...and its sync passes the rule only the scan's rows, so it never fires.
+        // ...and its sync passes the rule only the scan's rows, so it never
+        // fires: in `sync`, before the rules are called, `collected_sessions`
+        // is bound once, to `collect_sessions()` alone, and never changed.
         let companion = try String(
             contentsOf: Self.appSourceRoot.deletingLastPathComponent().appendingPathComponent("helper/cli_pulse_helper.py"),
             encoding: .utf8)
-        XCTAssertTrue(companion.contains("collected_sessions = collect_sessions()")
-                      && companion.contains("collect_alerts(collected_sessions, device_snapshot, device_id=config.device_id)"),
-                      "the Companion CLI's sync passes the alert rules other sessions; can the long-running rule fire?")
+        let syncStart = try XCTUnwrap(companion.range(of: "\ndef sync("), "the Companion CLI has no sync()")
+        let rulesCall = try XCTUnwrap(
+            companion.range(of: "collect_alerts(collected_sessions, device_snapshot, device_id=config.device_id)",
+                            range: syncStart.upperBound..<companion.endIndex),
+            "the Companion CLI's sync no longer passes collected_sessions to the alert rules; which rows reach them?")
+        let beforeRules = String(companion[syncStart.upperBound..<rulesCall.lowerBound])
+        XCTAssertNil(beforeRules.range(of: "\ndef "), "the alert rules are no longer called from sync()")
+        func count(_ pattern: String) throws -> Int {
+            try NSRegularExpression(pattern: pattern)
+                .numberOfMatches(in: beforeRules, range: NSRange(beforeRules.startIndex..., in: beforeRules))
+        }
+        XCTAssertEqual(try count(#"(?m)^[ \t]*collected_sessions = collect_sessions\(\)[ \t]*$"#), 1,
+                       "sync() no longer binds collected_sessions to collect_sessions() alone")
+        XCTAssertEqual(try count(#"\bcollected_sessions\s*(=(?!=)|\+=|\|=)|\bcollected_sessions\.(extend|append|insert)\(|\bcollected_sessions\[[^\]]*\]\s*=(?!=)"#), 1, """
+            sync() changes collected_sessions before the alert rules see it; the rows the long-running \
+            rule is passed may no longer all be process scans
+            """)
         let generator = Self.codeOnly(try String(
             contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/AlertGenerator.swift"),
             encoding: .utf8))

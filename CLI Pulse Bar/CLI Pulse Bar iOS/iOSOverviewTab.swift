@@ -249,7 +249,7 @@ struct iOSOverviewTab: View {
         // Requests only where something counts them (the Mac's local refresh
         // route, which the iPhone and iPad never take): the cloud dashboard
         // always says 0.
-        if OverviewFormatters.showsRequestsMetric(route: state.refreshRoute) {
+        if OverviewFormatters.showsRequestsMetric(route: state.refreshRoute, sessions: state.sessions) {
             tiles.append(MetricTile(id: "requests", title: L10n.dashboard.requests, value: "\(dash.total_requests_today)", icon: "arrow.up.arrow.down", color: .purple))
         }
         tiles += [

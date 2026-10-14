@@ -1050,7 +1050,8 @@ internal final class DataRefreshManager {
         // unsandboxed. Belt + suspenders.
         let synthesizedSessions = SessionFreshnessFilter.filterCurrent(resolvedSessions, now: Date())
         let activeSessionCount = synthesizedSessions.count
-        let totalRequestsToday = synthesizedSessions.reduce(0) { $0 + $1.requests }
+        // Only the counts the rows show: a scan row's is its runtime / 45.
+        let totalRequestsToday = OverviewFormatters.requestCount(in: synthesizedSessions) ?? 0
         // iter22: one-line telemetry that explains why the Sessions
         // tab is empty or populated — printed every refresh tick so
         // manual reproduction is debuggable without code changes.

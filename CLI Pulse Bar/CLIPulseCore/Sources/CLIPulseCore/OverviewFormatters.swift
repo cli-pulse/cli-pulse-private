@@ -44,17 +44,35 @@ public enum OverviewFormatters {
     }()
 
     /// Whether the Overview's Requests figure has a count to show. Only the
-    /// local refresh fills one (it sums its sessions' `requests`). The cloud
-    /// route's dashboard comes from `dashboard_summary`, which has no request
-    /// column, so `APIClient.dashboardSummary(from:)` carries 0 on purpose and
-    /// the tile read "0" on every iPhone, iPad, Watch and paired Mac.
+    /// local refresh fills one (`requestCount(in:)` over the sessions it
+    /// lists). The cloud route's dashboard comes from `dashboard_summary`,
+    /// which has no request column, so `APIClient.dashboardSummary(from:)`
+    /// carries 0 on purpose and the tile read "0" on every iPhone, iPad,
+    /// Watch and paired Mac.
     ///
     /// Keyed on the route, not on being signed in: `.localOnly` is a signed-out
     /// Mac in local mode AND a signed-in Mac whose account has no paired helper
     /// yet, and both fill the count. Demo is `.noOp`; the iPhone, iPad and
     /// Watch are never `.localOnly`.
-    public static func showsRequestsMetric(route: RefreshRoute) -> Bool {
-        route == .localOnly
+    ///
+    /// And on the sessions: on that route the tile shows only when a listed
+    /// session has a count its own row shows. A Developer ID Mac lists
+    /// LocalScanner's rows whenever an AI tool runs, and their `requests` is
+    /// runtime / 45, which no row shows; summed, Claude.app open 8 hours put
+    /// an unlabelled "640" on the Overview.
+    public static func showsRequestsMetric(route: RefreshRoute, sessions: [SessionRecord]) -> Bool {
+        route == .localOnly && requestCount(in: sessions) != nil
+    }
+
+    /// The local refresh's Requests figure: the sum of the counts the
+    /// sessions' rows show (`SessionRecord.hasMeaningfulRequestCount`), or nil
+    /// when no row shows one. A process-scan row's count is its runtime
+    /// through a formula, and a Codex log row's is a floor of 1; the rows hide
+    /// both, so the Overview does not add them up.
+    public static func requestCount(in sessions: [SessionRecord]) -> Int? {
+        let counted = sessions.filter(\.hasMeaningfulRequestCount)
+        guard !counted.isEmpty else { return nil }
+        return counted.reduce(0) { $0 + $1.requests }
     }
 
     /// The iPhone Overview's rows of metric tiles, as index ranges: two across,

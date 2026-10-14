@@ -2098,10 +2098,16 @@ struct SessionRow: View {
                 }
             }
 
-            // Details
+            // Details. A scan row's title already names its provider and
+            // project ("Codex · cli-pulse-ios"), so the line keeps only the
+            // device; no row shows a producer's placeholder project.
             HStack(spacing: 12) {
-                Label(session.provider, systemImage: "cpu")
-                Label(session.project, systemImage: "folder")
+                if !session.titleNamesProviderAndProject {
+                    Label(session.provider, systemImage: "cpu")
+                    if let project = session.displayProject {
+                        Label(project, systemImage: "folder")
+                    }
+                }
                 Label(session.device_name, systemImage: "desktopcomputer")
             }
             .font(.system(size: 9))

@@ -338,9 +338,10 @@ struct OverviewTab: View {
                 color: .green
             )
             // Only on the local refresh route (local mode, or signed in with no
-            // paired helper yet), which counts requests. The cloud route's
+            // paired helper yet), which counts requests, and only when a
+            // listed session has a count its row shows. The cloud route's
             // dashboard has no request count and always said 0 here.
-            if OverviewFormatters.showsRequestsMetric(route: state.refreshRoute) {
+            if OverviewFormatters.showsRequestsMetric(route: state.refreshRoute, sessions: state.sessions) {
                 MetricCard(
                     title: L10n.dashboard.requests,
                     value: DisplayFormat.count(dash.total_requests_today),

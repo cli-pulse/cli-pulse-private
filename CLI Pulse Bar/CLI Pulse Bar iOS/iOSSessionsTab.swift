@@ -219,11 +219,20 @@ struct iOSSessionsTab: View {
                             .lineLimit(1)
                         // One line: beside a long badge ("En ejecución") the
                         // project used to break into three hyphenated lines.
+                        // A scan row's title already names its provider and
+                        // project, so its line names the device instead.
                         HStack(spacing: 6) {
-                            Text(session.provider).font(.caption2)
-                                .fixedSize()
-                            Text(session.project).font(.caption2)
-                                .lineLimit(1)
+                            if session.titleNamesProviderAndProject {
+                                Text(session.device_name).font(.caption2)
+                                    .lineLimit(1)
+                            } else {
+                                Text(session.provider).font(.caption2)
+                                    .fixedSize()
+                                if let project = session.displayProject {
+                                    Text(project).font(.caption2)
+                                        .lineLimit(1)
+                                }
+                            }
                         }
                         .foregroundStyle(.secondary)
                     }
@@ -345,7 +354,7 @@ struct SessionDetailView: View {
                     GridItem(.flexible()),
                 ], spacing: 16) {
                     detailItem(label: L10n.detail.provider, value: session.provider, icon: "cpu")
-                    detailItem(label: L10n.detail.project, value: session.project, icon: "folder")
+                    detailItem(label: L10n.detail.project, value: session.detailProject, icon: "folder")
                     detailItem(label: L10n.detail.device, value: session.device_name, icon: "desktopcomputer")
                     detailItem(label: L10n.detail.started, value: RelativeTime.format(session.started_at), icon: "clock")
                 }
@@ -450,16 +459,25 @@ struct iOSSessionRow: View {
                 SessionStatusBadge(session: session, tier: freshnessTier)
             }
 
-            HStack(spacing: 14) {
-                Label(session.provider, systemImage: "cpu")
-                Label(session.project, systemImage: "folder")
-                if let conf = session.collection_confidence {
-                    ConfidenceBadge(confidence: conf)
+            // A scan row's title already names its provider and project
+            // ("Codex · cli-pulse-ios"), so its line keeps only the
+            // confidence; no row shows a producer's placeholder project.
+            if !session.titleNamesProviderAndProject || session.collection_confidence != nil {
+                HStack(spacing: 14) {
+                    if !session.titleNamesProviderAndProject {
+                        Label(session.provider, systemImage: "cpu")
+                        if let project = session.displayProject {
+                            Label(project, systemImage: "folder")
+                        }
+                    }
+                    if let conf = session.collection_confidence {
+                        ConfidenceBadge(confidence: conf)
+                    }
                 }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
 
             HStack(spacing: 18) {
                 // Same gate as macOS: process-scan rows (`local-` and

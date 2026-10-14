@@ -708,6 +708,42 @@ public struct SessionRecord: Codable, Identifiable, Sendable, Hashable {
     /// names none. Stored as written; `displayName` does not show it.
     static let scanRowUnknownProject = "unknown"
 
+    /// The project the Companion CLI (`_guess_project`, helper/system_collector.py)
+    /// and the desktop app (`guess_project`) write when they find none: their
+    /// last fallback (the Companion's when its working directory has no name,
+    /// as "/" has none).
+    static let scanRowWorkspaceProject = "local-workspace"
+
+    /// The projects a scan producer writes for "no project": English
+    /// placeholders, not names. Neither the title nor the line under it shows
+    /// one (`displayName`, `displayProject`).
+    static let scanRowPlaceholderProjects: Set<String> = [scanRowUnknownProject, scanRowWorkspaceProject]
+
+    /// The project to show for this row, or nil when there is none to show:
+    /// an empty project, or a scan producer's placeholder on a scan row. A
+    /// row that showed `project` as stored put the English "unknown" under a
+    /// title that reads "Claude 进程" in Chinese.
+    public var displayProject: String? {
+        let clean = project.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.isEmpty { return nil }
+        if isProcessScanRow, Self.scanRowPlaceholderProjects.contains(clean) { return nil }
+        return clean
+    }
+
+    /// The project as a session detail's Project field shows it: the project,
+    /// or "Unknown" in the reader's language when there is none to show.
+    public var detailProject: String {
+        displayProject ?? L10n.status.unknown
+    }
+
+    /// Whether the row's title (`displayName`) already names its provider and
+    /// project, so the line under it should not name them again: every scan
+    /// row ("Codex · cli-pulse-ios", or "Claude process" when there is no
+    /// project to show).
+    public var titleNamesProviderAndProject: Bool {
+        isProcessScanRow
+    }
+
     /// Whether the row's `total_usage` / `estimated_cost` / `requests`
     /// fields are derived from heuristics rather than parsed usage.
     /// True for every process-scan row (`isProcessScanRow`), where:
@@ -737,8 +773,8 @@ public struct SessionRecord: Codable, Identifiable, Sendable, Hashable {
     /// strings like `/Users/<you>/Library/Application Support/C...`
     /// or `./Codex Computer Use.app/Contents/Shar...`. Replace with
     /// "{provider} · {project}" when we have provider info, falling
-    /// back to "{provider} process" if the project is empty or
-    /// LocalScanner's "unknown".
+    /// back to "{provider} process" if the project is empty or a
+    /// producer's placeholder (`displayProject`).
     /// JSONL-synthesized rows carry the English name "Claude session", which
     /// is rendered through the same fallback label managed rows use. Keyed on
     /// the `jsonl-` id as well as the exact name, so a real process or cloud
@@ -748,9 +784,8 @@ public struct SessionRecord: Codable, Identifiable, Sendable, Hashable {
             return L10n.sessions.rowFallbackLabel(provider)
         }
         guard isProcessScanRow else { return name }
-        let cleanProject = project.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !cleanProject.isEmpty, cleanProject != Self.scanRowUnknownProject {
-            return "\(provider) · \(cleanProject)"
+        if let project = displayProject {
+            return "\(provider) · \(project)"
         }
         return L10n.sessions.rowProcessLabel(provider)
     }
