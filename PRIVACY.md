@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **CLI Pulse**
-**Last Updated: October 7, 2026**
+**Last Updated: October 15, 2026**
 
 CLI Pulse is a developer tool for monitoring usage, quotas, and cost across AI
 coding providers (Claude, Codex, Gemini, OpenRouter, and others). Our privacy
@@ -17,7 +17,7 @@ This document is the single source of truth for what we collect. If you find
 anything in the app, App Store listing, or GitHub README that contradicts this
 file, **the file wins** — please open an issue.
 
-It describes CLI Pulse 1.56.
+It describes CLI Pulse 1.57.
 
 ---
 
