@@ -58,7 +58,9 @@
 #   --app        a DEBUG simulator build to install; without it the script
 #                builds the "CLI Pulse iOS" scheme (Debug) into --derived-data,
 #                and deletes that build when it is done unless --derived-data
-#                was given (a Debug build of the app is several GB)
+#                was given (a Debug build of the app is several GB). Its Swift
+#                packages come from the shared checkout in scripts/lib/build_env.sh
+#                (CLIPULSE_SPM_DIR=off: inside the derived data, as before)
 #   --keep-data  install over the existing app instead of reinstalling it.
 #                The default UNINSTALLS CLI Pulse from that simulator first,
 #                which DELETES ITS DATA there (sign-in, settings, caches), so
@@ -169,7 +171,7 @@ while [ $# -gt 0 ]; do
     --settle) SETTLE="$2"; shift 2 ;;
     --keep-data) KEEP_DATA=1; shift ;;
     --force) FORCE=1; shift ;;
-    -h|--help) sed -n '2,72p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,74p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -274,10 +276,16 @@ if [ -z "$APP" ]; then
     DERIVED="${TMPDIR:-/tmp}/clipulse-ios-screenshots-build"
     built_here="$DERIVED"
   fi
+  # Swift packages from the shared, resolved-once checkout rather than a fresh
+  # copy in every derived data (about 2.4 GB of it is sentry-cocoa).
+  # shellcheck source=../../scripts/lib/build_env.sh
+  source "$APP_ROOT/../scripts/lib/build_env.sh"
+  spm_cache_args "$APP_ROOT" || die "the Swift package lock is held elsewhere for too long"
   echo "building CLI Pulse iOS (Debug) into $DERIVED"
   (cd "$APP_ROOT" && xcodebuild build \
       -project "CLI Pulse Bar.xcodeproj" -scheme "CLI Pulse iOS" -configuration Debug \
-      -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath "$DERIVED" -quiet)
+      -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath "$DERIVED" -quiet \
+      "${SPM_ARGS[@]+"${SPM_ARGS[@]}"}" COMPILER_INDEX_STORE_ENABLE=NO)
   APP="$(find "$DERIVED/Build/Products/Debug-iphonesimulator" -maxdepth 1 -name '*.app' -print -quit)"
 fi
 [ -d "$APP" ] || die "no .app at '$APP'"
