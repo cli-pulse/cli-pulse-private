@@ -13,8 +13,8 @@
    "공급자별 오늘 추정 비용과 최근 30일 합계"
   ],
   "04_sessions": [
-   "모든 CLI 실행을 기록",
-   "활성 세션의 사용량, 비용, 요청 수"
+   "지금 실행 중인 세션",
+   "공급자와 프로젝트별 AI 도구 실행 현황"
   ],
   "05_alerts": [
    "할당량이 바닥나기 전에",
@@ -25,7 +25,7 @@
   "01_overview.png": "071fab6cef42033750c5ae781037d17d",
   "02_providers.png": "c826e2e97d21033d218db7d85c5e009d",
   "03_cost.png": "38fa9d650b5e76dd65b01c8741031797",
-  "04_sessions.png": "238c79fb301048d25f3dc32407dedd7a",
+  "04_sessions.png": "2eba2dacfe303a300e4944d70f75bbcd",
   "05_alerts.png": "e74acef440cb4fbaeb065e3085f57b50"
  },
  "faces": {
@@ -37,7 +37,7 @@
   "01_overview_1290x2796.png": "c3bbed7b644a902ce7aee604dffbbd41",
   "02_providers_1290x2796.png": "2724c6c6260d6b8903bf0a9974a67bff",
   "03_cost_1290x2796.png": "2903d0a2fb857c3636fd8d619133a4c4",
-  "04_sessions_1290x2796.png": "0f41eed5d9c11519fea6a60408dd6522",
+  "04_sessions_1290x2796.png": "e1d0337fbb0601d202737978588736e7",
   "05_alerts_1290x2796.png": "90bebf5036805ef6007d41ef7cb376ee"
  },
  "subtitle_pt": 46,

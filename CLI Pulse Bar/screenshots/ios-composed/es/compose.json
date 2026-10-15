@@ -13,8 +13,8 @@
    "Costo estimado de hoy por proveedor, más el total de los últimos 30 días"
   ],
   "04_sessions": [
-   "Cada ejecución, registrada",
-   "Sesiones activas con su uso, costo y solicitudes"
+   "Mira qué está en ejecución",
+   "Herramientas de IA activas, por proveedor y proyecto"
   ],
   "05_alerts": [
    "Sin sorpresas con la cuota",
@@ -25,7 +25,7 @@
   "01_overview.png": "bfca195b492dc39127f4f448bd763cb6",
   "02_providers.png": "9e51ceb0630929de81f499e1d8c099b3",
   "03_cost.png": "6ae78891da8d0aa13ff80271eca646c3",
-  "04_sessions.png": "8f73b2f4cc4791379ccd4996ce336f83",
+  "04_sessions.png": "7fa2a2dbcf4a3065098d685336d0cf62",
   "05_alerts.png": "bdeaa96d205cfd975e4e278b8649d265"
  },
  "faces": {
@@ -37,7 +37,7 @@
   "01_overview_1290x2796.png": "2c0e97ffd9ee0d169b65984480c34e7c",
   "02_providers_1290x2796.png": "589147487abc89b5c86193715c17edd8",
   "03_cost_1290x2796.png": "a90187c8c24306cd6a34dc41f80f57ac",
-  "04_sessions_1290x2796.png": "ffc01a2ead39a0890d6c64ae9b1a5afa",
+  "04_sessions_1290x2796.png": "d95d89f14a7ea043d0f2863cc3ac2bb3",
   "05_alerts_1290x2796.png": "6fc522d79bbf1c76dd3b11843052bdff"
  },
  "subtitle_pt": 46,

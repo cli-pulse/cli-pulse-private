@@ -1,16 +1,16 @@
 {
  "captures": {
-  "01_pulse.png": "0cb15481fa9b5aad0a416a7855e28fb3",
-  "02_quota.png": "1786371c6d8409837f54eae20c80e03d",
-  "03_live.png": "5b77648d993653d906a2c649a93c554c",
-  "04_alerts.png": "30c3d027f7eb94b4df568425ef81bf32"
+  "01_pulse.png": "c9d742264fdf97cf985eb72733289dfc",
+  "02_quota.png": "f66cac9a2732b9c0e1db5fb87de44be3",
+  "03_live.png": "80bcb1573d83fc719e8210559254e2de",
+  "04_alerts.png": "8c48da85d583313599d1753e9674332b"
  },
  "lang": "en",
  "panels": {
-  "01_pulse_422x514.png": "b07e33b57501afc523a361aa6b685f5f",
-  "02_quota_422x514.png": "45a7b3c58750d914492e9e18029c9154",
-  "03_live_422x514.png": "eeda8b20a76bac46838941e6d9bd58d3",
-  "04_alerts_422x514.png": "bc362d5b5b31ac78ad1b7c3f0c026b5a"
+  "01_pulse_422x514.png": "80f1e7efe868650fe8f56db74d61a844",
+  "02_quota_422x514.png": "58b5e97cd7d29fb280d7225431c12925",
+  "03_live_422x514.png": "c5022520de19d52b8eef9653362b588e",
+  "04_alerts_422x514.png": "7c4b87c3d1330384b93bfe9235f04358"
  },
  "pillow": "10.4.0"
 }

@@ -422,9 +422,9 @@ python3 - "$CASE/CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py" <<'P
 import sys, pathlib
 p = pathlib.Path(sys.argv[1])
 s = p.read_text(encoding="utf-8")
-old = '"04_sessions": ("Every CLI run tracked",'
+old = '"04_sessions": ("See what’s running",'
 assert s.count(old) == 1, "the mutation target moved; update this case"
-p.write_text(s.replace(old, '"04_sessions": ("Every CLI run, tracked",'), encoding="utf-8")
+p.write_text(s.replace(old, '"04_sessions": ("See what’s running now",'), encoding="utf-8")
 PY
 expect_fail "--require-shots with a caption edited after the compose run" "[en-US] en: 04_sessions: the caption drawn is not the compositor's COPY"
 grep -qF "run compose_appstore_ios_screenshots.py --set ipad --lang en" "$TMP/out" \

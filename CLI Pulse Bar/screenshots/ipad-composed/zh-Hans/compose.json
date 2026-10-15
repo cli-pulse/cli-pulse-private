@@ -9,8 +9,8 @@
    "离上限还有多远，一眼就知道"
   ],
   "04_sessions": [
-   "每个会话都有账可查",
-   "活跃会话的用量、费用和请求数"
+   "运行中的会话，一目了然",
+   "当前活跃的 AI 工具，按服务商和项目列出"
   ],
   "05_alerts": [
    "配额不再突然见底",
@@ -20,7 +20,7 @@
  "captures": {
   "01_overview.png": "4c2b0bb88b373272e9f699dfacdc642c",
   "02_providers.png": "82ca1decd27a5428596bcb440e6a8e66",
-  "04_sessions.png": "7b39aef172796fb73f25af6a3ca1b1ab",
+  "04_sessions.png": "e407786a66367cceeddcdbfb688d6dbe",
   "05_alerts.png": "fd7900bba361879eb6935fe333b50ab8"
  },
  "faces": {
@@ -31,7 +31,7 @@
  "panels": {
   "01_overview_2064x2752.png": "ddb4a166189b1092f501f6f98d3fe8d3",
   "02_providers_2064x2752.png": "6dbca8aef58871c00c8e72a986880641",
-  "04_sessions_2064x2752.png": "b1ba41dc63e89bccda8f1bc28923207e",
+  "04_sessions_2064x2752.png": "9f93d9cd0d191241d2209c6b61a39954",
   "05_alerts_2064x2752.png": "aa83294a85d46aaa54cbfe22830b502d"
  },
  "pillow": "10.4.0",
