@@ -10,7 +10,7 @@ Provider cards now show Today, This Week and 30 Days with a small chart that ope
 
 • Limit reset credits: if the ChatGPT account Codex is signed in to has credits that reset your Codex usage limit, the Codex card shows how many are available and when each expires. CLI Pulse only shows them and never uses one. It asks OpenAI for them with the sign-in Codex keeps in ~/.codex, so it needs access to that folder: choose "Allow access to ~/.codex" on the card, or grant it in Settings › Advanced › CLI Tool Access.
 
-• Today in the Providers tab's cost bar and on the Overview is now the cards added up, so with an account used on two Macs it no longer shows less than the cards.
+• Today in the Providers tab's cost bar and on the Overview is now the sum of the cards, so with an account used on two Macs it no longer shows less than the cards.
 
 • Crof, Kimi K2 and CrossModel are no longer supported. Crof has shut down, and CLI Pulse couldn't confirm who runs Kimi K2 and CrossModel, so it no longer connects to them or sends them your key. If you had set up Kimi K2 or CrossModel with a key, a one-time notice tells you. Kimi and Moonshot are still supported.
 
