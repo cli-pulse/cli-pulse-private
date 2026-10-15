@@ -1,0 +1,11 @@
+On iPhone and iPad, the 30-day chart on each provider card can now show tokens or estimated cost, and you can tap a day to see its models.
+
+• Provider cards: switch the chart between Tokens and Cost, and tap a day to list its models with their tokens and estimated cost. Tap the day again, or ✕, to close the list. Model names and figures stay readable at the largest text sizes. Try Demo now shows the chart too.
+
+• On a card with a chart, Today and This Week now count the same tokens as the chart: input + output, marked "I/O", with Codex's cached input counted once. They used to add cached tokens on top, which counted Codex's cached input twice, so they read higher than the chart's bars for the same days. Their estimated cost is the chart's daily costs added up, or your account summary's cost when that is higher. The Overview, Apple Watch and widgets still add cached tokens, so for Codex and Claude they can read higher than the cards.
+
+• In Sessions on iPhone and iPad, an AI tool that is running now reads "Running" and is titled by provider and project. There and on Apple Watch, it no longer shows usage, cost or requests: those figures were estimated from how long the tool had been open.
+
+• Crof, Kimi K2 and CrossModel are no longer shown. Crof has shut down, and CLI Pulse couldn't confirm who runs Kimi K2 and CrossModel. Kimi and Moonshot are still supported.
+
+• Your CLI Pulse sign-in and its credentials are no longer stored in the app's network cache on iPhone, iPad and Apple Watch. The first launch of this version empties that cache once.
