@@ -401,6 +401,123 @@ final class ProviderCardUsageTests: XCTestCase {
         XCTAssertEqual(ProviderCardUsage.panelEntry(chartDrawn: false, panelHasHistory: false), .none)
     }
 
+    // MARK: - The iPhone and iPad card
+
+    /// A row as the server keeps it (`daily_usage_metrics`).
+    private func account(
+        _ daysAgo: Int, _ provider: String = "Codex", model: String = "gpt-5.5",
+        input: Int, cached: Int, output: Int, cost: Double
+    ) -> DailyUsage {
+        DailyUsage(date: key(daysAgo), provider: provider, model: model,
+                   inputTokens: input, cachedTokens: cached, outputTokens: output, cost: cost)
+    }
+
+    /// The iPhone card's Today and This Week are its chart's rows added up,
+    /// in I/O. Codex's input already holds its cached input, so the cached
+    /// input is in the figure once; `provider_summary`, which the card used
+    /// to show, adds it again (input + cached + output). Asserted in Chinese,
+    /// where the unit's help is not the English fallback.
+    func testTheIPhoneCardCountsCodexsCachedInputOnceInZhHans() throws {
+        let saved = LocaleOverrideStore.shared.override
+        defer { LocaleOverrideStore.shared.set(saved) }
+        LocaleOverrideStore.shared.set("zh-Hans")
+        let rows = [
+            account(0, input: 100_000, cached: 80_000, output: 10_000, cost: 0.50),
+            account(3, input: 40_000, cached: 30_000, output: 5_000, cost: 0.20),
+            // In the 30 days, not the week.
+            account(12, input: 900_000, cached: 800_000, output: 50_000, cost: 3.00),
+            // Another provider's day.
+            account(0, "Claude", model: "claude-sonnet-4-5", input: 7_000, cached: 0, output: 0, cost: 9),
+        ]
+        // `provider_summary` over the same rows: input + cached + output.
+        let summary = usage(today: 0.50, week: 0.70, thirty: 3.70, todayUsage: 190_000, weekUsage: 265_000)
+        let figures = ProviderCardAccountFigures(provider: summary, cloudRows: rows, windows: windows)
+
+        XCTAssertTrue(figures.today.countsRows)
+        XCTAssertEqual(figures.today.tokensText, "110K I/O", "Codex's cached input counted twice")
+        XCTAssertEqual(figures.today.tokensValue, "110K")
+        XCTAssertEqual(figures.week.tokensText, "155K I/O", "Codex's cached input counted twice in the week")
+        XCTAssertEqual(figures.today.cost ?? -1, 0.50, accuracy: 1e-9)
+        XCTAssertEqual(figures.week.cost ?? -1, 0.70, accuracy: 1e-9)
+        XCTAssertEqual(figures.today.tokensHelp,
+                       "输入 + 输出 token。输入已包含缓存输入，与 OpenAI 的统计口径一致。费用预估中，缓存输入按缓存输入的单价计算。")
+        XCTAssertEqual(figures.week.tokensHelp, figures.today.tokensHelp)
+
+        // The chart beside them draws those days: today's bar is Today, the
+        // last seven bars are This Week, and the day a tap opens says so.
+        let days = try XCTUnwrap(figures.chartDays)
+        XCTAssertEqual(days.basis, .inputOutput)
+        XCTAssertEqual(days.scope, .allDevices)
+        XCTAssertEqual(days.days.last?.dateKey, key(0))
+        XCTAssertEqual(days.day(key(0))?.tokens, 110_000)
+        XCTAssertEqual(days.days.suffix(7).reduce(0) { $0 + $1.tokens }, 155_000)
+        let today = try XCTUnwrap(days.day(key(0)))
+        XCTAssertEqual(today.summary(basis: days.basis, showsCost: false), today.dateText + "：110K I/O token")
+        XCTAssertEqual(figures.rows?.thirtyDays.ioTokens, 1_105_000)
+    }
+
+    /// Claude's I/O leaves its cache out, which is most of a Claude user's
+    /// tokens and all of the summary's surplus.
+    func testTheIPhoneCardsClaudeFiguresLeaveCacheOut() {
+        let rows = [account(0, "Claude", model: "claude-sonnet-4-5",
+                            input: 2_000, cached: 500_000, output: 1_000, cost: 0.40)]
+        let summary = usage("Claude", today: 0.40, week: 0.40, thirty: 0.40, todayUsage: 503_000, weekUsage: 503_000)
+        let figures = ProviderCardAccountFigures(provider: summary, cloudRows: rows, windows: windows)
+        XCTAssertEqual(figures.today.tokensText, ProviderCardUsage.tokenBasis.tokensText(3_000))
+        XCTAssertEqual(figures.week.tokensText, ProviderCardUsage.tokenBasis.tokensText(3_000))
+        XCTAssertEqual(figures.today.tokensHelp, L10n.providers.claudeIOTokensHelp)
+    }
+
+    /// The cost is the rows' cost with the summary's as a floor, as on the
+    /// Mac: rows that arrived after the summary was built raise it; a
+    /// summary built after the last rows keeps it.
+    func testTheIPhoneCardsCostKeepsTheSummaryAsAFloor() {
+        let rows = [
+            account(0, input: 10_000, cached: 0, output: 1_000, cost: 0.30),
+            account(2, input: 10_000, cached: 0, output: 1_000, cost: 0.60),
+        ]
+        let summary = usage(today: 0.50, week: 0.60, thirty: 0.60, todayUsage: 11_000, weekUsage: 22_000)
+        let figures = ProviderCardAccountFigures(provider: summary, cloudRows: rows, windows: windows)
+        XCTAssertEqual(figures.today.cost ?? -1, 0.50, accuracy: 1e-9, "the summary is the floor")
+        XCTAssertEqual(figures.week.cost ?? -1, 0.90, accuracy: 1e-9, "the rows add up to more")
+    }
+
+    /// Without rows for the provider in the 30 days (none uploaded, or only
+    /// another provider's, or older ones) the card keeps the summary's
+    /// figures as it showed them before, unlabelled, and draws no chart.
+    func testTheIPhoneCardWithoutRowsKeepsTheSummarysFigures() {
+        let summary = usage(today: 0.50, week: 0.70, thirty: 3.70, todayUsage: 190_000, weekUsage: 265_000)
+        for rows in [
+            [],
+            [account(0, "Claude", model: "claude-sonnet-4-5", input: 7_000, cached: 0, output: 0, cost: 9)],
+            [account(30, input: 100_000, cached: 80_000, output: 10_000, cost: 0.50)],   // the 31st day back
+        ] {
+            let figures = ProviderCardAccountFigures(provider: summary, cloudRows: rows, windows: windows)
+            XCTAssertNil(figures.rows, "\(rows.map(\.date))")
+            XCTAssertNil(figures.chartDays)
+            XCTAssertFalse(figures.today.countsRows)
+            XCTAssertEqual(figures.today.tokensText, CostFormatter.formatUsage(190_000), "the summary's Today")
+            XCTAssertEqual(figures.today.tokensValue, figures.today.tokensText)
+            XCTAssertEqual(figures.week.tokensText, CostFormatter.formatUsage(265_000), "the summary's This Week")
+            XCTAssertEqual(figures.today.tokensHelp, "")
+            XCTAssertEqual(figures.today.cost, 0.50)
+            XCTAssertEqual(figures.week.cost, 0.70)
+        }
+    }
+
+    /// Rows this month and none today: Today is the Mac card's dash, not the
+    /// summary's count on its other basis.
+    func testTheIPhoneCardsTodayWithNoRowToday() {
+        let rows = [account(4, input: 20_000, cached: 15_000, output: 2_000, cost: 0.25)]
+        let summary = usage(today: 0, week: 0.25, thirty: 0.25, todayUsage: 0, weekUsage: 37_000)
+        let figures = ProviderCardAccountFigures(provider: summary, cloudRows: rows, windows: windows)
+        XCTAssertTrue(figures.today.countsRows)
+        XCTAssertEqual(figures.today.tokensText, "—")
+        XCTAssertNil(figures.today.tokensValue)
+        XCTAssertEqual(figures.today.cost, 0)
+        XCTAssertEqual(figures.week.tokensText, ProviderCardUsage.tokenBasis.tokensText(22_000))
+    }
+
     // MARK: - Words
 
     /// Asserted in Chinese: the English fallback of a missing key reads like
@@ -830,14 +947,13 @@ final class DemoProviderCardHistoryTests: XCTestCase {
 
     /// Try Demo on an iPhone or iPad (the Demo App Review uses) is the same
     /// signed-in account, so its cards get the same rows, and draw them the
-    /// way `iOSEnhancedProviderCard` does: `ProviderUsageDays.fromCloud` over
-    /// `dailyUsage`, counting I/O. The chart's and a tapped day's cost then
-    /// agree with the card's Today and This Week and with the 30-Day figure
-    /// above the cards, as a real account's rows do. Their I/O tokens agree
-    /// with the card's Today and This Week too, but only in Demo: a real
-    /// iPhone card's tokens are `provider_summary`'s input + cached + output,
-    /// more than the chart's I/O wherever a provider reports cache. Only Codex
-    /// and Claude have a chart: nothing records Gemini's usage.
+    /// way `iOSEnhancedProviderCard` does (`ProviderCardAccountFigures`): the
+    /// chart and a tapped day from the rows in I/O, and Today and This Week
+    /// those rows added up, as a real account's card adds up its own. Their
+    /// cost agrees with the card's figures and with the 30-Day figure above
+    /// the cards, as a real account's rows do. Only Codex and Claude have
+    /// rows: nothing records Gemini's usage, so its card keeps the summary's
+    /// figures.
     @MainActor
     func testDemoGivesTheIPhoneCardsTheSameRows() throws {
         let state = demoState()
@@ -847,24 +963,32 @@ final class DemoProviderCardHistoryTests: XCTestCase {
         var drawn: [String] = []
         for usage in state.providers {
             // As `iOSEnhancedProviderCard` builds it.
-            let days = ProviderUsageDays.fromCloud(
-                state.dailyUsage, provider: usage.provider, basis: .inputOutput, todayKey: todayKey)
+            let figures = ProviderCardAccountFigures(provider: usage, cloudRows: state.dailyUsage, windows: windows)
             guard usage.estimated_cost_30_day > 0 else {
-                XCTAssertFalse(days.hasUsage, "\(usage.provider) has a chart no real account's rows draw")
+                XCTAssertNil(figures.chartDays, "\(usage.provider) has a chart no real account's rows draw")
+                XCTAssertFalse(figures.today.countsRows, usage.provider)
+                XCTAssertEqual(figures.today.tokensText, CostFormatter.formatUsage(usage.today_usage), usage.provider)
                 continue
             }
+            let days = try XCTUnwrap(figures.chartDays, usage.provider)
             XCTAssertTrue(days.hasUsage, usage.provider)
             XCTAssertEqual(days.scope, .allDevices, usage.provider)
+            XCTAssertEqual(days.basis, .inputOutput, usage.provider)
             XCTAssertEqual(days.days.count, 30, usage.provider)
             let today = try XCTUnwrap(days.day(todayKey), usage.provider)
-            XCTAssertEqual(today.tokens, usage.today_usage,
-                           "\(usage.provider): Demo's I/O today against Demo's Today (equal only in Demo; a real iPhone's Today adds cache)")
+            XCTAssertEqual(today.tokens, usage.today_usage, "\(usage.provider): Demo's rows against Demo's Today")
+            XCTAssertEqual(figures.today.tokensText, ProviderCardUsage.tokenBasis.tokensText(today.tokens),
+                           "\(usage.provider): the card's Today is not its chart's day")
             XCTAssertEqual(cents(today.cost), cents(usage.estimated_cost_today), usage.provider)
+            XCTAssertEqual(cents(figures.today.cost ?? -1), cents(today.cost), usage.provider)
             let week = days.days.filter { windows.contains($0.dateKey, in: .week) }
             XCTAssertEqual(week.count, 7, usage.provider)
-            XCTAssertEqual(week.reduce(0) { $0 + $1.tokens }, usage.week_usage,
-                           "\(usage.provider): Demo's I/O week against Demo's This Week (equal only in Demo; a real iPhone's adds cache)")
+            let weekTokens = week.reduce(0) { $0 + $1.tokens }
+            XCTAssertEqual(weekTokens, usage.week_usage, "\(usage.provider): Demo's rows against Demo's This Week")
+            XCTAssertEqual(figures.week.tokensText, ProviderCardUsage.tokenBasis.tokensText(weekTokens),
+                           "\(usage.provider): the card's This Week is not its chart's last seven days")
             XCTAssertEqual(cents(week.reduce(0) { $0 + $1.cost }), cents(usage.estimated_cost_week), usage.provider)
+            XCTAssertEqual(cents(figures.week.cost ?? -1), cents(usage.estimated_cost_week), usage.provider)
             XCTAssertEqual(cents(days.days.reduce(0) { $0 + $1.cost }), cents(usage.estimated_cost_30_day),
                            usage.provider)
             for day in days.days where day.hasUsage {
@@ -913,8 +1037,14 @@ final class DemoProviderCardHistoryTests: XCTestCase {
         LocaleOverrideStore.shared.set("zh-Hans")
         let state = demoState()
         let todayKey = DayKey.string(from: Date())
-        let days = ProviderUsageDays.fromCloud(
-            state.dailyUsage, provider: "Codex", basis: .inputOutput, todayKey: todayKey)
+        let codex = try XCTUnwrap(state.providers.first { $0.provider == "Codex" })
+        let figures = ProviderCardAccountFigures(provider: codex, cloudRows: state.dailyUsage)
+        let days = try XCTUnwrap(figures.chartDays)
+        // Today above the chart, in the chart's unit, and what VoiceOver
+        // hints it counts.
+        XCTAssertEqual(figures.today.tokensText, "85.9K I/O")
+        XCTAssertEqual(figures.today.tokensHelp,
+                       "输入 + 输出 token。输入已包含缓存输入，与 OpenAI 的统计口径一致。费用预估中，缓存输入按缓存输入的单价计算。")
         // `ProviderUsageHistorySection`'s title.
         XCTAssertEqual(L10n.widget.usageTitle + " · " + days.scope.label, "用量 · 所有设备")
         let today = try XCTUnwrap(days.day(todayKey))
@@ -960,10 +1090,19 @@ final class DemoProviderCardHistoryTests: XCTestCase {
         // The iPad grid's card and the iPhone list's card.
         XCTAssertEqual(tab.components(separatedBy: "dailyUsage: state.dailyUsage").count - 1, 2,
                        "an iPhone or iPad provider card no longer gets the account's rows")
-        let read = try NSRegularExpression(
-            pattern: #"ProviderUsageDays\.fromCloud\(\s*dailyUsage,\s*provider: provider\.provider,\s*basis: \.inputOutput,"#)
-        XCTAssertNotNil(read.firstMatch(in: tab, range: NSRange(tab.startIndex..., in: tab)),
-                        "the iPhone card reads its rows another way; make these tests read them that way")
+        // Its figures and its chart, one build of the rows.
+        XCTAssertEqual(tab.components(separatedBy: "ProviderCardAccountFigures(provider: provider, cloudRows: dailyUsage)").count - 1, 1,
+                       "the iPhone card reads its rows another way; make these tests read them that way")
+        XCTAssertTrue(tab.contains("if let usageDays = figures.chartDays {"),
+                      "the iPhone card's chart no longer draws the days its figures add up")
+        XCTAssertTrue(tab.contains("usageFigure(L10n.dashboard.today, figures.today,"),
+                      "the iPhone card's Today is no longer the rows' figure")
+        XCTAssertTrue(tab.contains("usageFigure(L10n.providers.thisWeek, figures.week,"),
+                      "the iPhone card's This Week is no longer the rows' figure")
+        // Nothing on the card prints the summary's token counts past them.
+        for summary in ["provider.today_usage", "provider.week_usage", "ProviderUsageDays.fromCloud("] {
+            XCTAssertFalse(tab.contains(summary), "iOSProvidersTab reads \(summary) again")
+        }
     }
 
     @MainActor

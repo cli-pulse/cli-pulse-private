@@ -530,9 +530,9 @@ internal enum DemoDataProvider {
 
     /// The account's synced daily rows behind each Demo provider card's
     /// usage row and small chart on the Mac (`ProviderCardUsageBuilder`), and
-    /// behind the iPhone and iPad card's chart and the day it lists by model
-    /// (`ProviderUsageDays.fromCloud`): the last 30 days of Codex and Claude,
-    /// the rows `get_daily_usage` returns.
+    /// behind the iPhone and iPad card's Today, This Week, chart and the day
+    /// it lists by model (`ProviderCardAccountFigures`): the last 30 days of
+    /// Codex and Claude, the rows `get_daily_usage` returns.
     ///
     /// They add up to the figures `generate()` gives each provider. For cost,
     /// a real account's rows do the same: the server's `provider_summary` sums
@@ -540,12 +540,11 @@ internal enum DemoDataProvider {
     /// cost, today and the six days before hold the week's, and all 30 days
     /// hold the 30-day cost, each to the cent. Their I/O tokens (input +
     /// output) equal each provider's Today and This Week tokens, which is what
-    /// the Mac card shows, since it counts the rows' I/O. A real account's
-    /// `provider_summary` tokens are input + cached + output instead, so a real
-    /// iPhone card, which shows those, reads more than its chart's I/O
-    /// wherever a provider reports cache; Demo shows no such gap. The 30-day
-    /// tokens, which nothing else in Demo states, follow the week's tokens per
-    /// dollar.
+    /// every card shows, since each counts the rows' I/O wherever there are
+    /// rows. A real account's `provider_summary` tokens are input + cached +
+    /// output instead, which only the card of a provider without rows shows
+    /// (and the Watch, which reads no rows). The 30-day tokens, which nothing
+    /// else in Demo states, follow the week's tokens per dollar.
     ///
     /// The days have the shape of Demo's year of history (`dailyUsage`, what
     /// the usage dashboard draws): the same idle days, and within the week and
