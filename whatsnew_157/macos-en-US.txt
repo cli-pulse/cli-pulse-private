@@ -1,0 +1,19 @@
+Provider cards now show Today, This Week and 30 Days with a small chart that opens the provider's usage history, and the Codex card can show your limit reset credits.
+
+• Each provider card shows Today, This Week and 30 Days, each with tokens and estimated cost, beside a smaller 30-day chart. Click the chart to open that provider's usage history. Signed out, the card counts this Mac's session logs ("This Mac"), which CLI Pulse can read once you allow it in Settings › Advanced › CLI Tool Access. Signed in, each day is the higher of this Mac's count and your account's ("All devices").
+
+• Usage history shows one provider's last 30 days by day and model. Switch between Tokens and Cost, click a day to list its models with their tokens and estimated cost, and choose This Mac or All devices when both have usage. Open it from a card's chart or from By Provider in the Usage Dashboard.
+
+• The Usage Dashboard's Trends chart can now show Tokens or Cost as well, and the dashboard now updates while it is open; it used to keep the figures it opened with.
+
+• Hide the parts of a card you don't need: right-click a provider card and choose them under Show on Card, or use Settings › Providers. Show All Sections brings them back. Refreshes and alerts carry on as before.
+
+• Limit reset credits: if the ChatGPT account Codex is signed in to has credits that reset your Codex usage limit, the Codex card shows how many are available and when each expires. CLI Pulse only shows them and never uses one. It asks OpenAI for them with the sign-in Codex keeps in ~/.codex, so it needs access to that folder: choose "Allow access to ~/.codex" on the card, or grant it in Settings › Advanced › CLI Tool Access.
+
+• Today in the Providers tab's cost bar and on the Overview is now the sum of the cards, so with an account used on two Macs it no longer shows less than the cards.
+
+• Crof, Kimi K2 and CrossModel are no longer supported. Crof has shut down, and CLI Pulse couldn't confirm who runs Kimi K2 and CrossModel, so it no longer connects to them or sends them your key. If you had set up Kimi K2 or CrossModel with a key, a one-time notice tells you. Kimi and Moonshot are still supported.
+
+• Sign-in tokens, API keys and cookies are no longer stored in the network cache of CLI Pulse or its helper. The first launch of this version empties that cache once.
+
+• Integrations no longer offers "Long session" as a webhook event, because CLI Pulse doesn't raise that alert.

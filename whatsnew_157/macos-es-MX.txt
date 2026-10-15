@@ -1,0 +1,19 @@
+Las tarjetas de proveedor ahora muestran Hoy, Esta semana y 30 días, con un gráfico pequeño que abre el historial de uso del proveedor, y la tarjeta de Codex puede mostrar tus créditos de reinicio.
+
+• Cada tarjeta de proveedor muestra Hoy, Esta semana y 30 días, cada uno con tokens y costo estimado, junto a un gráfico de 30 días más pequeño. Haz clic en el gráfico para abrir el historial de uso de ese proveedor. Sin sesión iniciada, la tarjeta cuenta los registros de sesión de este Mac («Este Mac»), que CLI Pulse puede leer en cuanto lo permitas en Ajustes › Avanzado › Acceso a herramientas CLI. Con sesión iniciada, cada día es la cifra mayor entre este Mac y tu cuenta («Todos los dispositivos»).
+
+• «Historial de uso» muestra los últimos 30 días de un proveedor por día y por modelo. Cambia entre Tokens y Costo, haz clic en un día para ver sus modelos con sus tokens y su costo estimado, y elige «Este Mac» o «Todos los dispositivos» cuando ambos tengan uso. Ábrelo desde el gráfico de una tarjeta o desde «Por proveedor» en el Panel de uso.
+
+• El gráfico Tendencias del Panel de uso ahora también puede mostrar Tokens o Costo, y el panel se actualiza mientras está abierto; antes conservaba las cifras con las que se abrió.
+
+• Oculta las partes de una tarjeta que no necesites: haz clic derecho en una tarjeta de proveedor y elígelas en «Mostrar en la tarjeta», o usa Ajustes › Proveedores. «Mostrar todas las secciones» las vuelve a mostrar. Las actualizaciones y las alertas funcionan igual que antes.
+
+• Créditos de reinicio: si la cuenta de ChatGPT con la que Codex tiene la sesión iniciada tiene créditos que reinician tu límite de uso de Codex, la tarjeta de Codex muestra cuántos hay disponibles y cuándo caduca cada uno. CLI Pulse solo los muestra y nunca usa ninguno. Se los pide a OpenAI con el inicio de sesión que Codex guarda en ~/.codex, así que necesita acceso a esa carpeta: elige «Permitir acceso a ~/.codex» en la tarjeta, o concédelo en Ajustes › Avanzado › Acceso a herramientas CLI.
+
+• El valor de Hoy en la barra de costo de la pestaña Proveedores y en el Resumen ahora es la suma de las tarjetas, así que, con una cuenta usada en dos Mac, ya no muestra menos que ellas.
+
+• CLI Pulse ya no admite Crof, Kimi K2 ni CrossModel. Crof cerró, y CLI Pulse no pudo confirmar quién opera Kimi K2 y CrossModel, así que ya no se conecta a ellos ni les envía tu clave. Si habías configurado Kimi K2 o CrossModel con una clave, verás un aviso una sola vez. Kimi y Moonshot siguen disponibles.
+
+• Los tokens de inicio de sesión, las claves de API y las cookies ya no se guardan en la caché de red de CLI Pulse ni de su helper. Al abrir esta versión por primera vez, esa caché se vacía (solo esa vez).
+
+• Integraciones ya no ofrece «Sesión larga» como evento de webhook, porque CLI Pulse no genera esa alerta.

@@ -65,7 +65,10 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 # 1.31.0 → 1.32.0 (v1.56): cfprefsd is asked only for the user's own app-group
 # copy, and `cli_pulse.local_scan_consent.source` logs once per change whether
 # the app's answers came through cfprefsd or from the plist file (#651).
-HELPER_VERSION = "1.32.0"
+# 1.32.0 → 1.33.0 (v1.57): a process that names Kimi K2 (Moonshot's model)
+# counts as Kimi, and SUPPORTED_PROVIDERS no longer lists "Kimi K2", which the
+# app retired (#665).
+HELPER_VERSION = "1.33.0"
 
 logger = logging.getLogger("cli_pulse.collector")
 
