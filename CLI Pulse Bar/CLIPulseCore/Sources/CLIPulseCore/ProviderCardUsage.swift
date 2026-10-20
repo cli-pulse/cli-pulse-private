@@ -485,10 +485,12 @@ public enum ProviderCardUsageBuilder {
 ///
 /// The card's chart, and the day a tap lists by model, count the account's
 /// synced rows (`get_daily_usage`) in I/O tokens. The two figures beside it
-/// were `provider_summary`'s, whose tokens are input + cached + output:
-/// Codex's input already holds its cached input, so Codex's cache was counted
-/// twice, and Claude's cache reads, most of a Claude user's tokens, were in
-/// it. A real account's Today read several times the chart's day.
+/// were `provider_summary`'s, which counts on another basis: until
+/// migrate_v0.86 input + cached + output, which counted Codex's cached input
+/// twice (its input already holds it); since v0.86 each token once
+/// (`ArchiveTokenBasis`), Codex's cached input once. Either way Claude's
+/// cache reads and writes, most of a Claude user's tokens, are in it. A real
+/// account's Today read several times the chart's day.
 ///
 /// So wherever the account has rows for the provider in the 30 days (the
 /// chart is drawn), both figures are the chart's rows added up, under the Mac
@@ -502,8 +504,9 @@ public enum ProviderCardUsageBuilder {
 public struct ProviderCardAccountFigures: Sendable, Equatable {
 
     public struct Figure: Sendable, Equatable {
-        /// "85.9K I/O" from the rows; the summary's own count ("131.3K")
-        /// without rows; "—" when there are rows and none in the window.
+        /// "85.9K I/O" from the rows; the summary's own count, unlabelled
+        /// ("85.9K"), without rows; "—" when there are rows and none in the
+        /// window.
         public let tokensText: String
         /// The number inside `tokensText`, which the card draws larger than
         /// its unit. nil for "—".
@@ -533,8 +536,9 @@ public struct ProviderCardAccountFigures: Sendable, Equatable {
         let card = ProviderCardUsageBuilder.build(
             provider: provider.provider, usage: provider,
             scanEntries: [], cloudRows: cloudRows, readsCloud: true,
-            // `today_usage` / `week_usage` are the summary's input + cached +
-            // output here, the count these figures replace.
+            // `today_usage` / `week_usage` are the summary's own count here
+            // (each token once since migrate_v0.86; input + cached + output
+            // before it), the count these figures replace.
             usesProviderTokenCounts: false,
             windows: windows)
         guard card.account?.hasUsage == true else {

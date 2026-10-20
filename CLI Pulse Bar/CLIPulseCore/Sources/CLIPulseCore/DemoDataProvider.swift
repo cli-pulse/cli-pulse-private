@@ -542,9 +542,13 @@ internal enum DemoDataProvider {
     /// hold the 30-day cost, each to the cent. Their I/O tokens (input +
     /// output) equal each provider's Today and This Week tokens, which is what
     /// every card shows, since each counts the rows' I/O wherever there are
-    /// rows. A real account's `provider_summary` tokens are input + cached +
-    /// output instead, which only the card of a provider without rows shows
-    /// (and the Watch, which reads no rows). The 30-day tokens, which nothing
+    /// rows. A real account's `provider_summary` tokens count each token once
+    /// instead (migrate_v0.86; input + cached + output on a server without
+    /// it), which only the card of a provider without rows shows (and the
+    /// Watch, which reads no rows). For these Codex rows that is their I/O,
+    /// since Codex's input holds its cached input; for Claude's it is four
+    /// times their I/O (the cache below is three times it), which Demo's
+    /// Claude figures, its I/O, do not show. The 30-day tokens, which nothing
     /// else in Demo states, follow the week's tokens per dollar.
     ///
     /// The days have the shape of Demo's year of history (`dailyUsage`, what

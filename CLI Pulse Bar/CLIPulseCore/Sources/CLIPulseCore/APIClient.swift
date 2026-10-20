@@ -603,6 +603,12 @@ public actor APIClient {
         let email: String?
     }
 
+    /// `today_usage` and the providers' `today_usage` / `total_usage` below
+    /// are tokens summed over `daily_usage_metrics`: each token once since
+    /// migrate_v0.86 (`ArchiveTokenBasis`: Codex input + output, others
+    /// input + cached + output). A server without v0.86 adds input + cached +
+    /// output for every provider, which counts Codex's cached input twice.
+    /// Nothing in the answer says which, so no label may claim a basis.
     struct DashboardSummaryPayload: Decodable {
         let today_usage: Int?
         let today_cost: Double?

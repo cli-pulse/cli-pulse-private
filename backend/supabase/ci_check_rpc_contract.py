@@ -16,8 +16,9 @@ What it catches (hard failures, exit 1)
 3. An edge function URL (`/functions/v1/<name>`) is referenced from the
    client but the corresponding directory under `backend/supabase/functions/`
    is missing.
-4. A v0.72 provider-account function differs between the upgrade migration
-   and its canonical fresh-install definition.
+4. A mirrored function (the v0.72 provider-account functions, and the three
+   summary RPCs v0.86 replaced) differs between its upgrade path, the newest
+   migration that defines it, and its canonical fresh-install definition.
 
 Soft signals (info/warn only, never fail)
 -----------------------------------------
@@ -260,7 +261,13 @@ def collect_sql_definitions() -> dict[str, SqlFunction]:
     return funcs
 
 
-V072_MIRRORED_FUNCTIONS = {
+# Functions whose upgrade path and fresh-install path must install the same
+# text: name -> the canonical file. The upgrade side is the newest migration
+# that defines the function (`_newest_migration_defining`), so a later
+# migration that replaces one (v0.86 replaced provider_account_summary) is
+# compared with the canonical file in its place.
+MIRRORED_FUNCTIONS = {
+    # v0.72 provider accounts.
     "_validate_provider_account_quota_device": "schema.sql",
     "_refresh_provider_quota_projection": "app_rpc.sql",
     "_refresh_provider_quota_after_account_delete": "app_rpc.sql",
@@ -271,7 +278,14 @@ V072_MIRRORED_FUNCTIONS = {
     "delete_user_account": "app_rpc.sql",
     "provider_account_summary": "app_rpc.sql",
     "helper_sync_provider_account_quotas": "helper_rpc.sql",
+    # v0.86: the summary RPCs count each token once. Their token rule must be
+    # the same on an upgraded database and a fresh one.
+    "dashboard_summary": "app_rpc.sql",
+    "provider_summary": "app_rpc.sql",
 }
+
+# Kept for readers of older notes: the v0.72 subset is the same mapping.
+V072_MIRRORED_FUNCTIONS = MIRRORED_FUNCTIONS
 
 
 def _normalized_function_block(path: pathlib.Path, name: str) -> str | None:
@@ -300,25 +314,46 @@ def _normalized_function_block(path: pathlib.Path, name: str) -> str | None:
     return re.sub(r"\s+", " ", text[start:end].strip())
 
 
-def collect_v072_mirror_failures() -> list[str]:
+def _newest_migration_defining(name: str) -> pathlib.Path | None:
+    """The last migration, in replay order, with a CREATE of `name`."""
+    defining = [
+        path for path in ROOT.glob("migrate_v*.sql")
+        if any(
+            match.group(1).lower() == name
+            for match in SQL_FUNC_RE.finditer(path.read_text(encoding="utf-8"))
+        )
+    ]
+    return max(defining, key=_sql_replay_order) if defining else None
+
+
+def collect_mirror_failures() -> list[str]:
     """Ensure upgrade and fresh-install paths install identical functions."""
-    migration = ROOT / "migrate_v0.72_provider_accounts.sql"
     failures: list[str] = []
-    for name, canonical_name in V072_MIRRORED_FUNCTIONS.items():
+    for name, canonical_name in MIRRORED_FUNCTIONS.items():
         canonical = ROOT / canonical_name
+        migration = _newest_migration_defining(name)
+        if migration is None:
+            failures.append(
+                f"MIRROR MISSING: no migrate_v*.sql defines public.{name}"
+            )
+            continue
         migration_block = _normalized_function_block(migration, name)
         canonical_block = _normalized_function_block(canonical, name)
         if migration_block is None or canonical_block is None:
             failures.append(
-                f"V0.72 MIRROR MISSING: public.{name} must exist in both "
+                f"MIRROR MISSING: public.{name} must exist in both "
                 f"{migration.name} and {canonical.name}"
             )
         elif migration_block != canonical_block:
             failures.append(
-                f"V0.72 MIRROR DRIFT: public.{name} differs between "
+                f"MIRROR DRIFT: public.{name} differs between "
                 f"{migration.name} and {canonical.name}"
             )
     return failures
+
+
+# The old name, for anything that imports it.
+collect_v072_mirror_failures = collect_mirror_failures
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -643,7 +678,7 @@ def main() -> int:
 
     failures: list[str] = []
     notes: list[str] = []
-    failures.extend(collect_v072_mirror_failures())
+    failures.extend(collect_mirror_failures())
 
     # Check 1 + 2: every call site references a defined RPC and only sends
     # declared parameters.

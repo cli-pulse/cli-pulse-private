@@ -299,6 +299,13 @@ paths:
   /rest/v1/rpc/dashboard_summary:
     post:
       summary: Get dashboard summary (timezone-aware in v1.5.0+)
+      description: |
+        `today_usage` is today's tokens over `daily_usage_metrics`, each token
+        counted once since backend v0.86: Codex input + output (its input
+        already includes its cached input), every other provider input +
+        cached + output, each row clamped at 0. Before v0.86 it was input +
+        cached + output for every provider, which counted Codex's cached
+        input twice. The answer does not say which rule the server runs.
       operationId: dashboardSummary
       requestBody:
         required: false
@@ -326,6 +333,10 @@ paths:
   /rest/v1/rpc/provider_summary:
     post:
       summary: Get provider usage summaries (timezone-aware in v1.5.0+)
+      description: |
+        `today_usage` (today) and `total_usage` (today and the 6 days before)
+        are tokens counted as in dashboard_summary: each once since backend
+        v0.86. `provider_account_summary` counts them the same way.
       operationId: providerSummary
       requestBody:
         required: false

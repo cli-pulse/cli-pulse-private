@@ -1,0 +1,43 @@
+{
+  "_note": [
+    "Rows of public.daily_usage_metrics and the token figures the summary RPCs give them, each token once (migrate_v0.86).",
+    "One file, asserted on both sides: the Mac's ArchiveTokenBasis by SummaryTokensEachOnceFixtureTests (CLIPulseCore),",
+    "and dashboard_summary / provider_summary / provider_account_summary by run_v086_summary_tokens_each_once_tests.sh.",
+    "Rows are as the writers send them: Codex's input_tokens include its cached_tokens; Claude's cached_tokens are cache reads + writes.",
+    "before_v086 is what the RPCs gave before v0.86 (input + cached + output): the CI suite's control.",
+    "today is the client's p_user_today. The week is today and the 6 days before; nothing after today counts."
+  ],
+  "today": "2026-07-24",
+  "user": "a8600000-8600-4860-8860-860000000001",
+  "other_user": "b8600000-8600-4860-8860-860000000002",
+  "rows": [
+    {"user": "user", "metric_date": "2026-07-24", "provider": "Codex", "model": "gpt-5.5", "input_tokens": 100000, "cached_tokens": 80000, "output_tokens": 10000, "cost": 0.50},
+    {"user": "user", "metric_date": "2026-07-24", "provider": "Codex", "model": "gpt-5.5-mini", "input_tokens": 1000, "cached_tokens": 1500, "output_tokens": 100, "cost": 0.01},
+    {"user": "user", "metric_date": "2026-07-21", "provider": "Codex", "model": "gpt-5.5", "input_tokens": 40000, "cached_tokens": 30000, "output_tokens": 5000, "cost": 0.20},
+    {"user": "user", "metric_date": "2026-07-12", "provider": "Codex", "model": "gpt-5.5", "input_tokens": 900000, "cached_tokens": 800000, "output_tokens": 50000, "cost": 3.00},
+    {"user": "user", "metric_date": "2026-07-25", "provider": "Codex", "model": "gpt-5.5", "input_tokens": 70000, "cached_tokens": 60000, "output_tokens": 7000, "cost": 9.00},
+    {"user": "user", "metric_date": "2026-06-24", "provider": "Codex", "model": "gpt-5.5", "input_tokens": 50000, "cached_tokens": 40000, "output_tokens": 5000, "cost": 7.00},
+    {"user": "user", "metric_date": "2026-07-24", "provider": "Claude", "model": "claude-sonnet-4-5", "input_tokens": 2000, "cached_tokens": 500000, "output_tokens": 1000, "cost": 0.40},
+    {"user": "user", "metric_date": "2026-07-20", "provider": "Claude", "model": "claude-opus-4-1", "input_tokens": 1000, "cached_tokens": 100000, "output_tokens": 500, "cost": 0.30},
+    {"user": "user", "metric_date": "2026-07-01", "provider": "Claude", "model": "claude-sonnet-4-5", "input_tokens": 3000, "cached_tokens": 200000, "output_tokens": 2000, "cost": 0.90},
+    {"user": "user", "metric_date": "2026-07-24", "provider": "Gemini", "model": "gemini-2.5-pro", "input_tokens": 3000, "cached_tokens": 1000, "output_tokens": 200, "cost": 0.05},
+    {"user": "user", "metric_date": "2026-07-24", "provider": "codex", "model": "gpt-5.5", "input_tokens": 10000, "cached_tokens": 8000, "output_tokens": 1000, "cost": 0.00},
+    {"user": "user", "metric_date": "2026-07-24", "provider": "Cursor", "model": "auto", "input_tokens": 10, "cached_tokens": 0, "output_tokens": -5, "cost": 0.00},
+    {"user": "other_user", "metric_date": "2026-07-24", "provider": "Codex", "model": "gpt-5.5", "input_tokens": 999000, "cached_tokens": 0, "output_tokens": 1000, "cost": 99.00}
+  ],
+  "_rows_note": [
+    "gpt-5.5-mini: cached above input; the Mac clamps cached to input, so it adds nothing to Codex's input.",
+    "2026-07-25 is after today and 2026-06-24 is the 31st day back: neither counts anywhere.",
+    "\"codex\": another spelling is not Codex, in the app either (ProviderKind.codex.rawValue is \"Codex\"); no writer sends it.",
+    "Cursor's negative output counts as 0, row by row, as on the Mac."
+  ],
+  "expected": {
+    "Codex":  {"today_usage": 111100, "total_usage": 156100, "before_v086": {"today_usage": 192600, "total_usage": 267600}},
+    "Claude": {"today_usage": 503000, "total_usage": 604500, "before_v086": {"today_usage": 503000, "total_usage": 604500}},
+    "Gemini": {"today_usage": 4200,   "total_usage": 4200,   "before_v086": {"today_usage": 4200,   "total_usage": 4200}},
+    "codex":  {"today_usage": 19000,  "total_usage": 19000,  "before_v086": {"today_usage": 19000,  "total_usage": 19000}},
+    "Cursor": {"today_usage": 10,     "total_usage": 10,     "before_v086": {"today_usage": 5,      "total_usage": 5}}
+  },
+  "expected_dashboard_today_usage": 637310,
+  "expected_dashboard_today_usage_before_v086": 718805
+}
