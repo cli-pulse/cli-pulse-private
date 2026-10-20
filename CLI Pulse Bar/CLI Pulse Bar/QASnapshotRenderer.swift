@@ -56,6 +56,8 @@ struct QARenderViewState: Equatable {
     var onboardingRunsDiscovery = false
     /// Setup v2: show the finish page, in this mode.
     var onboardingFinish: QARenderFinishMode?
+    /// Settings › General: the webhook event filter open.
+    var webhookFilterExpanded = false
 }
 
 private struct QARenderViewStateKey: EnvironmentKey {
@@ -878,6 +880,30 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             await capturePopover(surface, index: index)
             state.showsRetiredProviderNotice = false
 
+        case .demoSettingsWebhookFilter:
+            // Webhooks on, with an example URL, and a saved filter as a read
+            // of the account's settings would show it. The switch and URL are
+            // put back afterwards (the run's defaults are restored at exit too).
+            enterDemoIfNeeded()
+            shapeExistingUser(onboardingV2: false)
+            state.selectedTab = .settings
+            let enabled = state.webhookEnabled
+            let url = state.webhookURL
+            state.webhookEnabled = true
+            state.webhookURL = QAWebhookEventFilterStates.exampleURL
+            state.showSavedWebhookEventFilterForQARender(QAWebhookEventFilterStates.savedFilter)
+            await capturePopover(
+                surface, index: index,
+                viewState: QARenderViewState(
+                    settingsSection: QARenderSettingsSection.general.rawValue,
+                    webhookFilterExpanded: true
+                ),
+                note: "Settings › General with webhook notifications on and the event filter open,"
+                    + " showing a saved filter of two severities and two types. The URL is an example."
+            )
+            state.webhookEnabled = enabled
+            state.webhookURL = url
+
         case .about:
             await captureWindow(
                 AboutView(), surface: surface, index: index,
@@ -947,6 +973,16 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                     + " App Store build without the Codex CLI folder grant; and, last, the line in"
                     + " its production place, under 5-hour and Weekly bars whose detail says when"
                     + " each resets (Demo's Weekly bar has no reset time)."
+            )
+
+        case .webhookEventFilterStates:
+            await captureWindow(
+                QAWebhookEventFilterStates(), surface: surface, index: index,
+                note: "Settings › Integrations › Event Filter, open, each state on a strip as wide as"
+                    + " the popover's content (356 points): before the account's saved filter has been"
+                    + " read (chips cannot be changed); no filter saved; a saved filter of two"
+                    + " severities and two types; a filter saved with \"Long session\", which nothing"
+                    + " raises any more, shown selected with the line that says so."
             )
         }
     }
@@ -1952,6 +1988,40 @@ private struct QAResetCreditsStates: View {
             availableCount: expiries.count,
             updatedAt: now
         )
+    }
+}
+
+/// The event filter `QARenderSurface.webhookEventFilterStates` draws: the
+/// view Settings shows (`WebhookEventFilterDisclosure`), open, given each
+/// state a person can meet.
+struct QAWebhookEventFilterStates: View {
+    /// An example, never a real endpoint.
+    static let exampleURL = "https://hooks.example.com/services/demo"
+    static let savedFilter = WebhookEventFilter(
+        severities: ["Critical", "Warning"], types: ["cost_spike", "device_offline"])
+
+    private var states: [(filter: WebhookEventFilter, isLoaded: Bool)] {
+        [
+            (WebhookEventFilter(), false),
+            (WebhookEventFilter(), true),
+            (Self.savedFilter, true),
+            (WebhookEventFilter(severities: ["Critical"], types: ["session_long"]), true),
+        ]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(states.enumerated()), id: \.offset) { _, state in
+                // 356 points: the popover's 380 less Settings' 12-point margins.
+                WebhookEventFilterDisclosure(
+                    filter: state.filter, isLoaded: state.isLoaded, isExpanded: .constant(true))
+                    .frame(width: 356, alignment: .leading)
+                    .padding(8)
+                    .background(PulseTheme.cardBackground.opacity(0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .padding(12)
     }
 }
 

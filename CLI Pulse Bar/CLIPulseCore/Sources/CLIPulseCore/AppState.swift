@@ -845,7 +845,26 @@ public final class AppState: ObservableObject {
     // MARK: - Webhook Integration
     @AppStorage("cli_pulse_webhook_enabled") public var webhookEnabled = false
     @AppStorage("cli_pulse_webhook_url") public var webhookURL = ""
-    @Published public var webhookEventFilter: WebhookEventFilter = WebhookEventFilter()
+    /// The account's saved webhook event filter, as last read or as the
+    /// person last changed it here. It is the account's, not this device's:
+    /// read with the account's settings (`applySavedWebhookEventFilter`),
+    /// changed only through `editWebhookEventFilter`, which saves it.
+    @Published public internal(set) var webhookEventFilter = WebhookEventFilter()
+    /// Whether `webhookEventFilter` is the account's saved filter yet. Until it
+    /// is, the chips cannot be changed: the first change would save "these
+    /// chips" over a filter nobody has seen (the Mac did exactly that before
+    /// 1.58, when it never read the filter back).
+    @Published public internal(set) var webhookEventFilterLoaded = false
+    /// Moves on every change made here, every save that finishes and every
+    /// sign-out. A read of the account's settings that began before it moved
+    /// may predate the latest change, so it is not applied.
+    var webhookEventFilterEpoch: UInt64 = 0
+    /// Saves started and not finished. While one is, the server may still
+    /// hold the previous filter, so a read is not applied.
+    var webhookEventFilterSavesInFlight = 0
+    /// The last save; the next one waits for it, so saves reach the server in
+    /// the order the changes were made.
+    var webhookEventFilterSave: Task<Void, Never>?
     /// Iter2: kill-switch for the inline `api.sendWebhook` path. Defaults
     /// to `true` so fresh installs use the server-side `webhook_jobs`
     /// fan-out (Postgres trigger → cron → edge), which works for closed

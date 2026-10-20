@@ -139,6 +139,7 @@ activated cannot have active controls. Read a switch's state from its knob.
 | `demo-setup-v2-upgrade-prompt` | Setup v2's prompt to existing users (QA flags) |
 | `demo-settings-setup-v2-rerun` | Settings with setup v2's rerun card (QA flags) |
 | `demo-retired-provider-notice` | The Overview with the one-time notice that Kimi K2 and CrossModel are no longer supported, switched on for the picture (the QA seed has no key for either) |
+| `demo-settings-webhook-filter` | Settings › General with webhook notifications switched on (an example URL) and the event filter open on a saved filter of two severities and two types, set for the picture: Demo mode has no account to read one from (1.58) |
 | `window-about` | About |
 | `window-subscription` | Subscription (the QA build loads no StoreKit products); drawn at 460×700 |
 | `window-provider-codex`, `-claude`, `-gemini` | Provider account editor |
@@ -148,6 +149,7 @@ activated cannot have active controls. Read a switch's state from its knob.
 | `component-provider-card-history` | The iPhone provider card's usage history (`ProviderUsageHistorySection`), drawn on the Mac at a 375-point card's width from the Claude sample rows passed as synced rows ("All devices", as the iPhone reads `get_daily_usage`) and counted in I/O tokens, as the card counts them. The tapped day is the latest with a model that has no rate: synced, it arrives with a cost of 0, so its cost shows as unknown ("—") and the day's as a lower bound ("≥"). A component, not the iPhone screen |
 | `window-first-run-welcome` | Where-the-app-lives window shown once after install |
 | `card-codex-reset-credits` | The Codex card's limit-reset-credits line in each state it draws, on card-wide strips: Demo mode's two credits, six credits (four countdowns and "+2"), five day-and-hour countdowns (as many as fit and "+N"), a credit without an expiry, the App Store build without the Codex CLI folder grant, which the unsandboxed QA build cannot reach otherwise, and last the line in its place under 5-hour and Weekly bars whose detail says when each resets, as production's do and Demo's Weekly bar does not |
+| `card-webhook-event-filter` | The webhook event filter, open, in each state it draws, at the popover's content width: before the account's saved filter has been read (the chips cannot be changed, and say why), no filter saved, a saved filter, and a filter saved with "Long session", which nothing raises any more, shown selected with the line that says so (1.58) |
 | `language-menu` | The globe menu's items, read from its real `NSMenu` (see below) |
 
 `manifest.json` lists every PNG with its id, kind, page, size in points and

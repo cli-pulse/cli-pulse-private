@@ -351,6 +351,7 @@ public enum QARenderSnapshot {
             .map { .demo($0) }
         surfaces += QARenderSettingsSection.allCases.map { .demoSettings($0) }
         surfaces += [.demoUpgradePrompt, .demoAgentSetupRerun, .demoRetiredProviderNotice]
+        surfaces.append(.demoSettingsWebhookFilter)
         surfaces += [.about, .subscription]
         surfaces += providerEditorKinds.map { .providerEditor($0) }
         surfaces.append(.usageDashboardPanel)
@@ -358,6 +359,7 @@ public enum QARenderSnapshot {
         surfaces += providerCardPanelKinds.map { .providerCardPanel($0) }
         surfaces += [.providerUsageCardHistory, .firstRunWelcome]
         surfaces.append(.codexResetCreditsStates)
+        surfaces.append(.webhookEventFilterStates)
         return surfaces
     }
 
@@ -762,6 +764,9 @@ public enum QARenderSurface: Hashable {
     /// 1.57: the Overview with the one-time notice that Kimi K2 and CrossModel
     /// are no longer supported (`AppState.showsRetiredProviderNotice`).
     case demoRetiredProviderNotice
+    /// 1.58: Settings › General with webhooks on and the event filter open,
+    /// showing a saved filter (Demo mode has no account to read one from).
+    case demoSettingsWebhookFilter
     case about
     case subscription
     case providerEditor(ProviderKind)
@@ -780,6 +785,11 @@ public enum QARenderSurface: Hashable {
     /// only one of them, and the App Store build's folder-access state never
     /// appears in the QA build, which is not sandboxed.
     case codexResetCreditsStates
+    /// 1.58: the webhook event filter in each state it draws, at the
+    /// popover's content width: before the saved filter is read, no filter
+    /// saved, a saved filter, and a saved filter that holds the retired
+    /// "Long session" type.
+    case webhookEventFilterStates
 
     public enum Kind: String, Codable, Sendable {
         /// The menu-bar popover (`MenuBarView`), 380 points wide.
@@ -795,7 +805,8 @@ public enum QARenderSurface: Hashable {
 
     public var kind: Kind {
         switch self {
-        case .about, .subscription, .providerEditor, .firstRunWelcome, .codexResetCreditsStates:
+        case .about, .subscription, .providerEditor, .firstRunWelcome, .codexResetCreditsStates,
+             .webhookEventFilterStates:
             return .window
         case .usageDashboardPanel, .providerUsagePanel, .providerCardPanel:
             return .panel
@@ -822,6 +833,7 @@ public enum QARenderSurface: Hashable {
         case .demoUpgradePrompt: return "demo-setup-v2-upgrade-prompt"
         case .demoAgentSetupRerun: return "demo-settings-setup-v2-rerun"
         case .demoRetiredProviderNotice: return "demo-retired-provider-notice"
+        case .demoSettingsWebhookFilter: return "demo-settings-webhook-filter"
         case .about: return "window-about"
         case .subscription: return "window-subscription"
         case .providerEditor(let kind): return "window-provider-\(Self.slug(kind.rawValue))"
@@ -831,6 +843,7 @@ public enum QARenderSurface: Hashable {
         case .providerUsageCardHistory: return "component-provider-card-history"
         case .firstRunWelcome: return "window-first-run-welcome"
         case .codexResetCreditsStates: return "card-codex-reset-credits"
+        case .webhookEventFilterStates: return "card-webhook-event-filter"
         }
     }
 

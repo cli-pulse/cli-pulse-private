@@ -832,6 +832,21 @@ public actor APIClient {
         let data_retention_days: Int?
         let track_git_activity: Bool?
         let remote_control_enabled: Bool?
+        /// Absent or `null` when the account has no filter saved.
+        let webhook_event_filter: SavedWebhookEventFilter?
+    }
+
+    /// `user_settings.webhook_event_filter` as it was read. Decoding it never
+    /// fails: a value this build cannot read becomes `filter == nil` instead
+    /// of failing the read of every other setting, and stays apart from "no
+    /// filter saved", which an empty filter would look like and the next
+    /// save would then overwrite.
+    private struct SavedWebhookEventFilter: Decodable {
+        let filter: WebhookEventFilter?
+
+        init(from decoder: Decoder) throws {
+            filter = try? WebhookEventFilter(from: decoder)
+        }
     }
 
     private struct UserTierPayload: Decodable {
@@ -1563,7 +1578,9 @@ public actor APIClient {
             alert_cooldown_minutes: settings?.alert_cooldown_minutes ?? 30,
             data_retention_days: settings?.data_retention_days ?? 7,
             track_git_activity: settings?.track_git_activity ?? false,
-            remote_control_enabled: settings?.remote_control_enabled ?? false
+            remote_control_enabled: settings?.remote_control_enabled ?? false,
+            // No row yet, or a `null` column: no filter saved.
+            webhook_event_filter: settings?.webhook_event_filter.map(\.filter) ?? WebhookEventFilter()
         )
     }
 
@@ -1577,6 +1594,41 @@ public actor APIClient {
     /// while the server retained the default. The conflict target is the
     /// `user_settings.user_id` PRIMARY KEY (no race on concurrent toggles).
     public func updateSettings(_ patch: SettingsPatch) async throws {
+        try await upsertSettings(patch)
+    }
+
+    /// Save the account's webhook event filter, and nothing else.
+    ///
+    /// An empty filter is sent as `null`, the column's "no filter"
+    /// (migrate_v0.13): what Android writes when its chips are cleared, and
+    /// what send-webhook reads as "send every alert". It used to go through
+    /// `SettingsPatch`, whose optional fields are left out when `nil`, and
+    /// the Mac passed `nil` for an empty filter: clearing every chip sent
+    /// nothing, and the server kept the old filter.
+    public func updateWebhookEventFilter(_ filter: WebhookEventFilter) async throws {
+        try await upsertSettings(WebhookEventFilterPatch(filter: filter))
+    }
+
+    /// The body of `updateWebhookEventFilter`: `{"webhook_event_filter": …}`,
+    /// with `null` for an empty filter.
+    struct WebhookEventFilterPatch: Encodable {
+        let filter: WebhookEventFilter
+
+        private enum CodingKeys: String, CodingKey {
+            case webhook_event_filter
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            if filter.isEmpty {
+                try container.encodeNil(forKey: .webhook_event_filter)
+            } else {
+                try container.encode(filter, forKey: .webhook_event_filter)
+            }
+        }
+    }
+
+    private func upsertSettings<Patch: Encodable>(_ patch: Patch) async throws {
         guard let uid = userId, Self.isValidUUID(uid) else { throw APIError.invalidResponse }
         let envelope = SettingsUpsertEnvelope(user_id: uid, patch: patch)
         _ = try await restPost(
@@ -1590,9 +1642,9 @@ public actor APIClient {
     /// request body carries the conflict-target column. Custom `encode`
     /// flattens the patch fields into the same JSON object as `user_id`,
     /// matching what PostgREST expects (`{"user_id": "...", "<field>": ...}`).
-    private struct SettingsUpsertEnvelope: Encodable {
+    private struct SettingsUpsertEnvelope<Patch: Encodable>: Encodable {
         let user_id: String
-        let patch: SettingsPatch
+        let patch: Patch
 
         private enum EnvelopeCodingKey: String, CodingKey {
             case user_id
@@ -1606,6 +1658,11 @@ public actor APIClient {
     }
 
     /// Encodable patch for user settings — only include fields you want to change.
+    ///
+    /// A `nil` field is left out, so a patch cannot clear a column. The webhook
+    /// event filter is therefore not here: `updateWebhookEventFilter` saves it,
+    /// clearing included, and a patch sent for the other webhook settings (the
+    /// iPhone's toggle and URL among them) leaves it alone.
     public struct SettingsPatch: Encodable {
         public var notifications_enabled: Bool?
         public var push_policy: String?
@@ -1616,7 +1673,6 @@ public actor APIClient {
         public var data_retention_days: Int?
         public var webhook_url: String?
         public var webhook_enabled: Bool?
-        public var webhook_event_filter: WebhookEventFilter?
         public var track_git_activity: Bool?
         public var remote_control_enabled: Bool?
 
@@ -1630,7 +1686,6 @@ public actor APIClient {
             data_retention_days: Int? = nil,
             webhook_url: String? = nil,
             webhook_enabled: Bool? = nil,
-            webhook_event_filter: WebhookEventFilter? = nil,
             track_git_activity: Bool? = nil,
             remote_control_enabled: Bool? = nil
         ) {
@@ -1643,7 +1698,6 @@ public actor APIClient {
             self.data_retention_days = data_retention_days
             self.webhook_url = webhook_url
             self.webhook_enabled = webhook_enabled
-            self.webhook_event_filter = webhook_event_filter
             self.track_git_activity = track_git_activity
             self.remote_control_enabled = remote_control_enabled
         }

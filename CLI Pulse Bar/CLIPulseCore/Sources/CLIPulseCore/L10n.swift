@@ -1793,6 +1793,10 @@ public enum L10n {
         public static var eventTypeQuotaExceeded: String { tr("integrations.event_type_quota_exceeded") }
         public static var eventTypeSessionLong: String { tr("integrations.event_type_session_long") }
         public static var eventTypeDeviceOffline: String { tr("integrations.event_type_device_offline") }
+        /// Under the type chips while the saved filter holds a type nothing raises any more.
+        public static func eventTypeRetired(_ a0: String) -> String { tr("integrations.event_type_retired", a0) }
+        /// Above the chips until the account's saved filter has been read.
+        public static var eventFilterNotLoaded: String { tr("integrations.event_filter_not_loaded") }
         public static func saveSettingsFailed(_ a0: String) -> String { tr("integrations.save_settings_failed", a0) }
         public static func testWebhookFailed(_ a0: String) -> String { tr("integrations.test_webhook_failed", a0) }
     }
