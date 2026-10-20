@@ -86,6 +86,41 @@ Windows|The Windows desktop app gets the same fix.
 Linux|Linux users are unaffected.
 CASES
 
+# ── characters App Store Connect refuses or has never taken ─────────────────
+# The first case is the 1.57 iOS What's New as App Store Connect refused it on
+# 2026-10-20 (409 INVALID_CHARACTERS, "✕"). Each plant must be caught, with the
+# code point named so an invisible one can be found.
+while IFS='|' read -r label sentence needle; do
+    [ -z "$label" ] && continue
+    build_fixture "$TMP/case"
+    before="$(shasum "$TMP/case/whatsnew_test/en-US.txt" | cut -d' ' -f1)"
+    printf '\n• %b\n' "$sentence" >> "$TMP/case/whatsnew_test/en-US.txt"
+    assert_changed "$label" "$TMP/case/whatsnew_test/en-US.txt" "$before" \
+        && expect_fail "$label" "$needle"
+done <<'CASES'
+the ✕ App Store Connect refused in 1.57|Tap the day again, or ✕, to close the list.|U+2715 MULTIPLICATION X): App Store Connect refused it
+a backtick (refused in 1.18.0)|Run `codex exec --json` once.|U+0060 GRAVE ACCENT), 2 times: App Store Connect refused it
+an emoji|New: Pulse Cat 🐱|U+1F431
+an arrow the store has never taken|Settings → Privacy.|U+2192 RIGHTWARDS ARROW): not among the characters
+a zero-width space|Usage\xe2\x80\x8bhistory.|U+200B ZERO WIDTH SPACE
+a full-width digit|Fixed 1 crash, then ２ more.|a compatibility form of '2'
+CASES
+
+# The same character in a file under release/ (the 1.45-1.47 notes, which
+# nothing sends to App Store Connect any more) is left to the platform check.
+build_fixture "$TMP/case"
+mkdir -p "$TMP/case/release/whatsnew_145"
+printf 'Settings > Privacy.\n' > "$TMP/case/release/whatsnew_145/en-US.txt"
+if bash "$GUARD" --root "$TMP/case" >/dev/null 2>&1; then
+    echo "ok:   [release/ notes] the character check leaves the archived notes alone."
+    pass=$((pass + 1))
+else
+    echo "FAIL: [release/ notes] the character check refused an archived note."
+    fail=$((fail + 1))
+fi
+printf '\n• Also on Android.\n' >> "$TMP/case/release/whatsnew_145/en-US.txt"
+expect_fail "Android in an archived note (the platform check still reads release/)" "release/whatsnew_145/en-US.txt mentions 'Android'"
+
 # ── the guard must refuse to scan nothing ───────────────────────────────────
 rm -rf "$TMP/empty"; mkdir -p "$TMP/empty"
 out="$(bash "$GUARD" --root "$TMP/empty" 2>&1)"
