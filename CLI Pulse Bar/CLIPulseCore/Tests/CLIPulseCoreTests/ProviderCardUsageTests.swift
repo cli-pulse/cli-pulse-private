@@ -415,8 +415,8 @@ final class ProviderCardUsageTests: XCTestCase {
     /// The iPhone card's Today and This Week are its chart's rows added up,
     /// in I/O. Codex's input already holds its cached input, so the cached
     /// input is in the figure once; `provider_summary`, which the card used
-    /// to show, adds it again (input + cached + output). Asserted in Chinese,
-    /// where the unit's help is not the English fallback.
+    /// to show, added it again (input + cached + output) until migrate_v0.86.
+    /// Asserted in Chinese, where the unit's help is not the English fallback.
     func testTheIPhoneCardCountsCodexsCachedInputOnceInZhHans() throws {
         let saved = LocaleOverrideStore.shared.override
         defer { LocaleOverrideStore.shared.set(saved) }
@@ -429,7 +429,8 @@ final class ProviderCardUsageTests: XCTestCase {
             // Another provider's day.
             account(0, "Claude", model: "claude-sonnet-4-5", input: 7_000, cached: 0, output: 0, cost: 9),
         ]
-        // `provider_summary` over the same rows: input + cached + output.
+        // `provider_summary` over the same rows before migrate_v0.86: input +
+        // cached + output. The figures below are the rows' either way.
         let summary = usage(today: 0.50, week: 0.70, thirty: 3.70, todayUsage: 190_000, weekUsage: 265_000)
         let figures = ProviderCardAccountFigures(provider: summary, cloudRows: rows, windows: windows)
 

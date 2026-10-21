@@ -12,6 +12,8 @@
 -- aligns with the user's local timezone instead of the server's UTC clock.
 -- Old callers without the param keep prior behavior via the NULL default.
 -- See migrate_v0.42_user_tz_today.sql for the bug write-up.
+-- v0.86: today_usage counts each token once (migrate_v0.86 header): Codex's
+-- input already includes its cached input.
 create or replace function public.dashboard_summary(
   p_user_today date default null
 )
@@ -29,7 +31,18 @@ begin
   end if;
 
   select
-    coalesce(sum(coalesce(input_tokens,0) + coalesce(cached_tokens,0) + coalesce(output_tokens,0)), 0),
+    -- v0.86 each token once: Codex's input already includes its cached
+    -- input; every other provider's leaves cache out. Same rule as the Mac's
+    -- ArchiveTokenBasis.tokens, row by row.
+    coalesce(sum(
+      case when provider = 'Codex'
+           then greatest(coalesce(input_tokens, 0), 0)
+              + greatest(coalesce(output_tokens, 0), 0)
+           else greatest(coalesce(input_tokens, 0), 0)
+              + greatest(coalesce(cached_tokens, 0), 0)
+              + greatest(coalesce(output_tokens, 0), 0)
+      end
+    ), 0),
     coalesce(sum(cost), 0),
     count(*)
   into v_today_usage, v_today_cost, v_today_rows
@@ -68,6 +81,8 @@ $$ language plpgsql security definer set search_path = pg_catalog, public, exten
 -- v0.42 (2026-05-08): added p_user_today parameter — same fix as
 -- dashboard_summary. All windows (today / 7-day / 30-day) key off the
 -- client-supplied local date when present.
+-- v0.86: today_usage / total_usage count each token once (migrate_v0.86
+-- header): Codex's input already includes its cached input.
 create or replace function public.provider_summary(
   p_user_today date default null
 )
@@ -86,27 +101,41 @@ begin
   end if;
 
   return (
-    with usage_agg as (
+    with metric_rows as (
       select
         provider,
+        metric_date,
+        cost,
+        -- v0.86 each token once: Codex's input already includes its cached
+        -- input; every other provider's leaves cache out. Same rule as the
+        -- Mac's ArchiveTokenBasis.tokens, row by row.
+        case when provider = 'Codex'
+             then greatest(coalesce(input_tokens, 0), 0)
+                + greatest(coalesce(output_tokens, 0), 0)
+             else greatest(coalesce(input_tokens, 0), 0)
+                + greatest(coalesce(cached_tokens, 0), 0)
+                + greatest(coalesce(output_tokens, 0), 0)
+        end as tokens
+      from public.daily_usage_metrics
+      where user_id = v_user_id
         -- Codex P2 (PR #41 review, 2026-05-08): clamp upper bound to
         -- v_today so multi-timezone users can't sum future-dated metrics
         -- written by a device ahead of the querying client's local day.
         -- See migrate_v0.42_user_tz_today.sql for the full rationale.
-        sum(case when metric_date = v_today
-              then coalesce(input_tokens,0) + coalesce(cached_tokens,0) + coalesce(output_tokens,0)
-              else 0 end) as today_usage,
+        and metric_date >= v_month_start
+        and metric_date <= v_today
+    ),
+    usage_agg as (
+      select
+        provider,
+        sum(case when metric_date = v_today then tokens else 0 end) as today_usage,
         sum(case when metric_date >= v_week_start and metric_date <= v_today
-              then coalesce(input_tokens,0) + coalesce(cached_tokens,0) + coalesce(output_tokens,0)
-              else 0 end) as total_usage,
+              then tokens else 0 end) as total_usage,
         sum(case when metric_date = v_today then cost else 0 end) as today_cost,
         sum(case when metric_date >= v_week_start and metric_date <= v_today
               then cost else 0 end) as week_cost,
         sum(case when metric_date <= v_today then cost else 0 end) as month_cost
-      from public.daily_usage_metrics
-      where user_id = v_user_id
-        and metric_date >= v_month_start
-        and metric_date <= v_today
+      from metric_rows
       group by provider
     ),
     quota_agg as (
@@ -139,6 +168,16 @@ begin
   );
 end;
 $$ language plpgsql security definer set search_path = pg_catalog, public, extensions;
+
+-- What production has granted since v0.44 (migrate_v0.44_user_tz_today.sql):
+-- signed-in users only. `create or replace` keeps grants, so v0.86 leaves
+-- them as they are; a fresh install gets the same here.
+revoke execute on function public.dashboard_summary(date) from public;
+revoke execute on function public.dashboard_summary(date) from anon;
+grant execute on function public.dashboard_summary(date) to authenticated;
+revoke execute on function public.provider_summary(date) from public;
+revoke execute on function public.provider_summary(date) from anon;
+grant execute on function public.provider_summary(date) to authenticated;
 
 -- v0.70: maintain the single provider-level compatibility row from the
 -- account-scoped source of truth. This shared routine is used after both
@@ -1031,6 +1070,10 @@ revoke execute on function public.delete_provider_account(uuid, text)
 grant execute on function public.delete_provider_account(uuid, text)
   to authenticated, service_role;
 
+-- Provider-level usage/cost is computed once, while quota accounts remain a
+-- nested array. This avoids multiplying token/cost totals by account count.
+-- v0.86: today_usage / total_usage count each token once (migrate_v0.86
+-- header): Codex's input already includes its cached input.
 create or replace function public.provider_account_summary(
   p_user_today date default null
 )
@@ -1046,28 +1089,38 @@ begin
   end if;
 
   return (
-    with usage_agg as (
+    with metric_rows as (
       select
         provider,
-        sum(case when metric_date = v_today
-              then coalesce(input_tokens, 0)
-                 + coalesce(cached_tokens, 0)
-                 + coalesce(output_tokens, 0)
-              else 0 end) as today_usage,
+        metric_date,
+        cost,
+        -- v0.86 each token once: Codex's input already includes its cached
+        -- input; every other provider's leaves cache out. Same rule as the
+        -- Mac's ArchiveTokenBasis.tokens, row by row.
+        case when provider = 'Codex'
+             then greatest(coalesce(input_tokens, 0), 0)
+                + greatest(coalesce(output_tokens, 0), 0)
+             else greatest(coalesce(input_tokens, 0), 0)
+                + greatest(coalesce(cached_tokens, 0), 0)
+                + greatest(coalesce(output_tokens, 0), 0)
+        end as tokens
+      from public.daily_usage_metrics
+      where user_id = v_user_id
+        and metric_date >= v_month_start
+        and metric_date <= v_today
+    ),
+    usage_agg as (
+      select
+        provider,
+        sum(case when metric_date = v_today then tokens else 0 end) as today_usage,
         sum(case when metric_date >= v_week_start and metric_date <= v_today
-              then coalesce(input_tokens, 0)
-                 + coalesce(cached_tokens, 0)
-                 + coalesce(output_tokens, 0)
-              else 0 end) as total_usage,
+              then tokens else 0 end) as total_usage,
         sum(case when metric_date = v_today then cost else 0 end) as today_cost,
         sum(case when metric_date >= v_week_start and metric_date <= v_today
               then cost else 0 end) as week_cost,
         sum(case when metric_date >= v_month_start and metric_date <= v_today
               then cost else 0 end) as month_cost
-      from public.daily_usage_metrics
-      where user_id = v_user_id
-        and metric_date >= v_month_start
-        and metric_date <= v_today
+      from metric_rows
       group by provider
     ),
     account_rows as (
