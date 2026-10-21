@@ -1666,6 +1666,12 @@
 "provider_panel.chart_hint" = "上下轻扫以选择日期，当天的模型会列在图表下方。";
 "provider_panel.cost_unknown" = "费用未知";
 "provider_panel.cost_unknown_help" = "灰色短柱表示该日有用量，但费用未知。";
+"projects.title" = "项目";
+"projects.unknown" = "未知";
+"projects.anonymous" = "项目 %d";
+"projects.shown_of" = "%2$d 个项目中的前 %1$d 个";
+"projects.help" = "按每个会话运行时所在的文件夹归类，来自这台 Mac 的会话日志。项目名称和路径只保留在这台 Mac 上。";
+"projects.unknown_help" = "这些会话的日志没有记录它们在哪个文件夹中运行。";
 "folder_access.dir_clipulse_config" = "CLI Pulse 配置";
 "folder_access.dir_clipulse_data" = "CLI Pulse 数据";
 "folder_access.dir_codex_session_logs" = "Codex 会话日志";

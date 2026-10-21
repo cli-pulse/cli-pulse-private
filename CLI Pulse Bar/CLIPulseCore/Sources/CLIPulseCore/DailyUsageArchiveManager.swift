@@ -169,6 +169,7 @@ public actor DailyUsageArchiveManager {
             .appendingPathComponent("cli-pulse-backfill-\(UUID().uuidString)", isDirectory: true)
         var options = CostUsageScanner.Options(cacheRoot: tmp, daysToScan: Self.backfillDays)
         options.forceRescan = true   // not an init param — set after construction
+        options.splitsByProject = false   // the archive keeps day rows only
 
         let result = await backfillScan(options)
         if !result.entries.isEmpty {
@@ -320,6 +321,7 @@ public actor DailyUsageArchiveManager {
         var options = CostUsageScanner.Options(cacheRoot: tmp, daysToScan: Self.backfillDays)
         options.forceRescan = true
         options.providers = [.codex]
+        options.splitsByProject = false
         let result = await backfillScan(options)
         try? FileManager.default.removeItem(at: tmp)
         return result

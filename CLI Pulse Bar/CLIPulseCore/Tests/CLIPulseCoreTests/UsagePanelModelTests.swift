@@ -193,6 +193,29 @@ final class UsagePanelModelTests: XCTestCase {
         XCTAssertTrue(model.needsFolderAccess)
     }
 
+    /// v1.58: and its rows by project, every provider's, which the provider
+    /// mode's Projects card lists; a refresh replaces them, and a scan that
+    /// is gone takes them with it.
+    func testTheProviderModeFollowsTheScansProjects() {
+        let scan = CurrentValueSubject<CostUsageScanResult?, Never>(nil)
+        let model = UsagePanelModel(notificationCenter: NotificationCenter(), now: fixedNow, loadArchive: { DailyUsageArchive() })
+        model.follow(scan: scan.eraseToAnyPublisher(), cloud: Just([]).eraseToAnyPublisher(),
+                     needsFolderAccess: Just(false).eraseToAnyPublisher())
+        XCTAssertTrue(model.scanProjects.isEmpty)
+
+        let project = ProjectIdentity.folder("/Users/sample/Projects/demo-app")
+        func split(_ tokens: Int, _ provider: String) -> CostUsageScanResult.ProjectEntry {
+            .init(provider: provider, project: project, date: "2026-10-06", model: "m",
+                  inputTokens: tokens, cachedTokens: 0, outputTokens: 0, costUSD: 1)
+        }
+        scan.send(CostUsageScanResult(entries: [], projects: [split(500, "Codex"), split(70, "Claude")]))
+        XCTAssertEqual(model.scanProjects.map(\.inputTokens), [500, 70])
+        scan.send(CostUsageScanResult(entries: [], projects: [split(800, "Codex")]))
+        XCTAssertEqual(model.scanProjects.map(\.inputTokens), [800])
+        scan.send(nil)
+        XCTAssertTrue(model.scanProjects.isEmpty)
+    }
+
     func testThisMacIsShownFirstAndAPickedScopeIsKept() {
         let scan = CurrentValueSubject<CostUsageScanResult?, Never>(
             CostUsageScanResult(entries: [entry("2026-10-06", "Codex", tokens: 500, cost: 1)]))

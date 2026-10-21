@@ -484,6 +484,10 @@ extension AppState {
         let currentUserID = userId
         Task { await authManager.signOut(currentAccessToken: currentToken) }
         // Clear local state immediately — don't block on network
+        // v1.58: Demo's Mac scan is Demo's (`DemoDataProvider.macScan`), not
+        // this Mac's; the next local scan replaces it, but until one runs
+        // nothing may show its projects.
+        if isDemoMode { costUsageScanResult = nil }
         isDemoMode = false
         applySignedOutState()
         // Notify iOS companion to forward logout to watch

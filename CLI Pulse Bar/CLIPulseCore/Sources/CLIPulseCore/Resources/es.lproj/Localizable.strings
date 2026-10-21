@@ -1633,6 +1633,12 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "provider_panel.chart_hint" = "Desliza hacia arriba o hacia abajo para elegir un día. Sus modelos aparecen debajo de la gráfica.";
 "provider_panel.cost_unknown" = "costo desconocido";
 "provider_panel.cost_unknown_help" = "Una barra gris corta indica un día con uso cuyo costo se desconoce.";
+"projects.title" = "Proyectos";
+"projects.unknown" = "Desconocido";
+"projects.anonymous" = "Proyecto %d";
+"projects.shown_of" = "Los %1$d principales de %2$d proyectos";
+"projects.help" = "Agrupados por la carpeta en la que se ejecutó cada sesión, a partir de los registros de sesión de este Mac. Los nombres y las rutas de los proyectos no salen de este Mac.";
+"projects.unknown_help" = "Los registros de estas sesiones no indican en qué carpeta se ejecutaron.";
 "folder_access.dir_clipulse_config" = "Configuración de CLI Pulse";
 "folder_access.dir_clipulse_data" = "Datos de CLI Pulse";
 "folder_access.dir_codex_session_logs" = "Registros de sesión de Codex";

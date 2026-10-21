@@ -1090,6 +1090,16 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         case .cardSourceLines:
             enterDemoIfNeeded()
             await captureCardSourceLines(surface, index: index)
+
+        case .topProjectsStates:
+            await captureWindow(
+                QATopProjectsStates(), surface: surface, index: index,
+                note: "The Overview's Top Projects card (v1.58), each state at the card's width"
+                    + " (356 points, as in the 380-point popover), from the sample rows split by project"
+                    + " (QARenderSnapshot.providerPanelProjectsSample, Codex and Claude): names with"
+                    + " their cost and tokens; Hide personal information on (Project N, no path on"
+                    + " hover); costs hidden (ranked by tokens). The Demo Overview draws Demo's own."
+            )
         }
     }
 
@@ -1493,8 +1503,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
 
     /// v1.57: the usage panel's provider mode as `DashboardPanelController`
     /// shows it, always dark, from the deterministic sample rows
-    /// (`QARenderSnapshot.providerPanelSample`): Demo mode has no local scan.
-    /// Codex is drawn with its chart in tokens, one scope, 480 points wide.
+    /// (`QARenderSnapshot.providerPanelSample`), more models and days than
+    /// Demo's. Codex is drawn with its chart in tokens, one scope, 480 points
+    /// wide.
     /// Claude is drawn in cost as a signed-in Mac with synced rows sees it,
     /// with the This Mac | All devices switch, at 440 points, the narrowest
     /// the panel gets, where that header is tightest.
@@ -1515,8 +1526,11 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             : nil
         let scopes: [UsageDataScope] = kind == .claude ? [.thisMac, .allDevices] : [.thisMac]
         let width: CGFloat = kind == .claude ? 440 : 480
+        // v1.58: both providers' sample rows by project, as the panel gets
+        // every provider's (`UsagePanelModel.scanProjects`).
+        let projects = QARenderSnapshot.providerPanelKinds.flatMap { QARenderSnapshot.providerPanelProjectsSample($0) }
         let panel = ProviderUsagePanelView(
-            data: data, availableScopes: scopes, scope: .constant(.thisMac),
+            data: data, projects: projects, availableScopes: scopes, scope: .constant(.thisMac),
             needsFolderAccess: false, onShowAllProviders: {}, initialSelection: day)
             .frame(width: width)
             .overlay(alignment: .topTrailing) {
@@ -1534,13 +1548,15 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 + " (QARenderSnapshot.providerPanelSample), chart in \(metric.rawValue), scopes "
                 + scopes.map(\.rawValue).joined(separator: " + ") + "; "
                 + (day == nil ? "the latest day with usage" : "the latest day with a model that has no rate")
-                + " is selected. The real panel reads this Mac's scan."
+                + " is selected. Projects: the same rows split across sample folders"
+                + " (QARenderSnapshot.providerPanelProjectsSample). The real panel reads this Mac's scan."
         )
     }
 
     /// v1.57: the usage panel's provider mode as clicking a Demo provider
     /// card's small chart opens it. The panel's model follows the state the
-    /// card reads (Demo's synced rows; Demo has no local scan) and is opened
+    /// card reads (Demo's synced rows, and since 1.58 its Mac scan, the same
+    /// rows with their projects: `DemoDataProvider.macScan`) and is opened
     /// on the scope the card's figures are labelled with and counting tokens
     /// as the card does (I/O), as
     /// `DashboardPanelController.toggle(provider:state:scope:basis:)` opens
@@ -1569,6 +1585,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         let scope = model.scope(for: provider)
         let panel = ProviderUsagePanelView(
             data: model.days(for: provider, in: scope),
+            projects: model.scanProjects,
             availableScopes: model.availableScopes(for: provider),
             scope: .constant(scope),
             needsFolderAccess: model.needsFolderAccess, onShowAllProviders: {})
@@ -2194,6 +2211,34 @@ private struct QACostUnknownDays: View {
             .frame(width: width, alignment: .leading)
             .background(PulseTheme.cardBackground.opacity(0.5))
             .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+/// v1.58: what `QARenderSurface.topProjectsStates` draws: the Overview's Top
+/// Projects card, built the way `OverviewTab` builds it, in each state.
+private struct QATopProjectsStates: View {
+    private var entries: [CostUsageScanResult.ProjectEntry] {
+        QARenderSnapshot.providerPanelKinds.flatMap { QARenderSnapshot.providerPanelProjectsSample($0) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            card(showsCost: true, masked: false)
+            // Hide personal information on: the switch's state for this strip
+            // only (the gate in scripts/check_personal_info_mask.py keeps the
+            // app's own reads of the switch on its defaults key).
+            card(showsCost: true, masked: true)
+            card(showsCost: false, masked: false)
+        }
+        .padding(12)
+        .frame(width: 380, alignment: .leading)
+    }
+
+    private func card(showsCost: Bool, masked: Bool) -> some View {
+        TopProjectsCard(list: ProjectUsageList.build(
+            entries, provider: nil, basis: .eachOnce, todayKey: DayKey.string(from: Date()),
+            showsCost: showsCost, hidePersonalInfo: masked))
+            .frame(width: 356, alignment: .leading)
     }
 }
 

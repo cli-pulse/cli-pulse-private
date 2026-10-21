@@ -58,12 +58,20 @@ public struct CostUsageScanResult: Sendable {
     /// `CostUsageScanner.activeSessionFreshnessWindow` on macOS).
     public let activeSessionCandidates: [ActiveSessionCandidate]
 
+    /// v1.58 (P1-4): `entries` again, split by the project each row's usage
+    /// was spent in (`ProjectUsage.swift`). For each provider the rows add
+    /// up to its entries. Shown on this Mac only: nothing uploads them
+    /// (`APIClient.syncDailyUsage` sends `entries`).
+    public let projects: [ProjectEntry]
+
     public init(
         entries: [DailyEntry],
-        activeSessionCandidates: [ActiveSessionCandidate] = []
+        activeSessionCandidates: [ActiveSessionCandidate] = [],
+        projects: [ProjectEntry] = []
     ) {
         self.entries = entries
         self.activeSessionCandidates = activeSessionCandidates
+        self.projects = projects
     }
 
     /// Lightweight per-JSONL session summary. Cross-platform so that test
@@ -164,9 +172,19 @@ public enum CostUsageScanner {
         /// read for nothing. A provider left out is not read at all: no file of
         /// it is listed or opened, and its cache is neither loaded nor written.
         public var providers: Set<ProviderKind> = CostUsageScanner.logProviders
+        /// v1.58 (P1-4): whether the scan also splits its rows by project
+        /// (`CostUsageScanResult.projects`). On by default. The year-long
+        /// reads that fill the usage archive (`DailyUsageArchiveManager`) keep
+        /// only the day rows, so they leave it off and open no transcript to
+        /// learn its folder.
+        public var splitsByProject: Bool = true
         /// The moment the scan treats as now. nil (the default) is the clock;
         /// tests set it so fixtures with fixed dates stay inside the window.
         var now: Date?
+        /// The home folder that `~` and `~/.codex/worktrees` mean when the
+        /// scan names projects (`ProjectPathNormalizer`). nil (the default) is
+        /// this user's real home; tests set it.
+        var homeDirectory: String?
 
         public init(
             codexSessionsRoot: URL? = nil,
@@ -198,6 +216,8 @@ public enum CostUsageScanner {
 
         var allEntries: [CostUsageScanResult.DailyEntry] = []
         var allCandidates: [CostUsageScanResult.ActiveSessionCandidate] = []
+        var allProjects: [CostUsageScanResult.ProjectEntry] = []
+        let home = options.homeDirectory ?? realUserHome()
 
         // Scan Codex
         if options.providers.contains(.codex) {
@@ -206,6 +226,9 @@ public enum CostUsageScanner {
             allCandidates.append(contentsOf: buildCodexCandidates(
                 options: options, range: range, cache: codexCache, now: now
             ))
+            if options.splitsByProject {
+                allProjects.append(contentsOf: codexProjectEntries(cache: codexCache, range: range, home: home))
+            }
         }
 
         // Scan Claude
@@ -215,10 +238,16 @@ public enum CostUsageScanner {
             allCandidates.append(contentsOf: buildClaudeCandidates(
                 options: options, cache: claudeCache, now: now
             ))
+            if options.splitsByProject {
+                allProjects.append(contentsOf: claudeProjectEntries(
+                    cache: claudeCache, roots: defaultClaudeProjectsRoots(options: options),
+                    range: range, home: home))
+            }
         }
 
         reportUnpricedModels(allEntries)
-        return CostUsageScanResult(entries: allEntries, activeSessionCandidates: allCandidates)
+        return CostUsageScanResult(
+            entries: allEntries, activeSessionCandidates: allCandidates, projects: allProjects)
     }
 
     /// Say out loud when tokens were counted but could not be priced.
@@ -1122,6 +1151,9 @@ public enum CostUsageScanner {
         let lastTotals: CostUsageCodexTotals?
         let sessionId: String?
         let state: CostUsageCodexFileState
+        /// Where the session ran, from its first line; nil for a parse that
+        /// started past it (an incremental one keeps what the entry has).
+        var project: CostUsageFileProject? = nil
         /// false when the file could not be read to the end, or its first line
         /// is not complete yet. Nothing from such a parse is kept: the file is
         /// read again on the next refresh.
@@ -1256,6 +1288,7 @@ public enum CostUsageScanner {
         var currentModel = initialModel
         var accountant = CodexTokenAccountant(watermark: initialTotals, state: initialState)
         var sessionId: String?
+        var project: CostUsageFileProject?
         var days: [String: [String: [Int]]] = [:]
         let costScale = 1_000_000_000.0
 
@@ -1274,6 +1307,7 @@ public enum CostUsageScanner {
             case .tooLong:
                 accountant.observeUnreadableFirstLine()
                 skipFirstLine = true
+                project = CostUsageFileProject(cwd: nil, repository: nil)
             case .line(let bytes):
                 // An empty first line is never handed to `onLine`.
                 skipFirstLine = !bytes.isEmpty
@@ -1282,6 +1316,7 @@ public enum CostUsageScanner {
                    (obj["type"] as? String) == "session_meta" {
                     let payload = obj["payload"] as? [String: Any]
                     sessionId = payload?["session_id"] as? String ?? payload?["sessionId"] as? String ?? payload?["id"] as? String ?? obj["session_id"] as? String
+                    project = codexFileProject(sessionMeta: obj)
                     let metaTime = (payload?["timestamp"] as? String) ?? (obj["timestamp"] as? String)
                     let metaInstant = metaTime.flatMap { instantFromTimestamp($0) ?? instantFromParsedISO($0) }
                     accountant.observeSessionMeta(
@@ -1294,6 +1329,7 @@ public enum CostUsageScanner {
                     )
                 } else {
                     accountant.observeUnreadableFirstLine()
+                    project = CostUsageFileProject(cwd: nil, repository: nil)
                 }
             }
         }
@@ -1460,6 +1496,7 @@ public enum CostUsageScanner {
             lastTotals: accountant.watermark,
             sessionId: sessionId,
             state: accountant.state,
+            project: project,
             complete: true
         )
     }
@@ -1573,7 +1610,8 @@ public enum CostUsageScanner {
                 cache.files[path] = CostUsageFileUsage(
                     mtimeUnixMs: mtimeMs, size: size, days: mergedDays, parsedBytes: delta.parsedBytes,
                     lastModel: delta.lastModel, lastTotals: delta.lastTotals,
-                    sessionId: delta.sessionId ?? cached.sessionId, codex: delta.state
+                    sessionId: delta.sessionId ?? cached.sessionId, codex: delta.state,
+                    project: cached.project
                 )
                 return
             }
@@ -1588,30 +1626,20 @@ public enum CostUsageScanner {
         cache.files[path] = CostUsageFileUsage(
             mtimeUnixMs: mtimeMs, size: size, days: parsed.days, parsedBytes: parsed.parsedBytes,
             lastModel: parsed.lastModel, lastTotals: parsed.lastTotals,
-            sessionId: parsed.sessionId, codex: parsed.state
+            sessionId: parsed.sessionId, codex: parsed.state, project: parsed.project
         )
     }
 
     /// Rebuild the Codex day rows from the files that count.
     static func rebuildCodexDays(cache: inout CostUsageCache) -> (files: Int, counted: Int) {
-        let candidates = cache.files.map { path, usage in
-            CodexCopyResolver.File(
-                path: path,
-                rolloutId: usage.codex?.rolloutId,
-                eventCount: usage.codex?.eventCount ?? 0,
-                firstEventUnixMs: usage.codex?.firstEventUnixMs,
-                lastEventUnixMs: usage.codex?.lastEventUnixMs,
-                finalTokens: (usage.lastTotals?.input ?? 0) + (usage.lastTotals?.output ?? 0)
-            )
-        }
-        let counted = CodexCopyResolver.countedPaths(candidates)
+        let counted = codexCountedPaths(cache)
         var days: [String: [String: [Int]]] = [:]
         for path in counted.sorted() {
             guard let usage = cache.files[path] else { continue }
             mergeFileDays(existing: &days, delta: usage.days)
         }
         cache.days = days
-        return (candidates.count, counted.count)
+        return (cache.files.count, counted.count)
     }
 
     private static func scanCodexProvider(range: DayRange, now: Date, options: Options) -> CostUsageCache {
@@ -1648,6 +1676,9 @@ public enum CostUsageScanner {
             let children = cache.files.values.filter { $0.codex?.isChild == true }.count
             scanLogger.info("scanCodexProvider: files=\(tally.files) counted=\(tally.counted) copies_skipped=\(tally.files - tally.counted) subagent_or_fork=\(children)")
             pruneDays(cache: &cache, sinceKey: range.scanSinceKey, untilKey: range.scanUntilKey)
+            // 1.58: an entry written before the cache kept each log's folder
+            // gets it from the log's first line, once.
+            if options.splitsByProject { fillCodexProjects(cache: &cache) }
             cache.lastScanUnixMs = nowMs
             CostUsageCacheIO.save(provider: "codex", cache: cache, cacheRoot: options.cacheRoot)
         }
@@ -2059,6 +2090,10 @@ public enum CostUsageScanner {
                 cache.files.removeValue(forKey: key)
             }
             pruneDays(cache: &cache, sinceKey: range.scanSinceKey, untilKey: range.scanUntilKey)
+            // 1.58: the folder each project directory was made from, found
+            // once and kept with the cache, so its transcripts are not opened
+            // for it again.
+            if options.splitsByProject { learnClaudeProjectRoots(cache: &cache, roots: roots, range: range) }
             cache.lastScanUnixMs = nowMs
             CostUsageCacheIO.save(provider: "claude", cache: cache, cacheRoot: options.cacheRoot)
         }

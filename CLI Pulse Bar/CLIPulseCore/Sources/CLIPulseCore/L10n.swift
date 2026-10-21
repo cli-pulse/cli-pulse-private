@@ -522,6 +522,23 @@ public enum L10n {
         public static var chartHint: String { tr("provider_panel.chart_hint") }
     }
 
+    /// v1.58 (P1-4): the project lists (`ProjectUsageList`) in the usage
+    /// panel's provider mode and on the Mac Overview's Top Projects card.
+    public enum projects {
+        /// The panel section's title.
+        public static var title: String { tr("projects.title") }
+        /// A project whose logs name no folder.
+        public static var unknown: String { tr("projects.unknown") }
+        /// A named project with "Hide personal information" on: "Project 2".
+        public static func anonymous(_ number: Int) -> String { tr("projects.anonymous", number) }
+        /// Under a list cut short: "Top 5 of 12 projects".
+        public static func shownOf(_ shown: Int, _ total: Int) -> String { tr("projects.shown_of", shown, total) }
+        /// What a list counts, and that it stays on this Mac.
+        public static var help: String { tr("projects.help") }
+        /// Hovering "Unknown".
+        public static var unknownHelp: String { tr("projects.unknown_help") }
+    }
+
     // MARK: - Providers
 
     /// v1.44 W5: the notice shown once, after the app enables its own login

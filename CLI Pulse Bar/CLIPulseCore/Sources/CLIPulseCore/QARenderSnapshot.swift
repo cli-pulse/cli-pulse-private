@@ -272,7 +272,8 @@ public enum QARenderSnapshot {
     /// 30 days of scan rows for one provider, for the provider-panel renders:
     /// several models a day, idle days and quieter weekends. Deterministic
     /// (`DemoDataProvider.unit`, a SplitMix64 step), so every language draws
-    /// the same figures. Demo mode has no local scan and never shows these.
+    /// the same figures. Demo mode never shows these: its Mac scan is its own
+    /// (`DemoDataProvider.macScan`), the account's synced rows.
     ///
     /// Codex rows follow OpenAI's convention, input including the cached
     /// input. One Codex model is priced at a borrowed rate ("≈"), and Claude
@@ -447,6 +448,48 @@ public enum QARenderSnapshot {
         }
         return rows + buckets
     }
+    /// v1.58 (P1-4): the sample rows of `providerPanelSample`, split by
+    /// project, for the provider-panel renders and the Top Projects states
+    /// (`QARenderSurface.topProjectsStates`). Invented folders under
+    /// `/Users/sample/Projects`, more than a list shows (so "Top 5 of 7"),
+    /// a name long enough to be cut, and for Codex a share whose logs name
+    /// no folder ("Unknown"). Each row is apportioned in whole tokens and
+    /// cents, so the projects add up to the rows exactly; a model with no
+    /// rate leaves its projects without one too. Deterministic, like the rows.
+    public static func providerPanelProjectsSample(
+        _ kind: ProviderKind, days: Int = 30, today: Date = Date(), timeZone: TimeZone = .current
+    ) -> [CostUsageScanResult.ProjectEntry] {
+        let shares: [(name: String?, share: Double)] = kind == .codex
+            ? [("demo-app", 0.38), ("api-gateway", 0.19), ("customer-analytics-dashboard-monorepo", 0.13),
+               (nil, 0.11), ("infra-scripts", 0.08), ("docs", 0.06), ("design-system", 0.05)]
+            : [("demo-app", 0.30), ("api-gateway", 0.27), ("mobile-client", 0.18), ("design-system", 0.12),
+               ("customer-analytics-dashboard-monorepo", 0.08), ("docs", 0.05)]
+        let projects = shares.map { share in
+            share.name.map { ProjectIdentity.folder(sampleProjectsFolder + "/" + $0) } ?? .unknown
+        }
+        let salt: UInt64 = kind == .codex ? 400 : 600
+        var entries: [CostUsageScanResult.ProjectEntry] = []
+        for (index, row) in providerPanelSample(kind, days: days, today: today, timeZone: timeZone).enumerated() {
+            let weights = shares.enumerated().map { offset, share in
+                share.share * (0.7 + 0.6 * DemoDataProvider.unit(index, salt + UInt64(offset)))
+            }
+            let inputs = DemoDataProvider.apportion(row.inputTokens, by: weights)
+            let cached = DemoDataProvider.apportion(row.cachedTokens, by: weights)
+            let outputs = DemoDataProvider.apportion(row.outputTokens, by: weights)
+            let cents = row.costUSD.map { DemoDataProvider.apportion(Int(($0 * 100).rounded()), by: weights) }
+            for offset in projects.indices
+            where inputs[offset] > 0 || cached[offset] > 0 || outputs[offset] > 0 || (cents?[offset] ?? 0) > 0 {
+                entries.append(.init(
+                    provider: row.provider, project: projects[offset], date: row.date, model: row.model,
+                    inputTokens: inputs[offset], cachedTokens: cached[offset], outputTokens: outputs[offset],
+                    costUSD: cents.map { Double($0[offset]) / 100 }, priceIsApproximate: row.priceIsApproximate))
+            }
+        }
+        return entries
+    }
+
+    /// Where the sample projects live. Invented.
+    public static let sampleProjectsFolder = "/Users/sample/Projects"
 
     /// Every surface, in drawing order. The order is also the state order:
     /// everything signed out comes before Demo mode is entered, because the
@@ -482,6 +525,7 @@ public enum QARenderSnapshot {
             .costUnknownEveryDay, .providerPanelCostUnknown, .providerPanelNoRateDay,
             .usageDashboardPanelCostUnknown, .demoSessionsWithLogs, .cardSourceLines,
         ]
+        surfaces.append(.topProjectsStates)
         return surfaces
     }
 
@@ -946,6 +990,10 @@ public enum QARenderSurface: Hashable {
     /// not show: signed in (API) with an account and a plan, merged, and a
     /// tool with no quota source.
     case cardSourceLines
+    /// v1.58 (P1-4): the Mac Overview's Top Projects card in the states it
+    /// draws, at the card's width: names with their figures, "Hide personal
+    /// information" on, and costs hidden.
+    case topProjectsStates
 
     public enum Kind: String, Codable, Sendable {
         /// The menu-bar popover (`MenuBarView`), 380 points wide.
@@ -962,7 +1010,7 @@ public enum QARenderSurface: Hashable {
     public var kind: Kind {
         switch self {
         case .about, .subscription, .providerEditor, .firstRunWelcome, .codexResetCreditsStates,
-             .webhookEventFilterStates,
+             .webhookEventFilterStates, .topProjectsStates,
              .costUnknownDays, .claudeCardThisMacMessages, .costUnknownEveryDay, .cardSourceLines:
             return .window
         case .usageDashboardPanel, .usageDashboardPanelCost, .providerUsagePanel, .providerCardPanel,
@@ -1011,6 +1059,7 @@ public enum QARenderSurface: Hashable {
         case .usageDashboardPanelCostUnknown: return "panel-usage-dashboard-cost-unknown"
         case .demoSessionsWithLogs: return "demo-sessions-with-logs"
         case .cardSourceLines: return "card-source-lines"
+        case .topProjectsStates: return "card-top-projects"
         }
     }
 
