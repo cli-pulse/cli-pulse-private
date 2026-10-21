@@ -55,6 +55,13 @@ The English-leftover heuristic exists because a translated listing that still
 carries one untranslated English paragraph looks like a machine did it, and
 nothing else would notice: every other check here passes on English text.
 
+The character check exists because App Store Connect refuses some characters
+outright, with a 409 for the whole field: the 1.57 iOS What's New was refused on
+2026-10-20 for one "✕" (U+2715), after the Mac's had been written. Apple
+publishes no list, so the check lets through only what it has seen the store
+accept (see ACCEPTED_SYMBOLS), and applies to every listing field and to What's
+New alike.
+
 WHAT'S NEW
 ----------
 Release notes live at the repo root, one directory per release:
@@ -75,7 +82,8 @@ text (Siri, widgets, the Providers tab) and a missing Mac file is an omission.
 `asc_submit.py` writes what it returns and nothing else.
 
 The What's New checks are the listing's (2.3.10 platform names in every
-language, English left in a translation) plus: the macOS text may not name a
+language, English left in a translation, characters App Store Connect may
+refuse) plus: the macOS text may not name a
 feature only the direct-download Mac build has (the App Store build is sandboxed
 without network.server and cannot offer Remote Control), and zh-Hant uses the
 terms recorded in scripts/zh_hant_terms.json.
@@ -84,6 +92,7 @@ from __future__ import annotations
 
 import re
 import sys
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -202,6 +211,100 @@ _LATIN_WORD = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
 _LATIN_RUN = re.compile(r"[A-Za-z]+(?:[ ,\-']+[A-Za-z]+){4,}")
 _CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 
+# ── characters App Store Connect accepts ─────────────────────────────────────
+# App Store Connect refuses some characters with a 409
+# ENTITY_ERROR.ATTRIBUTE.INVALID.INVALID_CHARACTERS that names them. On
+# 2026-10-20 it refused the 1.57 iOS What's New for one "✕" (U+2715):
+#     What's New in This Version can't contain the following character(s): ✕.
+# The write stopped at the first locale, and the fix (#681) took a PR in the
+# middle of the release. Apple publishes no list of the characters it refuses,
+# and the line is not "symbols": the same store took "×" (U+00D7) in What's New
+# 1.50 and "≈" (U+2248) in 1.56.
+#
+# So the check is an allow-list, conservative on purpose:
+#   * letters and decimal digits of any script, in their plain form. One that
+#     Unicode compatibility normalisation (NFKC) would change is refused:
+#     presentation forms, ligatures, styled "bold" letters, half-width kana,
+#     full-width digits. App Store Connect refused such a form, an Arabic
+#     presentation form in What's New (ITMS-4000, Apple Developer Forums
+#     thread 685051);
+#   * every other character only if it is in ACCEPTED_SYMBOLS, with where App
+#     Store Connect accepted it for this app: a What's New it saved, or the
+#     live listing (CLI Pulse Bar/appstore/).
+# Anything else fails with its code point, emoji and invisible characters
+# (zero-width space, byte-order mark, a stray carriage return) included, before
+# a pusher can stop halfway through the locales. Combining marks are refused
+# too, and so is a text not in Unicode NFC (Korean written as separate jamo, an
+# accent as a separate mark): the texts are written precomposed.
+#
+# Each entry records where the store took the character, and that record is
+# what keeps it in the list: a later text that stops using the character does
+# not make the record untrue. The self-test checks every record names a text,
+# and that each frozen text it cites (a whatsnew_NNN/ directory, or one of the
+# old CLI Pulse Bar/scripts/submit_v*.py) exists and holds the character; the
+# listing is cited in words, because its texts change. To allow a new
+# character: get App Store Connect to accept it in a text first (saved through
+# its web form on a version still being prepared, say), then add it here with
+# that version and field.
+ACCEPTED_SYMBOLS: dict[str, str] = {
+    # ASCII
+    " ": "What's New 1.49 (whatsnew_149/)",
+    "\n": "What's New 1.49 (whatsnew_149/)",
+    "!": "What's New 1.11.0, iOS en-US (submit_v1_11_0.py: \"Thanks for the bug "
+         "reports!\"); that version went live",
+    "\"": "What's New 1.50 (whatsnew_150/)",
+    "$": "What's New 1.50 (whatsnew_150/)",
+    "%": "What's New 1.52.1 (whatsnew_1521/)",
+    "&": "the listing, en-US subtitle; What's New 1.11.0, iOS en-US (submit_v1_11_0.py)",
+    "'": "What's New 1.52.1 (whatsnew_1521/)",
+    "(": "What's New 1.54 (whatsnew_154/)",
+    ")": "What's New 1.54 (whatsnew_154/)",
+    "+": "What's New 1.57 (whatsnew_157/)",
+    ",": "What's New 1.49 (whatsnew_149/)",
+    "-": "What's New 1.50 (whatsnew_150/)",
+    ".": "What's New 1.49 (whatsnew_149/)",
+    "/": "What's New 1.51 (whatsnew_151/)",
+    ":": "What's New 1.49 (whatsnew_149/)",
+    ";": "What's New 1.50 (whatsnew_150/)",
+    "{": "What's New 1.54 (whatsnew_154/)",
+    "}": "What's New 1.54 (whatsnew_154/)",
+    "~": "What's New 1.55 (whatsnew_155/)",
+    # Latin-1: Spanish quotes, the middle dot, the multiplication sign
+    "«": "What's New 1.54 (whatsnew_154/)",
+    "·": "What's New 1.54 (whatsnew_154/)",
+    "»": "What's New 1.54 (whatsnew_154/)",
+    "×": "What's New 1.50 (whatsnew_150/)",
+    # em dash, bullet, ellipsis, the "Settings › Pro" arrow, approximately
+    "—": "What's New 1.49 (whatsnew_149/)",
+    "•": "What's New 1.49 (whatsnew_149/)",
+    "…": "What's New 1.54 (whatsnew_154/)",
+    "›": "What's New 1.50 (whatsnew_150/)",
+    "≈": "What's New 1.56 (whatsnew_156/)",
+    # CJK punctuation
+    "、": "What's New 1.49 (whatsnew_149/)",
+    "。": "What's New 1.49 (whatsnew_149/)",
+    "「": "What's New 1.50 (whatsnew_150/)",
+    "」": "What's New 1.50 (whatsnew_150/)",
+    "『": "What's New 1.55 (whatsnew_155/)",
+    "』": "What's New 1.55 (whatsnew_155/)",
+    "〜": "What's New 1.55 (whatsnew_155/)",
+    "・": "What's New 1.54 (whatsnew_154/)",
+    # full-width forms used in Chinese and Japanese
+    "（": "What's New 1.54 (whatsnew_154/)",
+    "）": "What's New 1.54 (whatsnew_154/)",
+    "，": "What's New 1.54 (whatsnew_154/)",
+    "：": "What's New 1.54 (whatsnew_154/)",
+    "；": "What's New 1.54 (whatsnew_154/)",
+}
+# Characters App Store Connect has refused, and when. Never in ACCEPTED_SYMBOLS
+# (the self-test checks); the entry only makes the message say what happened.
+REFUSED_BY_STORE: dict[str, str] = {
+    "✕": "App Store Connect refused it in the iOS What's New of 1.57 on 2026-10-20 "
+              "(409 INVALID_CHARACTERS: \"can't contain the following character(s): ✕\")",
+    "`": "App Store Connect refused it in the What's New of 1.18.0 (\"This field contains "
+         "one or more invalid characters\")",
+}
+
 
 @dataclass(frozen=True)
 class Problem:
@@ -294,6 +397,70 @@ def english_lines(text: str, cjk: bool) -> list[str]:
                 stripped = stripped.replace(name, " ")
             if _LATIN_RUN.search(stripped):
                 out.append(raw.strip())
+    return out
+
+
+def store_accepts(ch: str) -> bool:
+    """Whether App Store Connect has been seen to accept this character in a
+    listing or What's New text (see ACCEPTED_SYMBOLS for the rule)."""
+    if ch in REFUSED_BY_STORE:
+        return False
+    if ch in ACCEPTED_SYMBOLS:
+        return True
+    cat = unicodedata.category(ch)
+    return (cat[0] == "L" or cat == "Nd") and unicodedata.normalize("NFKC", ch) == ch
+
+
+def describe_character(ch: str) -> str:
+    """'✕' (U+2715 MULTIPLICATION X); an invisible one is shown escaped."""
+    shown = ch if ch.isprintable() and not ch.isspace() else ch.encode("unicode_escape").decode()
+    return f"'{shown}' (U+{ord(ch):04X} {unicodedata.name(ch, 'unnamed')})"
+
+
+def _refusal_reason(ch: str) -> str:
+    if ch in REFUSED_BY_STORE:
+        return REFUSED_BY_STORE[ch] + "; write it as words"
+    cat = unicodedata.category(ch)
+    plain = unicodedata.normalize("NFKC", ch)
+    if (cat[0] == "L" or cat[0] == "N") and plain != ch and plain.strip():
+        return (f"a compatibility form of '{plain}'; App Store Connect refuses such forms "
+                f"(an Arabic presentation form in What's New, ITMS-4000): write '{plain}'")
+    if cat[0] == "M":
+        return ("a combining mark: write the text precomposed (Unicode NFC), as every "
+                "listing and What's New text is")
+    return ("not among the characters App Store Connect has accepted in this app's listing "
+            "or What's New, and it refuses some outright (a 409 for the whole field; 1.57: "
+            "'✕'). Write it as words or with a character of ACCEPTED_SYMBOLS in "
+            "scripts/appstore_listing.py, or add it there, with where App Store Connect "
+            "accepted it, once it has")
+
+
+def store_character_problems(text: str) -> list[str]:
+    """One line per character in `text` that App Store Connect has not been
+    seen to accept: where it first appears, how often, and why. Empty = every
+    character is one the store has accepted. Shared by the listing check, the
+    What's New check (asc_submit.py, asc_listing_preflight.py) and
+    check_release_notes_platforms.sh."""
+    found: dict[str, list[int]] = {}
+    lines = text.split("\n")
+    for n, line in enumerate(lines, start=1):
+        for ch in line:
+            if not store_accepts(ch):
+                found.setdefault(ch, []).append(n)
+    out = []
+    for ch, where in found.items():
+        times = f", {len(where)} times" if len(where) > 1 else ""
+        out.append(f"line {where[0]}: {describe_character(ch)}{times}: {_refusal_reason(ch)}")
+    # Letters can pass one by one and still not be written the way the texts
+    # are: Korean as separate conjoining jamo (each one a letter, unchanged by
+    # NFKC) instead of precomposed syllables. The store has not been seen to
+    # take a decomposed text, so the whole text must be in NFC.
+    if not unicodedata.is_normalized("NFC", text):
+        n = next((i for i, line in enumerate(lines, start=1)
+                  if not unicodedata.is_normalized("NFC", line)), 1)
+        out.append(f"line {n}: not in Unicode NFC: a letter is written decomposed (Korean as "
+                   "separate jamo, or an accent as a separate mark). Write the text "
+                   "precomposed, as every listing and What's New text is")
     return out
 
 
@@ -403,6 +570,8 @@ def validate(root: Path | None = None) -> list[Problem]:
                                              f"Connect's limit of {f.limit}"))
             if "\n" in body and f.attribute in ("subtitle", "keywords"):
                 problems.append(Problem(rel, "must be a single line"))
+            for msg in store_character_problems(body):
+                problems.append(Problem(rel, msg))
             for term in platform_terms_in(body):
                 problems.append(Problem(rel, f"names '{term}' — Guideline 2.3.10: App Store "
                                              "metadata may not mention other platforms"))
@@ -585,6 +754,8 @@ def load_whatsnew(d: Path, platform: str, root: Path | None = None
         if len(text) > WHATSNEW_LIMIT:
             problems.append(Problem(where, f"{len(text)} characters, over App Store Connect's "
                                            f"limit of {WHATSNEW_LIMIT}"))
+        for msg in store_character_problems(text):
+            problems.append(Problem(where, msg))
         for term in platform_terms_in(text):
             problems.append(Problem(where, f"names '{term}' — Guideline 2.3.10: What's New may "
                                            "not mention other platforms (macOS 1.52.0 was "
@@ -636,7 +807,24 @@ def whatsnew_problems(d: Path, root: Path | None = None) -> list[Problem]:
     return unique
 
 
+def _check_characters(paths: list[str]) -> int:
+    """`--characters FILE...`: store_character_problems() over each file, as
+    read for App Store Connect (read_text). For check_release_notes_platforms.sh."""
+    bad = 0
+    for raw in paths:
+        for msg in store_character_problems(read_text(Path(raw))):
+            print(f"{raw}: {msg}")
+            bad += 1
+    if not bad:
+        print(f"{len(paths)} file(s): every character is one App Store Connect has accepted")
+    return 1 if bad else 0
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--characters"]:
+        if not sys.argv[2:]:
+            sys.exit("--characters needs at least one file: checking nothing would pass")
+        sys.exit(_check_characters(sys.argv[2:]))
     probs = validate() + inline_copy_problems()
     for src, counts in summary_rows():
         print(f"{src:8} " + "  ".join(f"{k.split('.')[0]}={v}" for k, v in counts.items()))

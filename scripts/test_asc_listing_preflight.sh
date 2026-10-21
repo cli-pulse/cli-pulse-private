@@ -184,6 +184,18 @@ export EN_DESC="$CASE/$LISTING_REL/en-US/description.txt"
 build_fixture; mutate "zh-Hans/description.txt" 'open(__import__("os").environ["EN_DESC"], encoding="utf-8").read().splitlines()[0] + "\n" + s'
 expect_fail "the English first line pasted into a translation" "English description's first line verbatim"
 
+# ── characters App Store Connect refuses ─────────────────────────────────────
+# One "✕" got the 1.57 iOS What's New refused with a 409 for the whole field
+# (2026-10-20). The listing fields go through the same check.
+build_fixture; mutate "en-US/promotional_text.txt" 's.replace(".", " ✕.", 1)'
+expect_fail "the '✕' App Store Connect refused, in the promotional text" "en-US/promotional_text.txt: line 1: '✕' (U+2715 MULTIPLICATION X): App Store Connect refused it"
+
+build_fixture; mutate "ja/subtitle.txt" 's + "✓"'
+expect_fail "a check mark in the Japanese subtitle" "ja/subtitle.txt: line 1: '✓' (U+2713 CHECK MARK): not among the characters"
+
+build_fixture; mutate "zh-Hans/description.txt" 's.replace("。", "\u200b。", 1)'
+expect_fail "a zero-width space in the Chinese description" "zh-Hans/description.txt: line 1: '\\u200b' (U+200B ZERO WIDTH SPACE)"
+
 # ── What's New (--whatsnew-dir) ──────────────────────────────────────────────
 # The fixture is the real whatsnew_154/: fourteen release notes in seven
 # languages, so the positive control is also the false-positive test of the
@@ -266,6 +278,12 @@ wn_fail "es-MX no longer equal to es-ES" "share the listing directory 'es/'"
 
 wn_fixture; wn_mutate "macos-zh-Hant.txt" 's.replace("工作階段", "會話", 1)'
 wn_fail "a Mainland term in zh-Hant" "uses '會話'; zh-Hant says '工作階段'"
+
+wn_fixture; wn_mutate "en-US.txt" 's.rstrip("\n") + "\n• Tap the day again, or ✕, to close the list.\n"'
+wn_fail "the '✕' App Store Connect refused in the 1.57 iOS What's New" "whatsnew_154/en-US.txt: line 24: '✕' (U+2715 MULTIPLICATION X): App Store Connect refused it"
+
+wn_fixture; wn_mutate "macos-ko.txt" 's + "\n• 새 기능 🎉\n"'
+wn_fail "an emoji in a Korean macOS text" "U+1F389 PARTY POPPER"
 
 wn_fixture; cp "$WN/en-US.txt" "$WN/fr-FR.txt"
 wn_fail "a file for a locale the store listing does not have" "fr-FR.txt: unexpected file"

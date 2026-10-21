@@ -105,6 +105,13 @@ jobs:
       # check rather than a habit.
       - run: bash scripts/check_release_notes_platforms.sh
       - run: bash scripts/test_check_release_notes_platforms.sh
+      # Characters App Store Connect refuses: it refused the 1.57 iOS What's
+      # New for one "✕" (409 INVALID_CHARACTERS, 2026-10-20), after the Mac's
+      # had been written. Apple publishes no list, so the listing and What's
+      # New checks let through only what the store has accepted for this app
+      # (scripts/appstore_listing.py, store_character_problems); the release-
+      # notes guard above and the listing preflight below both apply it.
+      - run: python3 scripts/test_appstore_listing_characters.py
 
       # The App Store listing itself — description, keywords, subtitle and
       # promotional text, one directory per locale under CLI Pulse Bar/appstore/.

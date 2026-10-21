@@ -459,6 +459,14 @@ try:
         ("a Mainland term in zh-Hant", "ios",
          planted("hant", "zh-Hant.txt", lambda s: s.replace("工作階段", "會話", 1)),
          "uses '會話'"),
+        # The character App Store Connect refused in the 1.57 iOS What's New
+        # (409 INVALID_CHARACTERS, 2026-10-20), after the Mac's were written.
+        ("the '✕' App Store Connect refused in 1.57", "ios",
+         planted("xmark", "en-US.txt", lambda s: s + "\n• Tap the day again, or ✕, to close.\n"),
+         "'✕' (U+2715 MULTIPLICATION X): App Store Connect refused it"),
+        ("an emoji in a macOS text", "macos",
+         planted("emoji", "macos-ja.txt", lambda s: s + "\n・新機能 🎉\n"),
+         "U+1F389 PARTY POPPER"),
     ]:
         f = FakeASC(platform="MAC_OS" if plat == "macos" else "IOS")
         code, out = submit(f, plat, d, "--apply")

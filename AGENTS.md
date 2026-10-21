@@ -240,8 +240,19 @@ the fallback would be the iPhone text. `scripts/appstore_listing.py`
 (`load_whatsnew`) decides which file a locale gets and checks them: at most 4000
 characters, no other platform named in any of the six languages (Guideline
 2.3.10; `check_release_notes_platforms.sh` only knows the Latin spellings), no
-English left in a translation, the zh-Hant terms, and nothing in the macOS text
-that only the direct-download Mac build has (Remote Control, fan control).
+English left in a translation, the zh-Hant terms, nothing in the macOS text
+that only the direct-download Mac build has (Remote Control, fan control), and
+only characters App Store Connect has accepted. It refuses some with a 409 for
+the whole field (the 1.57 iOS text, for one "✕") and publishes no list, so
+letters and digits pass (precomposed: a text must be in Unicode NFC) and every
+other character must be in `ACCEPTED_SYMBOLS` in `scripts/appstore_listing.py`,
+each with a record of where the store accepted it for this app (a What's New
+version, or the listing). The record keeps the entry even after no current text
+uses the character; a new one goes in only once App Store Connect has taken it.
+The listing fields get the same check, `check_release_notes_platforms.sh` runs
+it over every `whatsnew_*/` at the repo root (`release/` is left out), and the
+legacy `CLI Pulse Bar/scripts/appstore_metadata.py` applies it to
+`ASC_WHATS_NEW` before its first request.
 
 `asc_submit.py --submit` refuses before its first write when the texts fail
 those checks, the version is missing or not editable, any localization of the
@@ -430,7 +441,8 @@ script prints before acting.
 The store comparison needs the ASC key, so it cannot run in CI — it is a
 release-time step on the owner's machine. Exit 2 means it could not check, which
 is not a pass. The repo-text half (`--texts-only`: limits, keyword format,
-Guideline 2.3.10 platform names in six languages, untranslated English, inline
+Guideline 2.3.10 platform names in six languages, untranslated English,
+characters App Store Connect has not been seen to accept, inline
 copies in pushers) runs in `repo-hygiene.yml`, with `--require-shots` (every
 listing locale's five composed iPhone panels, four composed iPad panels, four
 Apple Watch panels and six composed Mac panels, their `compose.json`, the committed raws they were drawn
@@ -464,7 +476,10 @@ the old, removes its own uploads on any failure (a rerun reuses the finished
 ones), and refuses while the version waits for review (withdraw the iOS
 submission only). App Store Connect reports a panel COMPLETE before it fills
 in its checksum, so the read-back, and a rerun that finds such a panel, wait
-for the checksum rather than calling it a mismatch or replacing it.
+for the checksum rather than calling it a mismatch or replacing it. It also
+lists a set in its previous order for a while after the order is set (5 of 7
+iPad locales in 1.57 failed on that alone), so the read-back waits, for at most
+`ORDER_TIMEOUT`, for the order it sent.
 
 The same launch, capture script and compositor make the iPad set (below): a
 caption change recomposes both.
