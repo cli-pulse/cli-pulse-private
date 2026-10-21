@@ -23,6 +23,11 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
         // in the app group instead, before any collector runs.
         PrivacySettings.shared.followAppCopy(in: UserDefaults(suiteName: HelperIPC.suiteName))
 
+        // 1.58: the app may be emptying this helper's cache folder for it right
+        // now (`HelperCachePurge`, for a helper that background sync never
+        // starts). Wait until it is done before anything opens the URL cache.
+        HelperCachePurge.waitWhileTheAppEmptiesIt()
+
         // 1.57: this helper's own URL cache kept the collectors' requests with
         // their tokens up to 1.56 (its Cache.db is not the app's). Empty it and
         // the cookie jar once, before the first collector runs; the collectors

@@ -101,6 +101,18 @@ struct CLIPulseBarApp: App {
         // so the first-run check above would not count it in any position.
         CredentialedURLSession.purgeLegacyStorageIfNeeded()
 
+        // 1.58: the background helper does the same for itself, but only when
+        // it starts, and with background sync off it never does. Empty its
+        // web cache and cookie file for it, once, where this app reaches them
+        // (the Developer ID build), unless it already has, and only while it
+        // is neither running nor able to start. BEFORE `AppState`, which can
+        // turn its LoginItem on. Production only: the files are the real
+        // helper's. Its done-flag has no app-owned prefix either.
+        if runtimeEnvironment.capabilities.allowsHelperRegistration {
+            let outcome = HelperCachePurge.purgeIfNeeded()
+            logger.info("Helper cache purge: \(String(describing: outcome), privacy: .public)")
+        }
+
         let state = AppState(runtimeEnvironment: runtimeEnvironment)
         _appState = StateObject(wrappedValue: state)
         if runtimeEnvironment.capabilities.allowsTelemetry {
