@@ -244,10 +244,15 @@ English left in a translation, the zh-Hant terms, nothing in the macOS text
 that only the direct-download Mac build has (Remote Control, fan control), and
 only characters App Store Connect has accepted. It refuses some with a 409 for
 the whole field (the 1.57 iOS text, for one "✕") and publishes no list, so
-letters and digits pass and every other character must be in `ACCEPTED_SYMBOLS`
-in `scripts/appstore_listing.py`, the ones this app's texts have already got
-through; the listing fields get the same check, and
-`check_release_notes_platforms.sh` runs it over every `whatsnew_*/`.
+letters and digits pass (precomposed: a text must be in Unicode NFC) and every
+other character must be in `ACCEPTED_SYMBOLS` in `scripts/appstore_listing.py`,
+each with a record of where the store accepted it for this app (a What's New
+version, or the listing). The record keeps the entry even after no current text
+uses the character; a new one goes in only once App Store Connect has taken it.
+The listing fields get the same check, `check_release_notes_platforms.sh` runs
+it over every `whatsnew_*/` at the repo root (`release/` is left out), and the
+legacy `CLI Pulse Bar/scripts/appstore_metadata.py` applies it to
+`ASC_WHATS_NEW` before its first request.
 
 `asc_submit.py --submit` refuses before its first write when the texts fail
 those checks, the version is missing or not editable, any localization of the

@@ -140,6 +140,39 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "scripts"))
 import appstore_listing  # noqa: E402
 
 
+def whats_new_from_env():
+    """ASC_WHATS_NEW, the What's New this script writes to each version, or
+    SystemExit when it is unset or holds a character App Store Connect has not
+    been seen to accept.
+
+    NO DEFAULT. This used to be hardcoded to
+      "Initial release with support for macOS, iOS, iPadOS, watchOS, and widgets."
+    and set_localization() PATCHes whatsNew unconditionally, so running this
+    script against any version after the first would have replaced that
+    version's real release notes with the v1.0.0 text — silently, because the
+    API call succeeds. Nothing calls this script today, which is exactly what
+    made it dangerous: a loaded default waiting for the next person who does.
+
+    The characters are checked as asc_submit.py checks its What's New
+    (appstore_listing.store_character_problems): App Store Connect refused the
+    1.57 iOS text for one "✕" with a 409 for the whole field. This text comes
+    from the environment, not a file, so nothing in CI ever sees it."""
+    whats_new = os.environ.get("ASC_WHATS_NEW")
+    if not whats_new:
+        raise SystemExit(
+            "error: ASC_WHATS_NEW is not set.\n"
+            "       This script overwrites the version's What's New text. Refusing to\n"
+            "       guess — export ASC_WHATS_NEW with the real release notes first."
+        )
+    bad = appstore_listing.store_character_problems(whats_new)
+    if bad:
+        raise SystemExit(
+            "error: ASC_WHATS_NEW holds characters App Store Connect may refuse:\n"
+            + "\n".join(f"       {msg}" for msg in bad)
+        )
+    return whats_new
+
+
 # ============================================================
 # 2. Set Localization (description, keywords, etc.)
 # ============================================================
@@ -149,21 +182,7 @@ def set_localization(version_id, platform, locale="en-US"):
     texts = appstore_listing.load_locale(locale, platform)
     description = texts["description"]
     keywords = texts["keywords"]
-
-    # NO DEFAULT. This used to be hardcoded to
-    #   "Initial release with support for macOS, iOS, iPadOS, watchOS, and widgets."
-    # and this function PATCHes whatsNew unconditionally (see below), so running
-    # this script against any version after the first would have replaced that
-    # version's real release notes with the v1.0.0 text — silently, because the
-    # API call succeeds. Nothing calls this script today, which is exactly what
-    # made it dangerous: a loaded default waiting for the next person who does.
-    whats_new = os.environ.get("ASC_WHATS_NEW")
-    if not whats_new:
-        raise SystemExit(
-            "error: ASC_WHATS_NEW is not set.\n"
-            "       This script overwrites the version's What's New text. Refusing to\n"
-            "       guess — export ASC_WHATS_NEW with the real release notes first."
-        )
+    whats_new = whats_new_from_env()
 
     promo = texts["promotionalText"]
 
@@ -407,6 +426,11 @@ def main():
     print("=" * 50)
     print("  CLI Pulse - App Store Connect Metadata Setup")
     print("=" * 50)
+
+    # Before anything is written: set_app_info() below writes first, and a
+    # What's New refused at the first set_localization() would leave the run
+    # half done.
+    whats_new_from_env()
 
     # Test API connection
     print("\n  Testing API connection...")
