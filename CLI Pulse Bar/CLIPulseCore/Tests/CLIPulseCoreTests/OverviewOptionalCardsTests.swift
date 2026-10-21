@@ -227,13 +227,19 @@ final class OverviewOptionalCardsTests: XCTestCase {
 
     /// The Mac, iPhone and Watch Overviews draw each card only under the rule:
     /// every place a card's title is drawn sits just inside
-    /// `if dash.showsTopProjectsCard {` (or the Risk Signals one).
+    /// `if dash.showsTopProjectsCard {` (or the Risk Signals one). Since 1.58
+    /// the Mac's Top Projects card reads this Mac's own scan
+    /// (`TopProjectsCard`, which draws the title) and is drawn only with a
+    /// project to list: just inside `if !list.isEmpty {`.
     func testEveryOverviewDrawsTheCardsOnlyUnderTheRule() throws {
-        let cards = [("L10n.dashboard.topProjects", "if dash.showsTopProjectsCard {"),
-                     ("L10n.dashboard.riskSignals", "if dash.showsRiskSignalsCard {")]
-        for path in ["CLI Pulse Bar/OverviewTab.swift",
-                     "CLI Pulse Bar iOS/iOSOverviewTab.swift",
-                     "CLI Pulse Bar Watch/PulseHomeView.swift"] {
+        let riskSignals = ("L10n.dashboard.riskSignals", "if dash.showsRiskSignalsCard {")
+        let cloudTopProjects = ("L10n.dashboard.topProjects", "if dash.showsTopProjectsCard {")
+        let rules = [
+            ("CLI Pulse Bar/OverviewTab.swift", [("TopProjectsCard(list:", "if !list.isEmpty {"), riskSignals]),
+            ("CLI Pulse Bar iOS/iOSOverviewTab.swift", [cloudTopProjects, riskSignals]),
+            ("CLI Pulse Bar Watch/PulseHomeView.swift", [cloudTopProjects, riskSignals]),
+        ]
+        for (path, cards) in rules {
             let text = try String(contentsOf: Self.appSourceRoot.appendingPathComponent(path), encoding: .utf8)
             let lines = Self.codeOnly(text).components(separatedBy: "\n")
             for (title, rule) in cards {

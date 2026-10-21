@@ -2202,10 +2202,11 @@ public enum CostUsageScanner {
                 // iter22: read session_meta directly so the candidate
                 // gets a real project label even when the cache has
                 // already populated `sessionId` from a prior tick.
-                // The cache deliberately doesn't store `cwd` (would
-                // require a schema bump), so we always do this small
-                // read when the file is fresh — bounded I/O because
-                // only candidates within 5 minutes hit this path.
+                // Since 1.58 the cache keeps each log's `cwd` for
+                // Projects (`CostUsageFileUsage.project`), but a file the
+                // cache has not seen yet has none there, so this small
+                // read stays — bounded I/O because only candidates
+                // within 5 minutes hit this path.
                 let metaFromFile = readCodexSessionMeta(fileURL: url)
                 // The rollout's own id first: a subagent's `sessionId` is its
                 // parent's, and sharing it would merge the two live sessions
