@@ -194,7 +194,11 @@ SWIFT_RAW_OR_PLAIN = r'(?:#"((?:[^"]|"(?!#))*)"#|"((?:[^"\\]|\\.)*)")'
 def presentation_matchers(src: str) -> list[Matcher]:
     no_comments, code = swift_masks(src)
     matchers: list[Matcher] = []
-    for m in re.finditer(r"\bstatic\s+func\s+(\w+)\s*\(\s*_\s+a\s*:\s*AlertRecord\s*\)\s*->\s*Text\?\s*\{", code):
+    # v1.58 (P1-6): a matcher that names a session or a project also takes
+    # the `Naming` "Hide personal information" passes (`_ naming: Naming`).
+    for m in re.finditer(
+            r"\bstatic\s+func\s+(\w+)\s*\(\s*_\s+a\s*:\s*AlertRecord\s*(?:,\s*_\s+\w+\s*:\s*Naming\s*)?\)"
+            r"\s*->\s*Text\?\s*\{", code):
         close = match_close(code, m.end() - 1)
         if close < 0:
             continue
