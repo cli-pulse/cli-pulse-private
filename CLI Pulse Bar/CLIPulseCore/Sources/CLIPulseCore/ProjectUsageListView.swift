@@ -13,12 +13,16 @@ public struct ProjectUsageListView: View {
         public var figureFont: Font
         public var rowSpacing: CGFloat
         public var showsDividers: Bool
+        /// The cost's colour: green on the popover's cards, as every cost
+        /// there is; the text colour in the panel, as its model rows are.
+        public var costColor: Color
 
-        public init(nameFont: Font, figureFont: Font, rowSpacing: CGFloat, showsDividers: Bool) {
+        public init(nameFont: Font, figureFont: Font, rowSpacing: CGFloat, showsDividers: Bool, costColor: Color) {
             self.nameFont = nameFont
             self.figureFont = figureFont
             self.rowSpacing = rowSpacing
             self.showsDividers = showsDividers
+            self.costColor = costColor
         }
 
         /// The popover's cards: 11 / 10 points, rows divided, as Top
@@ -27,14 +31,16 @@ public struct ProjectUsageListView: View {
             nameFont: .system(size: 11, weight: .medium),
             figureFont: .system(size: 10, weight: .medium).monospacedDigit(),
             rowSpacing: 2,
-            showsDividers: true)
+            showsDividers: true,
+            costColor: .green)
 
         /// The slide-out panel: the size of its model rows.
         public static let panel = Style(
             nameFont: .system(size: 11.5, weight: .medium),
             figureFont: .system(size: 11).monospacedDigit(),
             rowSpacing: 3,
-            showsDividers: false)
+            showsDividers: false,
+            costColor: .primary)
     }
 
     private let list: ProjectUsageList
@@ -76,7 +82,7 @@ public struct ProjectUsageListView: View {
             if let cost = line.costText {
                 Text(cost)
                     .font(style.figureFont)
-                    .foregroundStyle(.green)
+                    .foregroundStyle(style.costColor)
                     .lineLimit(1)
                     .fixedSize()
                     .help(line.costHelp)
