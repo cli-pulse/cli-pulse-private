@@ -42,7 +42,7 @@ public extension QARenderSnapshot {
 
     /// The Companion CLI's name for `proc-7311`: the first 48 characters of
     /// its command line.
-    static let privacyCommandLine = "/Users/sample/.local/bin/claude --resume 1f2e3d4c"
+    static let privacyCommandLine = "/Users/sample/.local/bin/claude --resume 1f2e3d4"
 
     /// Alerts only the privacy renders put in, beside Demo's: the session
     /// CPU alert as the Companion CLI raises it for `proc-7311` (its title
@@ -78,7 +78,8 @@ public extension QARenderSnapshot {
     /// each session's project and stored name, each alert's project and
     /// session name, each project's folder name and path, and "/Users/", the
     /// start of any home folder path. Left out: a producer's placeholder
-    /// project ("unknown"), the name the scanner gives a log session ("Claude
+    /// project ("unknown", "local-workspace": words, which an English "cost
+    /// unknown" would match), the name the scanner gives a log session ("Claude
     /// session", the app's own words), a name that is a provider's ("claude",
     /// a process's name, shows inside model names), and anything shorter than
     /// four characters. Sorted, without duplicates.
@@ -91,7 +92,8 @@ public extension QARenderSnapshot {
         var found: Set<String> = ["/Users/"]
         func add(_ value: String?) {
             guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  value.count >= 4, !providers.contains(value.lowercased())
+                  value.count >= 4, !providers.contains(value.lowercased()),
+                  !SessionRecord.scanRowPlaceholderProjects.contains(value)
             else { return }
             found.insert(value)
         }
@@ -110,6 +112,17 @@ public extension QARenderSnapshot {
             add(project.path)
         }
         return found.sorted()
+    }
+
+    /// `personalStrings` of what a privacy render draws from: the sessions
+    /// and alerts the app lists and every project of this Mac's scan. Here,
+    /// not in the renderer, so the app target reads no project field.
+    static func personalStrings(
+        sessions: [SessionRecord],
+        alerts: [AlertRecord],
+        scan: CostUsageScanResult?
+    ) -> [String] {
+        personalStrings(sessions: sessions, alerts: alerts, projects: (scan?.projects ?? []).map(\.project))
     }
 
     /// The check of one `hide-personal-info-*` surface: which of `needles`

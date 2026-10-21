@@ -1494,6 +1494,54 @@
    "literal": "\"\\(shot.id): the usage panel slides out of the Overview's Activity card\"",
    "count": 1,
    "reason": "KEEP_NOT_USER_VISIBLE: QARenderSnapshot.storeSurfaceProblem explains why a surface may not be one of the Mac App Store screenshots. Only the QA build's offscreen renderer (#if CLIPULSE_QA_RENDER, Debug QA only) logs it before refusing, and QARenderSnapshotTests assert it; no view of the app ever shows it."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/QARenderPrivacy.swift",
+   "literal": "\" personal strings with the switch off, so the check could not have seen a leak\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: QARenderSnapshot.privacyProblem says why a hide-personal-info-* render failed its privacy check. Only the QA build's offscreen renderer (#if CLIPULSE_QA_RENDER, Debug QA only) logs it and writes it to render.json's warnings, and QARenderSnapshotTests assert it; no view of the app ever shows it."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/QARenderPrivacy.swift",
+   "literal": "\"Process CPU is 72.5% for Codex in demo-app.\"",
+   "count": 1,
+   "reason": "KEEP_DEBUG_OR_QA_ONLY: an alert QARenderSnapshot.privacyAlertsSample puts into the QA render's Demo for the hide-personal-info-* surfaces only: the Companion CLI's and the desktop app's session-CPU templates with invented values. Stored English, like every producer's; the Alerts tab renders it through PersonalInfoMask.alertText, which recognises the template and translates it, and QARenderSnapshotTests fail if it stops matching. Never in a shipped build's data."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/QARenderPrivacy.swift",
+   "literal": "\"Process CPU is 85.0% for Claude.\"",
+   "count": 1,
+   "reason": "KEEP_DEBUG_OR_QA_ONLY: an alert QARenderSnapshot.privacyAlertsSample puts into the QA render's Demo for the hide-personal-info-* surfaces only: the Companion CLI's and the desktop app's session-CPU templates with invented values. Stored English, like every producer's; the Alerts tab renders it through PersonalInfoMask.alertText, which recognises the template and translates it, and QARenderSnapshotTests fail if it stops matching. Never in a shipped build's data."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/QARenderPrivacy.swift",
+   "literal": "\"\\(privacyCommandLine) is consuming high CPU\"",
+   "count": 1,
+   "reason": "KEEP_DEBUG_OR_QA_ONLY: an alert QARenderSnapshot.privacyAlertsSample puts into the QA render's Demo for the hide-personal-info-* surfaces only: the Companion CLI's and the desktop app's session-CPU templates with invented values. Stored English, like every producer's; the Alerts tab renders it through PersonalInfoMask.alertText, which recognises the template and translates it, and QARenderSnapshotTests fail if it stops matching. Never in a shipped build's data."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/QARenderPrivacy.swift",
+   "literal": "\"codex-demo-app is consuming high CPU\"",
+   "count": 1,
+   "reason": "KEEP_DEBUG_OR_QA_ONLY: an alert QARenderSnapshot.privacyAlertsSample puts into the QA render's Demo for the hide-personal-info-* surfaces only: the Companion CLI's and the desktop app's session-CPU templates with invented values. Stored English, like every producer's; the Alerts tab renders it through PersonalInfoMask.alertText, which recognises the template and translates it, and QARenderSnapshotTests fail if it stops matching. Never in a shipped build's data."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/QARenderPrivacy.swift",
+   "literal": "\"privacy: \\(check.id) (\\(check.source)) shows with the switch on: \"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: QARenderSnapshot.privacyProblem says why a hide-personal-info-* render failed its privacy check. Only the QA build's offscreen renderer (#if CLIPULSE_QA_RENDER, Debug QA only) logs it and writes it to render.json's warnings, and QARenderSnapshotTests assert it; no view of the app ever shows it."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/QARenderPrivacy.swift",
+   "literal": "\"privacy: \\(check.id) (\\(check.source)): no text was read with the switch on\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: QARenderSnapshot.privacyProblem says why a hide-personal-info-* render failed its privacy check. Only the QA build's offscreen renderer (#if CLIPULSE_QA_RENDER, Debug QA only) logs it and writes it to render.json's warnings, and QARenderSnapshotTests assert it; no view of the app ever shows it."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/QARenderPrivacy.swift",
+   "literal": "\"privacy: \\(check.id) (\\(check.source)): the control showed none of the \\(check.lookedFor)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: QARenderSnapshot.privacyProblem says why a hide-personal-info-* render failed its privacy check. Only the QA build's offscreen renderer (#if CLIPULSE_QA_RENDER, Debug QA only) logs it and writes it to render.json's warnings, and QARenderSnapshotTests assert it; no view of the app ever shows it."
   }
  ]
 }
