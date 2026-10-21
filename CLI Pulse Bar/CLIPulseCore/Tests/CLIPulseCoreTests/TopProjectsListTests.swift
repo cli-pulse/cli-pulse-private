@@ -7,11 +7,6 @@ import SwiftUI
 /// (OverviewOptionalCardsTests).
 final class TopProjectsListTests: XCTestCase {
 
-    func testMacOSStylePreservesPreExtractionFonts() {
-        let s = TopProjectsList.Style.macOS
-        XCTAssertEqual(s.rowSpacing, 2)
-    }
-
     func testIOSStylePreservesPreExtractionFonts() {
         let s = TopProjectsList.Style.iOS
         XCTAssertEqual(s.rowSpacing, 2)

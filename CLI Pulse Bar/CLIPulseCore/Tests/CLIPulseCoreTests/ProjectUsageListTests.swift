@@ -69,6 +69,10 @@ final class ProjectUsageListTests: XCTestCase {
         XCTAssertEqual(list.shownOfText, "7 个项目中的前 5 个")
         XCTAssertEqual(list.lines.first?.costText, CostFormatter.format(7))
         XCTAssertEqual(list.lines.first?.tokensText, "1K token")
+        // The line shows the bare figure, as the model rows do; VoiceOver
+        // reads it with its unit.
+        XCTAssertEqual(list.lines.first?.tokensFigure, "1K")
+        XCTAssertEqual(list.lines.first?.accessibilityText, "alpha, \(CostFormatter.format(7)), 1K token")
         // The full path is what hovering shows.
         XCTAssertEqual(list.lines.first?.hoverText, "/Users/sample/Projects/alpha")
     }
@@ -147,6 +151,12 @@ final class ProjectUsageListTests: XCTestCase {
         XCTAssertEqual(lines[0].costHelp, L10n.providerPanel.atLeastHelp)
         XCTAssertEqual(lines[1].costText, L10n.providerPanel.noRate)
         XCTAssertEqual(lines[1].costHelp, L10n.providerPanel.noRateHelp)
+        XCTAssertEqual(lines[1].costText, "无单价", "asserted in Chinese: the fallback would be English")
+        // "No rate" is drawn as a model's is, not as a figure; a cost with
+        // a "≥" is still a figure.
+        XCTAssertEqual(lines.map(\.hasNoRate), [false, true])
+        XCTAssertFalse(build(entries, showsCost: false).lines.contains { $0.hasNoRate },
+                       "with costs hidden there is no cost to mark")
     }
 
     // MARK: - Unknown
@@ -198,6 +208,32 @@ final class ProjectUsageListTests: XCTestCase {
         XCTAssertEqual(overview.lines.map(\.id).dropFirst().map { $0 }, codex.lines.map(\.id))
     }
 
+    /// The Overview counts input + output and, with costs hidden, ranks by
+    /// those tokens; the numbers follow the same ranking, so the Overview
+    /// reads "Project 1, Project 2, …" in order whichever way it ranks. Here
+    /// Claude's cache reads would put "cache-heavy" first counting each
+    /// token once, and last in I/O.
+    func testHiddenNamesAreNumberedInTheOverviewsOwnOrder() {
+        let entries = [
+            projectEntry(folder("cache-heavy"), provider: "Claude", model: "claude-sonnet-4-5",
+                         input: 10, cached: 90_000, output: 90, cost: 1),
+            projectEntry(folder("io-heavy"), provider: "Codex", input: 5_000, output: 500, cost: 2),
+            projectEntry(folder("middle"), provider: "Codex", input: 1_000, output: 100, cost: 3),
+        ]
+        for showsCost in [true, false] {
+            let overview = ProjectUsageList.overview(
+                entries, todayKey: today, timeZone: TimeZone(identifier: "UTC")!,
+                showsCost: showsCost, hidePersonalInfo: true)
+            XCTAssertEqual(overview.lines.map(\.title), ["项目 1", "项目 2", "项目 3"], "showsCost \(showsCost)")
+            XCTAssertTrue(overview.namesHidden)
+            XCTAssertEqual(overview.showsCost, showsCost)
+        }
+        let hidden = ProjectUsageList.overview(
+            entries, todayKey: today, timeZone: TimeZone(identifier: "UTC")!, showsCost: false, hidePersonalInfo: false)
+        XCTAssertEqual(hidden.lines.map(\.title), ["io-heavy", "middle", "cache-heavy"])
+        XCTAssertEqual(hidden.lines.map(\.tokensText), ["5.5K I/O", "1.1K I/O", "100 I/O"])
+    }
+
     func testTheMaskItself() {
         let project = folder("demo-app")
         XCTAssertEqual(PersonalInfoMask.projectTitle(project, number: 3, hidePersonalInfo: true), "项目 3")
@@ -211,6 +247,68 @@ final class ProjectUsageListTests: XCTestCase {
         XCTAssertEqual(ProjectUsageList.scopeText(), "这台 Mac · 最近 30 天")
     }
 
+    // MARK: - What the cards say
+
+    /// The footnote claims only what is true of the list: it is not synced.
+    /// It used to say project names and paths never leave this Mac, which a
+    /// running session's folder name does while signed in and paired.
+    func testTheHelpSaysTheListIsNotSyncedAndClaimsNoMore() {
+        XCTAssertTrue(L10n.projects.help.hasSuffix("此列表不会同步到你的账户。"), L10n.projects.help)
+        XCTAssertNil(L10n.projects.help.range(of: "只保留"))
+        XCTAssertEqual(L10n.projects.numberedHelp, "按在这台 Mac 全部项目中的排名编号，因此同一个项目在每个列表中编号相同。")
+    }
+
+    /// The Overview card says what its tokens count (input + output, as the
+    /// Cost Summary above it) and, while it shows costs, that they are
+    /// estimates: sentences the app already says elsewhere.
+    func testTheOverviewFootnoteSaysWhatItCountsAndThatCostsAreEstimates() {
+        XCTAssertEqual(ProjectUsageList.overviewBasis, .inputOutput)
+        XCTAssertEqual(ProjectUsageList.overviewFootnote(showsCost: true),
+                       L10n.providers.ioTokensHelp + " " + L10n.usageDashboard.costDisclaimer)
+        XCTAssertEqual(ProjectUsageList.overviewFootnote(showsCost: false), L10n.providers.ioTokensHelp)
+        XCTAssertTrue(ProjectUsageList.overviewFootnote(showsCost: true).hasPrefix("输入 + 输出 token。"))
+        XCTAssertNotNil(ProjectUsageList.overviewFootnote(showsCost: true).range(of: "预估值"))
+    }
+
+    /// A provider whose log folder the App Store build may not read has no
+    /// projects to list; the panel and the Overview say so, in the reader's
+    /// language, rather than leaving it out without a word.
+    func testAProviderWhoseFolderCannotBeReadIsNamed() {
+        XCTAssertEqual(ProjectUsageList.folderNote(provider: "Claude", unreadable: ["Claude"]),
+                       "未列出 Claude 的项目：CLI\u{00A0}Pulse 无权访问这台 Mac 上它的日志文件夹。",
+                       "the brand is kept on one line, as every lookup keeps it")
+        XCTAssertNil(ProjectUsageList.folderNote(provider: "Codex", unreadable: ["Claude"]))
+        XCTAssertNil(ProjectUsageList.folderNote(provider: "Claude", unreadable: []))
+        XCTAssertEqual(ProjectUsageList.overviewFolderNote(unreadable: ["Codex"]),
+                       ProjectUsageList.folderNote(provider: "Codex", unreadable: ["Codex"]))
+        XCTAssertNil(ProjectUsageList.overviewFolderNote(unreadable: []))
+
+        // The panel's card draws for the note alone, and not for nothing.
+        let empty = ProjectUsageList(lines: [], projectCount: 0)
+        XCTAssertTrue(ProviderProjectsCard.draws(list: empty, folderNote: "note"))
+        XCTAssertFalse(ProviderProjectsCard.draws(list: empty, folderNote: nil))
+    }
+
+    /// Which providers' folders cannot be read: none on the unsandboxed
+    /// Developer ID build; on the App Store build, a provider none of whose
+    /// scan roots has a bookmark, while the other's may.
+    @MainActor
+    func testWhichProvidersFoldersCannotBeRead() {
+        func unreadable(sandboxed: Bool, granted: [String]) -> Set<String> {
+            CostUsageScanner.logProvidersWithoutFolderAccess(isSandboxed: sandboxed) { path in
+                granted.contains { path.hasSuffix($0) }
+            }
+        }
+        XCTAssertEqual(unreadable(sandboxed: false, granted: []), [])
+        XCTAssertEqual(unreadable(sandboxed: true, granted: []), ["Codex", "Claude"])
+        XCTAssertEqual(unreadable(sandboxed: true, granted: [".codex/sessions"]), ["Claude"])
+        XCTAssertEqual(unreadable(sandboxed: true, granted: [".config/claude/projects"]), ["Codex"])
+        XCTAssertEqual(unreadable(sandboxed: true, granted: [".codex/archived_sessions", ".claude/projects"]), [])
+        // Every scan root belongs to one provider.
+        XCTAssertEqual(CostUsageScanner.logProviderScanRoots.values.flatMap { $0 }.sorted(),
+                       CostUsageScanner.sandboxScanRoots.sorted())
+    }
+
     // MARK: - The QA renders
 
     /// The review set draws the Top Projects card in its states, and the
@@ -220,6 +318,15 @@ final class ProjectUsageListTests: XCTestCase {
         XCTAssertTrue(QARenderSnapshot.catalog.contains(.topProjectsStates))
         XCTAssertEqual(QARenderSurface.topProjectsStates.id, "card-top-projects")
         XCTAssertEqual(QARenderSurface.topProjectsStates.kind, .window)
+        XCTAssertTrue(QARenderSnapshot.catalog.contains(.panelProjectsStates))
+        XCTAssertEqual(QARenderSurface.panelProjectsStates.id, "card-panel-projects")
+        XCTAssertEqual(QARenderSurface.panelProjectsStates.kind, .panel)
+        // The no-rate state shows a line that reads "No rate".
+        let noRate = ProjectUsageList.overview(
+            QARenderSnapshot.projectsNoRateSample(), todayKey: DayKey.string(from: Date()),
+            showsCost: true, hidePersonalInfo: false)
+        XCTAssertEqual(noRate.lines.map(\.hasNoRate), [false, false, true])
+        XCTAssertEqual(noRate.lines.last?.costText, "无单价")
         let now = Date()
         for kind in QARenderSnapshot.providerPanelKinds {
             let rows = QARenderSnapshot.providerPanelSample(kind, today: now)

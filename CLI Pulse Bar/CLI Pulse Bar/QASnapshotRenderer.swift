@@ -1096,9 +1096,30 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 QATopProjectsStates(), surface: surface, index: index,
                 note: "The Overview's Top Projects card (v1.58), each state at the card's width"
                     + " (356 points, as in the 380-point popover), from the sample rows split by project"
-                    + " (QARenderSnapshot.providerPanelProjectsSample, Codex and Claude): names with"
-                    + " their cost and tokens; Hide personal information on (Project N, no path on"
-                    + " hover); costs hidden (ranked by tokens). The Demo Overview draws Demo's own."
+                    + " (QARenderSnapshot.providerPanelProjectsSample, Codex and Claude), tokens in I/O as"
+                    + " the Cost Summary counts them: names with their cost and tokens; Hide personal"
+                    + " information on (Project N, no path on hover); both hidden; costs hidden (ranked by"
+                    + " tokens); and three Codex projects, one with no rate, with the App Store build's"
+                    + " note for Claude's log folder (never reached by the unsandboxed QA build)."
+                    + " The Demo Overview draws Demo's own."
+            )
+
+        case .panelProjectsStates:
+            // On the panel's opaque dark fill, its cards' material blended
+            // within the window, as the panel renders are drawn.
+            await capture(
+                QAPanelProjectsStates()
+                    .environment(\.colorScheme, .dark)
+                    .background(Color(red: 0.11, green: 0.11, blue: 0.12)),
+                surface: surface, index: index,
+                prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: surface.id) },
+                note: "The usage panel's Projects card (v1.58) in the states the panel renders do not"
+                    + " show, dark as the panel always is, at the 440-point panel's card width (388"
+                    + " points): Codex and Claude with Hide personal information on (the only part of"
+                    + " the panel the switch changes; numbers are each project's place among all of"
+                    + " this Mac's projects, so a provider's list can skip or reorder them), Claude with"
+                    + " costs hidden too, three Codex projects with one that has no rate, and the App"
+                    + " Store build's note in the card's place for Claude's log folder."
             )
         }
     }
@@ -2215,7 +2236,8 @@ private struct QACostUnknownDays: View {
 }
 
 /// v1.58: what `QARenderSurface.topProjectsStates` draws: the Overview's Top
-/// Projects card, built the way `OverviewTab` builds it, in each state.
+/// Projects card, built the way `OverviewTab` builds it
+/// (`ProjectUsageList.overview`), in each state.
 private struct QATopProjectsStates: View {
     private var entries: [CostUsageScanResult.ProjectEntry] {
         QARenderSnapshot.providerPanelKinds.flatMap { QARenderSnapshot.providerPanelProjectsSample($0) }
@@ -2223,22 +2245,70 @@ private struct QATopProjectsStates: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            card(showsCost: true, masked: false)
+            card(entries, showsCost: true, masked: false)
             // Hide personal information on: the switch's state for this strip
             // only (the gate in scripts/check_personal_info_mask.py keeps the
             // app's own reads of the switch on its defaults key).
-            card(showsCost: true, masked: true)
-            card(showsCost: false, masked: false)
+            card(entries, showsCost: true, masked: true)
+            card(entries, showsCost: false, masked: true)
+            card(entries, showsCost: false, masked: false)
+            // A project with no rate, and Claude's folder not allowed (the
+            // App Store build): Codex's projects only, and the note.
+            card(QARenderSnapshot.projectsNoRateSample(), showsCost: true, masked: false,
+                 folderNote: ProjectUsageList.overviewFolderNote(unreadable: [ProviderKind.claude.rawValue]))
         }
         .padding(12)
         .frame(width: 380, alignment: .leading)
     }
 
-    private func card(showsCost: Bool, masked: Bool) -> some View {
-        TopProjectsCard(list: ProjectUsageList.build(
-            entries, provider: nil, basis: .eachOnce, todayKey: DayKey.string(from: Date()),
-            showsCost: showsCost, hidePersonalInfo: masked))
+    private func card(
+        _ entries: [CostUsageScanResult.ProjectEntry], showsCost: Bool, masked: Bool, folderNote: String? = nil
+    ) -> some View {
+        TopProjectsCard(
+            list: ProjectUsageList.overview(
+                entries, todayKey: DayKey.string(from: Date()), showsCost: showsCost, hidePersonalInfo: masked),
+            folderNote: folderNote)
             .frame(width: 356, alignment: .leading)
+    }
+}
+
+/// v1.58: what `QARenderSurface.panelProjectsStates` draws: the usage
+/// panel's Projects card, built the way `ProviderUsagePanelView` builds it
+/// (each token once, as a By Provider row opens the panel), in the states
+/// the panel renders do not show.
+private struct QAPanelProjectsStates: View {
+    private var entries: [CostUsageScanResult.ProjectEntry] {
+        QARenderSnapshot.providerPanelKinds.flatMap { QARenderSnapshot.providerPanelProjectsSample($0) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Hide personal information on, for this strip only, as above.
+            card(entries, provider: .codex, showsCost: true, masked: true)
+            card(entries, provider: .claude, showsCost: true, masked: true)
+            card(entries, provider: .claude, showsCost: false, masked: true)
+            card(QARenderSnapshot.projectsNoRateSample(), provider: .codex, showsCost: true, masked: false)
+            // The App Store build without Claude's log folder: nothing to
+            // list, and the note with the way to Settings in its place.
+            ProviderProjectsCard(
+                list: ProjectUsageList(lines: [], projectCount: 0),
+                days: ProjectUsageRanking.windowDays,
+                folderNote: ProjectUsageList.folderNote(
+                    provider: ProviderKind.claude.rawValue, unreadable: [ProviderKind.claude.rawValue]),
+                onOpenSettings: {})
+        }
+        .frame(width: 388, alignment: .leading)
+        .padding(26)
+    }
+
+    private func card(
+        _ entries: [CostUsageScanResult.ProjectEntry], provider: ProviderKind, showsCost: Bool, masked: Bool
+    ) -> some View {
+        ProviderProjectsCard(
+            list: ProjectUsageList.build(
+                entries, provider: provider.rawValue, basis: .eachOnce, todayKey: DayKey.string(from: Date()),
+                showsCost: showsCost, hidePersonalInfo: masked),
+            days: ProjectUsageRanking.windowDays, folderNote: nil)
     }
 }
 

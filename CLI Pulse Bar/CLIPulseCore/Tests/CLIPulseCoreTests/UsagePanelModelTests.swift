@@ -169,6 +169,15 @@ final class UsagePanelModelTests: XCTestCase {
         XCTAssertFalse(ProviderUsagePanelView.asksForFolderAccess(provider: "Gemini", scope: .thisMac, needsFolderAccess: true))
         XCTAssertFalse(ProviderUsagePanelView.asksForFolderAccess(provider: "Codex", scope: .allDevices, needsFolderAccess: true))
         XCTAssertFalse(ProviderUsagePanelView.asksForFolderAccess(provider: "Codex", scope: .thisMac, needsFolderAccess: false))
+        // v1.58: Codex's folder allowed and Claude's not. The scan is not
+        // empty, so the global flag stays off, and Claude's This Mac still
+        // asks for its folder instead of saying "no usage".
+        XCTAssertTrue(ProviderUsagePanelView.asksForFolderAccess(
+            provider: "Claude", scope: .thisMac, needsFolderAccess: false, unreadableProviders: ["Claude"]))
+        XCTAssertFalse(ProviderUsagePanelView.asksForFolderAccess(
+            provider: "Codex", scope: .thisMac, needsFolderAccess: false, unreadableProviders: ["Claude"]))
+        XCTAssertFalse(ProviderUsagePanelView.asksForFolderAccess(
+            provider: "Claude", scope: .allDevices, needsFolderAccess: false, unreadableProviders: ["Claude"]))
     }
 
     func testTheProviderModeFollowsTheScan() {

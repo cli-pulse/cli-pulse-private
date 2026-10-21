@@ -21,9 +21,11 @@ extension CostUsageScanner {
 
     /// How many transcripts of one Claude project directory a refresh opens to
     /// find the folder the directory was made from, when no earlier refresh
-    /// has. Nearly every transcript records it in its first lines; a directory
-    /// whose transcripts do not is tried again, this many at a time, on the
-    /// next refresh.
+    /// has. Nearly every transcript records it in its first lines. A
+    /// directory none of whose chosen transcripts does is tried again on the
+    /// next refresh with the same choice (the shallowest, newest first), so
+    /// until a newer transcript records it, it keeps its decoded name
+    /// (`humanReadableClaudeProject`); no older transcript is tried.
     static let claudeProjectLookupLimit = 3
 
     // MARK: - Codex
@@ -109,6 +111,22 @@ extension CostUsageScanner {
     static func codexProjectEntries(
         cache: CostUsageCache, range: DayRange, home: String
     ) -> [CostUsageScanResult.ProjectEntry] {
+        codexProjects(cache: cache, range: range, home: home).entries
+    }
+
+    /// What the Codex logs tell about temporary copies, for the Claude
+    /// sessions that ran in the same ones (`claudeProjectEntries`): the
+    /// checkout each temporary folder was counted for, and the folders not
+    /// temporary, by name.
+    struct CodexFolding: Equatable {
+        var checkoutForTemporary: [String: String] = [:]
+        var checkoutsByName: [String: Set<String>] = [:]
+    }
+
+    /// `codexProjectEntries`, and how it folded temporary folders.
+    static func codexProjects(
+        cache: CostUsageCache, range: DayRange, home: String
+    ) -> (entries: [CostUsageScanResult.ProjectEntry], folding: CodexFolding) {
         struct Log {
             let root: String?
             let repository: String?
@@ -189,6 +207,15 @@ extension CostUsageScanner {
             return .folder(root)
         }
 
+        var folding = CodexFolding(checkoutsByName: checkoutsByName)
+        for log in logs {
+            guard let root = log.root, ProjectPathNormalizer.isTemporary(root, home: home),
+                  folding.checkoutForTemporary[root] == nil,
+                  let found = checkout(for: log, root: root)
+            else { continue }
+            folding.checkoutForTemporary[root] = found
+        }
+
         var rows: [ProjectIdentity: [String: [String: [Int]]]] = [:]
         for log in logs {
             let project = identity(log)
@@ -216,7 +243,7 @@ extension CostUsageScanner {
                 }
             }
         }
-        return entries
+        return (entries, folding)
     }
 
     /// The key of `weights` with the largest weight; the smaller key wins a
@@ -339,12 +366,27 @@ extension CostUsageScanner {
     /// after the directory, decoded (`humanReadableClaudeProject`), with no
     /// path. A transcript directly in a projects root, which Claude Code does
     /// not write, is "Unknown".
+    ///
+    /// A folder that is a temporary copy counts as Codex counts it
+    /// (`codexFolding`): for the checkout Codex's logs of the same folder were
+    /// counted for; else, a Codex worktree, for the one folder not temporary
+    /// of the worktree's name among both providers' folders; else a Codex
+    /// worktree joins the other worktrees of its name, and anything else
+    /// temporary keeps a line of its own. So a repository Codex and Claude
+    /// both worked on in a worktree is one line, not two of the same name.
     static func claudeProjectEntries(
-        cache: CostUsageCache, roots: [URL], range: DayRange, home: String
+        cache: CostUsageCache, roots: [URL], range: DayRange, home: String,
+        codexFolding: CodexFolding = CodexFolding()
     ) -> [CostUsageScanResult.ProjectEntry] {
         let places = ClaudeProjectPlaces(roots: roots)
         let known = cache.projectRoots ?? [:]
         var identities: [String: ProjectIdentity] = [:]
+        var checkoutsByName = codexFolding.checkoutsByName
+        for recorded in known.values {
+            let root = ProjectPathNormalizer.root(recorded, home: home) ?? recorded
+            guard !ProjectPathNormalizer.isTemporary(root, home: home) else { continue }
+            checkoutsByName[ProjectPathNormalizer.name(of: root), default: []].insert(root)
+        }
 
         func identity(directory: String?) -> ProjectIdentity {
             guard let directory else { return .unknown }
@@ -352,9 +394,16 @@ extension CostUsageScanner {
             let made: ProjectIdentity
             if let recorded = known[directory] {
                 let root = ProjectPathNormalizer.root(recorded, home: home) ?? recorded
-                if ProjectPathNormalizer.isTemporary(root, home: home),
-                   let name = ProjectPathNormalizer.codexWorktreeRepository(root, home: home) {
-                    made = .codexWorktrees(named: name, shownPath: root, home: home)
+                if !ProjectPathNormalizer.isTemporary(root, home: home) {
+                    made = .folder(root)
+                } else if let checkout = codexFolding.checkoutForTemporary[root] {
+                    made = .folder(checkout)
+                } else if let name = ProjectPathNormalizer.codexWorktreeRepository(root, home: home) {
+                    if let only = checkoutsByName[name], only.count == 1, let checkout = only.first {
+                        made = .folder(checkout)
+                    } else {
+                        made = .codexWorktrees(named: name, shownPath: root, home: home)
+                    }
                 } else {
                     made = .folder(root)
                 }

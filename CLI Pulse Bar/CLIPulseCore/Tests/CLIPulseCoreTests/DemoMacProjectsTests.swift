@@ -92,8 +92,8 @@ final class DemoMacProjectsTests: XCTestCase {
     /// path on hover under the demo user's folder and nowhere real.
     func testDemosTopProjectsCardListsInventedFolders() throws {
         let state = demo()
-        let list = ProjectUsageList.build(
-            state.costUsageScanResult?.projects ?? [], provider: nil, basis: .eachOnce,
+        let list = ProjectUsageList.overview(
+            state.costUsageScanResult?.projects ?? [],
             todayKey: DayKey.string(from: Date()), showsCost: true, hidePersonalInfo: false)
         let names = DemoDataProvider.macProjects.map(\.name)
         XCTAssertEqual(list.lines.count, 5)
@@ -109,11 +109,38 @@ final class DemoMacProjectsTests: XCTestCase {
         XCTAssertTrue(sessionProjects.isSubset(of: Set(names)), "\(sessionProjects)")
 
         // With the switch on: numbered, no path.
-        let masked = ProjectUsageList.build(
-            state.costUsageScanResult?.projects ?? [], provider: nil, basis: .eachOnce,
+        let masked = ProjectUsageList.overview(
+            state.costUsageScanResult?.projects ?? [],
             todayKey: DayKey.string(from: Date()), showsCost: true, hidePersonalInfo: true)
         XCTAssertEqual(masked.lines.map(\.title), (1...5).map { "项目 \($0)" })
         XCTAssertTrue(masked.lines.allSatisfy { $0.hoverText == nil })
+        // With costs hidden too, still in order: the numbers follow the
+        // Overview's own ranking.
+        let maskedNoCost = ProjectUsageList.overview(
+            state.costUsageScanResult?.projects ?? [],
+            todayKey: DayKey.string(from: Date()), showsCost: false, hidePersonalInfo: true)
+        XCTAssertEqual(maskedNoCost.lines.map(\.title), (1...5).map { "项目 \($0)" })
+    }
+
+    /// The Overview's Top Projects sits under the Cost Summary, whose 30
+    /// days read "· N I/O tokens". Its rows count tokens the same way, so
+    /// together they never read more than that figure, and each line says
+    /// "I/O" to VoiceOver. Counting each token once (Claude's cache reads
+    /// in), Demo's rows came to more than the figure above them: the
+    /// negative control below.
+    func testDemosTopProjectsCountTokensAsTheCostSummaryAbove() throws {
+        let state = demo()
+        let projects = state.costUsageScanResult?.projects ?? []
+        let today = DayKey.string(from: Date())
+        let summary = state.providerState.costSummary.thirtyDayTokens
+        XCTAssertGreaterThan(summary, 0)
+        let io = ProjectUsageRanking.rows(projects, basis: ProjectUsageList.overviewBasis, todayKey: today)
+        XCTAssertLessThanOrEqual(io.reduce(0) { $0 + $1.tokens }, summary)
+        let eachOnce = ProjectUsageRanking.rows(projects, basis: .eachOnce, todayKey: today)
+        XCTAssertGreaterThan(eachOnce.reduce(0) { $0 + $1.tokens }, summary,
+                             "negative control: counted each once, the rows read more than the total above")
+        let list = ProjectUsageList.overview(projects, todayKey: today, showsCost: true, hidePersonalInfo: false)
+        XCTAssertTrue(list.lines.allSatisfy { $0.tokensText.hasSuffix(" I/O") }, "\(list.lines.map(\.tokensText))")
     }
 
     /// The scan is the account's own rows, so the cards read what they read

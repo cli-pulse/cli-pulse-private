@@ -533,10 +533,18 @@ public enum L10n {
         public static func anonymous(_ number: Int) -> String { tr("projects.anonymous", number) }
         /// Under a list cut short: "Top 5 of 12 projects".
         public static func shownOf(_ shown: Int, _ total: Int) -> String { tr("projects.shown_of", shown, total) }
-        /// What a list counts, and that it stays on this Mac.
+        /// What a list counts, and that the list is not synced (only the
+        /// list: a running session's folder name does sync while signed in
+        /// and paired, as the scan's consent says).
         public static var help: String { tr("projects.help") }
         /// Hovering "Unknown".
         public static var unknownHelp: String { tr("projects.unknown_help") }
+        /// With "Hide personal information" on: why a list's "Project N"
+        /// can skip numbers or run out of order.
+        public static var numberedHelp: String { tr("projects.numbered_help") }
+        /// A provider whose log folder the App Store build may not read:
+        /// "Claude's projects are not listed: …".
+        public static func folderBlocked(_ provider: String) -> String { tr("projects.folder_blocked", provider) }
     }
 
     // MARK: - Providers

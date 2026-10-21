@@ -45,7 +45,7 @@
 "dashboard.today" = "今日";
 "dashboard.30day_est" = "30 天预估";
 "dashboard.provider_usage" = "服务商用量";
-"dashboard.top_projects" = "主要项目";
+"dashboard.top_projects" = "高用量项目";
 "dashboard.risk_signals" = "风险信号";
 "dashboard.activity" = "活动";
 "dashboard.quick_stats" = "快速统计";
@@ -1670,8 +1670,10 @@
 "projects.unknown" = "未知";
 "projects.anonymous" = "项目 %d";
 "projects.shown_of" = "%2$d 个项目中的前 %1$d 个";
-"projects.help" = "按每个会话运行时所在的文件夹归类，来自这台 Mac 的会话日志。项目名称和路径只保留在这台 Mac 上。";
+"projects.help" = "根据这台 Mac 的会话日志，按每个会话运行时所在的文件夹归类。此列表不会同步到你的账户。";
 "projects.unknown_help" = "这些会话的日志没有记录它们在哪个文件夹中运行。";
+"projects.numbered_help" = "按在这台 Mac 全部项目中的排名编号，因此同一个项目在每个列表中编号相同。";
+"projects.folder_blocked" = "未列出 %@ 的项目：CLI Pulse 无权访问这台 Mac 上它的日志文件夹。";
 "folder_access.dir_clipulse_config" = "CLI Pulse 配置";
 "folder_access.dir_clipulse_data" = "CLI Pulse 数据";
 "folder_access.dir_codex_session_logs" = "Codex 会话日志";

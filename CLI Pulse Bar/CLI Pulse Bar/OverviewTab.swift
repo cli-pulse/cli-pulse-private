@@ -854,20 +854,24 @@ struct OverviewTab: View {
 
     /// v1.58 (P1-4): this Mac's top projects over the last 30 days, Codex and
     /// Claude together, from its session-log scan
-    /// (`CostUsageScanResult.projects`), each token counted once. The card's
-    /// first real data: `dashboard_summary` has no project column, so the
-    /// account's `top_projects` stays empty and the iPhone and Watch still
+    /// (`CostUsageScanResult.projects`), in input + output tokens as the Cost
+    /// Summary above counts its 30 days (`ProjectUsageList.overview`). The
+    /// card's first real data: `dashboard_summary` has no project column, so
+    /// the account's `top_projects` stays empty and the iPhone and Watch still
     /// draw no card. Drawn only with a project to list, so a Mac that does not
     /// scan (the scan declined, or no folder access) shows none, as before;
-    /// the empty card told everyone "No projects tracked yet".
+    /// the empty card told everyone "No projects tracked yet". When the App
+    /// Store build may read one provider's log folder and not the other's,
+    /// the card says whose projects it cannot list.
     @ViewBuilder
     private var topProjects: some View {
-        let list = ProjectUsageList.build(
-            state.costUsageScanResult?.projects ?? [], provider: nil, basis: .eachOnce,
+        let list = ProjectUsageList.overview(
+            state.costUsageScanResult?.projects ?? [],
             todayKey: DayKey.string(from: Date()),
             showsCost: state.showCost, hidePersonalInfo: hidePersonalInfo)
         if !list.isEmpty {
-            TopProjectsCard(list: list)
+            TopProjectsCard(list: list, folderNote: ProjectUsageList.overviewFolderNote(
+                unreadable: CostUsageScanner.logProvidersWithoutFolderAccess()))
         }
     }
 

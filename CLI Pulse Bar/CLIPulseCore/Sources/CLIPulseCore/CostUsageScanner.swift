@@ -219,6 +219,9 @@ public enum CostUsageScanner {
         var allProjects: [CostUsageScanResult.ProjectEntry] = []
         let home = options.homeDirectory ?? realUserHome()
 
+        // How Codex folded its temporary copies, for Claude's in the same ones.
+        var codexFolding = CodexFolding()
+
         // Scan Codex
         if options.providers.contains(.codex) {
             let codexCache = scanCodexProvider(range: range, now: now, options: options)
@@ -227,7 +230,9 @@ public enum CostUsageScanner {
                 options: options, range: range, cache: codexCache, now: now
             ))
             if options.splitsByProject {
-                allProjects.append(contentsOf: codexProjectEntries(cache: codexCache, range: range, home: home))
+                let codex = codexProjects(cache: codexCache, range: range, home: home)
+                allProjects.append(contentsOf: codex.entries)
+                codexFolding = codex.folding
             }
         }
 
@@ -241,7 +246,7 @@ public enum CostUsageScanner {
             if options.splitsByProject {
                 allProjects.append(contentsOf: claudeProjectEntries(
                     cache: claudeCache, roots: defaultClaudeProjectsRoots(options: options),
-                    range: range, home: home))
+                    range: range, home: home, codexFolding: codexFolding))
             }
         }
 
@@ -377,6 +382,43 @@ public enum CostUsageScanner {
             let expanded = (home as NSString).appendingPathComponent(String(template.dropFirst(2)))
             return BookmarkManager.shared.hasAccess(to: expanded) ? nil : expanded
         }
+    }
+
+    /// v1.58 (P1-4): each log provider's own scan roots, from
+    /// `sandboxScanRoots`.
+    static let logProviderScanRoots: [ProviderKind: [String]] = [
+        .codex: ["~/.codex/sessions/", "~/.codex/archived_sessions/"],
+        .claude: ["~/.claude/projects/", "~/.config/claude/projects/"],
+    ]
+
+    /// v1.58 (P1-4): the log providers (`ProviderKind.rawValue`) whose logs
+    /// the App Store build may not read on this Mac: sandboxed, and not one
+    /// of the provider's scan roots has a bookmark. The scan then has none
+    /// of that provider's usage, so Projects has none of its projects to
+    /// list, and says so (`ProjectUsageList.folderNote`) rather than leaving
+    /// the provider out without a word. Empty for the unsandboxed Developer
+    /// ID build, which reads the folders directly and never stores a
+    /// bookmark (as `DataRefreshManager.needsFolderAccessNudge`).
+    ///
+    /// Unlike the folder-access banner (`needsScannerFolderAccess`, only
+    /// while the whole scan is empty), this names one provider while the
+    /// other's folder is allowed. The two checks are injected for tests:
+    /// `BookmarkManager` reads the shared app group.
+    @MainActor
+    public static func logProvidersWithoutFolderAccess(
+        isSandboxed: Bool = MASSandboxGate.isSandboxed,
+        hasAccess: @MainActor (String) -> Bool = { BookmarkManager.shared.hasAccess(to: $0) }
+    ) -> Set<String> {
+        guard isSandboxed else { return [] }
+        let home = realUserHome()
+        var unreadable: Set<String> = []
+        for (provider, templates) in logProviderScanRoots {
+            let readable = templates.contains { template in
+                hasAccess((home as NSString).appendingPathComponent(String(template.dropFirst(2))))
+            }
+            if !readable { unreadable.insert(provider.rawValue) }
+        }
+        return unreadable
     }
 
     // MARK: - Convert cache to result entries

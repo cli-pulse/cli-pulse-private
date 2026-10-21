@@ -249,6 +249,12 @@ public struct ProviderUsagePanelView: View {
     public let availableScopes: [UsageDataScope]
     @Binding public var scope: UsageDataScope
     public let needsFolderAccess: Bool
+    /// v1.58 (P1-4): the log providers whose folder the App Store build may
+    /// not read on this Mac (`CostUsageScanner.logProvidersWithoutFolderAccess`),
+    /// even while another provider's is allowed and the scan is not empty.
+    /// For `data.provider` among them, This Mac asks for the folder and the
+    /// Projects card says why it lists nothing.
+    public let unreadableProviders: Set<String>
     /// Back to the Usage Dashboard; nil hides the button.
     public let onShowAllProviders: (() -> Void)?
     /// Opens the popover's Settings, where the log folders are granted; nil
@@ -273,6 +279,7 @@ public struct ProviderUsagePanelView: View {
         availableScopes: [UsageDataScope],
         scope: Binding<UsageDataScope>,
         needsFolderAccess: Bool,
+        unreadableProviders: Set<String> = [],
         onShowAllProviders: (() -> Void)?,
         onOpenSettings: (() -> Void)? = nil,
         initialSelection: String? = nil)
@@ -282,6 +289,7 @@ public struct ProviderUsagePanelView: View {
         self.availableScopes = availableScopes
         self._scope = scope
         self.needsFolderAccess = needsFolderAccess
+        self.unreadableProviders = unreadableProviders
         self.onShowAllProviders = onShowAllProviders
         self.onOpenSettings = onOpenSettings
         self._selection = State(initialValue: initialSelection)
@@ -542,40 +550,29 @@ public struct ProviderUsagePanelView: View {
             showsCost: showCost, hidePersonalInfo: hidePersonalInfo)
     }
 
-    /// Drawn only with a project to list.
+    /// Drawn with a project to list, or with the note saying why the
+    /// provider has none: the App Store build may not read its log folder.
     @ViewBuilder
     private var projectsCard: some View {
         let list = projectList
-        if !list.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(L10n.projects.title)
-                        .font(.system(size: 12, weight: .semibold))
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    Label(ProjectUsageList.scopeText(days: Self.windowDays), systemImage: "laptopcomputer")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .help(L10n.providerPanel.scopeThisMacHelp)
-                }
-                ProjectUsageListView(list: list, style: .panel)
-                Text(L10n.projects.help)
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-            .glassCard(elevated: false)
+        let note = list.isEmpty
+            ? ProjectUsageList.folderNote(provider: data.provider, unreadable: unreadableProviders)
+            : nil
+        if ProviderProjectsCard.draws(list: list, folderNote: note) {
+            ProviderProjectsCard(
+                list: list, days: Self.windowDays, folderNote: note, onOpenSettings: onOpenSettings)
         }
     }
 
-    /// Whether the empty panel asks for the log folders: macOS blocks them,
+    /// Whether the empty panel asks for the log folders: macOS blocks them
+    /// (all of them, or, v1.58, this provider's while another's is allowed),
     /// the scope is this Mac's, and `provider` is one the scan reads (Codex,
     /// Claude). For any other, granting access would show nothing more.
-    static func asksForFolderAccess(provider: String, scope: UsageDataScope, needsFolderAccess: Bool) -> Bool {
-        needsFolderAccess && scope == .thisMac
+    static func asksForFolderAccess(
+        provider: String, scope: UsageDataScope, needsFolderAccess: Bool,
+        unreadableProviders: Set<String> = []) -> Bool
+    {
+        (needsFolderAccess || unreadableProviders.contains(provider)) && scope == .thisMac
             && CostUsageScanner.logProviders.contains { $0.rawValue == provider }
     }
 
@@ -583,7 +580,9 @@ public struct ProviderUsagePanelView: View {
     /// there was usage is not known, so it says that, not "no usage".
     private var emptyState: some View {
         VStack(spacing: 6) {
-            if Self.asksForFolderAccess(provider: data.provider, scope: scope, needsFolderAccess: needsFolderAccess) {
+            if Self.asksForFolderAccess(
+                provider: data.provider, scope: scope, needsFolderAccess: needsFolderAccess,
+                unreadableProviders: unreadableProviders) {
                 Image(systemName: "folder.badge.questionmark")
                     .font(.system(size: 22))
                     .foregroundStyle(.orange)
@@ -692,6 +691,9 @@ struct UsagePanelContent: View {
                     get: { model.scope(for: provider) },
                     set: { model.scopeChoice[provider] = $0 }),
                 needsFolderAccess: model.needsFolderAccess,
+                // Read as the panel draws, so a folder granted since shows
+                // at the next refresh, which redraws it.
+                unreadableProviders: CostUsageScanner.logProvidersWithoutFolderAccess(),
                 onShowAllProviders: { model.mode = .allProviders },
                 onOpenSettings: onOpenSettings)
                 // A new provider starts on its own latest day.

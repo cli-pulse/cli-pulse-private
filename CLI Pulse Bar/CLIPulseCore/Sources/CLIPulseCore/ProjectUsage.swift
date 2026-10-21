@@ -304,11 +304,14 @@ public enum ProjectUsageRanking {
 
     /// The number each named project goes by with "Hide personal
     /// information" on: its place among every named project of every
-    /// provider over the window, ranked as the lists rank (by cost while
-    /// costs are shown, by tokens while they are hidden), counting each
-    /// token once. So "Project 2" is the same project in the panel and on
-    /// the Overview, whichever provider a list shows. An unknown project
-    /// names nothing personal and takes no number.
+    /// provider over the window, ranked as the Overview's Top Projects
+    /// ranks them (by cost while costs are shown, by input + output tokens
+    /// while they are hidden: `ProjectUsageList.overview`). So the Overview
+    /// reads "Project 1, Project 2, …" in order, and "Project 2" is the same
+    /// project in a provider's panel, where it keeps its number among fewer
+    /// projects ranked by that provider's share (so a panel can read
+    /// "Project 3, Project 1, Project 5": `L10n.projects.numberedHelp` says
+    /// why). An unknown project names nothing personal and takes no number.
     public static func anonymousNumbers(
         _ entries: [CostUsageScanResult.ProjectEntry],
         days count: Int = windowDays,
@@ -317,7 +320,7 @@ public enum ProjectUsageRanking {
         rankByCost: Bool = true) -> [String: Int]
     {
         let all = rows(
-            entries, basis: .eachOnce, days: count, todayKey: todayKey, timeZone: timeZone,
+            entries, basis: ProjectUsageList.overviewBasis, days: count, todayKey: todayKey, timeZone: timeZone,
             rankByCost: rankByCost)
         var numbers: [String: Int] = [:]
         for row in all where !row.project.isUnknown {
@@ -371,14 +374,43 @@ public struct ProjectUsageLine: Sendable, Equatable, Identifiable {
     /// is unknown, or nothing (Hide personal information on, or a folder
     /// whose path is not known).
     public let hoverText: String?
-    /// The line's tokens as the list counts them: "1.2M tokens", "1.2M I/O".
+    /// The line's tokens with their unit, as the list counts them: "1.2M
+    /// tokens", "1.2M I/O". What VoiceOver reads.
     public let tokensText: String
+    /// The same figure without its unit, "1.2M", as the line shows it: the
+    /// model rows beside it show bare figures too, and the list states the
+    /// unit once (the panel's total, the Overview card's footnote).
+    public let tokensFigure: String
     /// "$12.40", marked as a model's cost is; nil while costs are hidden
     /// (Settings › Display).
     public let costText: String?
     /// Why the cost is marked; empty when it is not.
     public let costHelp: String
+    /// None of its tokens had a rate: its cost reads "No rate", drawn as a
+    /// model's "No rate" is (secondary), not as a figure.
+    public let hasNoRate: Bool
     public let isUnknown: Bool
+
+    public init(
+        id: String, title: String, hoverText: String?, tokensText: String, tokensFigure: String,
+        costText: String?, costHelp: String, hasNoRate: Bool = false, isUnknown: Bool)
+    {
+        self.id = id
+        self.title = title
+        self.hoverText = hoverText
+        self.tokensText = tokensText
+        self.tokensFigure = tokensFigure
+        self.costText = costText
+        self.costHelp = costHelp
+        self.hasNoRate = hasNoRate
+        self.isUnknown = isUnknown
+    }
+
+    /// What VoiceOver reads for the line: "name, cost, tokens" with the
+    /// tokens' unit, as a model row is read.
+    public var accessibilityText: String {
+        ([title] + (costText.map { [$0] } ?? []) + [tokensText]).joined(separator: ", ")
+    }
 }
 
 /// A project list: the slide-out panel's for one provider, or the Mac
@@ -388,6 +420,12 @@ public struct ProjectUsageList: Sendable, Equatable {
     /// How many projects had usage in the window: more than `lines.count`
     /// when the list is cut to `ProjectUsageRanking.shownCount`.
     public let projectCount: Int
+    /// Whether the lines carry costs (Settings › Display): a card says its
+    /// costs are estimates only when it shows some.
+    public let showsCost: Bool
+    /// Whether "Hide personal information" numbered the lines: a card then
+    /// says how they are numbered (`L10n.projects.numberedHelp`).
+    public let namesHidden: Bool
 
     public var isEmpty: Bool { lines.isEmpty }
     /// "Top 5 of 12 projects", or nil when every project is listed.
@@ -395,9 +433,11 @@ public struct ProjectUsageList: Sendable, Equatable {
         projectCount > lines.count ? L10n.projects.shownOf(lines.count, projectCount) : nil
     }
 
-    public init(lines: [ProjectUsageLine], projectCount: Int) {
+    public init(lines: [ProjectUsageLine], projectCount: Int, showsCost: Bool = true, namesHidden: Bool = false) {
         self.lines = lines
         self.projectCount = projectCount
+        self.showsCost = showsCost
+        self.namesHidden = namesHidden
     }
 
     /// The top projects of `entries` over the last `days` days.
@@ -435,17 +475,69 @@ public struct ProjectUsageList: Sendable, Equatable {
                     ? L10n.projects.unknownHelp
                     : PersonalInfoMask.projectPath(row.project, hidePersonalInfo: hidePersonalInfo),
                 tokensText: basis.tokensText(row.tokens),
+                tokensFigure: CostFormatter.formatUsage(row.tokens),
                 costText: showsCost ? row.costText : nil,
                 costHelp: showsCost ? row.costHelp : "",
+                hasNoRate: showsCost && row.hasNoRate,
                 isUnknown: row.project.isUnknown)
         }
-        return ProjectUsageList(lines: Array(lines), projectCount: all.count)
+        return ProjectUsageList(
+            lines: Array(lines), projectCount: all.count, showsCost: showsCost, namesHidden: hidePersonalInfo)
     }
 
     /// "This Mac · Last 30 days": where a list's figures come from. The
     /// projects are this Mac's alone, whatever the view beside them shows.
     public static func scopeText(days: Int = ProjectUsageRanking.windowDays) -> String {
         UsageDataScope.thisMac.label + " · " + L10n.providerPanel.lastDays(days)
+    }
+
+    /// How the Mac Overview's Top Projects counts tokens: input + output, as
+    /// the Cost Summary directly above it counts its 30 days ("· 2.6M I/O
+    /// tokens"), so no project reads more tokens than that total. Counting
+    /// each token once, Claude's cache reads made one project's figure
+    /// several times the total above it.
+    public static let overviewBasis: ProviderUsageDays.TokenBasis = .inputOutput
+
+    /// The Mac Overview's Top Projects: this Mac's top projects over the last
+    /// 30 days, Codex and Claude together, in input + output tokens
+    /// (`overviewBasis`). `OverviewTab` and the QA renders build it here.
+    public static func overview(
+        _ entries: [CostUsageScanResult.ProjectEntry],
+        todayKey: String,
+        timeZone: TimeZone = .current,
+        showsCost: Bool,
+        hidePersonalInfo: Bool) -> ProjectUsageList
+    {
+        build(
+            entries, provider: nil, basis: overviewBasis, todayKey: todayKey, timeZone: timeZone,
+            showsCost: showsCost, hidePersonalInfo: hidePersonalInfo)
+    }
+
+    /// What the Overview card's footnote says: what its tokens count (input
+    /// + output, which part of input is cached depending on the provider),
+    /// and, while costs are shown, that they are estimates, as the rest of
+    /// the Overview labels its costs. Both are sentences the app already
+    /// says elsewhere.
+    public static func overviewFootnote(showsCost: Bool) -> String {
+        showsCost
+            ? L10n.providers.ioTokensHelp + " " + L10n.usageDashboard.costDisclaimer
+            : L10n.providers.ioTokensHelp
+    }
+
+    /// Why a provider's projects are missing: the App Store build may not
+    /// read its log folder on this Mac
+    /// (`CostUsageScanner.logProvidersWithoutFolderAccess`), so the scan has
+    /// none of its usage to split. nil when `provider` is not among
+    /// `unreadable`. In the panel it stands where the Projects card would;
+    /// on the Overview, under the card, for the first such provider.
+    public static func folderNote(provider: String, unreadable: Set<String>) -> String? {
+        unreadable.contains(provider) ? L10n.projects.folderBlocked(provider) : nil
+    }
+
+    /// The Overview's note: the first provider by name of `unreadable` the
+    /// scan reads (Claude, Codex), or nil when it can read them all.
+    public static func overviewFolderNote(unreadable: Set<String>) -> String? {
+        unreadable.sorted().first.flatMap { folderNote(provider: $0, unreadable: unreadable) }
     }
 }
 

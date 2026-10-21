@@ -281,6 +281,52 @@ final class ProjectScanTests: XCTestCase {
         XCTAssertEqual(projects(scan(), "Claude").first { $0.project.name == "demo-app" }?.tokens, demo.tokens)
     }
 
+    /// A Claude session that ran in a Codex worktree counts as Codex counts
+    /// that worktree: for the checkout Codex's logs of it were counted for
+    /// (by the repository's hash), so the repository is one line where both
+    /// providers are listed, not a checkout line and a worktree line of the
+    /// same name.
+    func testAClaudeSessionInACodexWorktreeCountsForCodexsCheckout() throws {
+        let repository = "https://github.example/sample/demo-app.git"
+        let worktree = "/Users/sample/.codex/worktrees/a1b2/demo-app"
+        try codexRollout("thread-1", cwd: "/Users/sample/Projects/demo-app", repository: repository, tokens: (1_000, 0, 100))
+        try codexRollout("thread-2", cwd: worktree, repository: repository, tokens: (400, 0, 40))
+        // Another folder of the same name: only the hash can tell which.
+        try codexRollout("thread-3", cwd: "/Users/sample/Archive/demo-app", tokens: (100, 0, 10))
+        let dir = CostUsageScanner.claudeProjectDirectoryName(forPath: worktree)
+        try claudeTranscript("\(dir)/session-1.jsonl", cwd: worktree, output: 100)
+        let result = scan()
+
+        XCTAssertEqual(projects(result, "Claude").map(\.project.path), ["/Users/sample/Projects/demo-app"])
+        let all = ProjectUsageRanking.rows(result.projects, basis: .eachOnce,
+                                           todayKey: CostUsageScanner.DayRange.dayKey(from: Date()))
+        let demo = all.filter { $0.project.path == "/Users/sample/Projects/demo-app" }
+        XCTAssertEqual(demo.map(\.providers), [["Claude", "Codex"]])
+        XCTAssertEqual(all.filter { $0.project.name == "demo-app" }.count, 2,
+                       "the checkout and the other folder of its name; no worktree line")
+        let (scanRows, projectRows) = rows(result, "Claude")
+        XCTAssertEqual(projectRows, scanRows)
+    }
+
+    /// With no Codex log of the worktree, its name says which checkout it
+    /// came from when exactly one folder has that name, as Codex folds a
+    /// worktree whose log names no repository. With two, nothing tells:
+    /// the worktree keeps the line it shares with the other worktrees of its
+    /// name (the negative control).
+    func testAClaudeWorktreeFoldsByNameOnlyIntoTheOneCheckoutOfThatName() throws {
+        let worktree = "/Users/sample/.codex/worktrees/c3d4/demo-app"
+        let dir = CostUsageScanner.claudeProjectDirectoryName(forPath: worktree)
+        try codexRollout("thread-1", cwd: "/Users/sample/Projects/demo-app", tokens: (1_000, 0, 100))
+        try claudeTranscript("\(dir)/session-1.jsonl", cwd: worktree, output: 100)
+        XCTAssertEqual(projects(scan(), "Claude").map(\.project.path), ["/Users/sample/Projects/demo-app"])
+
+        try codexRollout("thread-2", cwd: "/Users/sample/Archive/demo-app", tokens: (500, 0, 50))
+        let apart = projects(scan(), "Claude")
+        XCTAssertEqual(apart.map(\.project.path), [worktree])
+        XCTAssertEqual(apart.first?.project.key,
+                       ProjectIdentity.codexWorktrees(named: "demo-app", shownPath: worktree, home: home).key)
+    }
+
     /// The year-long reads that fill the usage archive keep day rows only:
     /// no projects, and no transcript opened to name one.
     func testAScanThatDoesNotSplitByProjectLearnsNoFolder() throws {

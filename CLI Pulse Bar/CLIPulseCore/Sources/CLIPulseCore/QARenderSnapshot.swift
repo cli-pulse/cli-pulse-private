@@ -462,8 +462,8 @@ public enum QARenderSnapshot {
         let shares: [(name: String?, share: Double)] = kind == .codex
             ? [("demo-app", 0.38), ("api-gateway", 0.19), ("customer-analytics-dashboard-monorepo", 0.13),
                (nil, 0.11), ("infra-scripts", 0.08), ("docs", 0.06), ("design-system", 0.05)]
-            : [("demo-app", 0.30), ("api-gateway", 0.27), ("mobile-client", 0.18), ("design-system", 0.12),
-               ("customer-analytics-dashboard-monorepo", 0.08), ("docs", 0.05)]
+            : [("demo-app", 0.30), ("api-gateway", 0.27), ("mobile-client", 0.18), ("design-system", 0.11),
+               ("customer-analytics-dashboard-monorepo", 0.09), ("docs", 0.05)]
         let projects = shares.map { share in
             share.name.map { ProjectIdentity.folder(sampleProjectsFolder + "/" + $0) } ?? .unknown
         }
@@ -490,6 +490,33 @@ public enum QARenderSnapshot {
 
     /// Where the sample projects live. Invented.
     public static let sampleProjectsFolder = "/Users/sample/Projects"
+
+    /// v1.58 (P1-4): three Codex projects for the states strips, the last
+    /// of them run only on a model with no rate, so its line reads "No rate"
+    /// (ranked last by cost, it never shows among the panel sample's top
+    /// five). Over the last two days ending `today`.
+    public static func projectsNoRateSample(
+        today: Date = Date(), timeZone: TimeZone = .current
+    ) -> [CostUsageScanResult.ProjectEntry] {
+        let calendar = DayKey.calendar(in: timeZone)
+        let days = [0, 1].map { offset -> String in
+            let date = calendar.date(byAdding: .day, value: -offset, to: today) ?? today
+            return DayKey.string(from: date, in: timeZone)
+        }
+        let rows: [(name: String, model: String, input: Int, output: Int, cost: Double?)] = [
+            ("demo-app", "gpt-5.5", 186_000, 14_200, 3.12),
+            ("api-gateway", "gpt-5.5", 64_500, 5_100, 1.07),
+            ("prototype-lab", "local-preview", 41_800, 2_600, nil),
+        ]
+        return days.flatMap { day in
+            rows.map { row in
+                CostUsageScanResult.ProjectEntry(
+                    provider: ProviderKind.codex.rawValue,
+                    project: .folder(sampleProjectsFolder + "/" + row.name), date: day, model: row.model,
+                    inputTokens: row.input, cachedTokens: 0, outputTokens: row.output, costUSD: row.cost)
+            }
+        }
+    }
 
     /// Every surface, in drawing order. The order is also the state order:
     /// everything signed out comes before Demo mode is entered, because the
@@ -526,6 +553,7 @@ public enum QARenderSnapshot {
             .usageDashboardPanelCostUnknown, .demoSessionsWithLogs, .cardSourceLines,
         ]
         surfaces.append(.topProjectsStates)
+        surfaces.append(.panelProjectsStates)
         return surfaces
     }
 
@@ -992,8 +1020,17 @@ public enum QARenderSurface: Hashable {
     case cardSourceLines
     /// v1.58 (P1-4): the Mac Overview's Top Projects card in the states it
     /// draws, at the card's width: names with their figures, "Hide personal
-    /// information" on, and costs hidden.
+    /// information" on, costs hidden, both, a project with no rate, and the
+    /// App Store build's note for a provider whose log folder it may not
+    /// read, which the unsandboxed QA build never reaches otherwise.
     case topProjectsStates
+    /// v1.58 (P1-4): the usage panel's Projects card
+    /// (`ProviderProjectsCard`) in the states the panel renders do not
+    /// show: "Hide personal information" on (the only part of the panel the
+    /// switch changes), with costs hidden too, a project with no rate, and
+    /// the note in its place when the App Store build may not read the
+    /// provider's log folder. Dark, at the 440-point panel's card width.
+    case panelProjectsStates
 
     public enum Kind: String, Codable, Sendable {
         /// The menu-bar popover (`MenuBarView`), 380 points wide.
@@ -1014,7 +1051,8 @@ public enum QARenderSurface: Hashable {
              .costUnknownDays, .claudeCardThisMacMessages, .costUnknownEveryDay, .cardSourceLines:
             return .window
         case .usageDashboardPanel, .usageDashboardPanelCost, .providerUsagePanel, .providerCardPanel,
-             .providerPanelCostUnknown, .providerPanelNoRateDay, .usageDashboardPanelCostUnknown:
+             .providerPanelCostUnknown, .providerPanelNoRateDay, .usageDashboardPanelCostUnknown,
+             .panelProjectsStates:
             return .panel
         case .providerUsageCardHistory:
             return .window
@@ -1060,6 +1098,7 @@ public enum QARenderSurface: Hashable {
         case .demoSessionsWithLogs: return "demo-sessions-with-logs"
         case .cardSourceLines: return "card-source-lines"
         case .topProjectsStates: return "card-top-projects"
+        case .panelProjectsStates: return "card-panel-projects"
         }
     }
 
