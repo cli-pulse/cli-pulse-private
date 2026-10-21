@@ -874,6 +874,13 @@ final class QARenderSnapshotTests: XCTestCase {
             id: "x", source: "accessibility", needles: needles, textsOn: ["Codex 会话"], textsOff: ["Codex 会话"])
         XCTAssertFalse(blind.passed, "a control that shows nothing could not have seen a leak")
         XCTAssertTrue(QARenderSnapshot.privacyProblem(blind)?.contains("control") ?? false)
+        // The control is the switch-off reading alone: what leaked with the
+        // switch on does not stand in for it.
+        let blindButLeaking = QARenderSnapshot.privacyCheck(
+            id: "x", source: "accessibility", needles: needles, textsOn: ["demo-app"], textsOff: ["Codex 会话"])
+        XCTAssertEqual(blindButLeaking.shownWithSwitchOff, [])
+        XCTAssertEqual(blindButLeaking.leaks, ["demo-app"])
+        XCTAssertTrue(QARenderSnapshot.privacyProblem(blindButLeaking)?.contains("control") ?? false)
         let nothingRead = QARenderSnapshot.privacyCheck(
             id: "x", source: "accessibility", needles: needles, textsOn: [], textsOff: ["demo-app"])
         XCTAssertFalse(nothingRead.passed)
