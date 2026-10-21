@@ -1894,6 +1894,7 @@
 "provider_card.messages_this_mac" = "메시지 수는 이 Mac에서만 집계됩니다.";
 "provider_card.chart_tokens_help" = "최근 30일간 일별 입력 + 출력 토큰. 가장 많은 날: %@.";
 "provider_card.chart_cost_help" = "최근 30일간 일별 추정 비용. 가장 많은 날: %@.";
+"provider_card.chart_cost_description" = "최근 30일간 일별 추정 비용.";
 "provider_card.sections_menu" = "카드에 표시";
 "provider_card.sections_all_shown" = "모두 표시됨";
 "provider_card.sections_hidden_count" = "숨김: %d개";

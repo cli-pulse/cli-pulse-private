@@ -409,17 +409,19 @@ public enum QARenderSnapshot {
     public static func logSessionsSample(now: Date) -> [SessionRecord] {
         let formatter = ISO8601DateFormatter()
         func row(_ id: String, _ name: String, _ provider: String, _ project: String,
-                 ago: TimeInterval) -> SessionRecord {
+                 ago: TimeInterval, usage: Int, cost: Double, requests: Int) -> SessionRecord {
             let at = formatter.string(from: now.addingTimeInterval(-ago))
             return SessionRecord(
                 id: id, name: name, provider: provider, project: project, device_name: "MacBook Pro",
                 started_at: formatter.string(from: now.addingTimeInterval(-ago - 1_800)), last_active_at: at,
-                status: "Running", total_usage: 0, estimated_cost: 0, cost_status: "Estimated",
-                requests: 0, error_count: 0)
+                status: "Running", total_usage: usage, estimated_cost: cost, cost_status: "Estimated",
+                requests: requests, error_count: 0)
         }
         return [
-            row("jsonl-claude-qa-1", "Claude · demo-app", "Claude", "demo-app", ago: 120),
-            row("jsonl-codex-qa-2", "Codex · sample-service", "Codex", "sample-service", ago: 720),
+            row("jsonl-claude-qa-1", "Claude · demo-app", "Claude", "demo-app",
+                ago: 120, usage: 184_000, cost: 0.62, requests: 14),
+            row("jsonl-codex-qa-2", "Codex · sample-service", "Codex", "sample-service",
+                ago: 720, usage: 52_300, cost: 0.11, requests: 5),
         ]
     }
 

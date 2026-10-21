@@ -900,6 +900,39 @@ struct EnhancedProviderCard: View {
             .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
+    /// The plan-and-source row: the account (`showsAccount`), the plan
+    /// badge and the source line while Plan and Source is shown, and the
+    /// quota badge at its end while the card shows a quota.
+    @ViewBuilder
+    private func planAndSourceRow(
+        showsPlanAndSource: Bool, showsAccount: Bool, sourceLine: String, showsBadge: Bool
+    ) -> some View {
+        HStack(spacing: 8) {
+            if showsPlanAndSource {
+                if showsAccount, let accountLabel {
+                    accountLabelView(accountLabel)
+                }
+                if let plan = detail.planType {
+                    StatusBadge(text: L10n.providers.planDisplay(plan), color: plan == "Paid" ? .green : .orange)
+                }
+                Text(sourceLine)
+                    .font(.system(size: 8))
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer()
+            if showsBadge {
+                quotaBadge
+            }
+        }
+    }
+
+    private func accountLabelView(_ label: String) -> some View {
+        Label(label, systemImage: "envelope")
+            .font(.system(size: 8))
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+    }
+
     /// v1.44 W3: collector outcome + one next step, or nothing at all.
     ///
     /// Deliberately silent for `.producedData`: a provider that is working
@@ -1107,35 +1140,36 @@ struct EnhancedProviderCard: View {
                 let showsResetCredits = visibility.showsResetCredits(
                     for: kind, hasQuotaTiers: !detail.tiers.isEmpty)
                 if showsPlanAndSource || showsQuota {
-                    HStack(spacing: 8) {
-                        if showsPlanAndSource {
-                            if let accountLabel {
-                                Label(accountLabel, systemImage: "envelope")
-                                    .font(.system(size: 8))
-                                    .foregroundStyle(.tertiary)
-                                    .lineLimit(1)
+                    // v1.58: on a card with a quota, the line names what it
+                    // is the source of, the quota, and calls this Mac "This
+                    // Mac", so it is not read against the usage figures'
+                    // scope ("All devices") just below it. With no quota on
+                    // the card (no quota source, a quota that did not load)
+                    // the line is neutral and the quota badge goes, as it
+                    // goes with the quota bars: "OK" beside "No quota
+                    // source" said the opposite.
+                    let cardShowsQuota = ProviderCardUsage.cardShowsQuota(
+                        quotaVisible: showsQuota, tierCount: detail.tiers.count,
+                        overallQuota: provider.quota, provider: provider.provider,
+                        collectorOutcome: ProviderKind(rawValue: provider.provider)
+                            .flatMap { state.collectorOutcomes[$0] })
+                    let sourceLine = ProviderCardUsage.sourceLineText(
+                        detail.sourceType, cardShowsQuota: cardShowsQuota)
+                    // One row when it fits. Otherwise the account label on a
+                    // line of its own, so a long one is not cut short to
+                    // make room for the source line ("Fuente de la cuota:
+                    // API" wrapped beside it in Spanish).
+                    ViewThatFits(in: .horizontal) {
+                        planAndSourceRow(
+                            showsPlanAndSource: showsPlanAndSource, showsAccount: true,
+                            sourceLine: sourceLine, showsBadge: cardShowsQuota)
+                        VStack(alignment: .leading, spacing: 4) {
+                            if showsPlanAndSource, let accountLabel {
+                                accountLabelView(accountLabel)
                             }
-                            if let plan = detail.planType {
-                                StatusBadge(text: L10n.providers.planDisplay(plan), color: plan == "Paid" ? .green : .orange)
-                            }
-                            // v1.58: on a card with a quota, names what it
-                            // is the source of, the quota, and calls this
-                            // Mac "This Mac", so it is not read against the
-                            // usage figures' scope ("All devices") just
-                            // below it. With no quota on the card, neutral.
-                            Text(ProviderCardUsage.sourceLineText(
-                                detail.sourceType,
-                                cardShowsQuota: ProviderCardUsage.cardShowsQuota(
-                                    quotaVisible: showsQuota, tierCount: detail.tiers.count,
-                                    overallQuota: provider.quota, provider: provider.provider,
-                                    collectorOutcome: ProviderKind(rawValue: provider.provider)
-                                        .flatMap { state.collectorOutcomes[$0] })))
-                                .font(.system(size: 8))
-                                .foregroundStyle(.tertiary)
-                        }
-                        Spacer()
-                        if showsQuota {
-                            quotaBadge
+                            planAndSourceRow(
+                                showsPlanAndSource: showsPlanAndSource, showsAccount: false,
+                                sourceLine: sourceLine, showsBadge: cardShowsQuota)
                         }
                     }
                 }

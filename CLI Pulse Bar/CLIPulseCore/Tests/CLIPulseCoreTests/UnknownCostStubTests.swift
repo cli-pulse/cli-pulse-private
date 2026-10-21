@@ -167,7 +167,7 @@ final class UnknownCostStubTests: XCTestCase {
         let chart = card.chart(.cost)
         XCTAssertEqual(chart.highest, 0)
         XCTAssertTrue(chart.hasData, "a chart of stubs is drawn")
-        XCTAssertEqual(ProviderCardUsage.chartHelp(chart), "灰色短柱表示该日有用量，但费用未知。")
+        XCTAssertEqual(ProviderCardUsage.chartHelp(chart), "最近 30 天每天的预估费用。\n灰色短柱表示该日有用量，但费用未知。")
 
         let mixed = ProviderCardUsageBuilder.build(
             provider: "Claude", usage: nil, scanEntries: [], cloudRows: rows, readsCloud: true,

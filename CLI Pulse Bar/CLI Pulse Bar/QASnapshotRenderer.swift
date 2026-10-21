@@ -1128,11 +1128,17 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         let showCost = state.showCost
         let cards = VStack(alignment: .leading, spacing: 12) {
             ForEach([codex, claude, kiro]) { detail in
+                // Codex as a single-account card, the only kind that names
+                // its account on this line.
+                let configs = providerState.configs(for: detail.config.kind)
+                    .filter { detail.config.kind != .codex || $0.accountID == detail.config.accountID }
                 EnhancedProviderCard(
                     detail: detail,
                     showCost: showCost,
-                    accountConfigs: providerState.configs(for: detail.config.kind),
-                    accountUsages: providerState.providerAccounts.filter { $0.provider == detail.config.kind },
+                    accountConfigs: configs,
+                    accountUsages: providerState.providerAccounts.filter {
+                        $0.provider == detail.config.kind && configs.map(\.accountID).contains($0.id)
+                    },
                     onAccountToggle: { _, _ in })
             }
         }
@@ -1144,10 +1150,11 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         await captureWindow(
             cards, surface: surface, index: index,
             note: "v1.58: the plan-and-source line in states Demo does not draw, 380 points wide: Codex"
-                + " signed in, its quota read from the API, with a long sample account label and a plan"
-                + " badge (\"Quota source: API\"); Claude merged (\"Quota source: Cloud + this Mac\");"
-                + " Kiro, a tool with no quota API, with \"No quota source\" and the neutral line"
-                + " (\"Source: This Mac\"). Demo's details, changed for the picture."
+                + " signed in with one account, its quota read from the API, with a long sample account"
+                + " label and a plan badge (\"Quota source: API\"; the label takes a line of its own where"
+                + " the row does not fit); Claude merged (\"Quota source: Cloud + this Mac\"); Kiro, a tool"
+                + " with no quota API, with \"No quota source\", the neutral line (\"Source: This Mac\")"
+                + " and no quota badge. Demo's details, changed for the picture."
         )
     }
 

@@ -296,16 +296,16 @@ public struct ProviderCardUsage: Sendable, Equatable {
     /// What the card's small chart says on hover and to VoiceOver: what the
     /// bars measure and the highest day, and, v1.58, in Cost with a day that
     /// has usage and no known cost, what its grey bar is. A chart of nothing
-    /// but such days has no highest day to name.
+    /// but such days has no highest day to name, and says what it measures.
     public static func chartHelp(_ chart: Chart) -> String {
         var lines: [String] = []
         switch chart.metric {
         case .tokens:
             lines.append(L10n.providerCard.chartTokensHelp(CostFormatter.formatUsage(Int(chart.highest))))
         case .cost:
-            if chart.highest > 0 {
-                lines.append(L10n.providerCard.chartCostHelp(CostFormatter.format(chart.highest)))
-            }
+            lines.append(chart.highest > 0
+                ? L10n.providerCard.chartCostHelp(CostFormatter.format(chart.highest))
+                : L10n.providerCard.chartCostDescription)
             if chart.hasUnknownCostDays {
                 lines.append(L10n.providerCard.chartCostUnknownHelp)
             }

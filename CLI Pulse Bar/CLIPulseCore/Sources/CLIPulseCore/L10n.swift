@@ -631,6 +631,9 @@ public enum L10n {
         public static var messagesThisMac: String { tr("provider_card.messages_this_mac") }
         public static func chartTokensHelp(_ highest: String) -> String { tr("provider_card.chart_tokens_help", highest) }
         public static func chartCostHelp(_ highest: String) -> String { tr("provider_card.chart_cost_help", highest) }
+        /// v1.58: what the chart measures in Cost when no day's cost is
+        /// known, so there is no highest day to name.
+        public static var chartCostDescription: String { tr("provider_card.chart_cost_description") }
         /// v1.58: the grey bars on the card's chart in Cost.
         public static var chartCostUnknownHelp: String { providerPanel.costUnknownHelp }
         /// v1.58: the plan-and-source line on a card that shows a quota,

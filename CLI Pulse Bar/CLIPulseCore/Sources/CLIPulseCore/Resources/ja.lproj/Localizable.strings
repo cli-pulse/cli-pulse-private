@@ -1937,6 +1937,7 @@
 "provider_card.messages_this_mac" = "メッセージ数はこの Mac の分だけです。";
 "provider_card.chart_tokens_help" = "過去 30 日間の 1 日ごとの入力 + 出力トークン。最も多い日: %@。";
 "provider_card.chart_cost_help" = "過去 30 日間の 1 日ごとの推定コスト。最も高い日: %@。";
+"provider_card.chart_cost_description" = "過去 30 日間の 1 日ごとの推定コスト。";
 "provider_card.sections_menu" = "カードに表示";
 "provider_card.sections_all_shown" = "すべて表示中";
 "provider_card.sections_hidden_count" = "非表示: %d";

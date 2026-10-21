@@ -1936,6 +1936,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "provider_card.messages_this_mac" = "Message counts are from this Mac only.";
 "provider_card.chart_tokens_help" = "Input + output tokens per day, last 30 days. Highest day: %@.";
 "provider_card.chart_cost_help" = "Estimated cost per day, last 30 days. Highest day: %@.";
+"provider_card.chart_cost_description" = "Estimated cost per day, last 30 days.";
 "provider_card.sections_menu" = "Show on Card";
 "provider_card.sections_all_shown" = "All shown";
 "provider_card.sections_hidden_count" = "Hidden: %d";

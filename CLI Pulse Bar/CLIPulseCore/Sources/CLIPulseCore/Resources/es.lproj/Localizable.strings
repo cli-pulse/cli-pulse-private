@@ -1907,6 +1907,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "provider_card.messages_this_mac" = "El recuento de mensajes es solo de este Mac.";
 "provider_card.chart_tokens_help" = "Tokens de entrada + salida por día, últimos 30 días. Máximo diario: %@.";
 "provider_card.chart_cost_help" = "Costo estimado por día, últimos 30 días. Máximo diario: %@.";
+"provider_card.chart_cost_description" = "Costo estimado por día, últimos 30 días.";
 "provider_card.sections_menu" = "Mostrar en la tarjeta";
 "provider_card.sections_all_shown" = "Todas visibles";
 "provider_card.sections_hidden_count" = "Ocultas: %d";

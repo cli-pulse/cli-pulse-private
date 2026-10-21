@@ -1924,6 +1924,7 @@
 "provider_card.messages_this_mac" = "訊息數僅統計這台 Mac。";
 "provider_card.chart_tokens_help" = "最近 30 天每天的輸入 + 輸出 token。單日最高：%@。";
 "provider_card.chart_cost_help" = "最近 30 天每天的預估費用。單日最高：%@。";
+"provider_card.chart_cost_description" = "最近 30 天每天的預估費用。";
 "provider_card.sections_menu" = "在卡片上顯示";
 "provider_card.sections_all_shown" = "已全部顯示";
 "provider_card.sections_hidden_count" = "已隱藏 %d 項";
