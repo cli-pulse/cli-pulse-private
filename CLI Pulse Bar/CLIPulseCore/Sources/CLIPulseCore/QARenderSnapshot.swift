@@ -430,8 +430,10 @@ public enum QARenderSnapshot {
     /// (`card-claude-this-mac-messages`): the provider-panel sample's Claude
     /// rows and, each day, the message-count bucket the scanner writes
     /// (`ScanEntry.messageBucketModel`), about one message per 40K tokens, a
-    /// heavy month (a busy day near 850). Demo mode on the Mac has no scan,
-    /// so no Demo card shows messages. Deterministic.
+    /// heavy month (a busy day near 850). Demo's own Claude card shows
+    /// messages too, from its Mac's scan (`DemoDataProvider.macScan`); this
+    /// sample's tokens and costs run wider than Demo's, so the card's usage
+    /// layouts are reviewed with longer figures. Deterministic.
     public static func claudeMessagesScanSample(
         today: Date = Date(), timeZone: TimeZone = .current
     ) -> [CostUsageScanResult.DailyEntry] {
@@ -995,8 +997,9 @@ public enum QARenderSurface: Hashable {
     /// Usage Dashboard's Trends.
     case costUnknownDays
     /// v1.58: the Claude card with this Mac's message counts beside every
-    /// device's tokens, as a signed-in Mac that scans its logs sees it. Demo
-    /// mode on the Mac has no scan, so no Demo card shows messages.
+    /// device's tokens, as a signed-in Mac that scans its logs sees it, with
+    /// longer figures than Demo's own Claude card, which has messages too
+    /// (`DemoDataProvider.macScan`).
     case claudeCardThisMacMessages
     /// v1.58: the cost charts with no day's cost known: stubs only, on an
     /// axis without figures (the Mac card's small chart, the iPhone card's,
