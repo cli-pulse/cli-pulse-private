@@ -8,6 +8,14 @@ import SwiftUI
 /// information included, is decided in `SessionUsageList.build`; this lays it
 /// out.
 ///
+/// It shows the first five, as Projects shows its top five, says under them
+/// how many of how many it shows, and shows more a page at a time ("Show 20
+/// more"). The card has no scroll view of its own: the rows it shows are part
+/// of the panel, which scrolls as a whole when it is taller than the screen
+/// (on a laptop it is, with this card), so a scroll over the list moves the
+/// panel, and no row is ever out of reach behind a scroll view nothing
+/// signals or that the panel's own `.scrollDisabled` turned off.
+///
 /// Built from the scan's rows, which the panel hands over unchanged on every
 /// redraw (hovering the chart redraws the panel), so it is `Equatable` and
 /// compares those by identity: the list is worked out again only when they,
@@ -23,10 +31,8 @@ public struct ProviderSessionsCard: View, Equatable {
     private let hidePersonalInfo: Bool
 
     @State private var order: SessionUsageRanking.Order
-
-    /// Rows visible at once; more scroll.
-    static let visibleRows = 5
-    static let rowHeight: CGFloat = 50
+    /// How many rows are shown: the first page, more after "Show more".
+    @State private var shown: Int
 
     /// - Parameters:
     ///   - projects: this Mac's rows by project, every provider's: with Hide
@@ -34,6 +40,8 @@ public struct ProviderSessionsCard: View, Equatable {
     ///     Projects gives it.
     ///   - initialOrder: the order the card opens in; cost, as the plan has
     ///     it, everywhere but a QA render of the other.
+    ///   - initialShown: how many rows it opens with; the first page
+    ///     everywhere but a QA render of more.
     public init(
         sessions: [CostUsageScanResult.SessionEntry],
         details: [CostUsageScanResult.SessionDetail],
@@ -43,7 +51,8 @@ public struct ProviderSessionsCard: View, Equatable {
         todayKey: String,
         showsCost: Bool,
         hidePersonalInfo: Bool,
-        initialOrder: SessionUsageRanking.Order = .cost)
+        initialOrder: SessionUsageRanking.Order = .cost,
+        initialShown: Int = SessionUsageList.firstPage)
     {
         self.sessions = sessions
         self.details = details
@@ -54,6 +63,7 @@ public struct ProviderSessionsCard: View, Equatable {
         self.showsCost = showsCost
         self.hidePersonalInfo = hidePersonalInfo
         self._order = State(initialValue: initialOrder)
+        self._shown = State(initialValue: max(SessionUsageList.firstPage, initialShown))
     }
 
     public static func == (lhs: ProviderSessionsCard, rhs: ProviderSessionsCard) -> Bool {
@@ -90,23 +100,28 @@ public struct ProviderSessionsCard: View, Equatable {
                 Spacer(minLength: 8)
                 ProjectScopeLabel(days: days, size: 10)
             }
-            HStack(alignment: .center, spacing: 8) {
-                Text(list.countText)
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                Picker(L10n.sessionHistory.sortPicker, selection: $order) {
-                    ForEach(SessionUsageRanking.Order.allCases) { order in
-                        Text(order.label(showsCost: showsCost)).tag(order)
+            if list.lines.count > 1 {
+                HStack {
+                    Spacer(minLength: 0)
+                    Picker(L10n.sessionHistory.sortPicker, selection: $order) {
+                        ForEach(SessionUsageRanking.Order.allCases) { order in
+                            Text(order.label(showsCost: showsCost)).tag(order)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                    .controlSize(.small)
+                }
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(list.visibleLines(shown)) { line in
+                        SessionUsageRowView(line: line)
                     }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .controlSize(.small)
+                pager(list)
             }
-            rows(list)
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(list.footnote, id: \.self) { line in
                     Text(line)
@@ -121,22 +136,37 @@ public struct ProviderSessionsCard: View, Equatable {
         .glassCard(elevated: false)
     }
 
-    /// Up to `visibleRows` at once, at one height whatever the order, so the
-    /// panel does not change height as the order changes; more scroll.
-    @ViewBuilder
-    private func rows(_ list: SessionUsageList) -> some View {
-        let visible = min(Self.visibleRows, list.lines.count)
-        let stack = LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(list.lines) { line in
-                SessionUsageRowView(line: line)
-                    .frame(height: Self.rowHeight, alignment: .top)
+    /// Under the rows, where Projects says "Top 5 of 7 projects": how many
+    /// of how many are shown, and the buttons that show more or go back to
+    /// the first page.
+    private func pager(_ list: SessionUsageList) -> some View {
+        let more = list.moreCount(after: shown)
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(list.shownText(shown))
+                .font(.system(size: 9.5))
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            if more > 0 {
+                Button(L10n.sessionHistory.showMore(more)) {
+                    shown = list.visibleLines(shown).count + more
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 10))
+                .foregroundStyle(PulseTheme.accent)
+                .lineLimit(1)
+                .fixedSize()
             }
-        }
-        if list.lines.count > Self.visibleRows {
-            ScrollView { stack }
-                .frame(height: CGFloat(visible) * Self.rowHeight, alignment: .top)
-        } else {
-            stack
+            if list.canShowLess(shown) {
+                Button(L10n.sessionHistory.showLess) {
+                    shown = SessionUsageList.firstPage
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 10))
+                .foregroundStyle(PulseTheme.accent)
+                .lineLimit(1)
+                .fixedSize()
+            }
         }
     }
 }
@@ -170,6 +200,7 @@ struct SessionUsageRowView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
+                .help(line.usageHelp)
             Text(line.activityText)
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
@@ -178,7 +209,8 @@ struct SessionUsageRowView: View {
         }
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // One VoiceOver element per session, read with its units.
+        // One VoiceOver element per session, its shorthand spelled out
+        // (`SessionUsageLine.accessibilityText`).
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(line.accessibilityText)
     }

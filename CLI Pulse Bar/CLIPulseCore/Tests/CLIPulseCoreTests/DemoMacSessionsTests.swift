@@ -66,11 +66,23 @@ final class DemoMacSessionsTests: XCTestCase {
     /// The panel's Sessions for each provider: Demo's folders, a few days
     /// each, none last active after the refresh, the running ones a minute
     /// before it, and the sum the panel's 30-day total.
+    ///
+    /// Demo's rows are cut into sessions as of noon on the day of its
+    /// refresh, not as of the refresh itself: in the first minute after
+    /// midnight a minute before the refresh is yesterday, so every session of
+    /// today starts at midnight (`DemoDataProvider.sessions` keeps today's
+    /// sessions on today) and the running one is no longer the latest.
     func testDemosSessionsAreOnesItsMacCouldShow() throws {
         let state = demo()
-        let scan = try XCTUnwrap(state.costUsageScanResult)
         let refresh = try XCTUnwrap(state.lastRefresh)
-        let today = DayKey.string(from: Date())
+        let calendar = DayKey.calendar()
+        let noon = calendar.startOfDay(for: refresh).addingTimeInterval(12 * 3600)
+        let scan = DemoDataProvider.macScan(rows: state.dailyUsage, now: noon)
+        // The same rows and sessions the app holds, but for the moment they
+        // are cut at.
+        let held = try XCTUnwrap(state.costUsageScanResult)
+        XCTAssertEqual(scan.sessions, held.sessions)
+        let today = DayKey.string(from: refresh)
         let names = Set(DemoDataProvider.macProjects.map(\.name))
         for (provider, running) in [("Codex", "cli-pulse-ios"), ("Claude", "provider-layer")] {
             let rows = SessionUsageRanking.ordered(
@@ -78,10 +90,14 @@ final class DemoMacSessionsTests: XCTestCase {
                 by: .latest, showsCost: true)
             XCTAssertGreaterThan(rows.count, 10, provider)
             XCTAssertTrue(rows.allSatisfy { names.contains($0.project.name ?? "") }, provider)
-            XCTAssertTrue(rows.allSatisfy { $0.lastActivity <= refresh }, provider)
+            XCTAssertTrue(rows.allSatisfy { $0.lastActivity <= noon }, provider)
             let latest = try XCTUnwrap(rows.first)
             XCTAssertEqual(latest.project.name, running, provider)
-            XCTAssertEqual(latest.lastActivity.timeIntervalSince(refresh), -60, accuracy: 1, provider)
+            XCTAssertEqual(latest.lastActivity.timeIntervalSince(noon), -60, accuracy: 1, provider)
+            // And in the app's own sessions, cut at the refresh: none later.
+            let heldRows = SessionUsageRanking.rows(
+                held.sessions, details: held.sessionDetails, provider: provider, todayKey: today)
+            XCTAssertTrue(heldRows.allSatisfy { $0.lastActivity <= refresh }, provider)
 
             let days = ProviderUsageDays.fromScan(scan.entries, provider: provider, basis: .inputOutput, todayKey: today)
             XCTAssertEqual(rows.reduce(0) { $0 + $1.ioTokens }, days.totalTokens, provider)

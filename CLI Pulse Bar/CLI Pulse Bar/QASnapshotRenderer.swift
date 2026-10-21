@@ -962,6 +962,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         case .providerUsagePanel(let kind):
             await captureProviderUsagePanel(kind, surface: surface, index: index)
 
+        case .providerUsagePanelLaptop:
+            await captureProviderUsagePanel(.codex, surface: surface, index: index, laptopHeight: 876)
+
         case .providerCardPanel(let kind):
             enterDemoIfNeeded()
             await captureProviderCardPanel(kind, surface: surface, index: index)
@@ -1120,6 +1123,20 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                     + " this Mac's projects, so a provider's list can skip or reorder them), Claude with"
                     + " costs hidden too, three Codex projects with one that has no rate, and the App"
                     + " Store build's note in the card's place for Claude's log folder."
+            )
+
+        case .panelSessionsMoreStates:
+            await capture(
+                QAPanelSessionsMoreStates()
+                    .environment(\.colorScheme, .dark)
+                    .background(Color(red: 0.11, green: 0.11, blue: 0.12)),
+                surface: surface, index: index, scrolls: false,
+                note: "More of the Sessions card's states (v1.58, P1-5), dark, at the 440-point panel's card"
+                    + " width: Codex with Hide personal information on and 25 rows shown (\"Show 20 more\""
+                    + " pressed once), so \"Show less\" too, and an \"Unknown\" row among \"Project N\" ones;"
+                    + " two Codex sessions, one in a folder whose name is cut in the middle beside a"
+                    + " four-figure cost that is a lower bound; and a single Claude session (\"1 session\","
+                    + " no order picker), from QARenderSnapshot.sessionsEdgeSample."
             )
 
         case .panelSessionsStates:
@@ -1546,7 +1563,13 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
     /// Claude is drawn in cost as a signed-in Mac with synced rows sees it,
     /// with the This Mac | All devices switch, at 440 points, the narrowest
     /// the panel gets, where that header is tightest.
-    private func captureProviderUsagePanel(_ kind: ProviderKind, surface: QARenderSurface, index: Int) async {
+    ///
+    /// v1.58 (P1-5): with `laptopHeight`, the Codex panel at 440 points in a
+    /// panel that tall, scrolling as `UsagePanelRootView` scrolls a panel
+    /// taller than the screen, drawn page by page: what a laptop shows.
+    private func captureProviderUsagePanel(
+        _ kind: ProviderKind, surface: QARenderSurface, index: Int, laptopHeight: CGFloat? = nil
+    ) async {
         let metric = QARenderSnapshot.providerPanelMetric(kind)
         let defaults = UserDefaults.standard
         let previous = defaults.string(forKey: UsageChartMetric.defaultsKey)
@@ -1562,7 +1585,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             ? data.days.last { day in day.models.contains { $0.hasNoRate } }?.dateKey
             : nil
         let scopes: [UsageDataScope] = kind == .claude ? [.thisMac, .allDevices] : [.thisMac]
-        let width: CGFloat = kind == .claude ? 440 : 480
+        let width: CGFloat = kind == .claude || laptopHeight != nil ? 440 : 480
         // v1.58: both providers' sample rows by project, as the panel gets
         // every provider's (`UsagePanelModel.scanProjects`).
         let projects = QARenderSnapshot.providerPanelKinds.flatMap { QARenderSnapshot.providerPanelProjectsSample($0) }
@@ -1583,6 +1606,21 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             }
             .environment(\.colorScheme, .dark)
             .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        if let laptopHeight {
+            await capture(
+                ScrollView(.vertical) { panel }
+                    .frame(width: width, height: laptopHeight)
+                    .environment(\.colorScheme, .dark)
+                    .background(Color(red: 0.11, green: 0.11, blue: 0.12)),
+                surface: surface, index: index,
+                prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: surface.id) },
+                note: "The Codex panel of panel-provider-usage-codex at 440 points, the narrowest the panel"
+                    + " gets, in a panel \(Int(laptopHeight)) points tall: DashboardPanelController caps the"
+                    + " panel at the screen's visible height less 24, and this is a 900-point laptop screen's."
+                    + " The panel scrolls as a whole, a page per picture; the Sessions card has no scroll view"
+                    + " of its own, so the panel's scrolling reaches its footnote.")
+            return
+        }
         await capture(
             panel, surface: surface, index: index, scrolls: false,
             prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: surface.id) },
@@ -1815,10 +1853,10 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
 
     /// - Parameter scrolls: whether a view taller than its window is drawn
     ///   page by page through its largest scroll view. Off for the usage
-    ///   panel, whose only scroll view is a list inside a card (v1.58: the
-    ///   Sessions list, five rows at a time): paged, it was the list that
-    ///   scrolled, a page a few rows on, and the panel around it again each
-    ///   time.
+    ///   panel drawn whole: its only scroll views are lists inside a card (a
+    ///   day's models), and paged it would be such a list that scrolled, a
+    ///   page a few rows on, with the panel around it again each time.
+    ///   `panel-provider-usage-codex-laptop` draws the panel scrolling.
     private func capture<Content: View>(
         _ content: Content,
         surface: QARenderSurface,
@@ -2385,6 +2423,37 @@ private struct QAPanelSessionsStates: View {
             sessions: entries, details: details, projects: projects, provider: provider.rawValue,
             todayKey: DayKey.string(from: Date()), showsCost: showsCost, hidePersonalInfo: masked,
             initialOrder: order)
+    }
+}
+
+/// v1.58 (P1-5): what `QARenderSurface.panelSessionsMoreStates` draws.
+private struct QAPanelSessionsMoreStates: View {
+    var body: some View {
+        let kinds = QARenderSnapshot.providerPanelKinds
+        let sample = kinds.map { QARenderSnapshot.providerPanelSessionsSample($0) }
+        let projects = kinds.flatMap { QARenderSnapshot.providerPanelProjectsSample($0) }
+        let edge = QARenderSnapshot.sessionsEdgeSample()
+        let today = DayKey.string(from: Date())
+        VStack(alignment: .leading, spacing: 12) {
+            // Hide personal information on: the switch's state for this
+            // strip only, as in QAPanelSessionsStates.
+            card(sample.flatMap(\.entries), sample.flatMap(\.details), projects, provider: .codex, today: today,
+                 masked: true, shown: SessionUsageList.firstPage + SessionUsageList.pageStep)
+            card(edge.entries, edge.details, edge.projects, provider: .codex, today: today, masked: false)
+            card(edge.entries, edge.details, edge.projects, provider: .claude, today: today, masked: false)
+        }
+        .frame(width: 388, alignment: .leading)
+        .padding(26)
+    }
+
+    private func card(
+        _ entries: [CostUsageScanResult.SessionEntry], _ details: [CostUsageScanResult.SessionDetail],
+        _ projects: [CostUsageScanResult.ProjectEntry], provider: ProviderKind, today: String, masked: Bool,
+        shown: Int = SessionUsageList.firstPage
+    ) -> some View {
+        ProviderSessionsCard(
+            sessions: entries, details: details, projects: projects, provider: provider.rawValue,
+            todayKey: today, showsCost: true, hidePersonalInfo: masked, initialShown: shown)
     }
 }
 

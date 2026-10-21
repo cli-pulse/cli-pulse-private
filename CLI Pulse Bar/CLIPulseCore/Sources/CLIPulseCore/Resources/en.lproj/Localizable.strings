@@ -1695,6 +1695,16 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "session_history.sort_latest" = "Latest";
 "session_history.sort_picker" = "Sort sessions by";
 "session_history.help" = "One row per session, its subagents included, from this Mac's session logs.\nThis list is not synced to your account.";
+"session_history.io_incl_cached" = "%1$@ I/O, incl. %2$@ cached";
+"session_history.spoken_models_one" = "%@ and 1 other model";
+"session_history.spoken_models_other" = "%1$@ and %2$d other models";
+"session_history.spoken_io" = "%@ input and output tokens";
+"session_history.spoken_io_incl_cached" = "%1$@ input and output tokens, of which %2$@ cached";
+"session_history.spoken_io_plus_cached" = "%1$@ input and output tokens, plus %2$@ cached tokens";
+"session_history.shown_of" = "%1$@ of %2$@ sessions";
+"session_history.show_more" = "Show %@ more";
+"session_history.show_less" = "Show less";
+"session_history.unknown_help" = "This session's logs do not say which folder it ran in.";
 "folder_access.dir_clipulse_config" = "CLI Pulse Config";
 "folder_access.dir_clipulse_data" = "CLI Pulse Data";
 "folder_access.dir_codex_session_logs" = "Codex Session Logs";

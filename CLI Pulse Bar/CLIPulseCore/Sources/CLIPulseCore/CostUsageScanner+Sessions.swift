@@ -25,38 +25,45 @@ extension CostUsageScanner {
 
     /// Gathers what each session is from its logs, one log at a time.
     struct SessionAccumulator {
+        private struct Share {
+            let project: ProjectIdentity
+            let isSubagent: Bool
+            var tokensByDay: [String: Int]
+            var tokens: Int
+        }
         private struct Session {
-            var project: ProjectIdentity
-            /// The tokens of the log `project` was taken from, and whether
-            /// that log is the session's own (not a subagent's).
-            var projectTokens: Int
-            var projectFromOwnLog: Bool
+            /// Its logs' projects, own and subagents', in the order first
+            /// added.
+            var shares: [Share] = []
             var lastModifiedUnixMs: Int64
-            var subagentLastDays: [String]
+            var subagentLastDays: [String] = []
         }
 
         private var sessions: [String: Session] = [:]
 
-        /// One log of the session `key` with usage in the reported days.
+        /// One log of the session `key` with usage in the reported days: the
+        /// project it counts for, and its I/O tokens by day.
         ///
-        /// The session's project is its own log's (the heaviest, when a
-        /// conversation was continued in a second file), else its heaviest
-        /// subagent's: a subagent can run in another folder, and the
-        /// session ran where its own log says. A tie keeps the log added
-        /// first, so callers add logs in a fixed order.
+        /// Over the reported days, the session's project is its own logs'
+        /// (the heaviest, when a conversation was continued in a second
+        /// file), else its heaviest subagent's: a subagent can run in another
+        /// folder, and the session ran where its own log says. A list over
+        /// fewer days decides again with the logs that have usage in them
+        /// (`SessionDetail.project(in:)`). A tie keeps the log added first,
+        /// so callers add logs in a fixed order.
         mutating func add(
-            key: String, project: ProjectIdentity, tokens: Int, isSubagent: Bool,
-            modifiedUnixMs: Int64, latestDay: String)
+            key: String, project: ProjectIdentity, tokensByDay: [String: Int], isSubagent: Bool,
+            modifiedUnixMs: Int64)
         {
-            var session = sessions[key] ?? Session(
-                project: project, projectTokens: tokens, projectFromOwnLog: !isSubagent,
-                lastModifiedUnixMs: modifiedUnixMs, subagentLastDays: [])
-            let replaces = (!isSubagent && !session.projectFromOwnLog)
-                || ((!isSubagent) == session.projectFromOwnLog && tokens > session.projectTokens)
-            if replaces {
-                session.project = project
-                session.projectTokens = tokens
-                session.projectFromOwnLog = !isSubagent
+            guard let latestDay = tokensByDay.keys.max() else { return }
+            var session = sessions[key] ?? Session(lastModifiedUnixMs: modifiedUnixMs)
+            let tokens = tokensByDay.values.reduce(0) { SessionUsageRanking.plusSaturating($0, max(0, $1)) }
+            if let index = session.shares.firstIndex(where: { $0.project == project && $0.isSubagent == isSubagent }) {
+                session.shares[index].tokensByDay.merge(tokensByDay) { SessionUsageRanking.plusSaturating($0, $1) }
+                session.shares[index].tokens = SessionUsageRanking.plusSaturating(session.shares[index].tokens, tokens)
+            } else {
+                session.shares.append(Share(
+                    project: project, isSubagent: isSubagent, tokensByDay: tokensByDay, tokens: tokens))
             }
             session.lastModifiedUnixMs = max(session.lastModifiedUnixMs, modifiedUnixMs)
             if isSubagent { session.subagentLastDays.append(latestDay) }
@@ -66,10 +73,21 @@ extension CostUsageScanner {
         func details(provider: String) -> [CostUsageScanResult.SessionDetail] {
             sessions.keys.sorted().compactMap { key in
                 guard let session = sessions[key] else { return nil }
-                return CostUsageScanResult.SessionDetail(
-                    provider: provider, key: key, project: session.project,
+                let shares = session.shares.map {
+                    CostUsageScanResult.ProjectShare(
+                        project: $0.project, isSubagent: $0.isSubagent, tokensByDay: $0.tokensByDay)
+                }
+                // Over the reported days: what `project(in:)` gives for all
+                // of them.
+                let allDays = Set(session.shares.flatMap(\.tokensByDay.keys))
+                let detail = CostUsageScanResult.SessionDetail(
+                    provider: provider, key: key, project: .unknown,
                     lastActivity: Date(timeIntervalSince1970: Double(session.lastModifiedUnixMs) / 1000),
-                    subagentLastDays: session.subagentLastDays.sorted())
+                    subagentLastDays: session.subagentLastDays.sorted(), projectShares: shares)
+                return CostUsageScanResult.SessionDetail(
+                    provider: provider, key: key, project: detail.project(in: allDays),
+                    lastActivity: detail.lastActivity, subagentLastDays: detail.subagentLastDays,
+                    projectShares: shares)
             }
         }
     }
@@ -87,17 +105,18 @@ extension CostUsageScanner {
     ///
     /// - Parameter identities: the project each log counts for
     ///   (`codexProjects`), so a session names the project Projects counts
-    ///   its usage in.
+    ///   its usage in. Its keys are the logs whose rows count
+    ///   (`CodexCopyResolver`) with usage in the reported days, the logs this
+    ///   adds up, so the copies are not resolved again.
     static func codexSessions(
         cache: CostUsageCache, range: DayRange, identities: [String: ProjectIdentity]
     ) -> SessionSplit {
         var rows: [String: [String: [String: [Int]]]] = [:]
         var sessions = SessionAccumulator()
-        for path in codexCountedPaths(cache).sorted() {
+        for path in identities.keys.sorted() {
             guard let usage = cache.files[path] else { continue }
             let key = codexSessionKey(usage, path: path)
-            var tokens = 0
-            var latestDay: String?
+            var tokensByDay: [String: Int] = [:]
             for (day, models) in usage.days
             where DayRange.isInRange(dayKey: day, since: range.sinceKey, until: range.untilKey) {
                 for (model, packed) in models {
@@ -108,16 +127,13 @@ extension CostUsageScanner {
                     guard input > 0 || cached > 0 || output > 0 else { continue }
                     rows[key, default: [:]][day, default: [:]][model] = addPacked(
                         a: rows[key]?[day]?[model] ?? [], b: packed, sign: 1)
-                    tokens = SessionUsageRanking.plusSaturating(
-                        tokens, SessionUsageRanking.plusSaturating(max(0, input), max(0, output)))
-                    if day > (latestDay ?? "") { latestDay = day }
+                    tokensByDay[day] = SessionUsageRanking.plusSaturating(
+                        tokensByDay[day] ?? 0, SessionUsageRanking.plusSaturating(max(0, input), max(0, output)))
                 }
             }
-            guard let latestDay else { continue }
             sessions.add(
-                key: key, project: identities[path] ?? .unknown, tokens: tokens,
-                isSubagent: usage.codex?.isSubagent == true, modifiedUnixMs: usage.mtimeUnixMs,
-                latestDay: latestDay)
+                key: key, project: identities[path] ?? .unknown, tokensByDay: tokensByDay,
+                isSubagent: usage.codex?.isSubagent == true, modifiedUnixMs: usage.mtimeUnixMs)
         }
 
         var split = SessionSplit()

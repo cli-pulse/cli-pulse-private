@@ -451,7 +451,7 @@ extension CostUsageScanner {
             let place = places.place(path)
             let project = identity(directory: place?.directory)
             let session = claudeSession(path: path, place: place)
-            var latestDay: String?
+            var tokensByDay: [String: Int] = [:]
             for (day, models) in usage.days
             where DayRange.isInRange(dayKey: day, since: range.sinceKey, until: range.untilKey) {
                 for (model, packed) in models where model != claudeMsgBucketModel {
@@ -460,13 +460,15 @@ extension CostUsageScanner {
                     totals[day, default: [:]][model] = addPacked(a: totals[day]?[model] ?? [], b: packed, sign: 1)
                     sessionRows[session.key, default: [:]][day, default: [:]][model] = addPacked(
                         a: sessionRows[session.key]?[day]?[model] ?? [], b: packed, sign: 1)
-                    if packed.prefix(4).contains(where: { $0 > 0 }), day > (latestDay ?? "") { latestDay = day }
+                    if packed.prefix(4).contains(where: { $0 > 0 }) {
+                        let io = plusSaturating(max(0, packed[safeIdx: 0] ?? 0), max(0, packed[safeIdx: 3] ?? 0))
+                        tokensByDay[day] = plusSaturating(tokensByDay[day] ?? 0, io)
+                    }
                 }
             }
-            guard let latestDay else { continue }
             sessions.add(
-                key: session.key, project: project, tokens: 0, isSubagent: session.isSubagent,
-                modifiedUnixMs: usage.mtimeUnixMs, latestDay: latestDay)
+                key: session.key, project: project, tokensByDay: tokensByDay, isSubagent: session.isSubagent,
+                modifiedUnixMs: usage.mtimeUnixMs)
         }
 
         // As `entriesFromClaudeCache` prices the day's row: its stored cost,

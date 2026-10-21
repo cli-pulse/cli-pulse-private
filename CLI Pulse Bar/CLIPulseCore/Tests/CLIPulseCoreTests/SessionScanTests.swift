@@ -304,6 +304,43 @@ final class SessionScanTests: XCTestCase {
         assertAddsUp(result, "Codex")
     }
 
+    /// A session names a project its logs have usage in over the list's
+    /// days. Its own rollout ran in demo-app, but only on the scan's first
+    /// day, which the panel's 30 leave out; inside them, only its subagent
+    /// ran, in api-gateway. So the row names api-gateway, the folder
+    /// Projects counts its usage in, and with "Hide personal information"
+    /// on it is that folder's number: never "项目 0", the number of a folder
+    /// Projects does not list for these days.
+    func testASessionNamesAProjectItsLogsHaveUsageInOverTheWindow() throws {
+        let previousLocale = LocaleOverrideStore.shared.override
+        LocaleOverrideStore.shared.set("zh-Hans")
+        defer { LocaleOverrideStore.shared.set(previousLocale) }
+        try codexRollout("parent", cwd: demoApp, folderDay: ago(days: 30), meta: ago(days: 30, hours: 3), requests: [
+            Request(at: ago(days: 30, hours: 2), input: 5_000, cached: 0, output: 500),
+        ], file: "rollout-parent.jsonl")
+        try codexRollout("child", parent: "parent", cwd: api, meta: ago(hours: 2), requests: [
+            Request(at: ago(hours: 1), input: 300, cached: 0, output: 30),
+        ])
+
+        let result = scan()
+        let session = try XCTUnwrap(rows(result, "Codex").first)
+        XCTAssertEqual(rows(result, "Codex").count, 1)
+        XCTAssertEqual(session.subagents, 1)
+        XCTAssertEqual(session.project.name, "api-gateway", "the window's row names a folder its logs have no usage in")
+        // Over the scan's days, the session still ran where its own log says.
+        XCTAssertEqual(result.sessionDetails.first?.project.name, "demo-app")
+
+        let numbers = ProjectUsageRanking.anonymousNumbers(result.projects, todayKey: todayKey)
+        let number = try XCTUnwrap(numbers[session.project.key], "Projects does not number the row's folder")
+        XCTAssertEqual(numbers.count, 1, "demo-app has no usage in the window, so Projects lists it nowhere")
+        let list = SessionUsageList.build(
+            result.sessions, details: result.sessionDetails, projects: result.projects, provider: "Codex",
+            todayKey: todayKey, showsCost: true, hidePersonalInfo: true)
+        XCTAssertEqual(list.lines.map(\.title), ["项目 \(number)"])
+        XCTAssertFalse(list.lines.contains { $0.title == "项目 0" })
+        assertAddsUp(result, "Codex")
+    }
+
     // MARK: - Off
 
     /// The year-long reads that fill the usage archive split nothing.

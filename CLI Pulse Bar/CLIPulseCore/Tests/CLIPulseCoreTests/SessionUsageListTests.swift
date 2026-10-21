@@ -103,7 +103,8 @@ final class SessionUsageListTests: XCTestCase {
         XCTAssertEqual(list.countText, "3 个会话")
         XCTAssertEqual(list.lines.first?.costText, CostFormatter.format(6))
         XCTAssertEqual(list.lines.first?.hoverText, "/Users/sample/Projects/demo-app")
-        XCTAssertEqual(list.lines[1].hoverText, L10n.projects.unknownHelp)
+        // One session's own wording, not Projects' for its combined row.
+        XCTAssertEqual(list.lines[1].hoverText, "这个会话的日志没有记录它在哪个文件夹中运行。")
         XCTAssertTrue(list.lines[1].isUnknown)
     }
 
@@ -120,23 +121,58 @@ final class SessionUsageListTests: XCTestCase {
         XCTAssertTrue(list.lines.allSatisfy { $0.costText == nil && $0.costHelp.isEmpty })
         XCTAssertEqual(SessionUsageRanking.Order.cost.label(showsCost: false), "token")
         XCTAssertEqual(SessionUsageRanking.Order.cost.label(showsCost: true), "费用")
-        XCTAssertEqual(SessionUsageRanking.Order.latest.label(showsCost: true), "最近")
+        // "最新", not "最近": the Sessions tab's "最近" chip means a log
+        // written in the last 30 minutes.
+        XCTAssertEqual(SessionUsageRanking.Order.latest.label(showsCost: true), "最新")
+    }
+
+    /// With costs hidden a line names the session's model with the most
+    /// tokens, not its most expensive one, which would give the ranking by
+    /// cost away.
+    func testWithCostsHiddenALineNamesItsModelWithTheMostTokens() throws {
+        let entries = [
+            entry("mixed", model: "gpt-5.5", input: 100, output: 10, cost: 4),
+            entry("mixed", model: "gpt-5.5-mini", input: 9_000, output: 900, cost: 0.5),
+        ]
+        let fixture = (entries, [detail("mixed", project: folder("demo-app"), minutesAgo: 1)])
+        XCTAssertEqual(try XCTUnwrap(build(fixture).lines.first).usageText, "gpt-5.5 +1 · 10K I/O")
+        XCTAssertEqual(try XCTUnwrap(build(fixture, showsCost: false).lines.first).usageText, "gpt-5.5-mini +1 · 10K I/O")
     }
 
     // MARK: - What a row says
 
+    /// Codex's input includes its cached input, so its cached tokens are
+    /// shown as part of its I/O ("含"), never beside it as a second amount;
+    /// a session that cached nothing says nothing about the cache. "上次活动",
+    /// not "最近活动", the Sessions tab's chip for a log written in the last
+    /// five minutes.
     func testARowNamesItsModelTokensActivityAndSubagents() throws {
         let line = try XCTUnwrap(build(three).lines.first)
-        XCTAssertEqual(line.usageText, "gpt-5.5 +1 · 1.5K I/O · 缓存 200")
+        XCTAssertEqual(line.usageText, "gpt-5.5 +1 · 1.5K I/O（含缓存 200）")
+        XCTAssertEqual(line.usageHelp, L10n.providers.codexIOTokensHelp)
+        XCTAssertTrue(line.usageHelp.hasPrefix("输入 + 输出 token。输入已包含缓存输入"), line.usageHelp)
         let moment = DisplayFormat.dateTime(Self.reference.addingTimeInterval(-600 * 60))
-        XCTAssertEqual(line.activityText, "最近活动：\(moment) · 含 2 个子 Agent")
+        XCTAssertEqual(line.activityText, "上次活动：\(moment) · 含 2 个子 Agent")
+        // VoiceOver hears the shorthand spelled out: the models counted in
+        // words, the tokens in full with what they are, no middle dots.
         XCTAssertEqual(
             line.accessibilityText,
-            "demo-app, \(CostFormatter.format(6)), gpt-5.5 +1 · 1.5K I/O · 缓存 200, 最近活动：\(moment) · 含 2 个子 Agent")
-        // A session without subagents says nothing about them.
+            "demo-app, \(CostFormatter.format(6)), gpt-5.5 及另外 1 个模型, 输入和输出 1,540 个 token，其中缓存 200 个, "
+                + "上次活动：\(moment), 含 2 个子 Agent")
+        // A session without subagents says nothing about them, nor about a
+        // cache it did not use.
         let recent = try XCTUnwrap(build(three).lines.last)
         XCTAssertFalse(recent.activityText.contains("子 Agent"), recent.activityText)
-        XCTAssertEqual(recent.usageText, "gpt-5.5 · 55 I/O · 缓存 0")
+        XCTAssertEqual(recent.usageText, "gpt-5.5 · 55 I/O")
+        XCTAssertTrue(recent.accessibilityText.contains("gpt-5.5, 输入和输出 55 个 token, 上次活动："), recent.accessibilityText)
+    }
+
+    /// Spoken, "+2" is "及另外 2 个模型", one model or many.
+    func testVoiceOverCountsTheOtherModelsInWords() {
+        XCTAssertEqual(L10n.sessionHistory.spokenModels("gpt-5.5", others: 2), "gpt-5.5 及另外 2 个模型")
+        LocaleOverrideStore.shared.set("en")
+        XCTAssertEqual(L10n.sessionHistory.spokenModels("gpt-5.5", others: 1), "gpt-5.5 and 1 other model")
+        XCTAssertEqual(L10n.sessionHistory.spokenModels("gpt-5.5", others: 3), "gpt-5.5 and 3 other models")
     }
 
     func testEnglishCountsOneAndMany() {
@@ -146,6 +182,41 @@ final class SessionUsageListTests: XCTestCase {
         XCTAssertEqual(L10n.sessionHistory.subagents(1), "includes 1 subagent")
         XCTAssertEqual(L10n.sessionHistory.subagents(3), "includes 3 subagents")
         XCTAssertEqual(L10n.sessionHistory.ioCached("1.2M", "980K"), "1.2M I/O · 980K cached")
+        XCTAssertEqual(L10n.sessionHistory.ioInclCached("1.2M", "980K"), "1.2M I/O, incl. 980K cached")
+        XCTAssertEqual(L10n.sessionHistory.shownOf(5, 1_408), "5 of 1,408 sessions")
+        XCTAssertEqual(L10n.sessionHistory.showMore(20), "Show 20 more")
+        XCTAssertEqual(L10n.sessionHistory.sortLatest, "Latest")
+    }
+
+    // MARK: - More than a page
+
+    /// The card shows the first five, says how many of how many, and shows
+    /// twenty more at a time; "收起" goes back to five. It has no scroll view
+    /// of its own, so a row past the fifth is reached by these, never by a
+    /// scroll nothing signals.
+    func testTheListShowsAPageAtATime() {
+        let entries = (0..<56).map { entry("s\($0)", input: 1_000 + $0, cost: Double($0)) }
+        let details = (0..<56).map { detail("s\($0)", project: folder("demo-app"), minutesAgo: Double($0)) }
+        let list = build((entries, details))
+        XCTAssertEqual(list.lines.count, 56)
+        XCTAssertEqual(SessionUsageList.firstPage, 5)
+        XCTAssertEqual(list.visibleLines(SessionUsageList.firstPage).count, 5)
+        XCTAssertEqual(list.shownText(5), "56 个会话中的 5 个")
+        XCTAssertEqual(list.moreCount(after: 5), 20)
+        XCTAssertEqual(L10n.sessionHistory.showMore(list.moreCount(after: 5)), "再显示 20 个")
+        XCTAssertFalse(list.canShowLess(5))
+        XCTAssertEqual(list.shownText(25), "56 个会话中的 25 个")
+        XCTAssertTrue(list.canShowLess(25))
+        XCTAssertEqual(list.moreCount(after: 45), 11)
+        XCTAssertEqual(list.moreCount(after: 56), 0)
+        XCTAssertEqual(list.shownText(56), "56 个会话")
+        XCTAssertEqual(list.shownText(80), list.countText)
+        XCTAssertEqual(L10n.sessionHistory.showLess, "收起")
+        // Three sessions: all shown, nothing more to show.
+        let few = build(three)
+        XCTAssertEqual(few.shownText(5), "3 个会话")
+        XCTAssertEqual(few.moreCount(after: 5), 0)
+        XCTAssertFalse(few.canShowLess(5))
     }
 
     /// A cost is marked as a model's is: "No rate" when none of its tokens
@@ -227,7 +298,12 @@ final class SessionUsageListTests: XCTestCase {
         let claude = build(fixture, provider: "Claude")
         XCTAssertEqual(claude.lines.map(\.title), ["demo-app"])
         XCTAssertEqual(claude.countText, "1 个会话")
+        // Claude's cache is on top of its I/O, so it stands beside it.
         XCTAssertEqual(claude.lines.first?.usageText, "claude-sonnet-4-5 · 100 I/O · 缓存 900")
+        XCTAssertEqual(claude.lines.first?.usageHelp, L10n.providers.claudeIOTokensHelp)
+        XCTAssertTrue(
+            claude.lines.first?.accessibilityText.contains("输入和输出 100 个 token，另有缓存 900 个 token") == true,
+            claude.lines.first?.accessibilityText ?? "")
     }
 
     // MARK: - QA
@@ -236,6 +312,39 @@ final class SessionUsageListTests: XCTestCase {
         XCTAssertTrue(QARenderSnapshot.catalog.contains(.panelSessionsStates))
         XCTAssertEqual(QARenderSurface.panelSessionsStates.id, "card-panel-sessions")
         XCTAssertEqual(QARenderSurface.panelSessionsStates.kind, .panel)
+        XCTAssertTrue(QARenderSnapshot.catalog.contains(.panelSessionsMoreStates))
+        XCTAssertEqual(QARenderSurface.panelSessionsMoreStates.id, "card-panel-sessions-more")
+        XCTAssertTrue(QARenderSnapshot.catalog.contains(.providerUsagePanelLaptop))
+        XCTAssertEqual(QARenderSurface.providerUsagePanelLaptop.id, "panel-provider-usage-codex-laptop")
+        XCTAssertEqual(QARenderSurface.providerUsagePanelLaptop.kind, .panel)
+    }
+
+    /// The "more" strip shows what its note says: among the first 25 Codex
+    /// sessions with the switch on, "项目 N" rows and an "未知" one; an edge
+    /// session whose cost is a four-figure lower bound; a single Claude one.
+    func testTheQAEdgeStatesShowWhatTheyClaim() throws {
+        let kinds = QARenderSnapshot.providerPanelKinds
+        let sample = kinds.map { QARenderSnapshot.providerPanelSessionsSample($0) }
+        let masked = SessionUsageList.build(
+            sample.flatMap(\.entries), details: sample.flatMap(\.details),
+            projects: kinds.flatMap { QARenderSnapshot.providerPanelProjectsSample($0) }, provider: "Codex",
+            todayKey: DayKey.string(from: Date()), showsCost: true, hidePersonalInfo: true)
+        let shown = masked.visibleLines(SessionUsageList.firstPage + SessionUsageList.pageStep)
+        XCTAssertEqual(shown.count, 25)
+        XCTAssertTrue(shown.contains { $0.isUnknown && $0.title == "未知" }, "\(shown.map(\.title))")
+        XCTAssertTrue(shown.contains { $0.title.hasPrefix("项目 ") })
+        XCTAssertGreaterThan(masked.moreCount(after: shown.count), 0)
+
+        let edge = QARenderSnapshot.sessionsEdgeSample()
+        func list(_ provider: String) -> SessionUsageList {
+            SessionUsageList.build(
+                edge.entries, details: edge.details, projects: edge.projects, provider: provider,
+                todayKey: DayKey.string(from: Date()), showsCost: true, hidePersonalInfo: false)
+        }
+        let long = try XCTUnwrap(list("Codex").lines.first)
+        XCTAssertEqual(long.costText, CostFormatter.format(1_234.56, approximate: false, atLeast: true))
+        XCTAssertGreaterThan(long.title.count, 50)
+        XCTAssertEqual(list("Claude").countText, "1 个会话")
     }
 
     /// The renders' sample sessions are the sample projects' rows exactly,

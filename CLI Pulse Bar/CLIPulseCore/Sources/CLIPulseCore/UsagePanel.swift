@@ -655,11 +655,49 @@ public struct ProviderUsagePanelView: View {
     }
 }
 
+// MARK: - The panel's own scroll view
+
+/// The slide-out panel's scroll view: it scrolls only when the panel is
+/// taller than the screen allows, and its content is laid out at its natural
+/// height either way, so the root can measure it (`UsagePanelRootView`).
+///
+/// Scrolling is turned off by giving the scroll view no axes, not with
+/// `.scrollDisabled`. That modifier travels down the environment and, as
+/// documented from macOS 13, turns off every scroll view inside too: a day's
+/// model list showing some of its rows would keep the rest out of reach on a
+/// screen tall enough for the panel. Nothing below can turn it back on:
+/// measured on macOS 27, neither `.scrollDisabled(false)` nor setting
+/// `isScrollEnabled` to true below it does. macOS 27 happens to spare a
+/// nested list; 13 and 14, which this app supports, were not measured
+/// (`UsagePanelScrollTests` keeps the modifier out). The axes cannot disable
+/// anything but this one view, and it is the same `ScrollView` type either
+/// way, so the panel's content keeps its identity and its state (the
+/// Sessions card's order and rows shown) when the panel starts or stops
+/// scrolling. `MenuBarView.scrollingUnderDisclosure` does the same.
+struct UsagePanelScroller<Content: View>: View {
+    /// Whether the content fits the panel: no scrolling, no indicators.
+    let fits: Bool
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ScrollView(fits ? [] : .vertical) {
+            // Without a vertical axis the scroll view proposes its own
+            // height; the content keeps its natural one, so a panel that
+            // grows is measured at its new height, not squeezed into the
+            // old one.
+            content.fixedSize(horizontal: false, vertical: true)
+        }
+        .scrollIndicators(fits ? .hidden : .automatic)
+    }
+}
+
 // MARK: - The panel's content, in either mode
 
 /// What the slide-out panel hosts. Measures its own natural height and
 /// reports it, so the panel follows content that grows or shrinks (a refresh,
-/// a mode switch), and scrolls only when taller than the screen allows.
+/// a mode switch, more sessions shown), and scrolls only when taller than the
+/// screen allows: in a provider's mode with its Sessions card (v1.58), about
+/// 1,200 points, that is every laptop screen.
 struct UsagePanelRootView: View {
     @ObservedObject var model: UsagePanelModel
     let width: CGFloat
@@ -671,15 +709,13 @@ struct UsagePanelRootView: View {
 
     var body: some View {
         let fits = naturalHeight <= maxHeight
-        ScrollView(.vertical) {
+        UsagePanelScroller(fits: fits) {
             UsagePanelContent(model: model, onOpenSettings: onOpenSettings)
                 .frame(width: width)
                 .background(GeometryReader { geo in
                     Color.clear.preference(key: UsagePanelHeightKey.self, value: geo.size.height)
                 })
         }
-        .scrollDisabled(fits)
-        .scrollIndicators(fits ? .hidden : .automatic)
         .frame(width: width)
         .onPreferenceChange(UsagePanelHeightKey.self) { height in
             naturalHeight = height
