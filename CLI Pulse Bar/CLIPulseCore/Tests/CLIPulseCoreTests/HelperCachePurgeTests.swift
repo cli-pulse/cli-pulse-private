@@ -8,12 +8,13 @@ import XCTest
 /// What is pinned here: where each build's helper keeps them; that the
 /// Developer ID app reaches only the unsandboxed helper's places and the App
 /// Store app none, decided before any file call, and that nothing else is
-/// touched; that a helper which emptied its own is left alone for good; that
-/// a running helper, an enabled LoginItem, a helper that starts during the
-/// checks and one holding the lock are all left alone; that the helper waits
-/// at its start while the app holds the lock; that a real URL cache's
-/// credentialed entries are gone afterwards; that it runs once; and where the
-/// app and the helper call it.
+/// touched; that a helper which emptied its own, as its own preferences file
+/// says, is left alone for good; that a running helper, an enabled LoginItem,
+/// a helper that starts during the checks and one holding the lock are all
+/// left alone; that the helper waits at its start while the app holds the
+/// lock and then holds it for as long as it runs; that a real URL cache's
+/// credentialed entries are gone afterwards; that it runs once, off the main
+/// thread; and where the app and the helper call it.
 final class HelperCachePurgeTests: XCTestCase {
 
     private static let sampleHome = URL(fileURLWithPath: "/Users/sample", isDirectory: true)
@@ -278,27 +279,27 @@ final class HelperCachePurgeTests: XCTestCase {
     }
 
     /// A helper that has run 1.57 or later emptied both itself, as its own
-    /// done-flag in its own defaults says: recorded as done, with no file
-    /// call, whether it runs now or not; and the app stops asking.
+    /// done-flag in its own preferences file says: recorded as done, with no
+    /// file call, whether it runs now or not; and the app stops asking.
     func testAHelperThatEmptiedItsOwnIsLeftAloneForGood() throws {
         let home = try scratchHome()
         let places = HelperCachePurge.helperPlaces(realHome: home)[0]
         try Self.fillLikeA156Helper(places)
+        let reach = Self.developerIDReach(home: home)
+        XCTAssertFalse(HelperCachePurge.hasEmptiedItsOwn(reach), "a helper that never ran: no preferences file")
+        try Self.writeHelperPreferences(home: home, flag: nil)
+        XCTAssertFalse(HelperCachePurge.hasEmptiedItsOwn(reach), "a helper that never ran 1.57")
+        try Self.writeHelperPreferences(home: home, flag: CredentialedURLSession.purgeVersion)
+        XCTAssertTrue(HelperCachePurge.hasEmptiedItsOwn(reach))
         let before = try Self.snapshot(of: home)
-        let helperDefaults = isolatedDefaults()
-        XCTAssertFalse(HelperCachePurge.hasEmptiedItsOwn(nil))
-        XCTAssertFalse(HelperCachePurge.hasEmptiedItsOwn(helperDefaults), "a helper that never ran 1.57")
-        helperDefaults.set(CredentialedURLSession.purgeVersion, forKey: CredentialedURLSession.purgeDoneKey)
-        XCTAssertTrue(HelperCachePurge.hasEmptiedItsOwn(helperDefaults))
 
         let defaults = isolatedDefaults()
-        let reach = Self.developerIDReach(home: home)
         for (isRunning, isLoginItemEnabled) in [(false, false), (true, true)] {
             defaults.removeObject(forKey: HelperCachePurge.doneKey)
             let helper = HelperCachePurge.HelperState(
                 isRunning: { isRunning },
                 isLoginItemEnabled: { isLoginItemEnabled },
-                hasEmptiedItsOwn: { HelperCachePurge.hasEmptiedItsOwn(helperDefaults) }
+                hasEmptiedItsOwn: { HelperCachePurge.hasEmptiedItsOwn(reach) }
             )
             let recorder = FileCallRecorder(base: .live)
             XCTAssertEqual(HelperCachePurge.purgeIfNeeded(defaults: defaults, reach: reach, helper: helper, files: recorder.access),
@@ -309,6 +310,33 @@ final class HelperCachePurgeTests: XCTestCase {
             XCTAssertEqual(HelperCachePurge.purgeIfNeeded(defaults: defaults, reach: reach, helper: helper, files: recorder.access),
                            .alreadyDone)
         }
+    }
+
+    /// The flag is read from the unsandboxed helper's own preferences file,
+    /// by path: not from the App Store helper's container (a Mac with both
+    /// builds' helpers), whose flag says nothing about these folders; not
+    /// from a file that is not a property list; and never by an app that
+    /// cannot reach the file.
+    func testTheHelpersFlagIsReadFromItsOwnPreferencesFileOnly() throws {
+        XCTAssertEqual(HelperCachePurge.helperPreferencesFile(realHome: Self.sampleHome).path,
+                       "/Users/sample/Library/Preferences/yyh.CLI-Pulse.helper.plist")
+
+        let home = try scratchHome()
+        let reach = Self.developerIDReach(home: home)
+        let container = home.appendingPathComponent("Library/Containers/yyh.CLI-Pulse.helper/Data", isDirectory: true)
+        try Self.writeHelperPreferences(home: container, flag: CredentialedURLSession.purgeVersion)
+        XCTAssertFalse(HelperCachePurge.hasEmptiedItsOwn(reach), "the App Store helper's flag was read")
+
+        let file = HelperCachePurge.helperPreferencesFile(realHome: home)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("not a property list".utf8).write(to: file)
+        XCTAssertFalse(HelperCachePurge.hasEmptiedItsOwn(reach))
+        try Self.writeHelperPreferences(home: home, flag: 0)
+        XCTAssertFalse(HelperCachePurge.hasEmptiedItsOwn(reach))
+        try Self.writeHelperPreferences(home: home, flag: CredentialedURLSession.purgeVersion)
+        XCTAssertTrue(HelperCachePurge.hasEmptiedItsOwn(reach))
+        XCTAssertFalse(HelperCachePurge.hasEmptiedItsOwn(Self.appStoreReach(home: home)),
+                       "the App Store app read a file outside its container")
     }
 
     /// A helper that starts after the first check is seen by the second,
@@ -336,52 +364,115 @@ final class HelperCachePurgeTests: XCTestCase {
         XCTAssertEqual(defaults.integer(forKey: HelperCachePurge.doneKey), 0)
     }
 
-    /// While a starting helper holds the lock, the app removes nothing; once
-    /// it is free, the app empties the folder.
+    /// While a helper holds the lock, the app removes nothing, whatever
+    /// LaunchServices and the LoginItem status say (both say "idle" here:
+    /// a running helper they miss); once it is free, the app empties the
+    /// folder.
     func testTheAppLeavesItAloneWhileTheHelperHoldsTheLock() throws {
         let home = try scratchHome()
         let places = HelperCachePurge.helperPlaces(realHome: home)[0]
         try Self.fillLikeA156Helper(places)
         let defaults = isolatedDefaults()
         let reach = Self.developerIDReach(home: home)
-        let lockFile = places.cacheFolder.appendingPathComponent(HelperCachePurge.lockFileName)
-        let helper = try XCTUnwrap(HelperCachePurge.HeldLock.take(lockFile))
+        var helper = try XCTUnwrap(HelperCachePurge.waitForTheAppThenHoldTheLock(cacheFolder: places.cacheFolder, limit: 1))
 
+        for _ in 0..<2 {
+            XCTAssertEqual(HelperCachePurge.purgeIfNeeded(defaults: defaults, reach: reach, helper: Self.idle, files: .live),
+                           .busy)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: places.cacheFolder.appendingPathComponent("Cache.db").path))
+            XCTAssertEqual(defaults.integer(forKey: HelperCachePurge.doneKey), 0)
+        }
+
+        helper.release()
+        helper = try XCTUnwrap(HelperCachePurge.waitForTheAppThenHoldTheLock(cacheFolder: places.cacheFolder, limit: 1))
         XCTAssertEqual(HelperCachePurge.purgeIfNeeded(defaults: defaults, reach: reach, helper: Self.idle, files: .live),
-                       .busy)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: places.cacheFolder.appendingPathComponent("Cache.db").path))
-        XCTAssertEqual(defaults.integer(forKey: HelperCachePurge.doneKey), 0)
-
+                       .busy, "a helper that started again holds it again")
         helper.release()
         XCTAssertEqual(HelperCachePurge.purgeIfNeeded(defaults: defaults, reach: reach, helper: Self.idle, files: .live),
                        .emptied(removed: 5))
     }
 
     /// The helper's side: at its start it waits while the app holds the lock,
-    /// goes on as soon as it is free, and gives up waiting after the limit.
-    func testTheHelperWaitsWhileTheAppEmptiesIt() throws {
+    /// goes on as soon as it is free, and gives up waiting after the limit;
+    /// once it goes on, it holds the lock until it lets go of it, and the app
+    /// cannot take it meanwhile.
+    func testTheHelperWaitsWhileTheAppEmptiesItThenHoldsTheLock() throws {
         let folder = try scratchHome().appendingPathComponent("Library/Caches/yyh.CLI-Pulse.helper", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let lockFile = folder.appendingPathComponent(HelperCachePurge.lockFileName)
 
         var started = Date()
-        XCTAssertTrue(HelperCachePurge.waitWhileTheAppEmptiesIt(cacheFolder: folder, limit: 2))
+        var helper = HelperCachePurge.waitForTheAppThenHoldTheLock(cacheFolder: folder, limit: 2)
+        XCTAssertNotNil(helper)
         XCTAssertLessThan(Date().timeIntervalSince(started), 0.5, "nobody held the lock, yet it waited")
+        let appWhileItRuns = HelperCachePurge.HeldLock.take(lockFile)
+        XCTAssertNil(appWhileItRuns, "the app took the lock a running helper holds")
+        appWhileItRuns?.release()
+        let secondHelper = HelperCachePurge.waitForTheAppThenHoldTheLock(cacheFolder: folder, limit: 0)
+        XCTAssertNotNil(secondHelper, "a second helper could not share it")
+        secondHelper?.release()
+        helper = nil  // the helper quits: its lock goes with it
+        let appAfterwards = HelperCachePurge.HeldLock.take(lockFile)
+        XCTAssertNotNil(appAfterwards, "a helper that is gone still holds the lock")
+        appAfterwards?.release()
 
         let app = try XCTUnwrap(HelperCachePurge.HeldLock.take(lockFile))
         started = Date()
-        XCTAssertFalse(HelperCachePurge.waitWhileTheAppEmptiesIt(cacheFolder: folder, limit: 0.3))
+        let timedOut = HelperCachePurge.waitForTheAppThenHoldTheLock(cacheFolder: folder, limit: 0.3)
+        XCTAssertNil(timedOut)
         XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(started), 0.3, "it did not wait for the app")
 
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { app.release() }
         started = Date()
-        XCTAssertTrue(HelperCachePurge.waitWhileTheAppEmptiesIt(cacheFolder: folder, limit: 5))
+        helper = HelperCachePurge.waitForTheAppThenHoldTheLock(cacheFolder: folder, limit: 5)
         let waited = Date().timeIntervalSince(started)
+        XCTAssertNotNil(helper)
         XCTAssertGreaterThanOrEqual(waited, 0.2, "it went on while the app still held the lock")
         XCTAssertLessThan(waited, 4, "it waited out the limit instead of going on when the lock was freed")
+        let appAfterTheWait = HelperCachePurge.HeldLock.take(lockFile)
+        XCTAssertNil(appAfterTheWait, "the helper let go of the lock once it had waited")
+        appAfterTheWait?.release()
+        helper?.release()
 
         XCTAssertGreaterThanOrEqual(HelperCachePurge.helperWaitLimit, 1)
         XCTAssertLessThanOrEqual(HelperCachePurge.helperWaitLimit, 10, "a stuck app must not hold a starting helper for long")
+    }
+
+    /// The app's launch call runs the purge on the queue it is given, not on
+    /// the calling (main) thread, and reports the outcome from there.
+    func testTheAppPurgesOffTheMainThread() throws {
+        XCTAssertTrue(Thread.isMainThread, "precondition: tests run on the main thread")
+        let home = try scratchHome()
+        try Self.fillLikeA156Helper(HelperCachePurge.helperPlaces(realHome: home)[0])
+        let threads = MainThreadRecorder()
+        let helper = HelperCachePurge.HelperState(
+            isRunning: { threads.note(); return false },
+            isLoginItemEnabled: { threads.note(); return false },
+            hasEmptiedItsOwn: { threads.note(); return false }
+        )
+        let base = HelperCachePurge.FileAccess.live
+        var files = base
+        files.contents = { url in threads.note(); return try base.contents(url) }
+        files.remove = { url in threads.note(); try base.remove(url) }
+        let reported = expectation(description: "outcome reported")
+        var outcome: HelperCachePurge.Outcome?
+        var reportedOnMain = true
+
+        HelperCachePurge.purgeInBackground(
+            on: DispatchQueue(label: "HelperCachePurgeTests.utility", qos: .utility),
+            defaults: isolatedDefaults(), reach: Self.developerIDReach(home: home), helper: helper, files: files
+        ) { result in
+            outcome = result
+            reportedOnMain = Thread.isMainThread
+            reported.fulfill()
+        }
+        threads.note()  // this thread, after the call returned: the only main-thread note
+        wait(for: [reported], timeout: 10)
+
+        XCTAssertEqual(outcome, .emptied(removed: 5))
+        XCTAssertFalse(reportedOnMain)
+        XCTAssertEqual(threads.onMain, 1, "the purge ran on the calling thread")
+        XCTAssertGreaterThan(threads.offMain, 5)
     }
 
     // MARK: - The flag and the call sites
@@ -395,24 +486,29 @@ final class HelperCachePurgeTests: XCTestCase {
         XCTAssertTrue(FirstRunPresentation.shouldPresent(existingKeys: [key], alreadyShown: false, hasSentinel: false))
     }
 
-    /// The app empties the helper's places at launch, production only,
-    /// before `AppState` (which can turn the LoginItem on); the helper waits
-    /// for it before its own purge and before its daemon exists.
+    /// The app starts emptying the helper's places at launch, production
+    /// only, off the main thread, before `AppState` (which can turn the
+    /// LoginItem on); the helper waits for it before its own purge and before
+    /// its daemon exists, and keeps the lock in a property, for as long as it
+    /// runs, rather than letting it go at once.
     func testTheAppPurgesBeforeAppStateAndTheHelperWaitsFirst() throws {
         let app = try Self.shippingCode(at: "CLI Pulse Bar/CLIPulseBarApp.swift")
         let gate = try XCTUnwrap(app.range(of: "if runtimeEnvironment.capabilities.allowsHelperRegistration {\n"
-                                           + "            let outcome = HelperCachePurge.purgeIfNeeded()"),
-                                 "the app no longer empties the helper's places, or not only in production")
+                                           + "            HelperCachePurge.purgeInBackground {"),
+                                 "the app no longer empties the helper's places off the main thread, or not only in production")
+        XCTAssertNil(app.range(of: "HelperCachePurge.purgeIfNeeded("), "the app empties the helper's places on the main thread")
         let appState = try XCTUnwrap(app.range(of: "let state = AppState(runtimeEnvironment: runtimeEnvironment)"))
         XCTAssertTrue(gate.lowerBound < appState.lowerBound, "the app empties the helper's places after AppState")
 
         let helper = try Self.shippingCode(at: "CLIPulseHelper/HelperAppDelegate.swift")
-        let wait = try XCTUnwrap(helper.range(of: "HelperCachePurge.waitWhileTheAppEmptiesIt()"),
-                                 "the helper no longer waits for the app")
+        XCTAssertNotNil(helper.range(of: "private var cacheLock: HelperCachePurge.HeldLock?"))
+        let wait = try XCTUnwrap(helper.range(of: "        cacheLock = HelperCachePurge.waitForTheAppThenHoldTheLock()"),
+                                 "the helper no longer waits for the app, or lets go of the lock at once")
         let ownPurge = try XCTUnwrap(helper.range(of: "CredentialedURLSession.purgeLegacyStorageIfNeeded()"))
         let daemon = try XCTUnwrap(helper.range(of: "let daemon = HelperDaemon("))
         XCTAssertTrue(wait.lowerBound < ownPurge.lowerBound, "the helper opens its URL cache before waiting")
         XCTAssertTrue(wait.lowerBound < daemon.lowerBound)
+        XCTAssertNil(helper.range(of: "cacheLock = nil"), "the helper lets go of the lock while it runs")
     }
 
     // MARK: - This Mac
@@ -439,7 +535,7 @@ final class HelperCachePurgeTests: XCTestCase {
             throw XCTSkip("set CLIPULSE_HELPER_PURGE_LIVE=1 to empty this Mac's helper cache (to the Trash)")
         }
         let reach = HelperCachePurge.Reach.current()
-        let helper = HelperCachePurge.HelperState.live
+        let helper = HelperCachePurge.HelperState.live(reach: reach)
         if helper.isRunning() { throw XCTSkip("the helper is running: it empties its own") }
         var trashed = 0
         var files = HelperCachePurge.FileAccess.live
@@ -486,6 +582,16 @@ final class HelperCachePurgeTests: XCTestCase {
         }
         try fileManager.createDirectory(at: places.cookieFile.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("cook".utf8).write(to: places.cookieFile)
+    }
+
+    /// The helper's preferences file under `home`, as `cfprefsd` writes it
+    /// (binary), with its 1.57 done-flag set to `flag` or absent.
+    private static func writeHelperPreferences(home: URL, flag: Int?) throws {
+        let file = HelperCachePurge.helperPreferencesFile(realHome: home)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var preferences: [String: Any] = ["SUHasLaunchedBefore": true]
+        if let flag { preferences[CredentialedURLSession.purgeDoneKey] = flag }
+        try PropertyListSerialization.data(fromPropertyList: preferences, format: .binary, options: 0).write(to: file)
     }
 
     /// Every file under `folder` with its bytes, to show nothing changed.
@@ -564,6 +670,20 @@ final class HelperCachePurgeTests: XCTestCase {
                 return line
             }
             .joined(separator: "\n")
+    }
+}
+
+/// Counts the calls made on the main thread and off it.
+private final class MainThreadRecorder {
+    private let lock = NSLock()
+    private(set) var onMain = 0
+    private(set) var offMain = 0
+
+    func note() {
+        let isMain = Thread.isMainThread
+        lock.lock()
+        defer { lock.unlock() }
+        if isMain { onMain += 1 } else { offMain += 1 }
     }
 }
 

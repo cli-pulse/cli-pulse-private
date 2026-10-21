@@ -33,18 +33,31 @@ import ServiceManagement
 /// that build's copies, which PRIVACY.md names for the user to delete.
 ///
 /// Nothing to do once the helper has emptied its own: its 1.57 done-flag, in
-/// its own defaults, says so, and the app records that and stops looking.
+/// its own preferences file, says so, and the app records that and stops
+/// looking.
 ///
 /// Never while the helper may be using them. Not while it runs, and not while
 /// its LoginItem is on: launchd may start it at any moment, and it then
-/// empties its own. Both sides also take a `flock` on a file in the helper's
-/// cache folder: the app for its checks and the deletion, the helper at its
-/// start before anything there opens the URL cache
-/// (`waitWhileTheAppEmptiesIt`). A helper that starts during the deletion
-/// waits for it to end; one that got past the lock first is already
-/// registered with LaunchServices, so the app's second check, made holding
-/// the lock, sees it running and leaves everything alone. `flock` goes away
-/// with the process that held it, however it ends, so no lock is left behind.
+/// empties its own. Those two checks are not what makes it safe, though: a
+/// lock is. Both sides `flock` a file in the helper's cache folder. The
+/// helper takes it shared at its start, before anything there opens the URL
+/// cache, waiting while the app holds it, and keeps it until it quits
+/// (`waitForTheAppThenHoldTheLock`). The app takes it exclusive, without
+/// waiting, for its second check and the deletion. So the helper opens its
+/// URL cache only holding the lock, and the app deletes only holding it
+/// exclusively: a helper that starts during the deletion waits for it to
+/// end, and while a helper holds the lock the app cannot take it and leaves
+/// everything alone, whatever LaunchServices and the LoginItem status say.
+/// Two gaps: a helper still running from before the update holds no lock,
+/// and the running check sees it; a helper whose wait ran out
+/// (`helperWaitLimit`) starts without it, and logs that. `flock` goes
+/// away with the process that held it, however it ends, so no lock is left
+/// behind.
+///
+/// Off the main thread (`purgeInBackground`): what it removes is a 1.56
+/// helper's whole cache, and the checks ask LaunchServices and
+/// `SMAppService`. Started at launch before `AppState`, which can turn the
+/// LoginItem on; the lock, not that order, keeps the two apart.
 public enum HelperCachePurge {
 
     public static let helperBundleIdentifier = "yyh.CLI-Pulse.helper"
@@ -87,6 +100,17 @@ public enum HelperCachePurge {
         }
 
         var all: [URL] { [cacheFolder, cookieFile] }
+    }
+
+    /// The unsandboxed helper's preferences file, where its own 1.57 purge
+    /// writes its done-flag (`CredentialedURLSession.purgeDoneKey`): an
+    /// unsandboxed process keeps its standard defaults at
+    /// `~/Library/Preferences/<bundle id>.plist`.
+    static func helperPreferencesFile(realHome: URL) -> URL {
+        realHome
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Preferences", isDirectory: true)
+            .appendingPathComponent("\(helperBundleIdentifier).plist", isDirectory: false)
     }
 
     /// Both builds' helpers: the unsandboxed one (Developer ID) at the real
@@ -204,7 +228,8 @@ public enum HelperCachePurge {
             self.hasEmptiedItsOwn = hasEmptiedItsOwn
         }
 
-        public static var live: HelperState {
+        /// The real helper, for a process that reaches what `reach` says.
+        public static func live(reach: Reach) -> HelperState {
             HelperState(
                 isRunning: {
                     !NSRunningApplication.runningApplications(withBundleIdentifier: helperBundleIdentifier).isEmpty
@@ -215,21 +240,33 @@ public enum HelperCachePurge {
                 isLoginItemEnabled: {
                     SMAppService.loginItem(identifier: helperBundleIdentifier).status == .enabled
                 },
-                // The helper keeps its done-flag in its own defaults domain.
-                // Asked only once the helper's places were found reachable,
-                // which is the unsandboxed app: that domain is then the
-                // unsandboxed helper's, the one whose places these are.
-                hasEmptiedItsOwn: {
-                    HelperCachePurge.hasEmptiedItsOwn(UserDefaults(suiteName: helperBundleIdentifier))
-                }
+                hasEmptiedItsOwn: { HelperCachePurge.hasEmptiedItsOwn(reach) }
             )
         }
 
         var isActive: Bool { isRunning() || isLoginItemEnabled() }
     }
 
-    static func hasEmptiedItsOwn(_ helperDefaults: UserDefaults?) -> Bool {
-        (helperDefaults?.integer(forKey: CredentialedURLSession.purgeDoneKey) ?? 0)
+    /// Whether the unsandboxed helper's own 1.57 purge has run, from its
+    /// preferences file, read by path. Not `UserDefaults(suiteName:)`: which
+    /// file `cfprefsd` serves for another app's domain, when an App Store
+    /// helper's container for the same bundle id also exists, is not
+    /// something this code controls, and reading that helper's flag would
+    /// skip the Developer ID helper's folders. Behind the same `canReach`
+    /// gate as the folders; a file not written yet (`cfprefsd` writes it a
+    /// moment later) reads as not run, and the checks that follow decide.
+    static func hasEmptiedItsOwn(_ reach: Reach) -> Bool {
+        let file = helperPreferencesFile(realHome: reach.realHome)
+        guard canReach(file, reach),
+              let data = try? Data(contentsOf: file),
+              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil),
+              let preferences = plist as? [String: Any]
+        else { return false }
+        return hasEmptiedItsOwn(preferences)
+    }
+
+    static func hasEmptiedItsOwn(_ helperPreferences: [String: Any]) -> Bool {
+        ((helperPreferences[CredentialedURLSession.purgeDoneKey] as? NSNumber)?.intValue ?? 0)
             >= CredentialedURLSession.purgeVersion
     }
 
@@ -246,8 +283,9 @@ public enum HelperCachePurge {
         /// The helper runs, or its LoginItem is on. Left alone; tried again at
         /// the next launch.
         case helperActive
-        /// Someone holds the lock (a starting helper), or the lock file could
-        /// not be opened. Tried again at the next launch.
+        /// Someone holds the lock (a helper that runs, or another app's
+        /// purge), or the lock file could not be opened. Tried again at the
+        /// next launch.
         case busy
         /// Nothing was there (a helper that never ran). Recorded as done.
         case nothingThere
@@ -258,15 +296,40 @@ public enum HelperCachePurge {
         case failed
     }
 
+    /// At launch: `purgeIfNeeded()` on a utility queue, then `report` with
+    /// the outcome, on that queue. Not on the main thread: on the launch that
+    /// empties it, it lists and removes a 1.56 helper's whole cache, and every
+    /// launch until it is done asks LaunchServices and `SMAppService`. The
+    /// lock, not the launch order, keeps it apart from a helper that
+    /// `AppState` starts meanwhile.
+    public static func purgeInBackground(report: @escaping (Outcome) -> Void) {
+        purgeInBackground(
+            on: .global(qos: .utility), defaults: .standard, reach: nil, helper: nil, files: .live, report: report
+        )
+    }
+
+    static func purgeInBackground(
+        on queue: DispatchQueue,
+        defaults: UserDefaults,
+        reach: Reach?,
+        helper: HelperState?,
+        files: FileAccess,
+        report: @escaping (Outcome) -> Void
+    ) {
+        queue.async {
+            report(purgeIfNeeded(defaults: defaults, reach: reach, helper: helper, files: files))
+        }
+    }
+
     /// Empties the helper's web cache folder (all but the lock file) and
     /// removes its cookie file, once, where this process reaches them and the
-    /// helper is neither running nor able to start. Synchronous: call it at
-    /// launch, before anything that could turn the LoginItem on.
+    /// helper is neither running nor able to start. Synchronous, and so not
+    /// for the main thread: the app calls `purgeInBackground`.
     @discardableResult
     public static func purgeIfNeeded(
         defaults: UserDefaults = .standard,
         reach: Reach? = nil,
-        helper: HelperState = .live
+        helper: HelperState? = nil
     ) -> Outcome {
         purgeIfNeeded(defaults: defaults, reach: reach, helper: helper, files: .live)
     }
@@ -274,12 +337,14 @@ public enum HelperCachePurge {
     static func purgeIfNeeded(
         defaults: UserDefaults,
         reach: Reach?,
-        helper: HelperState,
+        helper: HelperState?,
         files: FileAccess
     ) -> Outcome {
         guard defaults.integer(forKey: doneKey) < version else { return .alreadyDone }
-        let targets = reachablePlaces(reach ?? .current())
+        let reach = reach ?? .current()
+        let targets = reachablePlaces(reach)
         guard !targets.isEmpty else { return .unreachable }
+        let helper = helper ?? .live(reach: reach)
         if helper.hasEmptiedItsOwn() {
             defaults.set(version, forKey: doneKey)
             return .helperEmptiedItsOwn
@@ -299,12 +364,14 @@ public enum HelperCachePurge {
             } catch {
                 return .failed
             }
+            // Held by a helper that runs (1.58 or later keeps it shared for
+            // as long as it runs), or by another app's purge.
             guard let lock = files.lock(places.cacheFolder.appendingPathComponent(lockFileName, isDirectory: false)) else {
                 return .busy
             }
             defer { lock.release() }
-            // Again, holding the lock: a helper that started since the check
-            // above is registered by the time it reaches the lock.
+            // Again, holding the lock: the LoginItem may have been turned on
+            // since the check above, or an older helper may run.
             guard !helper.isActive else { return .helperActive }
             do {
                 for item in try files.contents(places.cacheFolder) where item.lastPathComponent != lockFileName {
@@ -328,28 +395,20 @@ public enum HelperCachePurge {
     // MARK: - The helper's side
 
     /// The helper's side, at its start, before anything opens its URL cache:
-    /// waits while an app holds the lock, for at most `limit`. Returns false
-    /// when the wait ran out or the lock file could not be opened; the helper
+    /// waits while an app holds the lock, for at most `limit`, then holds it
+    /// shared for as long as the returned value lives. The helper keeps it
+    /// until it quits, so an app's purge cannot take it meanwhile. Nil when
+    /// the wait ran out or the lock file could not be opened; the helper
     /// starts either way.
-    @discardableResult
-    public static func waitWhileTheAppEmptiesIt(
+    public static func waitForTheAppThenHoldTheLock(
         cacheFolder: URL? = nil,
         limit: TimeInterval = helperWaitLimit
-    ) -> Bool {
+    ) -> HeldLock? {
         let folder = cacheFolder ?? ownCacheFolder()
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let fd = openLockFile(folder.appendingPathComponent(lockFileName, isDirectory: false))
-        guard fd >= 0 else { return false }
-        defer { close(fd) }
-        let deadline = Date().addingTimeInterval(limit)
-        while flock(fd, LOCK_EX | LOCK_NB) != 0 {
-            let error = errno
-            if error == EINTR { continue }
-            guard error == EWOULDBLOCK, Date() < deadline else { return false }
-            usleep(20_000)
-        }
-        flock(fd, LOCK_UN)
-        return true
+        return HeldLock.take(
+            folder.appendingPathComponent(lockFileName, isDirectory: false), shared: true, waitingAtMost: limit
+        )
     }
 
     /// This process's URL cache folder: `<Caches>/<bundle id>`, inside the
@@ -390,26 +449,34 @@ public enum HelperCachePurge {
         )
     }
 
-    /// An exclusive `flock` this process holds until `release()`.
-    final class HeldLock {
+    /// A `flock` this process holds until `release()`, or until it goes away.
+    public final class HeldLock {
         private var fd: Int32
 
         private init(fd: Int32) {
             self.fd = fd
         }
 
-        static func take(_ url: URL) -> HeldLock? {
+        /// Exclusive (the app) or shared (a helper), waiting at most `limit`
+        /// while someone else holds it the other way; nil when the wait ran
+        /// out or the file cannot be opened.
+        static func take(_ url: URL, shared: Bool = false, waitingAtMost limit: TimeInterval = 0) -> HeldLock? {
             let fd = openLockFile(url)
             guard fd >= 0 else { return nil }
-            while flock(fd, LOCK_EX | LOCK_NB) != 0 {
-                if errno == EINTR { continue }
-                close(fd)
-                return nil
+            let deadline = Date().addingTimeInterval(limit)
+            while flock(fd, (shared ? LOCK_SH : LOCK_EX) | LOCK_NB) != 0 {
+                let error = errno
+                if error == EINTR { continue }
+                guard error == EWOULDBLOCK, Date() < deadline else {
+                    close(fd)
+                    return nil
+                }
+                usleep(20_000)
             }
             return HeldLock(fd: fd)
         }
 
-        func release() {
+        public func release() {
             guard fd >= 0 else { return }
             flock(fd, LOCK_UN)
             close(fd)
