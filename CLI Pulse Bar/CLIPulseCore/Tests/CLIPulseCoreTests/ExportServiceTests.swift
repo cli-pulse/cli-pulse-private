@@ -68,17 +68,17 @@ final class ExportServiceTests: XCTestCase {
     // MARK: - exportSessionsCSV
 
     func testExportSessionsCSV_returnsURL() {
-        XCTAssertNotNil(ExportService.exportSessionsCSV(sessions: []))
+        XCTAssertNotNil(ExportService.exportSessionsCSV(sessions: [], hidePersonalInfo: false, projectNumbers: .none))
     }
 
     func testExportSessionsCSV_headerIsCorrect() {
-        let content = readFile(url: ExportService.exportSessionsCSV(sessions: []))!
+        let content = readFile(url: ExportService.exportSessionsCSV(sessions: [], hidePersonalInfo: false, projectNumbers: .none))!
         XCTAssertEqual(lines(content)[0],
             "ID,Name,Provider,Project,Status,Usage,Cost,Requests,Errors,Started,Last Active")
     }
 
     func testExportSessionsCSV_emptyProducesOnlyHeader() {
-        let content = readFile(url: ExportService.exportSessionsCSV(sessions: []))!
+        let content = readFile(url: ExportService.exportSessionsCSV(sessions: [], hidePersonalInfo: false, projectNumbers: .none))!
         XCTAssertEqual(lines(content).count, 1)
     }
 
@@ -88,26 +88,26 @@ final class ExportServiceTests: XCTestCase {
             status: "active", totalUsage: 100, cost: 0.05, requests: 10, errors: 2,
             startedAt: "2026-04-01T10:00:00Z", lastActiveAt: "2026-04-01T11:00:00Z"
         )
-        let content = readFile(url: ExportService.exportSessionsCSV(sessions: [session]))!
+        let content = readFile(url: ExportService.exportSessionsCSV(sessions: [session], hidePersonalInfo: false, projectNumbers: .none))!
         XCTAssertEqual(lines(content)[1],
             "s1,Chat,claude,Proj,active,100,0.05,10,2,2026-04-01T10:00:00Z,2026-04-01T11:00:00Z")
     }
 
     func testExportSessionsCSV_commaInFieldIsQuoted() {
         let session = makeSession(project: "My,Project")
-        let content = readFile(url: ExportService.exportSessionsCSV(sessions: [session]))!
+        let content = readFile(url: ExportService.exportSessionsCSV(sessions: [session], hidePersonalInfo: false, projectNumbers: .none))!
         XCTAssertTrue(content.contains("\"My,Project\""))
     }
 
     func testExportSessionsCSV_quoteInFieldIsEscaped() {
         let session = makeSession(name: "He said \"hello\"")
-        let content = readFile(url: ExportService.exportSessionsCSV(sessions: [session]))!
+        let content = readFile(url: ExportService.exportSessionsCSV(sessions: [session], hidePersonalInfo: false, projectNumbers: .none))!
         XCTAssertTrue(content.contains("\"He said \"\"hello\"\"\""))
     }
 
     func testExportSessionsCSV_multipleRowsCount() {
         let sessions = [makeSession(id: "s1"), makeSession(id: "s2"), makeSession(id: "s3")]
-        let content = readFile(url: ExportService.exportSessionsCSV(sessions: sessions))!
+        let content = readFile(url: ExportService.exportSessionsCSV(sessions: sessions, hidePersonalInfo: false, projectNumbers: .none))!
         XCTAssertEqual(lines(content).count, 4)
     }
 
@@ -144,11 +144,11 @@ final class ExportServiceTests: XCTestCase {
     // MARK: - exportAlertsCSV
 
     func testExportAlertsCSV_returnsURL() {
-        XCTAssertNotNil(ExportService.exportAlertsCSV(alerts: []))
+        XCTAssertNotNil(ExportService.exportAlertsCSV(alerts: [], hidePersonalInfo: false, projectNumbers: .none))
     }
 
     func testExportAlertsCSV_headerIsCorrect() {
-        let content = readFile(url: ExportService.exportAlertsCSV(alerts: []))!
+        let content = readFile(url: ExportService.exportAlertsCSV(alerts: [], hidePersonalInfo: false, projectNumbers: .none))!
         XCTAssertEqual(lines(content)[0],
             "ID,Type,Severity,Title,Message,Provider,Project,Created,Read,Resolved")
     }
@@ -160,14 +160,14 @@ final class ExportServiceTests: XCTestCase {
             provider: "claude", projectName: "MyProject",
             createdAt: "2026-04-01T12:00:00Z", isRead: false, isResolved: false
         )
-        let content = readFile(url: ExportService.exportAlertsCSV(alerts: [alert]))!
+        let content = readFile(url: ExportService.exportAlertsCSV(alerts: [alert], hidePersonalInfo: false, projectNumbers: .none))!
         XCTAssertEqual(lines(content)[1],
             "a1,Quota Warning,Warning,Claude at 80%,Quota almost full,claude,MyProject,2026-04-01T12:00:00Z,false,false")
     }
 
     func testExportAlertsCSV_nilProviderAndProjectShowEmpty() {
         let alert = makeAlert(provider: nil, projectName: nil)
-        let content = readFile(url: ExportService.exportAlertsCSV(alerts: [alert]))!
+        let content = readFile(url: ExportService.exportAlertsCSV(alerts: [alert], hidePersonalInfo: false, projectNumbers: .none))!
         let parts = lines(content)[1].components(separatedBy: ",")
         XCTAssertEqual(parts[5], "")
         XCTAssertEqual(parts[6], "")
@@ -175,7 +175,7 @@ final class ExportServiceTests: XCTestCase {
 
     func testExportAlertsCSV_resolvedAndRead() {
         let alert = makeAlert(isRead: true, isResolved: true)
-        let content = readFile(url: ExportService.exportAlertsCSV(alerts: [alert]))!
+        let content = readFile(url: ExportService.exportAlertsCSV(alerts: [alert], hidePersonalInfo: false, projectNumbers: .none))!
         XCTAssertTrue(lines(content)[1].hasSuffix(",true,true"))
     }
 }

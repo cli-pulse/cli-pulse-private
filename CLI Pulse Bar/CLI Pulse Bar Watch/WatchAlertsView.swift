@@ -123,6 +123,14 @@ struct WatchAlertsView: View {
 
 struct AlertCard: View {
     let alert: AlertRecord
+    /// v1.58 (P1-6): "Hide personal information", the iPhone's choice: a
+    /// session the alert names is its provider and its project "Hidden
+    /// project" (no scan on the Watch, so no numbers).
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
+
+    private var shown: AlertPresentation.Text {
+        PersonalInfoMask.alertText(alert, numbers: .none, hidePersonalInfo: hidePersonalInfo)
+    }
 
     private var severityColor: Color {
         PulseTheme.severityColor(alert.severity)
@@ -149,12 +157,12 @@ struct AlertCard: View {
                             .fill(.blue)
                             .frame(width: 6, height: 6)
                     }
-                    Text(AlertPresentation.text(for: alert).title)
+                    Text(shown.title)
                         .font(.system(size: 12, weight: .semibold))
                         .lineLimit(2)
                 }
 
-                Text(AlertPresentation.text(for: alert).message)
+                Text(shown.message)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -197,6 +205,18 @@ struct AlertCard: View {
 struct WatchAlertDetailView: View {
     let alert: AlertRecord
     @EnvironmentObject var state: WatchAppState
+    /// v1.58 (P1-6): "Hide personal information", the iPhone's choice: a
+    /// session the alert names is its provider and its project "Hidden
+    /// project" (no scan on the Watch, so no numbers).
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
+
+    private var shown: AlertPresentation.Text {
+        PersonalInfoMask.alertText(alert, numbers: .none, hidePersonalInfo: hidePersonalInfo)
+    }
+
+    private var project: String? {
+        PersonalInfoMask.alertProject(alert, numbers: .none, hidePersonalInfo: hidePersonalInfo)
+    }
 
     private var severityColor: Color {
         PulseTheme.severityColor(alert.severity)
@@ -214,15 +234,15 @@ struct WatchAlertDetailView: View {
                             .font(.caption.weight(.bold))
                             .foregroundStyle(severityColor)
                     }
-                    Text(AlertPresentation.text(for: alert).title)
+                    Text(shown.title)
                         .font(.caption.weight(.semibold))
-                    Text(AlertPresentation.text(for: alert).message)
+                    Text(shown.message)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            if alert.related_provider != nil || alert.related_project_name != nil || alert.related_device_name != nil {
+            if alert.related_provider != nil || project != nil || alert.related_device_name != nil {
                 Section(L10n.alerts.related) {
                     if let provider = alert.related_provider {
                         HStack {
@@ -232,7 +252,7 @@ struct WatchAlertDetailView: View {
                                 .font(.caption)
                         }
                     }
-                    if let project = alert.related_project_name {
+                    if let project {
                         HStack {
                             Image(systemName: "folder")
                                 .font(.caption2)

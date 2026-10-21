@@ -615,7 +615,7 @@
 "advanced.background_sync_hint" = "iPhone、Apple Watch、Android 用にクラウドへ使用状況を同期";
 "advanced.background_sync_hint_local_mode" = "この Mac の使用状況をバックグラウンドで読み取ります。ローカルモードでは何もアップロードしません。";
 "advanced.full_details" = "詳細:";
-"advanced.hide_emails" = "UI でメールアドレスを非表示";
+"advanced.hide_personal_info_help" = "メールアドレス、プロジェクトフォルダの名前とパス、セッション名を、画面にも書き出したファイルにも表示しません。";
 /* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */
 "advanced.track_git" = "Git アクティビティを追跡（Yield Score）";
 "advanced.track_git_hint" = "ハッシュ化したコミットメタデータのみを送信し、メッセージ、差分、パスはアップロードしません。収集するのは Companion CLI だけです。";
@@ -1682,6 +1682,7 @@
 "projects.title" = "プロジェクト";
 "projects.unknown" = "不明";
 "projects.anonymous" = "プロジェクト %d";
+"projects.hidden" = "非表示のプロジェクト";
 "projects.shown_of" = "%2$d 件のプロジェクトのうち上位 %1$d 件";
 "projects.help" = "各セッションを実行したフォルダごとに、この Mac のログから集計しています。\nこの一覧はアカウントに同期されません。";
 "projects.unknown_help" = "これらのセッションのログには、どのフォルダで実行したかが記録されていません。";

@@ -37,8 +37,28 @@ public enum AlertPresentation {
         public let recognized: Bool
     }
 
-    public static func text(for alert: AlertRecord) -> Text {
-        if let t = deviceCPU(alert) ?? sessionCPU(alert) ?? sessionLong(alert)
+    /// What the templates put where an alert names a session or a project.
+    /// `asStored` shows them as stored; with "Hide personal information" on,
+    /// `PersonalInfoMask.alertText` passes its own.
+    struct Naming {
+        /// The session's stored name, and the provider the alert's message
+        /// names (nil when it names none) → what to show.
+        var session: (_ storedName: String, _ provider: String?) -> String
+        /// The project's stored name → what to show.
+        var project: (_ storedName: String) -> String
+
+        static let asStored = Naming(session: { name, _ in name }, project: { $0 })
+    }
+
+    /// Internal since v1.58 (P1-6): the apps show an alert's text through
+    /// `PersonalInfoMask.alertText`, which follows "Hide personal
+    /// information". Tests and the masked path read it here.
+    static func text(for alert: AlertRecord) -> Text {
+        text(for: alert, naming: .asStored)
+    }
+
+    static func text(for alert: AlertRecord, naming: Naming) -> Text {
+        if let t = deviceCPU(alert) ?? sessionCPU(alert, naming) ?? sessionLong(alert, naming)
             ?? quota(alert) ?? budget(alert) {
             return t
         }
@@ -58,13 +78,13 @@ public enum AlertPresentation {
                     recognized: true)
     }
 
-    private static func sessionCPU(_ a: AlertRecord) -> Text? {
+    private static func sessionCPU(_ a: AlertRecord, _ naming: Naming) -> Text? {
         guard a.type == "Usage Spike", a.id.hasPrefix("session-spike-") else { return nil }
-        let name = stripSuffix(a.title, " is consuming high CPU")
+        let stored = stripSuffix(a.title, " is consuming high CPU")
 
         // Swift AlertGenerator: normalized against total system capacity.
         if let m = capture(a.message, #"^Using ~(\d+)% of total system CPU \((\d+) cores\) for (.+)\.$"#) {
-            return Text(title: L10n.alertKind.sessionCPUTitle(name),
+            return Text(title: L10n.alertKind.sessionCPUTitle(naming.session(stored, m[2])),
                         message: L10n.alertKind.sessionCPUMessageSystem(m[0], m[1], m[2]),
                         recognized: true)
         }
@@ -72,24 +92,25 @@ public enum AlertPresentation {
         // tried before the Python form below, whose greedy `(.+)` would
         // otherwise swallow " in <project>" into the provider.
         if let m = capture(a.message, #"^Process CPU is (\d+(?:\.\d+)?)% for (.+) in (.+)\.$"#) {
-            return Text(title: L10n.alertKind.sessionCPUTitle(name),
-                        message: L10n.alertKind.sessionCPUMessageProcessInProject(m[0], m[1], m[2]),
+            return Text(title: L10n.alertKind.sessionCPUTitle(naming.session(stored, m[1])),
+                        message: L10n.alertKind.sessionCPUMessageProcessInProject(m[0], m[1], naming.project(m[2])),
                         recognized: true)
         }
         // Python helper: raw process CPU, no project.
         if let m = capture(a.message, #"^Process CPU is (\d+(?:\.\d+)?)% for (.+)\.$"#) {
-            return Text(title: L10n.alertKind.sessionCPUTitle(name),
+            return Text(title: L10n.alertKind.sessionCPUTitle(naming.session(stored, m[1])),
                         message: L10n.alertKind.sessionCPUMessageProcess(m[0], m[1]),
                         recognized: true)
         }
         return nil
     }
 
-    private static func sessionLong(_ a: AlertRecord) -> Text? {
+    private static func sessionLong(_ a: AlertRecord, _ naming: Naming) -> Text? {
         guard a.type == "Session Too Long", a.id.hasPrefix("session-long-"),
               a.message == "Long-running local agent session detected by helper."
         else { return nil }
-        return Text(title: L10n.alertKind.sessionLongTitle(stripSuffix(a.title, " has been running for a long time")),
+        let stored = stripSuffix(a.title, " has been running for a long time")
+        return Text(title: L10n.alertKind.sessionLongTitle(naming.session(stored, nil)),
                     message: L10n.alertKind.sessionLongMessage,
                     recognized: true)
     }

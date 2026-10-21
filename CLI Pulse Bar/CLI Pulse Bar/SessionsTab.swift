@@ -17,6 +17,10 @@ struct SessionsTab: View {
     /// the UI so users (and Codex on review) can see resolved
     /// socket / token paths without opening Xcode logs.
     @State private var showLocalDiagnostics: Bool = false
+    /// v1.58 (P1-6): "Hide personal information". The rows mask their own
+    /// projects and titles; here it numbers them (`projectNameNumbers`) and
+    /// starts the paths this tab shows with "~".
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
     /// Phase 4 helper-bundling: in-flight gate for the "Install
     /// hook" button so a double-click can't race two parallel
     /// install_claude_hook UDS calls (which would noop the second
@@ -648,7 +652,7 @@ struct SessionsTab: View {
                 .font(.system(size: 9, weight: .medium, design: .monospaced))
                 .foregroundStyle(.tertiary)
                 .frame(width: 150, alignment: .leading)
-            Text(value)
+            Text(PersonalInfoMask.homeFolder(in: value, hidePersonalInfo: hidePersonalInfo))
                 .font(.system(size: 9, design: .monospaced))
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
@@ -826,11 +830,15 @@ struct SessionsTab: View {
                     .foregroundStyle(.tertiary)
                 Spacer()
             }
+            // Once per section, not per row: the numbers rank this Mac's
+            // projects over 30 days.
+            let numbers = state.projectNameNumbers(hidePersonalInfo: hidePersonalInfo)
             ForEach(sessions) { session in
                 let tier = SessionFreshnessTierClassifier.classify(session, now: now)
                 SessionRow(
                     session: session,
                     showCost: state.showCost,
+                    projectNumbers: numbers,
                     freshnessTier: tier
                 )
             }
@@ -1683,14 +1691,15 @@ struct SessionsTab: View {
                     Text(L10n.sessions.hookParseErrorTitle)
                         .font(.system(size: 11, weight: .semibold))
                     if let problem = approvalHookParseProblem {
-                        Text(problem.localizedText)
+                        Text(PersonalInfoMask.homeFolder(
+                            in: problem.localizedText, hidePersonalInfo: hidePersonalInfo))
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                             .textSelection(.enabled)
                         // The system's own read-failure text, kept but secondary.
                         if let detail = problem.technicalDetail {
-                            Text(detail)
+                            Text(PersonalInfoMask.homeFolder(in: detail, hidePersonalInfo: hidePersonalInfo))
                                 .font(.system(size: 9))
                                 .foregroundStyle(.tertiary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -1742,7 +1751,10 @@ struct SessionsTab: View {
                     // the detector flips to .wired and THIS installed banner is
                     // what remains on screen (review: codex).
                     if let lastInstall = lastInstallHookResult {
-                        Text(L10n.sessions.hookInstallOutcome(action: lastInstall.action, settingsPath: lastInstall.settingsPath))
+                        Text(L10n.sessions.hookInstallOutcome(
+                            action: lastInstall.action,
+                            settingsPath: PersonalInfoMask.homeFolder(
+                                in: lastInstall.settingsPath, hidePersonalInfo: hidePersonalInfo)))
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
                             .lineLimit(2)
@@ -1809,7 +1821,10 @@ struct SessionsTab: View {
                     // the detector flips to .notWired and THIS install banner is
                     // what remains on screen (review: codex).
                     if let lastUninstall = lastUninstallHookResult {
-                        Text(L10n.sessions.hookUninstallOutcome(action: lastUninstall.action, removed: lastUninstall.removed, settingsPath: lastUninstall.settingsPath))
+                        Text(L10n.sessions.hookUninstallOutcome(
+                            action: lastUninstall.action, removed: lastUninstall.removed,
+                            settingsPath: PersonalInfoMask.homeFolder(
+                                in: lastUninstall.settingsPath, hidePersonalInfo: hidePersonalInfo)))
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
                             .lineLimit(2)
@@ -2040,16 +2055,27 @@ private struct ManagedSessionRow: View {
 struct SessionRow: View {
     let session: SessionRecord
     let showCost: Bool
+    /// v1.58 (P1-6): the numbers "Project N" gives the projects this Mac's
+    /// Projects lists (`AppState.projectNameNumbers`), so a row reads
+    /// "Project 2" where Projects does.
+    let projectNumbers: ProjectNameNumbers
     /// Optional tier badge — Active vs Recent split passes its
     /// classifier result so the user can see whether the row is
     /// process-confirmed ("running") vs JSONL-only ("recent
     /// activity" / "recent"). Optional so older callers don't need
     /// to pass it; renders nothing when nil.
     let freshnessTier: FreshnessTier?
+    /// With it on, the row's title and project are masked
+    /// (`PersonalInfoMask.sessionTitle`, `sessionProject`).
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
-    init(session: SessionRecord, showCost: Bool, freshnessTier: FreshnessTier? = nil) {
+    init(
+        session: SessionRecord, showCost: Bool, projectNumbers: ProjectNameNumbers,
+        freshnessTier: FreshnessTier? = nil
+    ) {
         self.session = session
         self.showCost = showCost
+        self.projectNumbers = projectNumbers
         self.freshnessTier = freshnessTier
     }
 
@@ -2061,7 +2087,8 @@ struct SessionRow: View {
                     .font(.system(size: 10))
                     .foregroundStyle(PulseTheme.providerColor(session.provider))
 
-                Text(session.displayName)
+                Text(PersonalInfoMask.sessionTitle(
+                    session, numbers: projectNumbers, hidePersonalInfo: hidePersonalInfo))
                     .font(.system(size: 11, weight: .semibold))
                     .lineLimit(1)
 
@@ -2111,7 +2138,8 @@ struct SessionRow: View {
             HStack(spacing: 12) {
                 if !session.titleNamesProviderAndProject {
                     Label(session.provider, systemImage: "cpu")
-                    if let project = session.displayProject {
+                    if let project = PersonalInfoMask.sessionProject(
+                        session, numbers: projectNumbers, hidePersonalInfo: hidePersonalInfo) {
                         Label(project, systemImage: "folder")
                     }
                 }

@@ -209,7 +209,7 @@ struct AdvancedSection: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(L10n.settings.hidePersonalInfo)
                         .font(.system(size: 11))
-                    Text(L10n.advanced.hideEmails)
+                    Text(L10n.advanced.hidePersonalInfoHelp)
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                 }

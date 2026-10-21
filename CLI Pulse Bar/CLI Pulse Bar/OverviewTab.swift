@@ -8,7 +8,7 @@ struct OverviewTab: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var providerState: ProviderState
     /// v1.58: Top Projects names projects "Project N" with it on, and shows
-    /// no path.
+    /// no path; since P1-6 the exports follow it too.
     @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     var body: some View {
@@ -179,7 +179,9 @@ struct OverviewTab: View {
                 if let url = ExportService.exportCostReportCSV(
                     dashboard: state.dashboard,
                     providers: providerState.providers,
-                    sessions: state.sessions
+                    sessions: state.sessions,
+                    hidePersonalInfo: hidePersonalInfo,
+                    projectNumbers: state.projectNameNumbers(hidePersonalInfo: hidePersonalInfo)
                 ) {
                     #if os(macOS)
                     NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -189,7 +191,11 @@ struct OverviewTab: View {
                 Label(L10n.dashboard.exportCostReport, systemImage: "doc.text")
             }
             Button {
-                if let url = ExportService.exportSessionsCSV(sessions: state.sessions) {
+                if let url = ExportService.exportSessionsCSV(
+                    sessions: state.sessions,
+                    hidePersonalInfo: hidePersonalInfo,
+                    projectNumbers: state.projectNameNumbers(hidePersonalInfo: hidePersonalInfo)
+                ) {
                     #if os(macOS)
                     NSWorkspace.shared.activateFileViewerSelecting([url])
                     #endif
@@ -253,6 +259,8 @@ struct OverviewTab: View {
             sessions: state.sessions,
             dailyUsage: state.dailyUsage,
             costForecast: state.costForecast,
+            hidePersonalInfo: hidePersonalInfo,
+            projectNumbers: state.projectNameNumbers(hidePersonalInfo: hidePersonalInfo),
             destinationURL: url
         ) {
             NSWorkspace.shared.activateFileViewerSelecting([saved])

@@ -987,7 +987,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "advanced.background_sync_hint" = "Sincroniza los datos de uso con la nube para el iPhone, el Apple Watch y Android";
 "advanced.background_sync_hint_local_mode" = "Lee el uso de este Mac en segundo plano. En modo local no se sube nada.";
 "advanced.full_details" = "Detalles completos:";
-"advanced.hide_emails" = "Ocultar direcciones de correo en la interfaz";
+"advanced.hide_personal_info_help" = "Oculta las direcciones de correo, los nombres y las rutas de las carpetas de proyecto y los nombres de sesión, en pantalla y en las exportaciones.";
 /* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */
 "advanced.track_git" = "Seguimiento de actividad de git (Yield Score)";
 "advanced.track_git_hint" = "Únicamente se suben metadatos de commits protegidos con hash: ni mensajes, ni diffs, ni rutas. Solo los recopila Companion CLI.";
@@ -1636,6 +1636,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "projects.title" = "Proyectos";
 "projects.unknown" = "Desconocido";
 "projects.anonymous" = "Proyecto %d";
+"projects.hidden" = "Proyecto oculto";
 "projects.shown_of" = "Los %1$d principales de %2$d proyectos";
 "projects.help" = "Agrupados por la carpeta en la que se ejecutó cada sesión, a partir de los registros de sesión de este Mac.\nEsta lista no se sincroniza con tu cuenta.";
 "projects.unknown_help" = "Los registros de estas sesiones no indican en qué carpeta se ejecutaron.";

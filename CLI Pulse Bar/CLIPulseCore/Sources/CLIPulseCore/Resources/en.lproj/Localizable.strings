@@ -535,7 +535,7 @@
 "advanced.background_sync_hint" = "Syncs usage data to the cloud for iPhone, Apple Watch, and Android";
 "advanced.background_sync_hint_local_mode" = "Reads this Mac's usage in the background. In local mode, nothing is uploaded.";
 "advanced.full_details" = "Full details:";
-"advanced.hide_emails" = "Hide email addresses in the UI";
+"advanced.hide_personal_info_help" = "Hides email addresses, project folder names and paths, and session names, on screen and in exports.";
 /* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */
 "advanced.track_git" = "Track git activity (Yield Score)";
 "advanced.track_git_hint" = "Hashed commit metadata only — no message, diff, or path uploaded. Only the Companion CLI collects it.";
@@ -1681,6 +1681,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "projects.title" = "Projects";
 "projects.unknown" = "Unknown";
 "projects.anonymous" = "Project %d";
+"projects.hidden" = "Hidden project";
 "projects.shown_of" = "Top %1$d of %2$d projects";
 "projects.help" = "Grouped by the folder each session ran in, from this Mac's session logs.\nThis list is not synced to your account.";
 "projects.unknown_help" = "These sessions' logs do not say which folder they ran in.";

@@ -84,6 +84,8 @@ final class PDFDestinationTests: XCTestCase {
             sessions: [],
             dailyUsage: [],
             costForecast: nil,
+            hidePersonalInfo: false,
+            projectNumbers: .none,
             destinationURL: unwritable
         )
 

@@ -631,6 +631,7 @@ public enum QARenderSnapshot {
         surfaces.append(.panelProjectsStates)
         surfaces.append(.panelSessionsStates)
         surfaces += [.panelSessionsMoreStates, .providerUsagePanelLaptop]
+        surfaces += QARenderPrivacySurface.allCases.map { .hidePersonalInfo($0) }
         return surfaces
     }
 
@@ -1009,6 +1010,25 @@ public enum QARenderSettingsSection: String, CaseIterable, Sendable {
     case advanced = "Advanced"
 }
 
+/// v1.58 (P1-6): what the renderer draws with "Hide personal information"
+/// on, reading back the text of what it drew (`QARenderSurface.hidePersonalInfo`).
+public enum QARenderPrivacySurface: String, CaseIterable, Sendable {
+    /// The Overview: Top Projects.
+    case overview
+    /// The Sessions tab, with this Mac's log sessions and other devices'
+    /// rows whose stored names carry a path (`privacySessionsSample`).
+    case sessions
+    /// Alerts, with the Companion CLI's and the desktop app's session alerts
+    /// (`privacyAlertsSample`).
+    case alerts
+    /// The usage panel as the Demo Codex card opens it: Projects and
+    /// Sessions.
+    case panel = "panel-codex"
+    /// The Export menu's files: the cost report, the sessions and alerts
+    /// CSVs and the PDF report (its first page drawn).
+    case exports
+}
+
 /// One view the renderer draws.
 public enum QARenderSurface: Hashable {
     /// What a new install shows the first time the menu is opened: the
@@ -1125,6 +1145,12 @@ public enum QARenderSurface: Hashable {
     /// visible height less 24), drawn page by page as a laptop shows it: the
     /// panel scrolls, the Sessions card with it.
     case providerUsagePanelLaptop
+    /// v1.58 (P1-6): a surface drawn with "Hide personal information" on,
+    /// whose text the renderer reads back (accessibility, or the file's own
+    /// text for an export) and checks against every project name, folder
+    /// path and session name in what it drew (`QARenderSnapshot.privacyCheck`),
+    /// after reading it with the switch off as the control.
+    case hidePersonalInfo(QARenderPrivacySurface)
 
     public enum Kind: String, Codable, Sendable {
         /// The menu-bar popover (`MenuBarView`), 380 points wide.
@@ -1136,6 +1162,9 @@ public enum QARenderSurface: Hashable {
         /// A picture of a menu's items, drawn from the items (a menu cannot
         /// be drawn without opening it on screen).
         case menu
+        /// A file the app writes (an export): its first page, drawn from
+        /// the file.
+        case document
     }
 
     public var kind: Kind {
@@ -1150,6 +1179,12 @@ public enum QARenderSurface: Hashable {
             return .panel
         case .providerUsageCardHistory:
             return .window
+        case .hidePersonalInfo(let which):
+            switch which {
+            case .overview, .sessions, .alerts: return .popover
+            case .panel: return .panel
+            case .exports: return .document
+            }
         default:
             return .popover
         }
@@ -1196,6 +1231,7 @@ public enum QARenderSurface: Hashable {
         case .panelSessionsStates: return "card-panel-sessions"
         case .panelSessionsMoreStates: return "card-panel-sessions-more"
         case .providerUsagePanelLaptop: return "panel-provider-usage-codex-laptop"
+        case .hidePersonalInfo(let which): return "hide-personal-info-\(which.rawValue)"
         }
     }
 
@@ -1526,7 +1562,43 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
     /// so this is not proof that nothing left the process; watching its
     /// sockets (`lsof -i -p <pid>`) is.
     public var blockedRequests: [String]
+    /// v1.58 (P1-6): what each `hide-personal-info-*` surface's text showed
+    /// (`QARenderSnapshot.privacyCheck`). Nil in a run that drew none.
+    public var privacyChecks: [PrivacyCheck]?
     public var warnings: [String]
+
+    /// One `hide-personal-info-*` surface's text against the personal
+    /// strings of what it drew.
+    public struct PrivacyCheck: Codable, Equatable, Sendable {
+        public var id: String
+        /// Where the text was read: `accessibility` (every label, value,
+        /// title and help text the drawn view exposes, hover text included),
+        /// or an export's file name.
+        public var source: String
+        /// Strings read with the switch on.
+        public var textsRead: Int
+        /// Personal strings looked for (`QARenderSnapshot.personalStrings`).
+        public var lookedFor: Int
+        /// The control: those the same surface showed with the switch off.
+        /// Empty means the check could not have seen a leak.
+        public var shownWithSwitchOff: [String]
+        /// Those it showed with the switch on. Must be empty.
+        public var leaks: [String]
+
+        public init(id: String, source: String, textsRead: Int, lookedFor: Int,
+                    shownWithSwitchOff: [String], leaks: [String]) {
+            self.id = id
+            self.source = source
+            self.textsRead = textsRead
+            self.lookedFor = lookedFor
+            self.shownWithSwitchOff = shownWithSwitchOff
+            self.leaks = leaks
+        }
+
+        /// Text was read, the control saw personal strings with the switch
+        /// off, and none showed with it on.
+        public var passed: Bool { textsRead > 0 && !shownWithSwitchOff.isEmpty && leaks.isEmpty }
+    }
 
     public init(
         set: QARenderSnapshot.RenderSet = .review,

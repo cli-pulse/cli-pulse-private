@@ -531,6 +531,10 @@ public enum L10n {
         public static var unknown: String { tr("projects.unknown") }
         /// A named project with "Hide personal information" on: "Project 2".
         public static func anonymous(_ number: Int) -> String { tr("projects.anonymous", number) }
+        /// v1.58 (P1-6): with "Hide personal information" on, a project
+        /// known only by a folder name Projects gives no number (another
+        /// device's, an older one, one two folders share): "Hidden project".
+        public static var hidden: String { tr("projects.hidden") }
         /// Under a list cut short: "Top 5 of 12 projects".
         public static func shownOf(_ shown: Int, _ total: Int) -> String { tr("projects.shown_of", shown, total) }
         /// What a list counts, and that the list is not synced (only the
@@ -2302,7 +2306,11 @@ public enum L10n {
         /// `AdvancedUploadCopy`.
         public static var backgroundSyncHintLocalMode: String { tr("advanced.background_sync_hint_local_mode") }
         public static var fullDetails: String { tr("advanced.full_details") }
-        public static var hideEmails: String { tr("advanced.hide_emails") }
+        /// The line under "Hide personal information" (Settings › Advanced):
+        /// what the switch hides. v1.58 (P1-6): it said "Hide email addresses
+        /// in the UI" while the switch came to cover projects, paths,
+        /// session names and the exports.
+        public static var hidePersonalInfoHelp: String { tr("advanced.hide_personal_info_help") }
         public static var trackGit: String { tr("advanced.track_git") }
         public static var trackGitHint: String { tr("advanced.track_git_hint") }
         public static var gitConsentTitle: String { tr("advanced.git_consent_title") }

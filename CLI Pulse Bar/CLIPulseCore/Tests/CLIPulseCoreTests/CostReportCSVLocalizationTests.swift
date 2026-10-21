@@ -46,7 +46,8 @@ final class CostReportCSVLocalizationTests: XCTestCase {
                 cost_status: "normal", requests: 10, error_count: 0),
         ]
         return ExportService.costReportCSV(dashboard: dashboard, providers: providers,
-                                           sessions: sessions, generatedAt: generatedAt)
+                                           sessions: sessions, hidePersonalInfo: false, projectNumbers: .none,
+                                           generatedAt: generatedAt)
     }
 
     func test_wordsFollowTheAppLanguage() {
@@ -87,7 +88,7 @@ final class CostReportCSVLocalizationTests: XCTestCase {
     /// The data exports are keyed on by scripts and imports: English headers
     /// in every language, by decision.
     func test_dataExportsKeepEnglishHeaders() throws {
-        let url = try XCTUnwrap(ExportService.exportSessionsCSV(sessions: []))
+        let url = try XCTUnwrap(ExportService.exportSessionsCSV(sessions: [], hidePersonalInfo: false, projectNumbers: .none))
         let content = try String(contentsOf: url, encoding: .utf8)
         XCTAssertTrue(content.hasPrefix("ID,Name,Provider,Project,Status,Usage,Cost,Requests,Errors,Started,Last Active\n"))
     }

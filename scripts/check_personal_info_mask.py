@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """
-"Hide personal information" and account labels — the call sites the tests cannot see.
+"Hide personal information" — the call sites the tests cannot see.
 
 An account's label is whatever its owner typed, often the address it signs in
-with. `PersonalInfoMask` (CLIPulseCore) decides what the owner sees in its place
-when the switch is on, and `PersonalInfoMaskTests` pins that decision. But the
-labels are SHOWN by the Mac, iPhone and Watch apps, and no test target builds
-those: CLIPulseCoreTests links CLIPulseCore only. So a view that goes back to
-`Label(detail.accountEmail, …)`, a call that passes `hidePersonalInfo: false`,
-or a deleted line in the WatchConnectivity hand-off would put addresses back on
-screen with every test still green.
+with; a project is a folder the owner works in; a session's stored name can be
+a command line with a path in it. `PersonalInfoMask` (CLIPulseCore) decides what
+the owner sees in their place when the switch is on, and `PersonalInfoMaskTests`
+and `PersonalInfoMaskSessionsTests` pin those decisions. But they are SHOWN by
+the Mac, iPhone and Watch apps, and no test target builds those:
+CLIPulseCoreTests links CLIPulseCore only. So a view that goes back to
+`Label(detail.accountEmail, …)` or `chipView(text: alert.related_project_name)`,
+a call that passes `hidePersonalInfo: false`, an export that is not told the
+switch, or a deleted line in the WatchConnectivity hand-off would put them back
+on screen with every test still green.
 
-This reads the app targets' Swift and checks three things:
+This reads the app targets' Swift (and one Core file) and checks five things:
 
   1. EVERY READ OF AN ACCOUNT LABEL IS INSIDE THE MASK.
      Each `.accountLabel` / `.accountEmail` read (a member access or a key
@@ -43,12 +46,39 @@ This reads the app targets' Swift and checks three things:
      (`PersonalInfoMask.adoptPhoneChoice`) only after the context's owner and
      epoch are accepted: a `guard …accept(…)` earlier in the same block.
 
+  4. PROJECTS AND SESSIONS ARE READ ONLY INSIDE THE MASK (v1.58, P1-6).
+     A session's project (`.project`, `.displayProject`, `.detailProject`) and
+     an alert's project (`.related_project_name`) are read only inside
+     `PersonalInfoMask.projectName(…)`; an alert's session name
+     (`.related_session_name`) is never read: the apps show a session, an
+     alert and their projects through `PersonalInfoMask.sessionTitle`,
+     `sessionProject`, `sessionDetailProject`, `alertText`, `alertProject` and
+     `alertSessionName`, which take the whole record. The same allowlist
+     applies. (`SessionRecord.displayName`, `displayProject`, `detailProject`
+     and `AlertPresentation.text(for:)` are internal to CLIPulseCore, so the
+     compiler already refuses an app that reads them; this keeps a read from
+     coming back if one is made public again, and covers the stored fields.)
+     No app target calls `AlertPresentation.text(`.
+
+  5. THE EXPORTS AND THE NOTIFICATION ARE TOLD THE SWITCH.
+     Every `ExportService.exportSessionsCSV` / `exportCostReportCSV` /
+     `exportAlertsCSV` / `exportPDFReport` call in the app targets passes
+     `hidePersonalInfo:` (rule 2 keeps it from being a literal), and
+     `DataRefreshManager.sendNotification` (CLIPulseCore: a banner is on screen
+     too) sets the body from `PersonalInfoMask.alertText(…)` with
+     `hidePersonalInfo: PersonalInfoMask.isOn()`.
+
 WHAT IT CANNOT SEE
-  A label that reaches the screen under another name (a Core type that copies
-  it into a field called something else) is invisible here; today Core carries
-  labels only as `accountLabel` / `accountEmail`. Nor does it check the
-  position a call passes as `index:`. It proves the wiring, not the pixels:
-  the pixels are the QA render with address-shaped labels and the switch on.
+  A label, project or session name that reaches the screen under another name
+  (a Core type that copies it into a field called something else) is invisible
+  here; today Core carries them only under the names above. A session's stored
+  `name` is not checked: the word is too common to tell apart, and the apps
+  have no read of it. Nor does it check the position a call passes as
+  `index:`, or the numbers a call passes as `numbers:`. A path shown as text
+  (the Sessions tab's diagnostics, which go through `PersonalInfoMask.homeFolder`)
+  is not followed. It proves the wiring, not the pixels: the pixels are the QA
+  renders with the switch on (`hide-personal-info-*`), whose text the renderer
+  reads back and checks against the samples' names and paths.
 
 Pure Python on purpose: repo-hygiene runs on Linux.
 """
@@ -68,12 +98,23 @@ TARGETS = [
 ]
 PHONE = f"{APPLE}/CLI Pulse Bar iOS/PhoneSessionManager.swift"
 WATCH = f"{APPLE}/CLI Pulse Bar Watch/WatchSessionManager.swift"
+NOTIFY = f"{APPLE}/CLIPulseCore/Sources/CLIPulseCore/DataRefreshManager.swift"
 ALLOWLIST = "scripts/personal_info_mask_allowlist.json"
 
-# The calls that turn a label into what may be shown. Other PersonalInfoMask
-# functions (`looksLikeEmail`) answer a question about a label; a read inside
-# them is still a read.
-MASKING_CALLS = {"accountName", "accountLabel"}
+# The fields that hold something personal, and the calls that turn each into
+# what may be shown. A read of a field outside every one of its calls fails.
+# Other PersonalInfoMask functions (`looksLikeEmail`) answer a question about a
+# label; a read inside them is still a read. An empty set: never read it.
+FIELD_MASKS = {
+    "accountLabel": {"accountName", "accountLabel"},
+    "accountEmail": {"accountName", "accountLabel"},
+    "project": {"projectName"},
+    "displayProject": {"projectName"},
+    "detailProject": {"projectName"},
+    "related_project_name": {"projectName"},
+    "related_session_name": set(),
+}
+ACCOUNT_FIELDS = {"accountLabel", "accountEmail"}
 
 # Reads the real tree must have, so a moved directory or renamed field cannot
 # turn this gate into one that scans nothing and passes: the Mac card, its
@@ -81,7 +122,21 @@ MASKING_CALLS = {"accountName", "accountLabel"}
 # Settings › Display, the iPhone row and the Watch.
 MIN_MASKED_READS_REAL_TREE = 8
 
-LABEL_READ = re.compile(r"(\\?)\.\s*(accountLabel|accountEmail)\b")
+# v1.58: the calls that show a session, an alert or a project, which the real
+# tree must make at least this often (Mac: the Sessions tab's rows and Alerts;
+# iPhone and iPad: rows, detail, alerts; Watch: cards, rows, detail, alerts),
+# and the exports it must tell the switch (Mac: cost report, sessions, PDF;
+# iPhone: cost report, sessions).
+SHOWING_CALLS = re.compile(
+    r"\bPersonalInfoMask\s*\.\s*(sessionTitle|sessionProject|sessionDetailProject|alertText|alertProject"
+    r"|alertSessionName|projectName)\s*\(")
+MIN_SHOWING_CALLS_REAL_TREE = 20
+EXPORT_CALL = re.compile(
+    r"\bExportService\s*\.\s*(exportSessionsCSV|exportCostReportCSV|exportAlertsCSV|exportPDFReport)\s*\(")
+MIN_EXPORT_CALLS_REAL_TREE = 5
+RAW_ALERT_TEXT = re.compile(r"\bAlertPresentation\s*\.\s*text\s*\(")
+
+LABEL_READ = re.compile(r"(\\?)\.\s*(" + "|".join(FIELD_MASKS) + r")\b")
 LITERAL_SWITCH = re.compile(r"\bhidePersonalInfo\s*:\s*(true|false)\b")
 SWITCH_DECL = re.compile(r"\b(?:var|let)\s+hidePersonalInfo\b")
 APP_STORAGE_ON_KEY = re.compile(r"@AppStorage\s*\(\s*PersonalInfoMask\s*\.\s*defaultsKey\s*\)")
@@ -221,24 +276,45 @@ def line_text(src: str, offset: int) -> str:
     return src[start:(len(src) if end == -1 else end)].strip()
 
 
-def label_reads(src: str, code: str) -> list[tuple[int, bool]]:
-    """(offset of the field name, masked?) for every read of an account label."""
-    found: list[int] = []
+def label_reads(src: str, code: str) -> list[tuple[int, str, bool]]:
+    """(offset of the field name, field, masked?) for every read of a personal
+    field (`FIELD_MASKS`)."""
+    found: list[tuple[int, str]] = []
     for m in LABEL_READ.finditer(code):
         before = code[:m.start()].rstrip()
         if not m.group(1):
             if re.search(r"\bL10n\s*\.\s*\w+$", before):
-                continue                 # the catalogue's "Account label" title
+                continue                 # the catalogue's "Account label" / "Project" title
             if re.search(r"\bPersonalInfoMask$", before):
                 continue                 # the mask itself
             if re.match(r"\s*=(?!=)", code[m.end():]):
                 continue                 # a write, not a read
-        found.append(m.start(2))
-    opens = enclosing_opens(code, found)
+        found.append((m.start(2), m.group(2)))
+    opens = enclosing_opens(code, [pos for pos, _ in found])
     return [
-        (pos, any(ch == "(" and callee(code, at) in MASKING_CALLS for at, ch in opens[pos]))
-        for pos in found
+        (pos, field, any(ch == "(" and callee(code, at) in FIELD_MASKS[field] for at, ch in opens[pos]))
+        for pos, field in found
     ]
+
+
+def check_showing(rel: str, src: str, code: str, errors: list[str]) -> tuple[int, int]:
+    """Rule 4's call and rule 5's exports in one app file: (showing calls,
+    export calls) it makes."""
+    for m in RAW_ALERT_TEXT.finditer(code):
+        errors.append(
+            f"{rel}:{line_of(src, m.start())}: calls `AlertPresentation.text(…)`, which shows a session's"
+            " stored name and its project whatever the switch says; use `PersonalInfoMask.alertText(…)`"
+        )
+    exports = 0
+    for m in EXPORT_CALL.finditer(code):
+        exports += 1
+        args = code[m.end() - 1:matching_close(code, m.end() - 1) + 1]
+        if not re.search(r"\bhidePersonalInfo\s*:", args):
+            errors.append(
+                f"{rel}:{line_of(src, m.start())}: `ExportService.{m.group(1)}` is not passed"
+                " `hidePersonalInfo:`, so the file carries project names and session names with the switch on"
+            )
+    return len(SHOWING_CALLS.findall(code)), exports
 
 
 def check_switch(rel: str, src: str, code: str, errors: list[str]) -> None:
@@ -355,6 +431,34 @@ def check_watch(root: Path, errors: list[str]) -> None:
             )
 
 
+def check_notification(root: Path, errors: list[str]) -> None:
+    path = root / NOTIFY
+    if not path.is_file():
+        errors.append(f"{NOTIFY} not found: the gate cannot see what an alert's banner says")
+        return
+    src = path.read_text(encoding="utf-8", errors="replace")
+    code = code_only(src)
+    span = body_of(code, "sendNotification")
+    if span is None:
+        errors.append(f"{NOTIFY}: `func sendNotification` not found; the gate cannot see the banner's text")
+        return
+    a, b = span
+    body = code[a:b]
+    m = re.search(r"\bcontent\s*\.\s*body\s*=\s*PersonalInfoMask\s*\.\s*alertText\s*\(", body)
+    if not m:
+        errors.append(
+            f"{NOTIFY}: sendNotification does not set the banner's body from `PersonalInfoMask.alertText(…)`,"
+            " so a banner names a session's command line with the switch on"
+        )
+        return
+    args = body[m.end() - 1:matching_close(body, m.end() - 1) + 1]
+    if not re.search(r"\bhidePersonalInfo\s*:\s*PersonalInfoMask\s*\.\s*isOn\s*\(", args):
+        errors.append(
+            f"{NOTIFY}:{line_of(src, a + m.start())}: the banner's text is not told the switch"
+            " (`hidePersonalInfo: PersonalInfoMask.isOn()`)"
+        )
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
     real_tree = "--root" not in sys.argv
@@ -376,6 +480,8 @@ def main() -> int:
     used: set[tuple[str, str]] = set()
     masked = 0
     scanned = 0
+    showing = 0
+    exports = 0
     for rel_dir in TARGETS:
         base = root / rel_dir
         if not base.is_dir():
@@ -389,19 +495,25 @@ def main() -> int:
             rel = str(path.relative_to(root))
             src = path.read_text(encoding="utf-8", errors="replace")
             code = code_only(src)
-            for pos, is_masked in label_reads(src, code):
+            for pos, field, is_masked in label_reads(src, code):
                 if is_masked:
-                    masked += 1
+                    if field in ACCOUNT_FIELDS:
+                        masked += 1
                     continue
                 key = (rel, line_text(src, pos))
                 if key in allowed:
                     used.add(key)
                     continue
-                errors.append(
-                    f"{rel}:{line_of(src, pos)}: `{code[pos:pos + 12].strip()}` is read outside"
-                    f" PersonalInfoMask.accountName/accountLabel: {key[1]}"
+                calls = "/".join(sorted(FIELD_MASKS[field]))
+                where = (
+                    f"outside PersonalInfoMask.{calls}" if calls
+                    else "at all (show it through PersonalInfoMask.alertSessionName)"
                 )
+                errors.append(f"{rel}:{line_of(src, pos)}: `.{field}` is read {where}: {key[1]}")
             check_switch(rel, src, code, errors)
+            file_showing, file_exports = check_showing(rel, src, code, errors)
+            showing += file_showing
+            exports += file_exports
 
     for key in allowed:
         if key not in used:
@@ -409,11 +521,22 @@ def main() -> int:
 
     check_phone(root, errors)
     check_watch(root, errors)
+    check_notification(root, errors)
 
     if real_tree and masked < MIN_MASKED_READS_REAL_TREE:
         errors.append(
             f"only {masked} masked label reads found (expected at least {MIN_MASKED_READS_REAL_TREE}):"
             " the gate is not seeing the places that name accounts"
+        )
+    if real_tree and showing < MIN_SHOWING_CALLS_REAL_TREE:
+        errors.append(
+            f"only {showing} calls that show a session, an alert or a project through PersonalInfoMask"
+            f" (expected at least {MIN_SHOWING_CALLS_REAL_TREE}): the gate is not seeing the places that name them"
+        )
+    if real_tree and exports < MIN_EXPORT_CALLS_REAL_TREE:
+        errors.append(
+            f"only {exports} export calls found (expected at least {MIN_EXPORT_CALLS_REAL_TREE}):"
+            " the gate is not seeing the Export menus"
         )
 
     if errors:
@@ -421,16 +544,19 @@ def main() -> int:
         for e in errors:
             print(f"  - {e}")
         print(
-            "\nWith \"Hide personal information\" on, an account label that is an email address must not"
-            " reach the screen.\nRead the label inside PersonalInfoMask.accountName(...) or"
-            " PersonalInfoMask.accountLabel(...) with the switch from\n"
+            "\nWith \"Hide personal information\" on, no email address, project name, folder path or"
+            " session name may reach the screen or an export.\nRead an account label inside"
+            " PersonalInfoMask.accountName(...) or PersonalInfoMask.accountLabel(...), show a session or an"
+            " alert\nthrough PersonalInfoMask.sessionTitle/sessionProject/alertText/... with the switch from\n"
             "@AppStorage(PersonalInfoMask.defaultsKey), or, if it must show as typed, record the line in"
             f"\n{ALLOWLIST} with the reason."
         )
         return 1
     print(
         f"personal info mask: OK — {scanned} Swift files, {masked} label reads masked,"
-        f" {len(used)} shown as typed with a recorded reason; the Watch follows the iPhone."
+        f" {showing} sessions, alerts and projects shown through the mask, {exports} exports told the switch,"
+        f" {len(used)} shown as typed with a recorded reason; the Watch follows the iPhone,"
+        " and an alert's banner follows the switch."
     )
     return 0
 

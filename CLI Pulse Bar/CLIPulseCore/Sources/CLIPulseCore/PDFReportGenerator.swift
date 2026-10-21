@@ -76,6 +76,8 @@ public enum PDFReportGenerator {
         sessions: [SessionRecord],
         dailyUsage: [DailyUsage],
         costForecast: CostForecast?,
+        hidePersonalInfo: Bool,
+        projectNumbers: ProjectNameNumbers,
         generatedDate: Date = Date(),
         destinationURL: URL? = nil
     ) -> URL? {
@@ -202,7 +204,8 @@ public enum PDFReportGenerator {
         let topSessions = sessions.sorted { $0.estimated_cost > $1.estimated_cost }.prefix(15)
         for s in topSessions {
             checkSpace(16)
-            y = drawTableRow(topSessionRow(s), at: y, x: margin, colWidths: sessionColWidths, fontSize: 9, context: context)
+            y = drawTableRow(
+                topSessionRow(s, hidePersonalInfo: hidePersonalInfo, projectNumbers: projectNumbers), at: y, x: margin, colWidths: sessionColWidths, fontSize: 9, context: context)
         }
         y -= 12
 
@@ -387,10 +390,19 @@ public enum PDFReportGenerator {
     /// One row of the Top Sessions table, under localized headers. The status is
     /// the stored English token ("running", "Idle"), so it goes through the same
     /// mapper every on-screen session row uses; CSV exports keep the raw value.
-    static func topSessionRow(_ s: SessionRecord) -> [String] {
+    ///
+    /// v1.58 (P1-6): the project is a session detail's Project field
+    /// (`PersonalInfoMask.sessionDetailProject`): "Unknown" in the reader's
+    /// language rather than a producer's placeholder, and with "Hide personal
+    /// information" on "Project N" or "Hidden project".
+    static func topSessionRow(
+        _ s: SessionRecord,
+        hidePersonalInfo: Bool,
+        projectNumbers: ProjectNameNumbers
+    ) -> [String] {
         [
             s.provider,
-            s.project,
+            PersonalInfoMask.sessionDetailProject(s, numbers: projectNumbers, hidePersonalInfo: hidePersonalInfo),
             CostFormatter.format(s.estimated_cost),
             formatTokens(s.total_usage),
             L10n.status.localized(s.status),

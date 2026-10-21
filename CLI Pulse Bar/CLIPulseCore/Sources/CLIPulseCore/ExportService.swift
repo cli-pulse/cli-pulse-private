@@ -7,14 +7,42 @@ public enum ExportService {
     // MARK: - Sessions CSV
 
     /// Export sessions to a CSV file. Returns the temporary file URL.
-    public static func exportSessionsCSV(sessions: [SessionRecord]) -> URL? {
+    ///
+    /// v1.58 (P1-6): with "Hide personal information" on, Name is the row's
+    /// title as the Sessions tab shows it then ("Codex · Project 2", "Claude
+    /// session"), never the stored name, which can be a command line with a
+    /// path in it; and Project is the masked project ("Project 2", "Hidden
+    /// project", or empty for none). Both are then words the app wrote, in
+    /// the reader's language. With it off both columns are the stored values,
+    /// as before.
+    public static func exportSessionsCSV(
+        sessions: [SessionRecord],
+        hidePersonalInfo: Bool,
+        projectNumbers: ProjectNameNumbers
+    ) -> URL? {
+        writeTemp(
+            sessionsCSV(sessions: sessions, hidePersonalInfo: hidePersonalInfo, projectNumbers: projectNumbers),
+            name: "cli-pulse-sessions.csv")
+    }
+
+    static func sessionsCSV(
+        sessions: [SessionRecord],
+        hidePersonalInfo: Bool,
+        projectNumbers: ProjectNameNumbers
+    ) -> String {
         var csv = "ID,Name,Provider,Project,Status,Usage,Cost,Requests,Errors,Started,Last Active\n"
         for s in sessions {
-            csv += "\(esc(s.id)),\(esc(s.name)),\(esc(s.provider)),\(esc(s.project)),"
+            let name = hidePersonalInfo
+                ? PersonalInfoMask.sessionTitle(s, numbers: projectNumbers, hidePersonalInfo: true)
+                : s.name
+            let project = hidePersonalInfo
+                ? PersonalInfoMask.sessionProject(s, numbers: projectNumbers, hidePersonalInfo: true) ?? ""
+                : s.project
+            csv += "\(esc(s.id)),\(esc(name)),\(esc(s.provider)),\(esc(project)),"
             csv += "\(esc(s.status)),\(s.total_usage),\(s.estimated_cost),"
             csv += "\(s.requests),\(s.error_count),\(esc(s.started_at)),\(esc(s.last_active_at))\n"
         }
-        return writeTemp(csv, name: "cli-pulse-sessions.csv")
+        return csv
     }
 
     // MARK: - Provider Summary CSV
@@ -35,15 +63,39 @@ public enum ExportService {
     // MARK: - Alerts CSV
 
     /// Export alerts to a CSV file.
-    public static func exportAlertsCSV(alerts: [AlertRecord]) -> URL? {
+    ///
+    /// v1.58 (P1-6): with "Hide personal information" on, the stored English
+    /// Title and Message have the session's stored name replaced by its
+    /// provider and the project by its masked name
+    /// (`PersonalInfoMask.alertStoredText`), and Project is masked.
+    public static func exportAlertsCSV(
+        alerts: [AlertRecord],
+        hidePersonalInfo: Bool,
+        projectNumbers: ProjectNameNumbers
+    ) -> URL? {
+        writeTemp(
+            alertsCSV(alerts: alerts, hidePersonalInfo: hidePersonalInfo, projectNumbers: projectNumbers),
+            name: "cli-pulse-alerts.csv")
+    }
+
+    static func alertsCSV(
+        alerts: [AlertRecord],
+        hidePersonalInfo: Bool,
+        projectNumbers: ProjectNameNumbers
+    ) -> String {
         var csv = "ID,Type,Severity,Title,Message,Provider,Project,Created,Read,Resolved\n"
         for a in alerts {
-            csv += "\(esc(a.id)),\(esc(a.type)),\(esc(a.severity)),\(esc(a.title)),"
-            csv += "\(esc(a.message)),\(esc(a.related_provider ?? "")),"
-            csv += "\(esc(a.related_project_name ?? "")),\(esc(a.created_at)),"
+            let text = PersonalInfoMask.alertStoredText(
+                a, numbers: projectNumbers, hidePersonalInfo: hidePersonalInfo)
+            let project = hidePersonalInfo
+                ? PersonalInfoMask.alertProject(a, numbers: projectNumbers, hidePersonalInfo: true) ?? ""
+                : a.related_project_name ?? ""
+            csv += "\(esc(a.id)),\(esc(a.type)),\(esc(a.severity)),\(esc(text.title)),"
+            csv += "\(esc(text.message)),\(esc(a.related_provider ?? "")),"
+            csv += "\(esc(project)),\(esc(a.created_at)),"
             csv += "\(a.is_read),\(a.is_resolved)\n"
         }
-        return writeTemp(csv, name: "cli-pulse-alerts.csv")
+        return csv
     }
 
     // MARK: - Cost Report CSV
@@ -52,9 +104,12 @@ public enum ExportService {
     public static func exportCostReportCSV(
         dashboard: DashboardSummary?,
         providers: [ProviderUsage],
-        sessions: [SessionRecord]
+        sessions: [SessionRecord],
+        hidePersonalInfo: Bool,
+        projectNumbers: ProjectNameNumbers
     ) -> URL? {
-        writeTemp(costReportCSV(dashboard: dashboard, providers: providers, sessions: sessions),
+        writeTemp(costReportCSV(dashboard: dashboard, providers: providers, sessions: sessions,
+                                hidePersonalInfo: hidePersonalInfo, projectNumbers: projectNumbers),
                   name: "cli-pulse-cost-report.csv")
     }
 
@@ -79,10 +134,18 @@ public enum ExportService {
     /// the system's legacy code page, which would turn every translated heading
     /// into mojibake for exactly the ja/zh/ko readers this is for; Numbers and
     /// other readers skip the mark.
+    ///
+    /// v1.58 (P1-6): a top session's project is the session detail's Project
+    /// field (`PersonalInfoMask.sessionDetailProject`): its folder's name,
+    /// "Unknown" in the reader's language rather than a producer's English
+    /// placeholder, and with "Hide personal information" on "Project N" or
+    /// "Hidden project".
     static func costReportCSV(
         dashboard: DashboardSummary?,
         providers: [ProviderUsage],
         sessions: [SessionRecord],
+        hidePersonalInfo: Bool,
+        projectNumbers: ProjectNameNumbers,
         generatedAt: Date = Date()
     ) -> String {
         func row(_ cells: [String]) -> String {
@@ -117,7 +180,9 @@ public enum ExportService {
                     L10n.pdf.hUsage, L10n.pdf.hStatus].map(esc))
         let topSessions = sessions.sorted { $0.estimated_cost > $1.estimated_cost }.prefix(20)
         for s in topSessions {
-            csv += row([esc(s.provider), esc(s.project), "\(s.estimated_cost)", "\(s.total_usage)", esc(s.status)])
+            let project = PersonalInfoMask.sessionDetailProject(
+                s, numbers: projectNumbers, hidePersonalInfo: hidePersonalInfo)
+            csv += row([esc(s.provider), esc(project), "\(s.estimated_cost)", "\(s.total_usage)", esc(s.status)])
         }
         return csv
     }
@@ -139,6 +204,8 @@ public enum ExportService {
         sessions: [SessionRecord],
         dailyUsage: [DailyUsage],
         costForecast: CostForecast?,
+        hidePersonalInfo: Bool,
+        projectNumbers: ProjectNameNumbers,
         destinationURL: URL? = nil
     ) -> URL? {
         PDFReportGenerator.generateReport(
@@ -147,6 +214,8 @@ public enum ExportService {
             sessions: sessions,
             dailyUsage: dailyUsage,
             costForecast: costForecast,
+            hidePersonalInfo: hidePersonalInfo,
+            projectNumbers: projectNumbers,
             destinationURL: destinationURL
         )
     }
