@@ -563,18 +563,42 @@ struct EnhancedProviderCard: View {
     /// One of the usage row's three figures. `fixed` keeps it at its natural
     /// width (the layouts `usageSection` tries first); the last layout lets
     /// it shrink its headline instead of running past the card's edge.
+    ///
+    /// `stacksUnits` (v1.58) draws the headline's unit on a line of its own
+    /// under the number ("289" over "メッセージ"), which narrows the column to
+    /// its longest line: the layout that keeps the chart beside figures whose
+    /// units are long (Claude's messages in Japanese or Spanish).
     @ViewBuilder
-    private func usageColumn(header: String, cell: ProviderCardUsage.Cell, fixed: Bool = true) -> some View {
+    private func usageColumn(
+        header: String, cell: ProviderCardUsage.Cell, fixed: Bool = true, stacksUnits: Bool = false
+    ) -> some View {
         let metric = metric(for: cell)
         VStack(alignment: .leading, spacing: 2) {
             Text(header)
                 .font(.system(size: 9))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
-            Text(metric.headline)
-                .lineLimit(1)
-                .minimumScaleFactor(fixed ? 1 : 0.7)
+            if stacksUnits, let value = metric.value,
+               let unit = ProviderCardUsage.headlineUnit(metric.primary, value: value) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(value)
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                    Text(unit)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                // One element, as the one-line headline is: VoiceOver reads
+                // "12.4K メッセージ", not the number and the unit apart.
+                .accessibilityElement(children: .combine)
                 .help(metric.breakdownTooltip)
+            } else {
+                Text(metric.headline)
+                    .lineLimit(1)
+                    .minimumScaleFactor(fixed ? 1 : 0.7)
+                    .help(metric.breakdownTooltip)
+            }
             if let sub = metric.secondary {
                 Text(sub)
                     .font(.system(size: 9))
@@ -710,10 +734,7 @@ struct EnhancedProviderCard: View {
     /// as CodexBar's chart does: the card's one way into the panel while the
     /// chart is drawn (`ProviderCardUsage.panelEntry`).
     private func sparkline(_ usage: ProviderCardUsage, chart: ProviderCardUsage.Chart) -> some View {
-        let highest = chart.highest
-        let help = chart.metric == .cost
-            ? L10n.providerCard.chartCostHelp(CostFormatter.format(highest))
-            : L10n.providerCard.chartTokensHelp(CostFormatter.formatUsage(Int(highest)))
+        let help = ProviderCardUsage.chartHelp(chart)
         return Button {
             openPanel(usage)
         } label: {
@@ -737,11 +758,12 @@ struct EnhancedProviderCard: View {
     }
 
     /// The usage row's three figures.
-    private func usageCells(_ usage: ProviderCardUsage, fixed: Bool) -> some View {
+    private func usageCells(_ usage: ProviderCardUsage, fixed: Bool, stacksUnits: Bool = false) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            usageColumn(header: L10n.dashboard.today, cell: usage.today, fixed: fixed)
-            usageColumn(header: L10n.providers.thisWeek, cell: usage.week, fixed: fixed)
-            usageColumn(header: L10n.providerCard.thirtyDays, cell: usage.thirtyDays, fixed: fixed)
+            usageColumn(header: L10n.dashboard.today, cell: usage.today, fixed: fixed, stacksUnits: stacksUnits)
+            usageColumn(header: L10n.providers.thisWeek, cell: usage.week, fixed: fixed, stacksUnits: stacksUnits)
+            usageColumn(header: L10n.providerCard.thirtyDays, cell: usage.thirtyDays, fixed: fixed,
+                        stacksUnits: stacksUnits)
         }
     }
 
@@ -749,13 +771,15 @@ struct EnhancedProviderCard: View {
     /// messages first) and cost, and the 30-day chart beside them, which
     /// replace v1.30's two figures and the 90-point chart under the card.
     ///
-    /// Three layouts, the first that fits: the chart beside the figures, so
-    /// the row is no taller than the two figures it replaced; the chart under
-    /// them, when long figures leave it too little room; and, when even the
-    /// figures and the scope do not fit side by side (a month of Claude
-    /// messages in Japanese or Spanish), the scope on a line of its own, or
-    /// beside the messages note when there is one, and the figures' headlines
-    /// free to shrink rather than run past the card.
+    /// Four layouts, the first that fits: the chart beside the figures, so
+    /// the row is no taller than the two figures it replaced; v1.58, the
+    /// chart still beside them with each figure's unit under its number, one
+    /// line taller, when long units leave the chart too little room (a month
+    /// of Claude messages in Japanese or Spanish: "12.4K メッセージ"); the
+    /// chart under them; and, when even the figures and the scope do not fit
+    /// side by side, the scope on a line of its own, or beside the messages
+    /// note when there is one, and the figures' headlines free to shrink
+    /// rather than run past the card.
     @ViewBuilder
     private func usageSection(
         _ usage: ProviderCardUsage, chart: ProviderCardUsage.Chart, chartVisible: Bool, totalsVisible: Bool
@@ -769,6 +793,7 @@ struct EnhancedProviderCard: View {
         if showsTotals, chartVisible {
             ViewThatFits(in: .horizontal) {
                 usageChartBeside(usage, chart: chart, notesMessages: notesMessages)
+                usageChartBeside(usage, chart: chart, notesMessages: notesMessages, stacksUnits: true)
                 usageChartBelow(usage, chart: chart, notesMessages: notesMessages)
                 usageNarrow(usage, chart: chart, notesMessages: notesMessages)
             }
@@ -795,7 +820,8 @@ struct EnhancedProviderCard: View {
     }
 
     /// Layout 1: the figures, and the scope over the chart beside them
-    /// (`chart` nil: no chart, the scope alone).
+    /// (`chart` nil: no chart, the scope alone). Layout 2 (v1.58) is the
+    /// same with `stacksUnits`: each unit under its number.
     ///
     /// The chart asks for its minimum width, 72 points, as its ideal:
     /// `ViewThatFits` picks a layout by ideal size, so an ideal of 120 moved
@@ -803,11 +829,11 @@ struct EnhancedProviderCard: View {
     /// taller than 1.54's card. Laid out, it still takes up to 160 points
     /// where the figures leave the room.
     private func usageChartBeside(
-        _ usage: ProviderCardUsage, chart: ProviderCardUsage.Chart?, notesMessages: Bool
+        _ usage: ProviderCardUsage, chart: ProviderCardUsage.Chart?, notesMessages: Bool, stacksUnits: Bool = false
     ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .top, spacing: 8) {
-                usageCells(usage, fixed: true)
+                usageCells(usage, fixed: true, stacksUnits: stacksUnits)
                 Spacer(minLength: 0)
                 VStack(alignment: .trailing, spacing: 3) {
                     scopeLabel(usage)
@@ -822,7 +848,7 @@ struct EnhancedProviderCard: View {
         }
     }
 
-    /// Layout 2: the figures and the scope on a row, the chart under them.
+    /// Layout 3: the figures and the scope on a row, the chart under them.
     private func usageChartBelow(
         _ usage: ProviderCardUsage, chart: ProviderCardUsage.Chart, notesMessages: Bool
     ) -> some View {
@@ -838,7 +864,7 @@ struct EnhancedProviderCard: View {
         }
     }
 
-    /// Layout 3: the scope on a line of its own (beside the messages note
+    /// Layout 4: the scope on a line of its own (beside the messages note
     /// when there is one), the figures free to shrink to the card's width.
     private func usageNarrow(
         _ usage: ProviderCardUsage, chart: ProviderCardUsage.Chart?, notesMessages: Bool
@@ -872,6 +898,39 @@ struct EnhancedProviderCard: View {
             .foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(minWidth: 0, idealWidth: 0, maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The plan-and-source row: the account (`showsAccount`), the plan
+    /// badge and the source line while Plan and Source is shown, and the
+    /// quota badge at its end while the card shows a quota.
+    @ViewBuilder
+    private func planAndSourceRow(
+        showsPlanAndSource: Bool, showsAccount: Bool, sourceLine: String, showsBadge: Bool
+    ) -> some View {
+        HStack(spacing: 8) {
+            if showsPlanAndSource {
+                if showsAccount, let accountLabel {
+                    accountLabelView(accountLabel)
+                }
+                if let plan = detail.planType {
+                    StatusBadge(text: L10n.providers.planDisplay(plan), color: plan == "Paid" ? .green : .orange)
+                }
+                Text(sourceLine)
+                    .font(.system(size: 8))
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer()
+            if showsBadge {
+                quotaBadge
+            }
+        }
+    }
+
+    private func accountLabelView(_ label: String) -> some View {
+        Label(label, systemImage: "envelope")
+            .font(.system(size: 8))
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
     }
 
     /// v1.44 W3: collector outcome + one next step, or nothing at all.
@@ -1081,24 +1140,36 @@ struct EnhancedProviderCard: View {
                 let showsResetCredits = visibility.showsResetCredits(
                     for: kind, hasQuotaTiers: !detail.tiers.isEmpty)
                 if showsPlanAndSource || showsQuota {
-                    HStack(spacing: 8) {
-                        if showsPlanAndSource {
-                            if let accountLabel {
-                                Label(accountLabel, systemImage: "envelope")
-                                    .font(.system(size: 8))
-                                    .foregroundStyle(.tertiary)
-                                    .lineLimit(1)
+                    // v1.58: on a card with a quota, the line names what it
+                    // is the source of, the quota, and calls this Mac "This
+                    // Mac", so it is not read against the usage figures'
+                    // scope ("All devices") just below it. With no quota on
+                    // the card (no quota source, a quota that did not load)
+                    // the line is neutral and the quota badge goes, as it
+                    // goes with the quota bars: "OK" beside "No quota
+                    // source" said the opposite.
+                    let cardShowsQuota = ProviderCardUsage.cardShowsQuota(
+                        quotaVisible: showsQuota, tierCount: detail.tiers.count,
+                        overallQuota: provider.quota, provider: provider.provider,
+                        collectorOutcome: ProviderKind(rawValue: provider.provider)
+                            .flatMap { state.collectorOutcomes[$0] })
+                    let sourceLine = ProviderCardUsage.sourceLineText(
+                        detail.sourceType, cardShowsQuota: cardShowsQuota)
+                    // One row when it fits. Otherwise the account label on a
+                    // line of its own, so a long one is not cut short to
+                    // make room for the source line ("Fuente de la cuota:
+                    // API" wrapped beside it in Spanish).
+                    ViewThatFits(in: .horizontal) {
+                        planAndSourceRow(
+                            showsPlanAndSource: showsPlanAndSource, showsAccount: true,
+                            sourceLine: sourceLine, showsBadge: cardShowsQuota)
+                        VStack(alignment: .leading, spacing: 4) {
+                            if showsPlanAndSource, let accountLabel {
+                                accountLabelView(accountLabel)
                             }
-                            if let plan = detail.planType {
-                                StatusBadge(text: L10n.providers.planDisplay(plan), color: plan == "Paid" ? .green : .orange)
-                            }
-                            Text(L10n.providers.sourceLabel(detail.sourceType.localizedName))
-                                .font(.system(size: 8))
-                                .foregroundStyle(.tertiary)
-                        }
-                        Spacer()
-                        if showsQuota {
-                            quotaBadge
+                            planAndSourceRow(
+                                showsPlanAndSource: showsPlanAndSource, showsAccount: false,
+                                sourceLine: sourceLine, showsBadge: cardShowsQuota)
                         }
                     }
                 }

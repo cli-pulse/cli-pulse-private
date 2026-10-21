@@ -466,6 +466,14 @@ public enum L10n {
         public static var scopePicker: String { tr("provider_panel.scope_picker") }
         public static var scopeThisMacHelp: String { tr("provider_panel.scope_this_mac_help") }
         public static var scopeAllDevicesHelp: String { tr("provider_panel.scope_all_devices_help") }
+        /// v1.58: a day's cost in its line when none of it is known, on
+        /// screen and to VoiceOver (`ProviderUsageDays.Day.summary`), and
+        /// what Trends' grey stub is read as.
+        public static var costUnknown: String { tr("provider_panel.cost_unknown") }
+        /// v1.58: what the grey bar on a cost chart is: under the provider
+        /// panel's, the iPhone card's and the Usage Dashboard's Trends chart,
+        /// and in the Mac card's chart help.
+        public static var costUnknownHelp: String { tr("provider_panel.cost_unknown_help") }
         /// The selected day: date, cost, tokens.
         public static func daySummary(_ day: String, _ cost: String, _ tokens: String) -> String {
             tr("provider_panel.day_summary", day, cost, tokens)
@@ -623,6 +631,17 @@ public enum L10n {
         public static var messagesThisMac: String { tr("provider_card.messages_this_mac") }
         public static func chartTokensHelp(_ highest: String) -> String { tr("provider_card.chart_tokens_help", highest) }
         public static func chartCostHelp(_ highest: String) -> String { tr("provider_card.chart_cost_help", highest) }
+        /// v1.58: what the chart measures in Cost when no day's cost is
+        /// known, so there is no highest day to name.
+        public static var chartCostDescription: String { tr("provider_card.chart_cost_description") }
+        /// v1.58: the grey bars on the card's chart in Cost.
+        public static var chartCostUnknownHelp: String { providerPanel.costUnknownHelp }
+        /// v1.58: the plan-and-source line on a card that shows a quota,
+        /// "Quota source: This Mac" (`ProviderCardUsage.sourceLineText`).
+        public static func quotaSource(_ source: String) -> String { tr("provider_card.quota_source", source) }
+        /// v1.58: the merged source as the card names it, "Cloud + this
+        /// Mac" (`ProviderCardUsage.sourceName`).
+        public static var sourceMergedThisMac: String { tr("provider_card.source_merged_this_mac") }
         public static var sectionsMenu: String { tr("provider_card.sections_menu") }
         public static var sectionsAllShown: String { tr("provider_card.sections_all_shown") }
         public static func sectionsHiddenCount(_ count: Int) -> String { tr("provider_card.sections_hidden_count", count) }
@@ -680,6 +699,8 @@ public enum L10n {
         public static var providerLevelCost: String { tr("providers.provider_level_cost") }
         public static var mostConstrained: String { tr("providers.most_constrained") }
         public static func remainingPercent(_ percent: Int) -> String { tr("providers.remaining_percent", percent) }
+        /// The card's plan-and-source line when the card shows no quota,
+        /// "Source: This Mac" (`ProviderCardUsage.sourceLineText`).
         public static func sourceLabel(_ source: String) -> String { tr("providers.source_label", source) }
         public static func planSource(_ source: PlanEvidenceSource) -> String {
             switch source {
@@ -977,7 +998,11 @@ public enum L10n {
         public static var detectedFooter: String { tr("sessions.detected_footer") }
         public static var sectionActive: String { tr("sessions.section_active") }
         public static var sectionRecent: String { tr("sessions.section_recent") }
-        public static var freshnessLegend: String { tr("sessions.freshness_legend") }
+        /// v1.58: the legend under the Sessions list, one line for each
+        /// badge the list shows (`SessionFreshnessLegend`).
+        public static var legendRunning: String { tr("sessions.legend_running") }
+        public static var legendRecentActivity: String { tr("sessions.legend_recent_activity") }
+        public static var legendRecent: String { tr("sessions.legend_recent") }
         public static var send: String { tr("sessions.send") }
         public static var approveHelp: String { tr("sessions.approve_help") }
         public static var rejectHelp: String { tr("sessions.reject_help") }

@@ -9,7 +9,11 @@ import SwiftUI
 /// figures instead of under them, so the card grows by nothing. Clicking it
 /// opens the panel, where a day is read in detail. Tokens are drawn in the provider's colour
 /// and cost in the green every cost figure uses, so the colour says which one
-/// the bars are. A day with nothing is a gap on the baseline, not a bar.
+/// the bars are. A day with nothing is a gap on the baseline, not a bar. In
+/// Cost, a day that has usage and no known cost (`Day.costIsUnknown`) is a
+/// short, outlined grey stub instead (v1.58, `UnknownCostStub`), so it does
+/// not read as a day with nothing; the chart's help says what the grey bars
+/// are.
 ///
 /// Plain shapes rather than Swift Charts: thirty rectangles need no axis, and
 /// this draws the same on macOS 13 as on the newest system.
@@ -37,11 +41,18 @@ public struct ProviderUsageSparkline: View {
             let gap: CGFloat = count > 1 ? 1 : 0
             let width = max((geometry.size.width - gap * CGFloat(count - 1)) / CGFloat(count), 1)
             HStack(alignment: .bottom, spacing: gap) {
-                ForEach(Array(values.enumerated()), id: \.offset) { _, value in
-                    RoundedRectangle(cornerRadius: min(1.5, width / 2))
-                        .fill(barColor.opacity(0.85))
-                        .frame(width: width, height: Self.barHeight(
-                            value, highest: highest, available: geometry.size.height))
+                ForEach(Array(days.enumerated()), id: \.offset) { index, day in
+                    if metric.drawsUnknownCostStub(day) {
+                        // Outlined, not filled: a stub, not a small cost.
+                        RoundedRectangle(cornerRadius: min(1, width / 2))
+                            .strokeBorder(UnknownCostStub.color(), lineWidth: 1)
+                            .frame(width: width, height: Self.stubHeight(available: geometry.size.height))
+                    } else {
+                        RoundedRectangle(cornerRadius: min(1.5, width / 2))
+                            .fill(barColor.opacity(0.85))
+                            .frame(width: width, height: Self.barHeight(
+                                values[index], highest: highest, available: geometry.size.height))
+                    }
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .bottomLeading)
@@ -51,6 +62,13 @@ public struct ProviderUsageSparkline: View {
                 .fill(Color.secondary.opacity(0.25))
                 .frame(height: 0.5)
         }
+    }
+
+    /// v1.58: the stub's height: `UnknownCostStub.sparklineHeight`, 4
+    /// points of the card's 28, so its outline keeps a hollow middle; less
+    /// only on a chart shorter than that.
+    static func stubHeight(available: CGFloat) -> CGFloat {
+        min(UnknownCostStub.sparklineHeight, max(available, 0))
     }
 
     /// A day with anything at all gets at least a sliver, so a quiet day next

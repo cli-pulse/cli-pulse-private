@@ -142,8 +142,10 @@ final class MacSettingsCopyTests: XCTestCase {
     /// translating the old wording.
     func test_theSessionsHints_doNotNameTheFileFormat() {
         eachLocalization { localization in
-            XCTAssertFalse(L10n.sessions.freshnessLegend.contains("JSONL"),
-                           "\(localization): \(L10n.sessions.freshnessLegend)")
+            for line in [L10n.sessions.legendRunning, L10n.sessions.legendRecentActivity,
+                         L10n.sessions.legendRecent] {
+                XCTAssertFalse(line.contains("JSONL"), "\(localization): \(line)")
+            }
             XCTAssertFalse(L10n.sessions.startHelperHint.isEmpty, localization)
             XCTAssertFalse(L10n.sessions.startHelperHint
                             .localizedCaseInsensitiveContains(L10n.sessions.localFastPathTitle),

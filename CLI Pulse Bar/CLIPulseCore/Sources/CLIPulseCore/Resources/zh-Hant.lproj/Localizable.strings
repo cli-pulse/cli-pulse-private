@@ -1280,7 +1280,9 @@
 "sessions.detected_footer" = "這些 Claude 工作階段正在這台 Mac 上執行，但不是由 CLI Pulse 啟動的，因此 helper 無法安全地傳送輸入或停止它們。請在啟動它們的終端機中操作。";
 "sessions.section_active" = "活躍";
 "sessions.section_recent" = "最近 · 過去 30 分鐘";
-"sessions.freshness_legend" = "執行中 = 已確認程序存在。剛剛活動 = 5 分鐘內寫入過日誌。稍早活動 = 30 分鐘內寫入過日誌。";
+"sessions.legend_running" = "執行中 = 已確認程序存在。";
+"sessions.legend_recent_activity" = "剛剛活動 = 5 分鐘內寫入過日誌。";
+"sessions.legend_recent" = "稍早活動 = 30 分鐘內寫入過日誌。";
 "sessions.send" = "傳送";
 "sessions.approve_help" = "批准與此本機工作階段關聯的待處理 Claude 權限請求（⌘↩）。";
 "sessions.reject_help" = "拒絕待處理的 Claude 權限請求。Claude 會繼續等待其他決定，或改用它自己的提示。";
@@ -1662,6 +1664,8 @@
 "provider_panel.chart_label" = "最近 %2$d 天的每日%1$@";
 "provider_panel.close_day" = "隱藏當天明細";
 "provider_panel.chart_hint" = "上下滑動以選擇日期，當天的模型會列在圖表下方。";
+"provider_panel.cost_unknown" = "費用未知";
+"provider_panel.cost_unknown_help" = "灰色短柱表示該日有用量，但費用未知。";
 "folder_access.dir_clipulse_config" = "CLI Pulse 設定";
 "folder_access.dir_clipulse_data" = "CLI Pulse 資料";
 "folder_access.dir_codex_session_logs" = "Codex 工作階段日誌";
@@ -1920,6 +1924,7 @@
 "provider_card.messages_this_mac" = "訊息數僅統計這台 Mac。";
 "provider_card.chart_tokens_help" = "最近 30 天每天的輸入 + 輸出 token。單日最高：%@。";
 "provider_card.chart_cost_help" = "最近 30 天每天的預估費用。單日最高：%@。";
+"provider_card.chart_cost_description" = "最近 30 天每天的預估費用。";
 "provider_card.sections_menu" = "在卡片上顯示";
 "provider_card.sections_all_shown" = "已全部顯示";
 "provider_card.sections_hidden_count" = "已隱藏 %d 項";
@@ -1928,6 +1933,8 @@
 "provider_card.section_plan_and_source" = "方案與來源";
 "provider_card.section_usage_totals" = "用量合計";
 "provider_card.section_daily_chart" = "每日圖表";
+"provider_card.quota_source" = "配額來源：%@";
+"provider_card.source_merged_this_mac" = "雲端 + 這台 Mac";
 "providers.tracked_count_one" = "正在追蹤 %d 個";
 "watch.active_count_one" = "%d 個活躍";
 "menu_bar.tier_migration_one" = "已保留你最常用的 %d 個服務商以符合免費方案限制，並停用了其餘 %d 個——可在「設定 › 服務商」中編輯。";

@@ -1280,7 +1280,9 @@
 "sessions.detected_footer" = "这些 Claude 会话正在这台 Mac 上运行，但不是由 CLI Pulse 启动的，因此 helper 无法安全地向它们发送输入或停止它们。请在启动它们的终端中操作。";
 "sessions.section_active" = "活跃";
 "sessions.section_recent" = "最近 · 过去 30 分钟";
-"sessions.freshness_legend" = "运行中 = 已确认进程存在。最近活动 = 5 分钟内写入过日志。最近 = 30 分钟内写入过日志。";
+"sessions.legend_running" = "运行中 = 已确认进程存在。";
+"sessions.legend_recent_activity" = "最近活动 = 5 分钟内写入过日志。";
+"sessions.legend_recent" = "最近 = 30 分钟内写入过日志。";
 "sessions.send" = "发送";
 "sessions.approve_help" = "批准与此本地会话关联的待处理 Claude 权限请求（⌘↩）。";
 "sessions.reject_help" = "拒绝待处理的 Claude 权限请求。Claude 会继续等待其他决定，或退回到它自己的提示。";
@@ -1662,6 +1664,8 @@
 "provider_panel.chart_label" = "最近 %2$d 天的每日%1$@";
 "provider_panel.close_day" = "隐藏当天明细";
 "provider_panel.chart_hint" = "上下轻扫以选择日期，当天的模型会列在图表下方。";
+"provider_panel.cost_unknown" = "费用未知";
+"provider_panel.cost_unknown_help" = "灰色短柱表示该日有用量，但费用未知。";
 "folder_access.dir_clipulse_config" = "CLI Pulse 配置";
 "folder_access.dir_clipulse_data" = "CLI Pulse 数据";
 "folder_access.dir_codex_session_logs" = "Codex 会话日志";
@@ -1920,6 +1924,7 @@
 "provider_card.messages_this_mac" = "消息数仅统计这台 Mac。";
 "provider_card.chart_tokens_help" = "最近 30 天每天的输入 + 输出 token。单日最高：%@。";
 "provider_card.chart_cost_help" = "最近 30 天每天的预估费用。单日最高：%@。";
+"provider_card.chart_cost_description" = "最近 30 天每天的预估费用。";
 "provider_card.sections_menu" = "在卡片上显示";
 "provider_card.sections_all_shown" = "已全部显示";
 "provider_card.sections_hidden_count" = "已隐藏 %d 项";
@@ -1928,6 +1933,8 @@
 "provider_card.section_plan_and_source" = "方案与来源";
 "provider_card.section_usage_totals" = "用量合计";
 "provider_card.section_daily_chart" = "每日图表";
+"provider_card.quota_source" = "配额来源：%@";
+"provider_card.source_merged_this_mac" = "云端 + 这台 Mac";
 "providers.tracked_count_one" = "正在追踪 %d 个";
 "watch.active_count_one" = "%d 个活跃";
 "menu_bar.tier_migration_one" = "已保留你最常用的 %d 个服务商以适配免费方案。已禁用 %d 个——可在「设置 › 服务商」中编辑。";

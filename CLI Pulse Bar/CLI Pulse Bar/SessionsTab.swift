@@ -749,7 +749,7 @@ struct SessionsTab: View {
             // were JSONL-only "recent activity". One source of truth
             // (the FreshnessTier classifier) for both the header and
             // the row badges keeps the panel internally consistent.
-            let now = Date()
+            let now = state.sessionsClock()
             let runningCount = state.sessions.reduce(0) { acc, s in
                 acc + (SessionFreshnessTierClassifier.classify(s, now: now) == .activeProcess ? 1 : 0)
             }
@@ -774,7 +774,7 @@ struct SessionsTab: View {
             // activity in the last 30 min that's no longer fresh
             // enough to call active. Older rows are hidden, same as
             // before.
-            let now = Date()
+            let now = state.sessionsClock()
             let buckets = SessionFreshnessTierClassifier.partition(
                 state.sessions, now: now
             )
@@ -800,10 +800,13 @@ struct SessionsTab: View {
                         subtitle: L10n.sessions.emptyHint
                     )
                 }
-                Text(L10n.sessions.freshnessLegend)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+                // v1.58: one line for each badge a row shows.
+                if let legend = SessionFreshnessLegend.text(for: state.sessions, now: now) {
+                    Text(legend)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }

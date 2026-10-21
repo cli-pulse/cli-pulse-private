@@ -158,7 +158,12 @@ public struct ProviderCardUsage: Sendable, Equatable {
         let byKey = Dictionary(synced.map { ($0.dateKey, $0) }, uniquingKeysWith: { first, _ in first })
         return local.map { day in
             guard let other = byKey[day.dateKey] else { return day }
-            return other.value(metric) > day.value(metric) ? other : day
+            let (theirs, ours) = (other.value(metric), day.value(metric))
+            if theirs != ours { return theirs > ours ? other : day }
+            // Level (in Cost, both 0 when the account's day has usage and no
+            // known cost and this Mac has nothing): the one with more usage,
+            // so the chart draws that day's stub, not an empty slot.
+            return other.tokens > day.tokens ? other : day
         }
     }
 
@@ -190,8 +195,14 @@ public struct ProviderCardUsage: Sendable, Equatable {
 
         /// The tallest bar, for the chart's help text ("Highest day: …").
         public var highest: Double { bars.map { $0.value(metric) }.max() ?? 0 }
-        /// Whether there is a bar to draw. The card draws no chart without one.
-        public var hasData: Bool { highest > 0 }
+        /// v1.58: the chart draws a grey stub for a day with usage and no
+        /// known cost (in Cost only), and its help says what those are.
+        public var hasUnknownCostDays: Bool {
+            bars.contains(where: metric.drawsUnknownCostStub)
+        }
+        /// Whether there is a bar to draw, a stub included. The card draws no
+        /// chart without one.
+        public var hasData: Bool { highest > 0 || hasUnknownCostDays }
     }
 
     /// The small chart for `metric`.
@@ -224,6 +235,82 @@ public struct ProviderCardUsage: Sendable, Equatable {
         case .thisMac: return L10n.providerPanel.scopeThisMacHelp
         case .allDevices: return L10n.providerCard.scopeAllDevicesHelp
         }
+    }
+
+    /// v1.58: the words of a figure's headline around its number ("289
+    /// msgs" → "msgs", "12.4 k mensajes" → "mensajes", "2.7K 条消息" →
+    /// "条消息"), for the card layout that draws the unit under the number
+    /// so the chart can stay beside the figures. nil when the headline is the
+    /// number alone or does not contain it.
+    public static func headlineUnit(_ headline: String, value: String) -> String? {
+        guard !value.isEmpty, let range = headline.range(of: value) else { return nil }
+        var rest = headline
+        rest.removeSubrange(range)
+        let unit = rest.trimmingCharacters(in: .whitespacesAndNewlines)
+        return unit.isEmpty ? nil : unit
+    }
+
+    /// v1.58: the card's plan-and-source line. It used to read "Source:
+    /// Local" right above the usage figures' scope, "All devices", and the
+    /// two read as disagreeing: they are about different things. The quota
+    /// (and plan) is read where the source says; the figures and chart count
+    /// what their scope says. So, on a card that shows a quota
+    /// (`cardShowsQuota`), the line names what it is the source of, "Quota
+    /// source: This Mac". On a card with no quota (a tool with no quota API
+    /// we can read, a quota that did not load) that would claim a quota the
+    /// card does not have, next to "No quota source" or "Quota data
+    /// unavailable", so the line stays neutral: "Source: This Mac".
+    public static func sourceLineText(_ source: SourceType, cardShowsQuota: Bool) -> String {
+        let name = sourceName(source)
+        return cardShowsQuota ? L10n.providerCard.quotaSource(name) : L10n.providers.sourceLabel(name)
+    }
+
+    /// The card's name for a source. This Mac is called by the usage scope's
+    /// own name for it, "This Mac", rather than "Local", in the merged
+    /// source too ("Cloud + this Mac"), so two cards side by side do not call
+    /// one Mac two things. The other sources keep the names the provider
+    /// editor's Data source picker gives them.
+    public static func sourceName(_ source: SourceType) -> String {
+        switch source {
+        case .local: return L10n.providerPanel.scopeThisMac
+        case .merged: return L10n.providerCard.sourceMergedThisMac
+        case .auto, .web, .cli, .oauth, .api: return source.localizedName
+        }
+    }
+
+    /// v1.58: whether the card shows a quota whose source the line can name:
+    /// quota tiers, or the one quota bar a provider without tiers gets (never
+    /// Claude's, whose empty tier list means its data did not load), and a
+    /// collector that exists for the provider. Mirrors what the card draws
+    /// under the line (`EnhancedProviderCard`), and the card's own choice to
+    /// hide the Quota section.
+    public static func cardShowsQuota(
+        quotaVisible: Bool, tierCount: Int, overallQuota: Int?, provider: String,
+        collectorOutcome: CollectorOutcome?
+    ) -> Bool {
+        guard quotaVisible, collectorOutcome != .unsupported else { return false }
+        if tierCount > 0 { return true }
+        return (overallQuota ?? 0) > 0 && provider != ProviderKind.claude.rawValue
+    }
+
+    /// What the card's small chart says on hover and to VoiceOver: what the
+    /// bars measure and the highest day, and, v1.58, in Cost with a day that
+    /// has usage and no known cost, what its grey bar is. A chart of nothing
+    /// but such days has no highest day to name, and says what it measures.
+    public static func chartHelp(_ chart: Chart) -> String {
+        var lines: [String] = []
+        switch chart.metric {
+        case .tokens:
+            lines.append(L10n.providerCard.chartTokensHelp(CostFormatter.formatUsage(Int(chart.highest))))
+        case .cost:
+            lines.append(chart.highest > 0
+                ? L10n.providerCard.chartCostHelp(CostFormatter.format(chart.highest))
+                : L10n.providerCard.chartCostDescription)
+            if chart.hasUnknownCostDays {
+                lines.append(L10n.providerCard.chartCostUnknownHelp)
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Where a card opens the usage panel's provider mode from: one place at

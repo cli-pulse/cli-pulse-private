@@ -182,9 +182,33 @@ struct DashboardBreakdown: View {
 
 // MARK: - Trends (stacked daily tokens)
 
-struct DashboardTrends: View {
+#if canImport(Charts)
+/// Each provider's series in the colour it has everywhere else. With no
+/// series (v1.58: Trends in Cost with nothing but unknown-cost days) there is
+/// no scale to set: an empty domain is left to Swift Charts.
+private struct ProviderColorScale: ViewModifier {
+    let providers: [String]
+
+    func body(content: Content) -> some View {
+        if providers.isEmpty {
+            content
+        } else {
+            content.chartForegroundStyleScale(
+                domain: providers, range: providers.map { PulseTheme.providerColor($0) })
+        }
+    }
+}
+#endif
+
+public struct DashboardTrends: View {
     let archive: DailyUsageArchive
     @State private var rangeDays: Int = 30   // -1 ⇒ all
+
+    /// The Usage Dashboard's Trends card. Public for the QA renderer, which
+    /// draws it on its own.
+    public init(archive: DailyUsageArchive) {
+        self.archive = archive
+    }
     /// v1.57: tokens or cost, the choice the provider mode keeps too.
     @AppStorage(UsageChartMetric.defaultsKey) private var metricRaw = UsageChartMetric.tokens.rawValue
     @AppStorage("cli_pulse_show_cost") private var showCost = true
@@ -201,7 +225,11 @@ struct DashboardTrends: View {
         (L10n.usageDashboard.range7d, 7), (L10n.usageDashboard.range30d, 30), (L10n.usageDashboard.range90d, 90), (L10n.usageDashboard.range1y, 365),
     ]
 
-    var body: some View {
+    public var body: some View {
+        // The range's days, worked out once a redraw: the chart and the line
+        // under it both read them.
+        let days = trendDays()
+        let stubs = metric == .cost ? Self.unknownCostDays(in: days) : []
         VStack(alignment: .leading, spacing: 8) {
             // One row when both pickers fit beside the heading, otherwise
             // the Token / Cost picker drops to a row of its own.
@@ -227,13 +255,20 @@ struct DashboardTrends: View {
                     }
                 }
             }
-            chart
+            chart(days: days, stubs: stubs)
             // Dollars on the axis are estimates; say so where they are drawn.
             if metric == .cost {
                 Text(L10n.usageDashboard.costDisclaimer)
                     .font(.system(size: 9.5))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                // v1.58: what a grey bar is, while the chart draws one.
+                if !stubs.isEmpty {
+                    Text(L10n.providerPanel.costUnknownHelp)
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -257,10 +292,13 @@ struct DashboardTrends: View {
     }
 
     @ViewBuilder
-    private var chart: some View {
+    private func chart(days: [(key: String, day: DayRollup)], stubs: [String]) -> some View {
         #if canImport(Charts)
-        let points = trendPoints()
-        if points.isEmpty {
+        let points = trendPoints(days)
+        // v1.58: in Cost, a day with tokens and no known cost has no bar, the
+        // same as a day with nothing: an outlined grey stub over its slot
+        // instead (`UnknownCostStub`), read as "cost unknown".
+        if points.isEmpty && stubs.isEmpty {
             Text(L10n.usageDashboard.empty)
                 .font(.caption).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: 120)
@@ -274,21 +312,35 @@ struct DashboardTrends: View {
             // The axis runs to the tallest day's stack, not its tallest slice.
             let top = Dictionary(grouping: points, by: \.day)
                 .values.map { $0.reduce(0) { $0 + $1.value } }.max() ?? 0
+            // v1.58: every calendar day of the range, in date order, so a day
+            // with no usage keeps its empty slot, as the provider charts
+            // keep it, and "30D" is the last 30 days, not the last 30 with
+            // records. Swift Charts would otherwise take the days with bars,
+            // in the order it first saw them.
+            let xDomain = days.map(\.key)
             Chart(points) { p in
                 BarMark(x: .value(L10n.usageDashboard.chartDay, p.day), y: .value(metric.label, p.value))
                     .foregroundStyle(by: .value(L10n.usageDashboard.chartProvider, p.provider))
             }
-            .chartForegroundStyleScale(domain: providers, range: providers.map { PulseTheme.providerColor($0) })
+            .modifier(ProviderColorScale(providers: providers))
+            .chartXScale(domain: xDomain)
             .chartXAxis(.hidden)
+            .modifier(UnknownCostAxis(noKnownValue: top <= 0))
             .chartYAxis {
                 AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
                     AxisGridLine()
-                    if let number = value.as(Double.self) {
+                    if top > 0, let number = value.as(Double.self) {
                         AxisValueLabel {
                             Text(axisText(number, top: top))
                                 .font(.system(size: 9)).foregroundStyle(.secondary)
                         }
                     }
+                }
+            }
+            .chartOverlay { proxy in
+                GeometryReader { geo in
+                    UnknownCostStubLayer(
+                        keys: stubs, columns: xDomain.count, proxy: proxy, plot: geo[proxy.plotAreaFrame])
                 }
             }
             .chartLegend(position: .bottom, spacing: 6)
@@ -319,12 +371,59 @@ struct DashboardTrends: View {
         Array(Set(points.map(\.provider))).sorted()
     }
 
-    private func trendPoints() -> [TrendPoint] {
-        let sortedDays = archive.days.keys.sorted()
-        let window = rangeDays < 0 ? sortedDays : Array(sortedDays.suffix(rangeDays))
+    /// The days the chart covers, oldest first (`windowKeys`), each with
+    /// its rollup; an empty one for a day the archive has nothing for.
+    private func trendDays() -> [(key: String, day: DayRollup)] {
+        Self.windowKeys(rangeDays: rangeDays, archiveKeys: Array(archive.days.keys))
+            .map { ($0, archive.days[$0] ?? DayRollup()) }
+    }
+
+    /// v1.58: the calendar days of the range picked, oldest first, ending
+    /// today, or on the archive's latest day when that is later (a day key
+    /// another device wrote in a time zone ahead of this Mac's). "All" runs
+    /// from the archive's first day; with nothing archived it has no days.
+    /// It used to be the last `rangeDays` days that had records, so a day
+    /// with no usage vanished and the bars closed up over it.
+    static func windowKeys(
+        rangeDays: Int, archiveKeys: [String], today: Date = Date(), timeZone: TimeZone = .current
+    ) -> [String] {
+        let sorted = archiveKeys.sorted()
+        let todayKey = DayKey.string(from: today, in: timeZone)
+        let end = max(todayKey, sorted.last ?? todayKey)
+        if rangeDays > 0 {
+            return ProviderUsageDays.buildDayKeys(count: rangeDays, endingAt: end, timeZone: timeZone)
+        }
+        let formatter = DayKey.formatter(in: timeZone)
+        guard let first = sorted.first, let from = formatter.date(from: first),
+              let to = formatter.date(from: end),
+              let span = DayKey.calendar(in: timeZone).dateComponents([.day], from: from, to: to).day
+        else { return [] }
+        return ProviderUsageDays.buildDayKeys(count: span + 1, endingAt: end, timeZone: timeZone)
+    }
+
+    /// v1.58: the days that have tokens and no known cost from any provider,
+    /// which the chart in Cost draws as grey stubs. The archive keeps a cost
+    /// of 0 both for tokens that had no rate and for a model rated at $0
+    /// (`ZeroRatedModel`, Codex's research preview), whose cost is known: a
+    /// day of nothing but such models is a day of $0, as the provider panel
+    /// shows it, not a stub.
+    static func unknownCostDays(in days: [(key: String, day: DayRollup)]) -> [String] {
+        days.compactMap { key, day in
+            let slices = day.perProvider.values
+            let tokens = slices.reduce(0) { $0 + max(0, $1.tokens) }
+            let cost = slices.reduce(0) { $0 + max(0, $1.cost) }
+            guard tokens > 0, cost == 0 else { return nil }
+            let used = day.perModel.filter { $0.value.tokens > 0 }
+            let allRatedAtZero = !used.isEmpty
+                && used.values.reduce(0) { $0 + $1.tokens } >= tokens
+                && used.keys.allSatisfy(ZeroRatedModel.contains)
+            return allRatedAtZero ? nil : key
+        }
+    }
+
+    private func trendPoints(_ days: [(key: String, day: DayRollup)]) -> [TrendPoint] {
         var points: [TrendPoint] = []
-        for dayKey in window {
-            guard let day = archive.days[dayKey] else { continue }
+        for (dayKey, day) in days {
             for (provider, slice) in day.perProvider.sorted(by: { $0.key < $1.key }) {
                 let value = metric == .cost ? max(0, slice.cost) : Double(max(0, slice.tokens))
                 guard value > 0 else { continue }

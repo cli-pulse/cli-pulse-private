@@ -22,7 +22,7 @@ struct iOSSessionsTab: View {
                 .navigationTitle(L10n.tab.sessions)
         } detail: {
             if let session = selectedSession {
-                SessionDetailView(session: session, showCost: state.showCost)
+                SessionDetailView(session: session, showCost: state.showCost, now: state.sessionsClock())
             } else {
                 ContentUnavailableView {
                     Label(L10n.sessions.select, systemImage: "terminal")
@@ -39,7 +39,7 @@ struct iOSSessionsTab: View {
             // App Store capture: a session open beside the list, as after a
             // tap (ScreenshotLaunch.Screen.opensSessionDetail).
             if selectedSession == nil, ScreenshotLaunch.activeRequest?.screen.opensSessionDetail == true {
-                selectedSession = ScreenshotLaunch.sessionToOpen(in: state.sessions, now: Date())
+                selectedSession = ScreenshotLaunch.sessionToOpen(in: state.sessions, now: state.sessionsClock())
             }
         }
         #endif
@@ -57,7 +57,7 @@ struct iOSSessionsTab: View {
             }
             .navigationTitle(L10n.tab.sessions)
             .navigationDestination(for: SessionRecord.self) { session in
-                SessionDetailView(session: session, showCost: state.showCost)
+                SessionDetailView(session: session, showCost: state.showCost, now: state.sessionsClock())
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -66,7 +66,7 @@ struct iOSSessionsTab: View {
                     // confirmed rows, `local-` and `proc-`, count as
                     // "running"; JSONL-synthesized rows are "recent
                     // activity" / "recent" and don't contribute).
-                    let now = Date()
+                    let now = state.sessionsClock()
                     let runningCount = state.sessions.reduce(0) { acc, s in
                         acc + (SessionFreshnessTierClassifier.classify(s, now: now) == .activeProcess ? 1 : 0)
                     }
@@ -96,7 +96,7 @@ struct iOSSessionsTab: View {
                 }
                 .padding(.vertical, 20)
             } else {
-                let now = Date()
+                let now = state.sessionsClock()
                 let buckets = SessionFreshnessTierClassifier.partition(
                     state.sessions, now: now
                 )
@@ -122,10 +122,14 @@ struct iOSSessionsTab: View {
                     }
                     .padding(.vertical, 20)
                 }
-                Text(L10n.sessions.freshnessLegend)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+                // v1.58: one line for each badge a row shows; since 1.57
+                // every synced row reads "Running".
+                if let legend = SessionFreshnessLegend.text(for: state.sessions, now: now) {
+                    Text(legend)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -168,17 +172,19 @@ struct iOSSessionsTab: View {
     /// put two of them under Recent and keeps "Running" for process-confirmed
     /// rows (the legend below says so).
     private var sessionList: some View {
-        let now = Date()
+        let now = state.sessionsClock()
         let buckets = SessionFreshnessTierClassifier.partition(state.sessions, now: now)
+        // v1.58: one line for each badge a row shows.
+        let legend = SessionFreshnessLegend.text(for: state.sessions, now: now)
         return List {
             // The legend the iPhone shows under its list, under the last section.
             if !buckets.active.isEmpty {
                 iPadSessionSection(header: L10n.sessions.sectionActive, sessions: buckets.active, now: now,
-                                   legend: buckets.recent.isEmpty)
+                                   legend: buckets.recent.isEmpty ? legend : nil)
             }
             if !buckets.recent.isEmpty {
                 iPadSessionSection(header: L10n.sessions.sectionRecent, sessions: buckets.recent, now: now,
-                                   legend: true)
+                                   legend: legend)
             }
         }
         // Wide enough for a session's name and project beside its badge; at
@@ -191,7 +197,7 @@ struct iOSSessionsTab: View {
                 // Same FreshnessTier source as the iPhone toolbar — only
                 // process-confirmed rows (`local-` and `proc-`) count as
                 // "running" in the pill.
-                let now = Date()
+                let now = state.sessionsClock()
                 let runningTierCount = state.sessions.reduce(0) { acc, s in
                     acc + (SessionFreshnessTierClassifier.classify(s, now: now) == .activeProcess ? 1 : 0)
                 }
@@ -204,7 +210,7 @@ struct iOSSessionsTab: View {
     }
 
     private func iPadSessionSection(header: String, sessions: [SessionRecord], now: Date,
-                                    legend: Bool) -> some View {
+                                    legend: String?) -> some View {
         Section {
             ForEach(sessions) { session in
                 HStack(spacing: 10) {
@@ -263,8 +269,8 @@ struct iOSSessionsTab: View {
                     .foregroundStyle(.tertiary)
             }
         } footer: {
-            if legend {
-                Text(L10n.sessions.freshnessLegend)
+            if let legend {
+                Text(legend)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -316,6 +322,9 @@ struct SessionStatusBadge: View {
 struct SessionDetailView: View {
     let session: SessionRecord
     let showCost: Bool
+    /// The moment its badge is classified at: the list's
+    /// (`AppState.sessionsClock`), so in Demo it matches the row tapped.
+    var now = Date()
 
     var body: some View {
         ScrollView {
@@ -337,7 +346,7 @@ struct SessionDetailView: View {
                             // row and this header sit side by side.
                             SessionStatusBadge(
                                 session: session,
-                                tier: SessionFreshnessTierClassifier.classify(session, now: Date())
+                                tier: SessionFreshnessTierClassifier.classify(session, now: now)
                             )
                             if let conf = session.collection_confidence {
                                 ConfidenceBadge(confidence: conf)

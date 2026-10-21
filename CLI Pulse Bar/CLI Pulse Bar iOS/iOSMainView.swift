@@ -256,7 +256,9 @@ struct iPadSplitView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Text("\(dash.active_sessions)")
+                        // v1.58: the Sessions tab's Active rows, as the
+                        // Overview's tile counts them (`SessionListCount`).
+                        Text("\(SessionListCount.active(state.sessions, now: state.sessionsClock()))")
                             .font(.caption.weight(.bold).monospacedDigit())
                     }
                 }
