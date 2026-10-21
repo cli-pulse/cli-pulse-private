@@ -366,6 +366,63 @@ public enum QARenderSnapshot {
         return (zeroed, unknown)
     }
 
+    /// v1.58: the synced Claude sample with every row arriving with a cost of
+    /// 0, so no day's cost is known: the cost charts draw nothing but stubs,
+    /// on an axis without figures (`chart-cost-unknown-every-day`).
+    /// Deterministic.
+    public static func costAllUnknownSample(
+        today: Date = Date(), timeZone: TimeZone = .current
+    ) -> [DailyUsage] {
+        providerPanelSyncedSample(.claude, today: today, timeZone: timeZone).map {
+            DailyUsage(date: $0.date, provider: $0.provider, model: $0.model,
+                       inputTokens: $0.inputTokens, cachedTokens: $0.cachedTokens,
+                       outputTokens: $0.outputTokens, cost: 0)
+        }
+    }
+
+    /// v1.58: this Mac's Claude sample scan with one day none of whose models
+    /// had a rate on this Mac (every row's cost missing): the latest day with
+    /// usage before today. Its cost is "≥$0.00", and the provider panel's
+    /// line for it, selected, says "cost unknown"
+    /// (`panel-provider-no-rate-day-claude`). Deterministic.
+    public static func noRateDaySample(
+        today: Date = Date(), timeZone: TimeZone = .current
+    ) -> (rows: [CostUsageScanResult.DailyEntry], day: String?) {
+        let rows = providerPanelSample(.claude, today: today, timeZone: timeZone)
+        let todayKey = DayKey.string(from: today, in: timeZone)
+        let day = Set(rows.map(\.date)).filter { $0 < todayKey }.max()
+        let unpriced = rows.map { row -> CostUsageScanResult.DailyEntry in
+            guard row.date == day else { return row }
+            return CostUsageScanResult.DailyEntry(
+                date: row.date, provider: row.provider, model: row.model,
+                inputTokens: row.inputTokens, cachedTokens: row.cachedTokens,
+                outputTokens: row.outputTokens, costUSD: nil)
+        }
+        return (unpriced, day)
+    }
+
+    /// v1.58: two sessions a Mac lists from its own session logs, beside
+    /// Demo's process-scan rows (`demo-sessions-with-logs`): one written two
+    /// minutes before `now` (Recent activity), one twelve (Recent). Demo has
+    /// none, since every session the account holds is a process-scan row.
+    /// Invented names.
+    public static func logSessionsSample(now: Date) -> [SessionRecord] {
+        let formatter = ISO8601DateFormatter()
+        func row(_ id: String, _ name: String, _ provider: String, _ project: String,
+                 ago: TimeInterval) -> SessionRecord {
+            let at = formatter.string(from: now.addingTimeInterval(-ago))
+            return SessionRecord(
+                id: id, name: name, provider: provider, project: project, device_name: "MacBook Pro",
+                started_at: formatter.string(from: now.addingTimeInterval(-ago - 1_800)), last_active_at: at,
+                status: "Running", total_usage: 0, estimated_cost: 0, cost_status: "Estimated",
+                requests: 0, error_count: 0)
+        }
+        return [
+            row("jsonl-claude-qa-1", "Claude · demo-app", "Claude", "demo-app", ago: 120),
+            row("jsonl-codex-qa-2", "Codex · sample-service", "Codex", "sample-service", ago: 720),
+        ]
+    }
+
     /// v1.58: this Mac's scan for the Claude card with message counts
     /// (`card-claude-this-mac-messages`): the provider-panel sample's Claude
     /// rows and, each day, the message-count bucket the scanner writes
@@ -419,6 +476,10 @@ public enum QARenderSnapshot {
         surfaces.append(.codexResetCreditsStates)
         surfaces.append(.webhookEventFilterStates)
         surfaces += [.costUnknownDays, .claudeCardThisMacMessages]
+        surfaces += [
+            .costUnknownEveryDay, .providerPanelCostUnknown, .providerPanelNoRateDay,
+            .usageDashboardPanelCostUnknown, .demoSessionsWithLogs, .cardSourceLines,
+        ]
         return surfaces
     }
 
@@ -863,6 +924,26 @@ public enum QARenderSurface: Hashable {
     /// device's tokens, as a signed-in Mac that scans its logs sees it. Demo
     /// mode on the Mac has no scan, so no Demo card shows messages.
     case claudeCardThisMacMessages
+    /// v1.58: the cost charts with no day's cost known: stubs only, on an
+    /// axis without figures (the Mac card's small chart, the iPhone card's,
+    /// Trends).
+    case costUnknownEveryDay
+    /// v1.58: the provider panel (dark) in Cost over synced rows with two
+    /// unknown-cost days, the later one selected as hovering selects it.
+    case providerPanelCostUnknown
+    /// v1.58: the provider panel (dark) in Cost, This Mac, with a day none of
+    /// whose models had a rate here selected: its line says "cost unknown".
+    case providerPanelNoRateDay
+    /// v1.58: the Usage Dashboard panel (dark) over synced rows with two
+    /// unknown-cost days, Trends in Cost.
+    case usageDashboardPanelCostUnknown
+    /// v1.58: the Demo Sessions tab with two sessions from this Mac's own
+    /// logs put in, so the legend explains all three badges.
+    case demoSessionsWithLogs
+    /// v1.58: provider cards' plan-and-source line in the states Demo does
+    /// not show: signed in (API) with an account and a plan, merged, and a
+    /// tool with no quota source.
+    case cardSourceLines
 
     public enum Kind: String, Codable, Sendable {
         /// The menu-bar popover (`MenuBarView`), 380 points wide.
@@ -880,9 +961,10 @@ public enum QARenderSurface: Hashable {
         switch self {
         case .about, .subscription, .providerEditor, .firstRunWelcome, .codexResetCreditsStates,
              .webhookEventFilterStates,
-             .costUnknownDays, .claudeCardThisMacMessages:
+             .costUnknownDays, .claudeCardThisMacMessages, .costUnknownEveryDay, .cardSourceLines:
             return .window
-        case .usageDashboardPanel, .usageDashboardPanelCost, .providerUsagePanel, .providerCardPanel:
+        case .usageDashboardPanel, .usageDashboardPanelCost, .providerUsagePanel, .providerCardPanel,
+             .providerPanelCostUnknown, .providerPanelNoRateDay, .usageDashboardPanelCostUnknown:
             return .panel
         case .providerUsageCardHistory:
             return .window
@@ -921,6 +1003,12 @@ public enum QARenderSurface: Hashable {
         case .usageDashboardPanelCost: return "panel-usage-dashboard-cost"
         case .costUnknownDays: return "chart-cost-unknown-days"
         case .claudeCardThisMacMessages: return "card-claude-this-mac-messages"
+        case .costUnknownEveryDay: return "chart-cost-unknown-every-day"
+        case .providerPanelCostUnknown: return "panel-provider-cost-unknown-claude"
+        case .providerPanelNoRateDay: return "panel-provider-no-rate-day-claude"
+        case .usageDashboardPanelCostUnknown: return "panel-usage-dashboard-cost-unknown"
+        case .demoSessionsWithLogs: return "demo-sessions-with-logs"
+        case .cardSourceLines: return "card-source-lines"
         }
     }
 

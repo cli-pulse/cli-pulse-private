@@ -1665,7 +1665,7 @@
 "provider_panel.close_day" = "隐藏当天明细";
 "provider_panel.chart_hint" = "上下轻扫以选择日期，当天的模型会列在图表下方。";
 "provider_panel.cost_unknown" = "费用未知";
-"provider_panel.cost_unknown_help" = "灰色短条表示当天有用量，但费用未知。";
+"provider_panel.cost_unknown_help" = "灰色短柱表示该日有用量，但费用未知。";
 "folder_access.dir_clipulse_config" = "CLI Pulse 配置";
 "folder_access.dir_clipulse_data" = "CLI Pulse 数据";
 "folder_access.dir_codex_session_logs" = "Codex 会话日志";
@@ -1933,6 +1933,7 @@
 "provider_card.section_usage_totals" = "用量合计";
 "provider_card.section_daily_chart" = "每日图表";
 "provider_card.quota_source" = "配额来源：%@";
+"provider_card.source_merged_this_mac" = "云端 + 这台 Mac";
 "providers.tracked_count_one" = "正在追踪 %d 个";
 "watch.active_count_one" = "%d 个活跃";
 "menu_bar.tier_migration_one" = "已保留你最常用的 %d 个服务商以适配免费方案。已禁用 %d 个——可在「设置 › 服务商」中编辑。";

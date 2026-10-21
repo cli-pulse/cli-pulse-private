@@ -1677,7 +1677,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "provider_panel.close_day" = "Hide this day's details";
 "provider_panel.chart_hint" = "Swipe up or down to choose a day. Its models are listed below the chart.";
 "provider_panel.cost_unknown" = "cost unknown";
-"provider_panel.cost_unknown_help" = "A short gray bar is a day with usage whose cost is not known.";
+"provider_panel.cost_unknown_help" = "A short gray bar marks a day with usage whose cost is not known.";
 "folder_access.dir_clipulse_config" = "CLI Pulse Config";
 "folder_access.dir_clipulse_data" = "CLI Pulse Data";
 "folder_access.dir_codex_session_logs" = "Codex Session Logs";
@@ -1945,6 +1945,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "provider_card.section_usage_totals" = "Usage Totals";
 "provider_card.section_daily_chart" = "Daily Chart";
 "provider_card.quota_source" = "Quota source: %@";
+"provider_card.source_merged_this_mac" = "Cloud + this Mac";
 "providers.tracked_count_one" = "%d tracked";
 "watch.active_count_one" = "%d active";
 "menu_bar.tier_migration_one" = "Kept your %d most-used providers to fit the free plan. Disabled %d — edit in Settings › Providers.";

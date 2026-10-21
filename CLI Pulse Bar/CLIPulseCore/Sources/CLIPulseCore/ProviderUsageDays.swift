@@ -36,31 +36,11 @@ public enum UsageChartMetric: String, CaseIterable, Sendable, Identifiable {
         }
     }
 
-    /// v1.58: how tall a cost chart draws a day that has usage and no known
-    /// cost (`ProviderUsageDays.Day.costIsUnknown`), as a share of the
-    /// chart's tallest bar: a grey stub on the baseline, so the day does not
-    /// read as one with no usage, and short enough that it cannot be read as
-    /// a cost. When no day has a known cost the charts draw it against an
-    /// axis of 1 without figures (`unknownCostStubValue(top:)`).
-    public static let unknownCostStubShare = 0.04
-
-    /// The value a cost chart plots for an unknown-cost day, on an axis
-    /// whose tallest known day is `top`.
-    public static func unknownCostStubValue(top: Double) -> Double {
-        top > 0 ? top * unknownCostStubShare : unknownCostStubShare
-    }
-
     /// v1.58: whether a chart of this measure draws `day` as the stub of a
     /// day with usage and no known cost. Only in Cost: in Tokens the day has
     /// its bar.
     public func drawsUnknownCostStub(_ day: ProviderUsageDays.Day) -> Bool {
         self == .cost && day.costIsUnknown
-    }
-
-    /// The height a bar chart gives `day` on an axis whose tallest known day
-    /// is `top`: its value, or the stub's (`unknownCostStubValue(top:)`).
-    public func plottedValue(_ day: ProviderUsageDays.Day, top: Double) -> Double {
-        drawsUnknownCostStub(day) ? Self.unknownCostStubValue(top: top) : day.value(self)
     }
 
     /// A value on a chart's y axis whose highest value is `top`. Costs are
@@ -186,9 +166,9 @@ public struct ProviderUsageDays: Sendable, Equatable {
         /// v1.58: the day has usage and none of it has a known cost: every
         /// model either had no rate on this Mac or arrived synced with a cost
         /// of 0. Its cost bar would be empty, the same as a day with no usage,
-        /// so the charts draw it as a grey stub instead
-        /// (`UsageChartMetric.unknownCostStubShare`). A day whose models are
-        /// priced at 0 has a known cost, $0, and is not one.
+        /// so the charts draw it as a grey stub instead (`UnknownCostStub`).
+        /// A day whose models are priced at 0 has a known cost, $0, and is
+        /// not one.
         public var costIsUnknown: Bool {
             tokens > 0 && cost == 0 && models.allSatisfy { $0.tokens == 0 || $0.hasNoRate || $0.costIsUnknown }
         }
@@ -334,7 +314,9 @@ public struct ProviderUsageDays: Sendable, Equatable {
     /// not in the row, so nothing is marked unpriced and the coverage is
     /// unknown. A row with tokens and a cost of 0 may be a model with no rate
     /// on the device that uploaded it, so its tokens are `unknownCostTokens`
-    /// and are never shown as "$0.00".
+    /// and are never shown as "$0.00". A model the pricing tables rate at $0
+    /// (`ZeroRatedModel`) is the exception: its cost is known, and it is
+    /// $0, as This Mac's scan shows it (v1.58).
     public static func fromCloud(
         _ rows: [DailyUsage],
         provider: String,
@@ -351,7 +333,7 @@ public struct ProviderUsageDays: Sendable, Equatable {
             var acc = byDay[r.date, default: [:]][r.model] ?? Acc()
             acc.tokens += tokens
             acc.cost += cost
-            if tokens > 0, cost == 0 { acc.unknownCost += tokens }
+            if tokens > 0, cost == 0, !ZeroRatedModel.contains(r.model) { acc.unknownCost += tokens }
             byDay[r.date, default: [:]][r.model] = acc
         }
         return ProviderUsageDays(
@@ -501,20 +483,25 @@ public extension ProviderUsageDays.Day {
     }
 
     /// The selected day's line: "Oct 3: $11.42 · 6.5M tokens", in the
-    /// counting `basis` names, without the cost when costs are hidden.
+    /// counting `basis` names, without the cost when costs are hidden. The
+    /// line VoiceOver reads for the day on a chart too.
+    ///
+    /// v1.58: a day none of whose cost is known (`costIsUnknown`, drawn as a
+    /// grey stub on a cost chart) says so in words, "Oct 3: cost unknown ·
+    /// 6.5M tokens", on screen and to VoiceOver. Its cost alone reads "—"
+    /// (synced rows that arrived with no cost) or "≥$0.00" (models with no
+    /// rate on this Mac): beside a stub that says the cost is not known, the
+    /// dash read as a formatting glitch ("Oct 3: — · …") and "at least $0" as
+    /// about free.
     func summary(basis: ProviderUsageDays.TokenBasis, showsCost: Bool) -> String {
-        summary(basis: basis, showsCost: showsCost, cost: costText)
+        summary(basis: basis, showsCost: showsCost, cost: summaryCostText)
     }
 
-    /// What VoiceOver reads for the day on a chart: `summary`, except that a
-    /// day none of whose cost is known (`costIsUnknown`) says so in words
-    /// ("Oct 3: cost unknown · 6.5M tokens"), where the line on screen has a
-    /// dash, which VoiceOver reads as nothing or as "em dash", or "≥$0.00".
-    /// v1.58: the grey stub a cost chart draws for such a day is read this
-    /// way.
-    func spokenSummary(basis: ProviderUsageDays.TokenBasis, showsCost: Bool) -> String {
-        guard costIsUnknown else { return summary(basis: basis, showsCost: showsCost) }
-        return summary(basis: basis, showsCost: showsCost, cost: L10n.providerPanel.costUnknown)
+    /// The cost the day's line names: `costText`, or "cost unknown" in words
+    /// where none of it is known or it would be a bare dash.
+    private var summaryCostText: String {
+        let text = costText
+        return costIsUnknown || text == ProviderUsageDays.unknownCostText ? L10n.providerPanel.costUnknown : text
     }
 
     private func summary(basis: ProviderUsageDays.TokenBasis, showsCost: Bool, cost: String) -> String {

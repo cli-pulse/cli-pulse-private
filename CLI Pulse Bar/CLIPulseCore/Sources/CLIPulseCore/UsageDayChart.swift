@@ -55,25 +55,18 @@ public struct UsageDayBarsChart: View {
 
     public var body: some View {
         // The tallest day with a known value. In Cost, a day with usage and
-        // no known cost (`Day.costIsUnknown`) would be an empty slot, the
-        // same as a day with no usage; v1.58 draws it as a short grey stub on
-        // the baseline, a few percent of this (`UnknownCostStub`).
+        // no known cost (`Day.costIsUnknown`) has an empty bar, the same as a
+        // day with no usage; v1.58 draws an outlined grey stub over its slot
+        // (`UnknownCostStub`, in the overlay below).
         let top = days.map { $0.value(metric) }.max() ?? 0
+        let stubs = days.filter(metric.drawsUnknownCostStub).map(\.dateKey)
         VStack(alignment: .leading, spacing: 3) {
             Chart(days) { day in
-                if metric.drawsUnknownCostStub(day) {
-                    BarMark(
-                        x: .value(L10n.usageDashboard.chartDay, day.dateKey),
-                        y: .value(metric.label, metric.plottedValue(day, top: top)))
-                        .foregroundStyle(UnknownCostStub.color(selected: selection == day.dateKey))
-                        .cornerRadius(1.5)
-                } else {
-                    BarMark(
-                        x: .value(L10n.usageDashboard.chartDay, day.dateKey),
-                        y: .value(metric.label, day.value(metric)))
-                        .foregroundStyle(barColor(day).gradient)
-                        .cornerRadius(1.5)
-                }
+                BarMark(
+                    x: .value(L10n.usageDashboard.chartDay, day.dateKey),
+                    y: .value(metric.label, day.value(metric)))
+                    .foregroundStyle(barColor(day).gradient)
+                    .cornerRadius(1.5)
             }
             .chartXAxis(.hidden)
             // Every day unknown: the stubs stand on an axis of 1 that has no
@@ -94,7 +87,13 @@ public struct UsageDayBarsChart: View {
             }
             .chartOverlay { proxy in
                 GeometryReader { geo in
-                    selectionLayer(plot: plotFrame(proxy, geo))
+                    let plot = plotFrame(proxy, geo)
+                    ZStack(alignment: .topLeading) {
+                        selectionLayer(plot: plot)
+                        UnknownCostStubLayer(
+                            keys: stubs, columns: days.count, proxy: proxy, plot: plot,
+                            selection: selection)
+                    }
                 }
             }
             .frame(height: height)
@@ -186,22 +185,88 @@ public struct UsageDayBarsChart: View {
 }
 
 /// v1.58: how the cost charts draw a day with usage and no known cost
-/// (`UsageChartMetric.drawsUnknownCostStub`): a short bar in a neutral grey,
-/// not in the provider's colour or the green of a cost, so it reads as a day
-/// that was used and not as a small cost. The provider panel's chart, the
-/// iPhone card's, the Mac card's small one and the Usage Dashboard's Trends
-/// all draw it so.
+/// (`UsageChartMetric.drawsUnknownCostStub`): a short bar on the baseline,
+/// outlined and not filled, in a neutral grey, never the provider's colour or
+/// the green of a cost. Outlined so that shape, not only colour, tells it from
+/// a small filled bar of cost or a dimmed one beside a selected day; grey at
+/// systemGray, at least 3:1 on the light card and on the dark panel. The
+/// provider panel's chart, the iPhone card's, the Mac card's small one and
+/// the Usage Dashboard's Trends all draw it so.
 public enum UnknownCostStub {
-    /// Grey; stronger while its day is the selected one.
+    /// The outline's grey; the primary colour while its day is the selected
+    /// one, as a selected bar keeps its full colour.
     public static func color(selected: Bool = false) -> Color {
-        Color.secondary.opacity(selected ? 0.7 : 0.4)
+        selected ? Color.primary.opacity(0.8) : Color.gray
+    }
+
+    /// The outline's width, in points.
+    public static let lineWidth: CGFloat = 1.25
+
+    /// Its height, in points, on a chart whose plot is `plotHeight` tall: a
+    /// twentieth of it, and never under 6 points, so the outline keeps a
+    /// hollow middle; never over 8, so it is not read as a cost.
+    public static func height(plotHeight: CGFloat) -> CGFloat {
+        min(8, max(6, (plotHeight * 0.05).rounded()))
+    }
+
+    /// Its height on the Mac card's small chart (28 points): 4 points, an
+    /// outline round a hollow 1.5.
+    public static let sparklineHeight: CGFloat = 4
+
+    /// The share of its day's column it is wide: the width Swift Charts
+    /// gives the bars beside it (measured on the renders, 0.72 of a column).
+    public static let columnShare: CGFloat = 0.72
+
+    /// Where a stub is drawn in a plot of `columns` equal columns, for the
+    /// day whose column is centred on `centerX`: on the baseline, as wide as
+    /// a bar.
+    public static func rect(centerX: CGFloat, columns: Int, plot: CGRect) -> CGRect {
+        let column = plot.width / CGFloat(max(columns, 1))
+        let width = max(2, column * columnShare)
+        let height = Self.height(plotHeight: plot.height)
+        return CGRect(x: centerX - width / 2, y: plot.maxY - height, width: width, height: height)
+    }
+
+    /// The stub itself.
+    public static func shape(selected: Bool = false) -> some View {
+        RoundedRectangle(cornerRadius: 1.5)
+            .strokeBorder(color(selected: selected), lineWidth: selected ? lineWidth + 0.25 : lineWidth)
+    }
+}
+
+/// v1.58: the stubs of a Swift Charts bar chart (`UnknownCostStub`), drawn
+/// over its plot in the chart's overlay, one on each day in `keys`. Over the
+/// plot rather than as marks: a mark can be filled, not outlined. Each is
+/// read as its date and "cost unknown" where the chart lets VoiceOver into
+/// its parts (Trends); the provider charts read the selected day's line.
+@available(iOS 16.0, macOS 13.0, *)
+struct UnknownCostStubLayer: View {
+    let keys: [String]
+    let columns: Int
+    let proxy: ChartProxy
+    let plot: CGRect
+    var selection: String? = nil
+
+    var body: some View {
+        ForEach(keys, id: \.self) { key in
+            if let x = proxy.position(forX: key) {
+                let rect = UnknownCostStub.rect(centerX: plot.minX + x, columns: columns, plot: plot)
+                UnknownCostStub.shape(selected: key == selection)
+                    .frame(width: rect.width, height: rect.height)
+                    .position(x: rect.midX, y: rect.midY)
+                    .allowsHitTesting(false)
+                    .accessibilityElement()
+                    .accessibilityLabel(DisplayFormat.day(key, style: .monthDay) ?? key)
+                    .accessibilityValue(L10n.providerPanel.costUnknown)
+            }
+        }
     }
 }
 
 /// v1.58: the y axis of a cost chart none of whose days has a known cost:
-/// 0 to 1, so the unknown-cost stubs (`UsageChartMetric.unknownCostStubValue`)
-/// keep their few percent instead of filling an axis Swift Charts would fit
-/// to them. Charts with a known value keep their automatic axis.
+/// 0 to 1 and, at its call sites, without figures, so the empty plot the
+/// unknown-cost stubs stand on reads no cost. Charts with a known value keep
+/// their automatic axis.
 @available(iOS 16.0, macOS 13.0, *)
 struct UnknownCostAxis: ViewModifier {
     let noKnownValue: Bool
@@ -450,7 +515,7 @@ public struct ProviderUsageHistorySection: View {
                 selection: $selection, height: 90,
                 selectsOnHover: false, tapTogglesSelection: true,
                 accessibilityValueText: { [basis = days.basis, showsCost = showCost] day in
-                    day.spokenSummary(basis: basis, showsCost: showsCost)
+                    day.summary(basis: basis, showsCost: showsCost)
                 })
             // v1.58: what a grey bar is, while the chart draws one.
             if days.drawsUnknownCostStub(metric) {

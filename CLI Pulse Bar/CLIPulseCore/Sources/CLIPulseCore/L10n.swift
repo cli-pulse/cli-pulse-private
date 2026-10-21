@@ -466,8 +466,9 @@ public enum L10n {
         public static var scopePicker: String { tr("provider_panel.scope_picker") }
         public static var scopeThisMacHelp: String { tr("provider_panel.scope_this_mac_help") }
         public static var scopeAllDevicesHelp: String { tr("provider_panel.scope_all_devices_help") }
-        /// v1.58: a day's cost, spoken, when none of it is known: what
-        /// VoiceOver reads where the screen shows "—" (`Day.spokenSummary`).
+        /// v1.58: a day's cost in its line when none of it is known, on
+        /// screen and to VoiceOver (`ProviderUsageDays.Day.summary`), and
+        /// what Trends' grey stub is read as.
         public static var costUnknown: String { tr("provider_panel.cost_unknown") }
         /// v1.58: what the grey bar on a cost chart is: under the provider
         /// panel's, the iPhone card's and the Usage Dashboard's Trends chart,
@@ -632,9 +633,12 @@ public enum L10n {
         public static func chartCostHelp(_ highest: String) -> String { tr("provider_card.chart_cost_help", highest) }
         /// v1.58: the grey bars on the card's chart in Cost.
         public static var chartCostUnknownHelp: String { providerPanel.costUnknownHelp }
-        /// v1.58: the plan-and-source line, "Quota source: This Mac"
-        /// (`ProviderCardUsage.quotaSourceText`).
+        /// v1.58: the plan-and-source line on a card that shows a quota,
+        /// "Quota source: This Mac" (`ProviderCardUsage.sourceLineText`).
         public static func quotaSource(_ source: String) -> String { tr("provider_card.quota_source", source) }
+        /// v1.58: the merged source as the card names it, "Cloud + this
+        /// Mac" (`ProviderCardUsage.sourceName`).
+        public static var sourceMergedThisMac: String { tr("provider_card.source_merged_this_mac") }
         public static var sectionsMenu: String { tr("provider_card.sections_menu") }
         public static var sectionsAllShown: String { tr("provider_card.sections_all_shown") }
         public static func sectionsHiddenCount(_ count: Int) -> String { tr("provider_card.sections_hidden_count", count) }
@@ -692,6 +696,8 @@ public enum L10n {
         public static var providerLevelCost: String { tr("providers.provider_level_cost") }
         public static var mostConstrained: String { tr("providers.most_constrained") }
         public static func remainingPercent(_ percent: Int) -> String { tr("providers.remaining_percent", percent) }
+        /// The card's plan-and-source line when the card shows no quota,
+        /// "Source: This Mac" (`ProviderCardUsage.sourceLineText`).
         public static func sourceLabel(_ source: String) -> String { tr("providers.source_label", source) }
         public static func planSource(_ source: PlanEvidenceSource) -> String {
             switch source {

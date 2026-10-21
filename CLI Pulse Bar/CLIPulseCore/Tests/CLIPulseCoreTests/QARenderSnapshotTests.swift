@@ -599,6 +599,53 @@ final class QARenderSnapshotTests: XCTestCase {
                        QARenderSnapshot.claudeMessagesScanSample(today: today, timeZone: utc).map(\.messageCount))
     }
 
+    /// v1.58: the states the PR #686 reviews asked to see, in the review set:
+    /// cost charts with no day known, the provider panel (dark) with a stub
+    /// hovered and with a day of models with no rate, the dashboard panel's
+    /// Trends with stubs, the Sessions legend with log-derived rows, and the
+    /// source line signed in, merged and with no quota source. None is a
+    /// store shot.
+    func testTheReviewSetDrawsTheStatesTheReviewsAskedFor() throws {
+        let catalog = QARenderSnapshot.catalog
+        let expected: [(QARenderSurface, String, QARenderSurface.Kind)] = [
+            (.costUnknownEveryDay, "chart-cost-unknown-every-day", .window),
+            (.providerPanelCostUnknown, "panel-provider-cost-unknown-claude", .panel),
+            (.providerPanelNoRateDay, "panel-provider-no-rate-day-claude", .panel),
+            (.usageDashboardPanelCostUnknown, "panel-usage-dashboard-cost-unknown", .panel),
+            (.demoSessionsWithLogs, "demo-sessions-with-logs", .popover),
+            (.cardSourceLines, "card-source-lines", .window),
+        ]
+        for (surface, id, kind) in expected {
+            XCTAssertTrue(catalog.contains(surface), "\(id) is not rendered")
+            XCTAssertEqual(surface.id, id)
+            XCTAssertEqual(surface.kind, kind)
+            XCTAssertFalse(QARenderSnapshot.storeCatalog.contains { $0.surface == surface })
+        }
+        XCTAssertEqual(Set(catalog.map(\.id)).count, catalog.count, "two surfaces share a file name")
+
+        let today = DayKey.date(from: "2026-10-07", hour: 12) ?? Date()
+        let utc = TimeZone(identifier: "UTC")!
+        // No day's cost known.
+        let all = QARenderSnapshot.costAllUnknownSample(today: today, timeZone: utc)
+        XCTAssertFalse(all.isEmpty)
+        XCTAssertTrue(all.allSatisfy { $0.cost == 0 })
+        let allDays = ProviderUsageDays.fromCloud(all, provider: "Claude", todayKey: "2026-10-07", timeZone: utc)
+        XCTAssertTrue(allDays.days.filter(\.hasUsage).allSatisfy(\.costIsUnknown))
+        XCTAssertEqual(allDays.days.map { $0.value(.cost) }.max(), 0)
+        // A day of models with no rate on this Mac.
+        let noRate = QARenderSnapshot.noRateDaySample(today: today, timeZone: utc)
+        let day = try XCTUnwrap(noRate.day)
+        let scanDays = ProviderUsageDays.fromScan(noRate.rows, provider: "Claude", todayKey: "2026-10-07", timeZone: utc)
+        let unpriced = try XCTUnwrap(scanDays.day(day))
+        XCTAssertTrue(unpriced.costIsUnknown)
+        XCTAssertTrue(unpriced.models.allSatisfy(\.hasNoRate))
+        XCTAssertEqual(scanDays.days.filter(\.costIsUnknown).map(\.dateKey), [day], "only that day changes")
+        // Sessions from this Mac's logs: one Recent activity, one Recent.
+        let sessions = QARenderSnapshot.logSessionsSample(now: today)
+        XCTAssertEqual(sessions.map { SessionFreshnessTierClassifier.classify($0, now: today) },
+                       [.activeJsonl, .recentJsonl])
+    }
+
     /// The provider-panel renders draw from sample rows that are the same on
     /// every run and show what the panel marks: a borrowed rate, a model with
     /// no rate, idle days. No Demo surface reads them.

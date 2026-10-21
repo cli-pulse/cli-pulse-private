@@ -33,3 +33,28 @@ public enum TokenPricing {
         return String(format: "$%.2f", cost)
     }
 }
+
+/// v1.58: models the pricing tables rate at $0 (Codex's
+/// `gpt-5.3-codex-spark`, a research preview with no API price), by the
+/// row name the scanner records and syncs. Their usage has a known cost,
+/// $0, so a day of nothing else is not "cost unknown": the usage charts draw
+/// it as a day of $0 (`ProviderUsageDays.fromCloud`, the Usage Dashboard's
+/// Trends), as This Mac's scan does, where such a model's cost is 0 and not
+/// missing. Cross-platform: the iPhone card reads synced rows too.
+public enum ZeroRatedModel {
+    public static func contains(_ model: String) -> Bool {
+        let name = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return false }
+        let million = 1_000_000
+        if let rates = CodexPricingTable.rates(forKey: CodexPricingTable.aliasTarget(name) ?? name, at: nil) {
+            return CodexPricingTable.aggregateCostUSD(
+                rates: rates, inputTokens: million, cachedInputTokens: million / 2, outputTokens: million) == 0
+        }
+        if let rates = ClaudePricingTable.rates(forKey: name, at: nil) {
+            return ClaudePricingTable.aggregateCostUSD(
+                rates: rates, inputTokens: million, cacheReadTokens: million,
+                cacheWriteTokens: million, outputTokens: million) == 0
+        }
+        return false
+    }
+}

@@ -298,6 +298,22 @@ final class SessionFreshnessTierTests: XCTestCase {
                        "运行中 = 已确认进程存在。\n最近 = 30 分钟内写入过日志。")
     }
 
+    /// v1.58: in Spanish the "Recent activity" badge read "Activa", so a row
+    /// known only from its log sat under the "Activas" header beside
+    /// "En ejecución" rows, which are active too, and the legend defined
+    /// "Activa" as something narrower than its header. It says what the
+    /// English badge says now.
+    func test_spanish_recent_activity_badge_is_not_the_active_header() {
+        let saved = LocaleOverrideStore.shared.override
+        defer { LocaleOverrideStore.shared.set(saved) }
+        LocaleOverrideStore.shared.set("es")
+        XCTAssertEqual(FreshnessTier.activeJsonl.badge, "Actividad reciente")
+        XCTAssertEqual(L10n.sessions.legendRecentActivity,
+                       "Actividad reciente = registro escrito en los últimos 5 min.")
+        XCTAssertFalse(L10n.sessions.sectionActive.lowercased()
+            .hasPrefix(FreshnessTier.activeJsonl.badge.lowercased()))
+    }
+
     /// v1.58: the iPhone's and iPad's session count (the Overview's Sessions
     /// tile, the iPad sidebar's Active Sessions) is the rows the Sessions tab
     /// lists under Active. `dashboard_summary` counts every row still marked
@@ -319,6 +335,39 @@ final class SessionFreshnessTierTests: XCTestCase {
                        C.partition(rows, now: now).active.count, "the tile and the Active section disagree")
         XCTAssertEqual(SessionListCount.active([asleep], now: now), 0)
         XCTAssertEqual(SessionListCount.active([], now: now), 0)
+    }
+
+    /// v1.58: Demo is one refresh that never runs again, and its sessions
+    /// were written at it. Classified against the clock, every one was
+    /// hidden about three and a half minutes after Try Demo: the Sessions
+    /// tab emptied, and the iPhone's Overview tile and the iPad sidebar
+    /// counted 0. Against Demo's own clock (`AppState.sessionsClock`) they
+    /// stay as Demo was entered, however long it stays open.
+    @MainActor
+    func test_demo_sessions_stay_listed_on_demos_own_clock() {
+        let suite = "SessionFreshnessTierTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let state = AppState(
+            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            defaults: defaults,
+            performLaunchSetup: false)
+        let real = Date()
+        XCTAssertEqual(state.sessionsClock(now: real), real, "outside Demo the lists read the clock")
+
+        state.enterDemoMode()
+        let entered = SessionListCount.active(state.sessions, now: state.sessionsClock())
+        XCTAssertEqual(entered, 3, "Demo's three sessions read Running")
+        for minutes in [4.0, 10, 60] {
+            let later = Date().addingTimeInterval(minutes * 60)
+            let clock = state.sessionsClock(now: later)
+            XCTAssertEqual(SessionListCount.active(state.sessions, now: clock), entered, "\(minutes) min into Demo")
+            XCTAssertEqual(C.partition(state.sessions, now: clock).active.count, entered, "\(minutes) min: the tab")
+            XCTAssertEqual(SessionFreshnessLegend.lines(for: state.sessions, now: clock),
+                           [L10n.sessions.legendRunning], "\(minutes) min: the legend")
+        }
+        // What the lists read before: the clock hides them all.
+        XCTAssertEqual(SessionListCount.active(state.sessions, now: Date().addingTimeInterval(600)), 0)
     }
 
     // MARK: - Claude Code 2.x user-Library binaries are NOT artifacts

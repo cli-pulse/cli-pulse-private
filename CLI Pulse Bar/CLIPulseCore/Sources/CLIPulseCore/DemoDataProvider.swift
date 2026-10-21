@@ -633,6 +633,25 @@ internal enum DemoDataProvider {
 }
 
 extension AppState {
+    /// v1.58: the moment the Sessions lists classify their rows against
+    /// (`SessionFreshnessTierClassifier`: Running, Recent, hidden): now, and
+    /// in Demo the moment its one refresh is shown at, when Demo was entered
+    /// (its refresh plus `DemoDataProvider.refreshAge`).
+    ///
+    /// Demo never refreshes (`RefreshRouter.decide` is a no-op in it), and
+    /// its sessions were written at its refresh. Against the clock every one
+    /// was hidden about three and a half minutes after Try Demo
+    /// (`processFreshnessWindow`, five minutes from the refresh), and the
+    /// Sessions tab emptied, with the iPhone's Overview tile and the iPad
+    /// sidebar's count at 0 beside it. Against Demo's own clock they stay as
+    /// Demo was entered. Read by the Sessions tab (Mac, iPhone, iPad), its
+    /// legend and Running count, the iPhone's Overview tile and the iPad
+    /// sidebar.
+    public func sessionsClock(now: Date = Date()) -> Date {
+        guard isDemoMode, let lastRefresh else { return now }
+        return min(now, lastRefresh.addingTimeInterval(DemoDataProvider.refreshAge))
+    }
+
     public func enterDemoMode() {
         isDemoMode = true
         isAuthenticated = true

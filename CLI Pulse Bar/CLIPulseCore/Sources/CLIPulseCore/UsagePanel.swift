@@ -406,7 +406,7 @@ public struct ProviderUsagePanelView: View {
                 selection: selectionBinding, height: 130,
                 selectsOnHover: true, tapTogglesSelection: false,
                 accessibilityValueText: { [basis = data.basis, showsCost = showCost] day in
-                    day.spokenSummary(basis: basis, showsCost: showsCost)
+                    day.summary(basis: basis, showsCost: showsCost)
                 })
             // v1.58: what a grey bar is, while the chart draws one.
             if data.drawsUnknownCostStub(metric) {

@@ -1903,6 +1903,7 @@
 "provider_card.section_usage_totals" = "사용량 합계";
 "provider_card.section_daily_chart" = "일별 차트";
 "provider_card.quota_source" = "할당량 소스: %@";
+"provider_card.source_merged_this_mac" = "클라우드 + 이 Mac";
 "providers.tracked_count_one" = "%d개 추적 중";
 "watch.active_count_one" = "%d개 활성";
 "menu_bar.tier_migration_one" = "무료 플랜에 맞추기 위해 가장 많이 사용하는 공급자 %d개를 유지했습니다. %d개는 비활성화되었습니다 — 설정 › 공급자에서 편집하세요.";

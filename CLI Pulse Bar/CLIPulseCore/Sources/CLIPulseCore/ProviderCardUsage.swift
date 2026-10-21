@@ -250,17 +250,47 @@ public struct ProviderCardUsage: Sendable, Equatable {
         return unit.isEmpty ? nil : unit
     }
 
-    /// v1.58: the card's plan-and-source line, "Quota source: This Mac". It
-    /// used to read "Source: Local" right above the usage figures' scope,
-    /// "All devices", and the two read as disagreeing: they are about
-    /// different things. The quota (and plan) is read where the source says;
-    /// the figures and chart count what their scope says. So the line names
-    /// what it is the source of, and calls this Mac by the scope's own name
-    /// for it, "This Mac", rather than "Local". The other sources keep the
-    /// names the provider editor's Data source picker gives them.
-    public static func quotaSourceText(_ source: SourceType) -> String {
-        let name = source == .local ? L10n.providerPanel.scopeThisMac : source.localizedName
-        return L10n.providerCard.quotaSource(name)
+    /// v1.58: the card's plan-and-source line. It used to read "Source:
+    /// Local" right above the usage figures' scope, "All devices", and the
+    /// two read as disagreeing: they are about different things. The quota
+    /// (and plan) is read where the source says; the figures and chart count
+    /// what their scope says. So, on a card that shows a quota
+    /// (`cardShowsQuota`), the line names what it is the source of, "Quota
+    /// source: This Mac". On a card with no quota (a tool with no quota API
+    /// we can read, a quota that did not load) that would claim a quota the
+    /// card does not have, next to "No quota source" or "Quota data
+    /// unavailable", so the line stays neutral: "Source: This Mac".
+    public static func sourceLineText(_ source: SourceType, cardShowsQuota: Bool) -> String {
+        let name = sourceName(source)
+        return cardShowsQuota ? L10n.providerCard.quotaSource(name) : L10n.providers.sourceLabel(name)
+    }
+
+    /// The card's name for a source. This Mac is called by the usage scope's
+    /// own name for it, "This Mac", rather than "Local", in the merged
+    /// source too ("Cloud + this Mac"), so two cards side by side do not call
+    /// one Mac two things. The other sources keep the names the provider
+    /// editor's Data source picker gives them.
+    public static func sourceName(_ source: SourceType) -> String {
+        switch source {
+        case .local: return L10n.providerPanel.scopeThisMac
+        case .merged: return L10n.providerCard.sourceMergedThisMac
+        case .auto, .web, .cli, .oauth, .api: return source.localizedName
+        }
+    }
+
+    /// v1.58: whether the card shows a quota whose source the line can name:
+    /// quota tiers, or the one quota bar a provider without tiers gets (never
+    /// Claude's, whose empty tier list means its data did not load), and a
+    /// collector that exists for the provider. Mirrors what the card draws
+    /// under the line (`EnhancedProviderCard`), and the card's own choice to
+    /// hide the Quota section.
+    public static func cardShowsQuota(
+        quotaVisible: Bool, tierCount: Int, overallQuota: Int?, provider: String,
+        collectorOutcome: CollectorOutcome?
+    ) -> Bool {
+        guard quotaVisible, collectorOutcome != .unsupported else { return false }
+        if tierCount > 0 { return true }
+        return (overallQuota ?? 0) > 0 && provider != ProviderKind.claude.rawValue
     }
 
     /// What the card's small chart says on hover and to VoiceOver: what the

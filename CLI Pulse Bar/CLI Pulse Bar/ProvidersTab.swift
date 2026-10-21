@@ -589,6 +589,9 @@ struct EnhancedProviderCard: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
+                // One element, as the one-line headline is: VoiceOver reads
+                // "12.4K メッセージ", not the number and the unit apart.
+                .accessibilityElement(children: .combine)
                 .help(metric.breakdownTooltip)
             } else {
                 Text(metric.headline)
@@ -1115,11 +1118,18 @@ struct EnhancedProviderCard: View {
                             if let plan = detail.planType {
                                 StatusBadge(text: L10n.providers.planDisplay(plan), color: plan == "Paid" ? .green : .orange)
                             }
-                            // v1.58: names what it is the source of, the
-                            // quota, and calls this Mac "This Mac", so it is
-                            // not read against the usage figures' scope
-                            // ("All devices") just below it.
-                            Text(ProviderCardUsage.quotaSourceText(detail.sourceType))
+                            // v1.58: on a card with a quota, names what it
+                            // is the source of, the quota, and calls this
+                            // Mac "This Mac", so it is not read against the
+                            // usage figures' scope ("All devices") just
+                            // below it. With no quota on the card, neutral.
+                            Text(ProviderCardUsage.sourceLineText(
+                                detail.sourceType,
+                                cardShowsQuota: ProviderCardUsage.cardShowsQuota(
+                                    quotaVisible: showsQuota, tierCount: detail.tiers.count,
+                                    overallQuota: provider.quota, provider: provider.provider,
+                                    collectorOutcome: ProviderKind(rawValue: provider.provider)
+                                        .flatMap { state.collectorOutcomes[$0] })))
                                 .font(.system(size: 8))
                                 .foregroundStyle(.tertiary)
                         }

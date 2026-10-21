@@ -1008,16 +1008,147 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                         + " Claude sample as synced rows with two days whose every row arrived with a cost"
                         + " of 0 (QARenderSnapshot.costUnknownSample): the Mac card's small chart; the iPhone"
                         + " card's history, the panel's chart, with the later of the two days tapped (its"
-                        + " line reads \"—\", VoiceOver \"cost unknown\"); the Usage Dashboard's Trends"
-                        + " (30 days) with the line under it saying what a grey bar is. Each unknown day"
-                        + " is a grey stub on the baseline, not an empty slot."
+                        + " line reads \"cost unknown\"); the Usage Dashboard's Trends (30 calendar days)"
+                        + " with the line under it saying what a grey bar is. Each unknown day is a short,"
+                        + " outlined grey stub on the baseline, not an empty slot."
                 )
             }
 
         case .claudeCardThisMacMessages:
             enterDemoIfNeeded()
             await captureClaudeCardWithMessages(surface, index: index)
+
+        case .costUnknownEveryDay:
+            let rows = QARenderSnapshot.costAllUnknownSample()
+            let todayKey = DayKey.string(from: Date())
+            let days = Set(rows.map(\.date)).filter { $0 < todayKey }.sorted(by: >)
+            await withChartMetric(.cost) {
+                await captureWindow(
+                    QACostUnknownDays(sample: (rows: rows, unknownDays: days)),
+                    surface: surface, index: index,
+                    note: "v1.58: the same strips with no day's cost known (every synced row arrived with a"
+                        + " cost of 0, QARenderSnapshot.costAllUnknownSample): the charts draw stubs only,"
+                        + " on an axis without figures; the card chart's help has no highest day; the"
+                        + " latest day is tapped on the iPhone card's chart."
+                )
+            }
+
+        case .providerPanelCostUnknown:
+            let sample = QARenderSnapshot.costUnknownSample()
+            let data = ProviderUsageDays.fromCloud(
+                sample.rows, provider: ProviderKind.claude.rawValue, todayKey: DayKey.string(from: Date()))
+            await withChartMetric(.cost) {
+                await captureProviderPanel(
+                    data, scopes: [.thisMac, .allDevices], selection: sample.unknownDays.first,
+                    surface: surface, index: index,
+                    note: "v1.58: the usage panel's provider mode (dark, as always) in Cost, All devices, over"
+                        + " the Claude sample as synced rows with two unknown-cost days"
+                        + " (QARenderSnapshot.costUnknownSample), the later one selected as hovering selects"
+                        + " it: its stub drawn in the selected style, its line \"cost unknown\", the other"
+                        + " stub unselected beside dimmed bars.")
+            }
+
+        case .providerPanelNoRateDay:
+            let sample = QARenderSnapshot.noRateDaySample()
+            let data = ProviderUsageDays.fromScan(
+                sample.rows, provider: ProviderKind.claude.rawValue, todayKey: DayKey.string(from: Date()))
+            await withChartMetric(.cost) {
+                await captureProviderPanel(
+                    data, scopes: [.thisMac, .allDevices], selection: sample.day,
+                    surface: surface, index: index,
+                    note: "v1.58: the usage panel's provider mode (dark) in Cost, This Mac, over the Claude"
+                        + " sample scan with one day none of whose models had a rate here"
+                        + " (QARenderSnapshot.noRateDaySample), selected: every model reads \"No rate\","
+                        + " the day is a stub, and its line says \"cost unknown\" where its cost alone is"
+                        + " \"≥$0.00\".")
+            }
+
+        case .usageDashboardPanelCostUnknown:
+            var archive = DailyUsageArchive()
+            archive.mergeCloudDays(QARenderSnapshot.costUnknownSample().rows.map(CloudEntry.init(archiving:)))
+            await withChartMetric(.cost) {
+                await captureUsageDashboardPanel(
+                    surface, index: index, archive: archive,
+                    note: "v1.58: the usage dashboard panel (dark) over the Claude sample as synced rows with"
+                        + " two unknown-cost days (QARenderSnapshot.costUnknownSample), Trends in Cost: each"
+                        + " unknown day an outlined grey stub, the line under the chart saying what one is.")
+            }
+
+        case .demoSessionsWithLogs:
+            enterDemoIfNeeded()
+            shapeExistingUser(onboardingV2: false)
+            state.selectedTab = .sessions
+            let saved = state.sessions
+            state.sessions = saved + QARenderSnapshot.logSessionsSample(now: state.sessionsClock())
+            defer { state.sessions = saved }
+            await capturePopover(
+                surface, index: index,
+                note: "v1.58: the Demo Sessions tab with two sessions from this Mac's own logs put in"
+                    + " (QARenderSnapshot.logSessionsSample, written 2 and 12 minutes before Demo's"
+                    + " clock): Running, Recent activity and Recent rows, and the legend's line for each.")
+
+        case .cardSourceLines:
+            enterDemoIfNeeded()
+            await captureCardSourceLines(surface, index: index)
         }
+    }
+
+    /// v1.58: provider cards' plan-and-source line in the states Demo mode
+    /// does not draw (Demo on the Mac is local mode: every card reads "Quota
+    /// source: This Mac"): a signed-in Codex card reading its quota from the
+    /// API, with a long account label and a plan badge; Claude merged from
+    /// the cloud and this Mac; and Kiro, a tool with no quota source, whose
+    /// line stays neutral. Built from Demo's details, changed for the
+    /// picture; the collector outcome put in for Kiro is taken out again.
+    private func captureCardSourceLines(_ surface: QARenderSurface, index: Int) async {
+        let providerState = state.providerState
+        func detail(_ kind: ProviderKind) -> ProviderDetail? {
+            providerState.providerDetails.first { $0.provider.provider == kind.rawValue }
+        }
+        guard var codex = detail(.codex), var claude = detail(.claude) else {
+            manifest.warnings.append("\(surface.id): the Demo has no Codex or Claude card")
+            return
+        }
+        codex.sourceType = .api
+        codex.accountEmail = "long.sample.account.name@example.com"
+        codex.planType = codex.planType ?? "Paid"
+        claude.sourceType = .merged
+        let kiro = ProviderDetail(
+            provider: ProviderUsage(
+                provider: ProviderKind.kiro.rawValue, today_usage: 0, week_usage: 0,
+                estimated_cost_today: 0, estimated_cost_week: 0,
+                cost_status_today: "Unavailable", cost_status_week: "Unavailable",
+                quota: nil, remaining: nil, status_text: "Operational",
+                trend: [], recent_sessions: [], recent_errors: []),
+            config: ProviderConfig(kind: .kiro),
+            sourceType: .local)
+        let savedOutcome = state.collectorOutcomes[.kiro]
+        state.collectorOutcomes[.kiro] = .unsupported
+        defer { state.collectorOutcomes[.kiro] = savedOutcome }
+        let showCost = state.showCost
+        let cards = VStack(alignment: .leading, spacing: 12) {
+            ForEach([codex, claude, kiro]) { detail in
+                EnhancedProviderCard(
+                    detail: detail,
+                    showCost: showCost,
+                    accountConfigs: providerState.configs(for: detail.config.kind),
+                    accountUsages: providerState.providerAccounts.filter { $0.provider == detail.config.kind },
+                    onAccountToggle: { _, _ in })
+            }
+        }
+            .environmentObject(state)
+            .environmentObject(providerState)
+            // As the Providers tab lays it out in the 380-point popover.
+            .padding(12)
+            .frame(width: 380, alignment: .topLeading)
+        await captureWindow(
+            cards, surface: surface, index: index,
+            note: "v1.58: the plan-and-source line in states Demo does not draw, 380 points wide: Codex"
+                + " signed in, its quota read from the API, with a long sample account label and a plan"
+                + " badge (\"Quota source: API\"); Claude merged (\"Quota source: Cloud + this Mac\");"
+                + " Kiro, a tool with no quota API, with \"No quota source\" and the neutral line"
+                + " (\"Source: This Mac\"). Demo's details, changed for the picture."
+        )
     }
 
     /// Runs `body` with the usage charts' Token / Cost choice set to
@@ -1301,10 +1432,13 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
     /// the way it builds it: the non-scrolling dashboard at a width between
     /// 440 and 520 points, always dark, with a close button. Its see-through
     /// HUD backdrop is drawn over an opaque dark fill here.
-    private func captureUsageDashboardPanel(_ surface: QARenderSurface, index: Int) async {
+    private func captureUsageDashboardPanel(
+        _ surface: QARenderSurface, index: Int, archive: DailyUsageArchive? = nil, note: String? = nil
+    ) async {
         // `onSelectProvider` as the panel passes it: its By Provider rows open
         // that provider's history and carry a chevron saying so.
-        let panel = UsageDashboardView(archive: state.usageArchive, scrollable: false, onSelectProvider: { _ in })
+        let panel = UsageDashboardView(
+            archive: archive ?? state.usageArchive, scrollable: false, onSelectProvider: { _ in })
             .frame(width: 480)
             .overlay(alignment: .topTrailing) {
                 Image(systemName: "xmark.circle.fill")
@@ -1317,12 +1451,37 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         await capture(
             panel, surface: surface, index: index,
             prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: surface.id) },
-            note: "Panel content with the Demo archive (DemoDataProvider.dailyUsage), 480 points wide."
+            note: note ?? ("Panel content with the Demo archive (DemoDataProvider.dailyUsage), 480 points wide."
                 + " The Demo archive is cloud-shaped and includes Gemini; the real panel reads this Mac's"
                 + " local-scan archive, which holds only what the scanner records (Claude and Codex),"
                 + " so the \"Claude + Codex\" caption is true there. The headline is drawn at its settled"
-                + " figure: the renderer turns its 2.2-second count-up off."
+                + " figure: the renderer turns its 2.2-second count-up off.")
         )
+    }
+
+    /// v1.58: the usage panel's provider mode over `data`, as
+    /// `DashboardPanelController` shows it (dark, 480 points), with
+    /// `selection` selected as hovering selects a day.
+    private func captureProviderPanel(
+        _ data: ProviderUsageDays, scopes: [UsageDataScope], selection: String?,
+        surface: QARenderSurface, index: Int, note: String
+    ) async {
+        let panel = ProviderUsagePanelView(
+            data: data, availableScopes: scopes, scope: .constant(data.scope),
+            needsFolderAccess: false, onShowAllProviders: {}, initialSelection: selection)
+            .frame(width: 480)
+            .overlay(alignment: .topTrailing) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+            }
+            .environment(\.colorScheme, .dark)
+            .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        await capture(
+            panel, surface: surface, index: index,
+            prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: surface.id) },
+            note: note)
     }
 
     /// v1.57: the usage panel's provider mode as `DashboardPanelController`
