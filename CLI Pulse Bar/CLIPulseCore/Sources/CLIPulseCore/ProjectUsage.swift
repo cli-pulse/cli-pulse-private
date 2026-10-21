@@ -513,15 +513,16 @@ public struct ProjectUsageList: Sendable, Equatable {
             showsCost: showsCost, hidePersonalInfo: hidePersonalInfo)
     }
 
-    /// What the Overview card's footnote says: what its tokens count (input
-    /// + output, which part of input is cached depending on the provider),
-    /// and, while costs are shown, that they are estimates, as the rest of
-    /// the Overview labels its costs. Both are sentences the app already
-    /// says elsewhere.
-    public static func overviewFootnote(showsCost: Bool) -> String {
+    /// What the Overview card's footnote says, a line each: what its tokens
+    /// count (input + output, which part of input is cached depending on the
+    /// provider), and, while costs are shown, that they are estimates, as the
+    /// rest of the Overview labels its costs. Both are sentences the app
+    /// already says elsewhere. Lines, not one joined string: a space after
+    /// "。" is wrong in Chinese and Japanese.
+    public static func overviewFootnote(showsCost: Bool) -> [String] {
         showsCost
-            ? L10n.providers.ioTokensHelp + " " + L10n.usageDashboard.costDisclaimer
-            : L10n.providers.ioTokensHelp
+            ? [L10n.providers.ioTokensHelp, L10n.usageDashboard.costDisclaimer]
+            : [L10n.providers.ioTokensHelp]
     }
 
     /// Why a provider's projects are missing: the App Store build may not

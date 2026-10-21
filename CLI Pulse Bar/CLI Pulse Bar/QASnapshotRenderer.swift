@@ -1105,14 +1105,14 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             )
 
         case .panelProjectsStates:
-            // On the panel's opaque dark fill, its cards' material blended
-            // within the window, as the panel renders are drawn.
+            // On the panel's opaque dark fill. The strip has no HUD backdrop
+            // to blend (the panel's is behind its whole content, not its
+            // cards), so nothing is prepared.
             await capture(
                 QAPanelProjectsStates()
                     .environment(\.colorScheme, .dark)
                     .background(Color(red: 0.11, green: 0.11, blue: 0.12)),
                 surface: surface, index: index,
-                prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: surface.id) },
                 note: "The usage panel's Projects card (v1.58) in the states the panel renders do not"
                     + " show, dark as the panel always is, at the 440-point panel's card width (388"
                     + " points): Codex and Claude with Hide personal information on (the only part of"

@@ -153,8 +153,10 @@ public struct TopProjectsCard: View {
             }
             ProjectUsageListView(list: list, style: .card)
             VStack(alignment: .leading, spacing: 2) {
-                Text(ProjectUsageList.overviewFootnote(showsCost: list.showsCost))
-                    .help(L10n.cost.ioTokensHelp)
+                ForEach(ProjectUsageList.overviewFootnote(showsCost: list.showsCost), id: \.self) { line in
+                    Text(line)
+                        .help(L10n.cost.ioTokensHelp)
+                }
                 if list.namesHidden {
                     Text(L10n.projects.numberedHelp)
                 }

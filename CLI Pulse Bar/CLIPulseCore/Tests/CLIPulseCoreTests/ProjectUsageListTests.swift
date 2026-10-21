@@ -264,10 +264,10 @@ final class ProjectUsageListTests: XCTestCase {
     func testTheOverviewFootnoteSaysWhatItCountsAndThatCostsAreEstimates() {
         XCTAssertEqual(ProjectUsageList.overviewBasis, .inputOutput)
         XCTAssertEqual(ProjectUsageList.overviewFootnote(showsCost: true),
-                       L10n.providers.ioTokensHelp + " " + L10n.usageDashboard.costDisclaimer)
-        XCTAssertEqual(ProjectUsageList.overviewFootnote(showsCost: false), L10n.providers.ioTokensHelp)
-        XCTAssertTrue(ProjectUsageList.overviewFootnote(showsCost: true).hasPrefix("输入 + 输出 token。"))
-        XCTAssertNotNil(ProjectUsageList.overviewFootnote(showsCost: true).range(of: "预估值"))
+                       [L10n.providers.ioTokensHelp, L10n.usageDashboard.costDisclaimer])
+        XCTAssertEqual(ProjectUsageList.overviewFootnote(showsCost: false), [L10n.providers.ioTokensHelp])
+        XCTAssertTrue(ProjectUsageList.overviewFootnote(showsCost: true)[0].hasPrefix("输入 + 输出 token。"))
+        XCTAssertNotNil(ProjectUsageList.overviewFootnote(showsCost: true)[1].range(of: "预估值"))
     }
 
     /// A provider whose log folder the App Store build may not read has no
