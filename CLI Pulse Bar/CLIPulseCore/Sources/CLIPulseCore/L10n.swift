@@ -1797,6 +1797,8 @@ public enum L10n {
         public static func eventTypeRetired(_ a0: String) -> String { tr("integrations.event_type_retired", a0) }
         /// Above the chips until the account's saved filter has been read.
         public static var eventFilterNotLoaded: String { tr("integrations.event_filter_not_loaded") }
+        /// Above the chips while no account is signed in: the filter is the account's.
+        public static var eventFilterSignedOut: String { tr("integrations.event_filter_signed_out") }
         public static func saveSettingsFailed(_ a0: String) -> String { tr("integrations.save_settings_failed", a0) }
         public static func testWebhookFailed(_ a0: String) -> String { tr("integrations.test_webhook_failed", a0) }
     }

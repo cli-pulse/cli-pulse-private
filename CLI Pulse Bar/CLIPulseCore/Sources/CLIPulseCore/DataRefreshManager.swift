@@ -3268,8 +3268,10 @@ extension AppState {
 
     /// Pull last 90 days of daily yield rollups so the UI can re-aggregate
     /// over any of the supported windows (7/30/90) without an extra round trip.
-    /// Also re-syncs the user's track_git_activity opt-in from the server.
-    private func refreshYieldScore() async {
+    /// Also re-syncs the user's track_git_activity opt-in and (1.58) the saved
+    /// webhook event filter from the server. Internal so a test can run the
+    /// read the refresh runs.
+    func refreshYieldScore() async {
         let rows = await api.fetchYieldScoreDaily(days: 90)
         yieldScoreDailyRows = rows
         let webhookFilterEpoch = webhookEventFilterEpoch

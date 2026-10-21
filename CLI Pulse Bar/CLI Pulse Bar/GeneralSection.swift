@@ -199,6 +199,7 @@ struct GeneralSection: View {
                 WebhookEventFilterDisclosure(
                     filter: state.webhookEventFilter,
                     isLoaded: state.webhookEventFilterLoaded,
+                    isSignedIn: state.isAuthenticated,
                     isExpanded: $webhookFilterExpanded,
                     toggleSeverity: { severity in
                         state.editWebhookEventFilter { Self.toggle(severity, in: &$0.severities) }
@@ -293,6 +294,9 @@ struct GeneralSection: View {
 struct WebhookEventFilterDisclosure: View {
     let filter: WebhookEventFilter
     let isLoaded: Bool
+    /// Signed out there is no saved filter to read: the line says the filter
+    /// is the account's instead of waiting for a read that cannot come.
+    var isSignedIn = true
     @Binding var isExpanded: Bool
     var toggleSeverity: (String) -> Void = { _ in }
     var toggleType: (String) -> Void = { _ in }
@@ -307,7 +311,7 @@ struct WebhookEventFilterDisclosure: View {
                     .foregroundStyle(.tertiary)
 
                 if !isLoaded {
-                    Text(L10n.integrations.eventFilterNotLoaded)
+                    Text(isSignedIn ? L10n.integrations.eventFilterNotLoaded : L10n.integrations.eventFilterSignedOut)
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -364,7 +368,7 @@ struct WebhookEventFilterDisclosure: View {
             }
             .padding(.top, 4)
             .task {
-                if !isLoaded { await loadSaved?() }
+                if !isLoaded, isSignedIn { await loadSaved?() }
             }
         } label: {
             HStack(spacing: 4) {

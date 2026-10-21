@@ -64,10 +64,13 @@ final class WebhookEventFilterSyncTests: XCTestCase {
         return Data("[{\(fields.joined(separator: ","))}]".utf8)
     }
 
+    /// Answers a read of `user_settings` with `rows`, any other read (the
+    /// refresh's yield rows) with none, and every write with 201.
     private func answerSettingsRead(with rows: Data) {
         WebhookFilterStubProtocol.handler = { request in
-            if request.httpMethod == "GET" { return (200, rows) }
-            return (201, Data())
+            guard request.httpMethod == "GET" else { return (201, Data()) }
+            if request.url?.path == "/rest/v1/user_settings" { return (200, rows) }
+            return (200, Data("[]".utf8))
         }
     }
 
@@ -183,14 +186,28 @@ final class WebhookEventFilterSyncTests: XCTestCase {
         XCTAssertTrue(WebhookFilterStubProtocol.recordedRequests().isEmpty)
     }
 
-    func test_the_refresh_read_loads_the_saved_filter() async throws {
+    /// After a relaunch the chips show the account's filter: the refresh's
+    /// settings read (`refreshYieldScore`, run by every completed refresh)
+    /// applies it. Before 1.58 they started empty while the server filtered.
+    func test_the_refresh_loads_the_saved_filter() async throws {
         let saved = WebhookEventFilter(severities: ["Critical", "Warning"], types: ["quota_exceeded"])
         answerSettingsRead(with: settingsRows(
             filterJSON: #"{"severities":["Critical","Warning"],"types":["quota_exceeded"]}"#))
         let state = makeState(api: await makeAPI())
+        await state.refreshYieldScore()
+        XCTAssertTrue(state.webhookEventFilterLoaded, "the refresh did not read the saved filter")
+        XCTAssertEqual(state.webhookEventFilter, saved, "the chips did not show the account's saved filter")
+        XCTAssertTrue(state.gitTrackingEnabled, "the same read's other setting")
+        XCTAssertTrue(try settingsWrites().isEmpty, "reading the filter saved it")
+    }
+
+    /// Opening the filter before a refresh has read it reads it then.
+    func test_opening_the_filter_reads_the_saved_filter() async throws {
+        answerSettingsRead(with: settingsRows(filterJSON: #"{"types":["device_offline"]}"#))
+        let state = makeState(api: await makeAPI())
         await state.loadWebhookEventFilter()
         XCTAssertTrue(state.webhookEventFilterLoaded)
-        XCTAssertEqual(state.webhookEventFilter, saved, "the chips did not show the account's saved filter")
+        XCTAssertEqual(state.webhookEventFilter, WebhookEventFilter(types: ["device_offline"]))
     }
 
     func test_a_change_saves_the_whole_filter_and_clearing_it_saves_null() async throws {
@@ -331,9 +348,11 @@ final class WebhookEventFilterSyncTests: XCTestCase {
         XCTAssertTrue(try settingsWrites().last?["webhook_event_filter"] is NSNull)
     }
 
-    func test_the_not_loaded_line_is_translated() {
+    func test_the_not_loaded_and_signed_out_lines_are_translated() {
         withLocale("zh-Hans") {
             XCTAssertEqual(L10n.integrations.eventFilterNotLoaded, "已保存的筛选尚未加载，加载后才能更改。")
+            // The brand is laid out unbroken (U+00A0, `L10n.displayFormat`).
+            XCTAssertEqual(L10n.integrations.eventFilterSignedOut, "筛选保存在你的 CLI\u{00A0}Pulse 账户中，登录后才能更改。")
         }
     }
 
@@ -349,6 +368,8 @@ final class WebhookEventFilterSyncTests: XCTestCase {
         for wired in [
             "state.editWebhookEventFilter {",
             "isLoaded: state.webhookEventFilterLoaded,",
+            "isSignedIn: state.isAuthenticated,",
+            "if !isLoaded, isSignedIn { await loadSaved?() }",
             "loadSaved: { await state.loadWebhookEventFilter() }",
             "ForEach(WebhookEventFilter.typeChips(for: filter), id: \\.self)",
             ".disabled(!isLoaded)",

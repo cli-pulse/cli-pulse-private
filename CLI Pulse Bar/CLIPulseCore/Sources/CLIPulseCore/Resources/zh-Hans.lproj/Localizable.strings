@@ -1979,6 +1979,7 @@
 "integrations.event_type_device_offline" = "设备离线";
 "integrations.event_type_retired" = "已不再产生“%@”告警。取消选择即可将其从筛选中移除。";
 "integrations.event_filter_not_loaded" = "已保存的筛选尚未加载，加载后才能更改。";
+"integrations.event_filter_signed_out" = "筛选保存在你的 CLI Pulse 账户中，登录后才能更改。";
 "quota_tier.overall" = "总体";
 "status_text.percent_left" = "剩余 %d%%";
 "status_text.window_percent_left" = "%1$@：剩余 %2$d%%";

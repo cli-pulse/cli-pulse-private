@@ -1991,6 +1991,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "integrations.event_type_device_offline" = "Device offline";
 "integrations.event_type_retired" = "“%@” alerts are no longer raised. Deselect it to remove it from the filter.";
 "integrations.event_filter_not_loaded" = "Your saved filter hasn't loaded yet. You can change it once it has.";
+"integrations.event_filter_signed_out" = "The filter is saved to your CLI Pulse account. Sign in to change it.";
 "quota_tier.overall" = "Overall";
 "status_text.percent_left" = "%d%% left";
 "status_text.window_percent_left" = "%1$@ %2$d%% left";

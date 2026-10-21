@@ -786,9 +786,9 @@ public enum QARenderSurface: Hashable {
     /// appears in the QA build, which is not sandboxed.
     case codexResetCreditsStates
     /// 1.58: the webhook event filter in each state it draws, at the
-    /// popover's content width: before the saved filter is read, no filter
-    /// saved, a saved filter, and a saved filter that holds the retired
-    /// "Long session" type.
+    /// popover's content width: signed out, before the saved filter is read,
+    /// no filter saved, a saved filter, and a saved filter that holds the
+    /// retired "Long session" type.
     case webhookEventFilterStates
 
     public enum Kind: String, Codable, Sendable {

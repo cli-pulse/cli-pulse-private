@@ -979,8 +979,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             await captureWindow(
                 QAWebhookEventFilterStates(), surface: surface, index: index,
                 note: "Settings › Integrations › Event Filter, open, each state on a strip as wide as"
-                    + " the popover's content (356 points): before the account's saved filter has been"
-                    + " read (chips cannot be changed); no filter saved; a saved filter of two"
+                    + " the popover's content (356 points): signed out (the filter is the account's);"
+                    + " before the account's saved filter has been read (chips cannot be changed);"
+                    + " no filter saved; a saved filter of two"
                     + " severities and two types; a filter saved with \"Long session\", which nothing"
                     + " raises any more, shown selected with the line that says so."
             )
@@ -2000,12 +2001,13 @@ struct QAWebhookEventFilterStates: View {
     static let savedFilter = WebhookEventFilter(
         severities: ["Critical", "Warning"], types: ["cost_spike", "device_offline"])
 
-    private var states: [(filter: WebhookEventFilter, isLoaded: Bool)] {
+    private var states: [(filter: WebhookEventFilter, isLoaded: Bool, isSignedIn: Bool)] {
         [
-            (WebhookEventFilter(), false),
-            (WebhookEventFilter(), true),
-            (Self.savedFilter, true),
-            (WebhookEventFilter(severities: ["Critical"], types: ["session_long"]), true),
+            (WebhookEventFilter(), false, false),
+            (WebhookEventFilter(), false, true),
+            (WebhookEventFilter(), true, true),
+            (Self.savedFilter, true, true),
+            (WebhookEventFilter(severities: ["Critical"], types: ["session_long"]), true, true),
         ]
     }
 
@@ -2014,7 +2016,8 @@ struct QAWebhookEventFilterStates: View {
             ForEach(Array(states.enumerated()), id: \.offset) { _, state in
                 // 356 points: the popover's 380 less Settings' 12-point margins.
                 WebhookEventFilterDisclosure(
-                    filter: state.filter, isLoaded: state.isLoaded, isExpanded: .constant(true))
+                    filter: state.filter, isLoaded: state.isLoaded, isSignedIn: state.isSignedIn,
+                    isExpanded: .constant(true))
                     .frame(width: 356, alignment: .leading)
                     .padding(8)
                     .background(PulseTheme.cardBackground.opacity(0.5))
