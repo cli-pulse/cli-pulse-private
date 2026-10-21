@@ -950,6 +950,15 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             await state.refreshUsageArchive(force: true)
             await captureUsageDashboardPanel(surface, index: index)
 
+        case .usageDashboardPanelCost:
+            // v1.58: the same panel with Trends in Cost, the choice the
+            // panel remembers for both of its modes.
+            enterDemoIfNeeded()
+            await state.refreshUsageArchive(force: true)
+            await withChartMetric(.cost) {
+                await captureUsageDashboardPanel(surface, index: index)
+            }
+
         case .providerUsagePanel(let kind):
             await captureProviderUsagePanel(kind, surface: surface, index: index)
 
@@ -989,7 +998,74 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                     + " severities and two types; a filter saved with \"Long session\", which nothing"
                     + " raises any more, shown selected with the line that says so."
             )
+
+        case .costUnknownDays:
+            await withChartMetric(.cost) {
+                await captureWindow(
+                    QACostUnknownDays(sample: QARenderSnapshot.costUnknownSample()),
+                    surface: surface, index: index,
+                    note: "v1.58: a day with usage and no known cost, in Cost, on card-wide strips, from the"
+                        + " Claude sample as synced rows with two days whose every row arrived with a cost"
+                        + " of 0 (QARenderSnapshot.costUnknownSample): the Mac card's small chart; the iPhone"
+                        + " card's history, the panel's chart, with the later of the two days tapped (its"
+                        + " line reads \"—\", VoiceOver \"cost unknown\"); the Usage Dashboard's Trends"
+                        + " (30 days) with the line under it saying what a grey bar is. Each unknown day"
+                        + " is a grey stub on the baseline, not an empty slot."
+                )
+            }
+
+        case .claudeCardThisMacMessages:
+            enterDemoIfNeeded()
+            await captureClaudeCardWithMessages(surface, index: index)
         }
+    }
+
+    /// Runs `body` with the usage charts' Token / Cost choice set to
+    /// `metric`, and puts the choice back afterwards.
+    private func withChartMetric(_ metric: UsageChartMetric, _ body: () async -> Void) async {
+        let defaults = UserDefaults.standard
+        let previous = defaults.string(forKey: UsageChartMetric.defaultsKey)
+        defaults.set(metric.rawValue, forKey: UsageChartMetric.defaultsKey)
+        await body()
+        defaults.set(previous, forKey: UsageChartMetric.defaultsKey)
+    }
+
+    /// v1.58: the Demo Claude card as a signed-in Mac that scans its logs
+    /// sees it: this Mac's message counts beside every device's tokens and
+    /// cost, the note saying so, and the layout that fits (the chart beside
+    /// the figures where it does). This Mac's scan is the QA sample
+    /// (`QARenderSnapshot.claudeMessagesScanSample`), put in for this picture
+    /// and taken out again; Demo mode has none.
+    private func captureClaudeCardWithMessages(_ surface: QARenderSurface, index: Int) async {
+        let saved = state.costUsageScanResult
+        state.costUsageScanResult = CostUsageScanResult(entries: QARenderSnapshot.claudeMessagesScanSample())
+        defer { state.costUsageScanResult = saved }
+        let providerState = state.providerState
+        guard let detail = providerState.providerDetails.first(where: {
+            $0.provider.provider == ProviderKind.claude.rawValue
+        }) else {
+            manifest.warnings.append("\(surface.id): the Demo has no Claude card")
+            return
+        }
+        let card = EnhancedProviderCard(
+            detail: detail,
+            showCost: state.showCost,
+            accountConfigs: providerState.configs(for: detail.config.kind),
+            accountUsages: providerState.providerAccounts.filter { $0.provider == detail.config.kind },
+            onAccountToggle: { _, _ in })
+            .environmentObject(state)
+            .environmentObject(providerState)
+            // As the Providers tab lays it out in the 380-point popover.
+            .padding(12)
+            .frame(width: 380, alignment: .topLeading)
+        await captureWindow(
+            card, surface: surface, index: index,
+            note: "v1.58: the Demo Claude card with this Mac's scan put in (the QA sample's Claude rows and"
+                + " message counts, QARenderSnapshot.claudeMessagesScanSample), as a signed-in Mac that"
+                + " scans its logs sees it: messages (this Mac's) lead, tokens and cost are every device's"
+                + " (\"All devices\"), and the note says the messages are this Mac's. 380 points, as in the"
+                + " popover. The figures are the sample's, not Demo's."
+        )
     }
 
     /// Setup v2 pages. Welcome and privacy exist only for a new install;
@@ -1898,6 +1974,61 @@ final class QARenderRefusingURLProtocol: URLProtocol {
 /// The rows `QARenderSurface.codexResetCreditsStates` draws, built the way the
 /// card builds them (`CodexResetCreditsCardState.resolve`), from fixed
 /// readings relative to `now`.
+/// v1.58: the cost charts' grey stub for a day with usage and no known
+/// cost (`ProviderUsageDays.Day.costIsUnknown`), on card-wide strips, from
+/// `QARenderSnapshot.costUnknownSample`. The caller sets the charts to Cost.
+private struct QACostUnknownDays: View {
+    let sample: (rows: [DailyUsage], unknownDays: [String])
+
+    private var claude: String { ProviderKind.claude.rawValue }
+    private var accent: Color { PulseTheme.providerColor(claude) }
+
+    var body: some View {
+        let card = ProviderCardUsageBuilder.build(
+            provider: claude, usage: nil, scanEntries: [], cloudRows: sample.rows, readsCloud: true)
+        let chart = card.chart(.cost)
+        let days = ProviderUsageDays.fromCloud(
+            sample.rows, provider: claude, basis: ProviderCardUsage.tokenBasis,
+            todayKey: DayKey.string(from: Date()))
+        var archive = DailyUsageArchive()
+        archive.mergeCloudDays(sample.rows.map(CloudEntry.init(archiving:)))
+        return VStack(alignment: .leading, spacing: 8) {
+            // The Mac card's small chart, at the size it has beside the
+            // figures, and what it says on hover and to VoiceOver.
+            strip {
+                VStack(alignment: .trailing, spacing: 6) {
+                    ProviderUsageSparkline(days: chart.bars, metric: .cost, accent: accent)
+                        .frame(width: 160, height: 28)
+                    Text(ProviderCardUsage.chartHelp(chart))
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            // The iPhone card's history, the chart the Mac panel draws too,
+            // with the later unknown day tapped.
+            strip {
+                ProviderUsageHistorySection(
+                    days: days, accent: accent, showCost: true, initialSelection: sample.unknownDays.first)
+            }
+            strip {
+                DashboardTrends(archive: archive)
+            }
+        }
+        .padding(12)
+        .frame(width: 380, alignment: .leading)
+    }
+
+    private func strip<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .padding(10)
+            .frame(width: 356, alignment: .leading)
+            .background(PulseTheme.cardBackground.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
 private struct QAResetCreditsStates: View {
     let now: Date
 

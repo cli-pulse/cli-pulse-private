@@ -230,32 +230,95 @@ final class SessionFreshnessTierTests: XCTestCase {
         XCTAssertEqual(FreshnessTier.hidden.badge,        "")
     }
 
-    /// The legend under the list explains the chips, so it has to name each
-    /// chip exactly as the chip reads. It used to explain one state ("Recent =
-    /// JSONL activity only") for two different chips, and zh-Hant joined the two
-    /// names with a slash without saying how they differ.
+    /// The legend under the list explains the chips, so each of its lines
+    /// has to name its chip exactly as the chip reads. It used to explain one
+    /// state ("Recent = JSONL activity only") for two different chips, and
+    /// zh-Hant joined the two names with a slash without saying how they
+    /// differ.
     ///
     /// Referential on purpose: it reads the badge and the status pill, not a
-    /// copy of their text, so rewording a badge without the legend fails here.
-    func test_legend_names_every_badge_it_explains_in_every_locale() {
+    /// copy of their text, so rewording a badge without its line fails here.
+    func test_each_legend_line_names_its_badge_in_every_locale() {
         let saved = LocaleOverrideStore.shared.override
         defer { LocaleOverrideStore.shared.set(saved) }
 
         for locale in ["en", "es", "ja", "ko", "zh-Hans", "zh-Hant"] {
             LocaleOverrideStore.shared.set(locale)
-            let legend = L10n.sessions.freshnessLegend
-            XCTAssertFalse(legend.hasPrefix("sessions."), "\(locale) renders the raw key")
             // Process-confirmed rows show the status pill, not tier.badge.
-            let names = [L10n.status.localized("running"),
-                         FreshnessTier.activeJsonl.badge,
-                         FreshnessTier.recentJsonl.badge]
-            for name in names {
+            let lines: [(String, String)] = [
+                (L10n.sessions.legendRunning, L10n.status.localized("running")),
+                (L10n.sessions.legendRecentActivity, FreshnessTier.activeJsonl.badge),
+                (L10n.sessions.legendRecent, FreshnessTier.recentJsonl.badge),
+            ]
+            for (line, name) in lines {
+                XCTAssertFalse(line.hasPrefix("sessions."), "\(locale) renders the raw key")
                 XCTAssertFalse(name.isEmpty)
-                // "<name> =", every legend's form. A bare `contains` would let
-                // "Recent" pass on the strength of "Recent activity".
-                XCTAssertTrue(legend.contains("\(name) ="), "\(locale) legend does not define \"\(name)\": \(legend)")
+                // "<name> =" at the start, every line's form. A bare
+                // `contains` would let "Recent" pass on the strength of
+                // "Recent activity".
+                XCTAssertTrue(line.hasPrefix("\(name) ="), "\(locale) line does not define \"\(name)\": \(line)")
             }
         }
+    }
+
+    /// v1.58: the legend explains the badges the list shows, and only
+    /// those. Since 1.57 every session the account holds is a process-scan
+    /// row, so the iPhone and iPad lists read "Running" alone, while the
+    /// legend went on defining "Recent activity" and "Recent", which no row
+    /// wore; in Spanish it defined "Activa" under an "Activas" header whose
+    /// rows all read "En ejecución". Asserted in zh-Hans: the English
+    /// fallback of a missing key reads as English.
+    func test_the_legend_explains_only_the_badges_the_rows_wear() {
+        let saved = LocaleOverrideStore.shared.override
+        defer { LocaleOverrideStore.shared.set(saved) }
+        LocaleOverrideStore.shared.set("zh-Hans")
+        let now = referenceNow
+        let running = make(id: "local-48213", ageSeconds: 60, now: now)
+        let otherMac = make(id: "proc-3120", ageSeconds: 200, now: now)
+        let recentLog = make(id: "jsonl-a", ageSeconds: 120, now: now)
+        let olderLog = make(id: "jsonl-b", ageSeconds: 900, now: now)
+        let stale = make(id: "local-1", ageSeconds: 3_600, now: now)
+
+        // What the iPhone and iPad list: synced scan rows only.
+        XCTAssertEqual(SessionFreshnessLegend.lines(for: [running, otherMac, stale], now: now),
+                       ["运行中 = 已确认进程存在。"])
+        XCTAssertEqual(SessionFreshnessLegend.text(for: [running, otherMac], now: now),
+                       "运行中 = 已确认进程存在。")
+        // A Mac with its own session logs: a line for each badge, in the
+        // order the sections run.
+        XCTAssertEqual(SessionFreshnessLegend.lines(for: [olderLog, recentLog, running], now: now),
+                       ["运行中 = 已确认进程存在。", "最近活动 = 5 分钟内写入过日志。", "最近 = 30 分钟内写入过日志。"])
+        XCTAssertEqual(SessionFreshnessLegend.lines(for: [olderLog], now: now), ["最近 = 30 分钟内写入过日志。"])
+        // A row the list hides explains nothing; nothing listed, no legend.
+        XCTAssertEqual(SessionFreshnessLegend.lines(for: [stale], now: now), [])
+        XCTAssertNil(SessionFreshnessLegend.text(for: [stale], now: now))
+        XCTAssertNil(SessionFreshnessLegend.text(for: [], now: now))
+        // One line a badge.
+        XCTAssertEqual(SessionFreshnessLegend.text(for: [running, olderLog], now: now),
+                       "运行中 = 已确认进程存在。\n最近 = 30 分钟内写入过日志。")
+    }
+
+    /// v1.58: the iPhone's and iPad's session count (the Overview's Sessions
+    /// tile, the iPad sidebar's Active Sessions) is the rows the Sessions tab
+    /// lists under Active. `dashboard_summary` counts every row still marked
+    /// Running, and a row is marked Ended only when its Mac syncs again, so a
+    /// Mac that went to sleep with AI tools open left them on the tile while
+    /// the tab, which drops a scan row its producer stopped rewriting, listed
+    /// none.
+    func test_the_session_count_is_the_rows_listed_under_active() {
+        let now = referenceNow
+        let running = make(id: "local-48213", ageSeconds: 60, now: now)
+        let otherMac = make(id: "proc-3120", ageSeconds: 299, now: now)
+        // Marked Running on the server, its Mac asleep for an hour.
+        let asleep = make(id: "local-77", ageSeconds: 3_600, now: now, status: "Running")
+        let recentLog = make(id: "jsonl-a", ageSeconds: 120, now: now)
+        let olderLog = make(id: "jsonl-b", ageSeconds: 900, now: now)
+        let rows = [running, otherMac, asleep, recentLog, olderLog]
+        XCTAssertEqual(SessionListCount.active(rows, now: now), 3)
+        XCTAssertEqual(SessionListCount.active(rows, now: now),
+                       C.partition(rows, now: now).active.count, "the tile and the Active section disagree")
+        XCTAssertEqual(SessionListCount.active([asleep], now: now), 0)
+        XCTAssertEqual(SessionListCount.active([], now: now), 0)
     }
 
     // MARK: - Claude Code 2.x user-Library binaries are NOT artifacts

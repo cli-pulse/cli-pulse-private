@@ -561,6 +561,44 @@ final class QARenderSnapshotTests: XCTestCase {
         XCTAssertEqual(QARenderSurface.providerCardPanel(.claude).kind, .panel)
     }
 
+    /// v1.58: the review set draws the Usage Dashboard with Trends in Cost,
+    /// the cost charts' stub for a day with no known cost, and the Claude
+    /// card with this Mac's message counts, whose layout depends on the
+    /// language. None of them is a store shot.
+    func testTheReviewSetDrawsTheV158Surfaces() {
+        let catalog = QARenderSnapshot.catalog
+        let expected: [(QARenderSurface, String, QARenderSurface.Kind)] = [
+            (.usageDashboardPanelCost, "panel-usage-dashboard-cost", .panel),
+            (.costUnknownDays, "chart-cost-unknown-days", .window),
+            (.claudeCardThisMacMessages, "card-claude-this-mac-messages", .window),
+        ]
+        for (surface, id, kind) in expected {
+            XCTAssertTrue(catalog.contains(surface), "\(id) is not rendered")
+            XCTAssertEqual(surface.id, id)
+            XCTAssertEqual(surface.kind, kind)
+            XCTAssertFalse(QARenderSnapshot.storeCatalog.contains { $0.surface == surface })
+        }
+        // The Cost panel comes right after the Tokens one, both in Demo mode.
+        guard let tokens = catalog.firstIndex(of: .usageDashboardPanel),
+              let cost = catalog.firstIndex(of: .usageDashboardPanelCost) else { return XCTFail("missing") }
+        XCTAssertEqual(cost, tokens + 1)
+
+        // The card's scan sample: Claude's rows and a message count a day,
+        // and nothing for any other provider.
+        let today = DayKey.date(from: "2026-10-07", hour: 12) ?? Date()
+        let utc = TimeZone(identifier: "UTC")!
+        let scan = QARenderSnapshot.claudeMessagesScanSample(today: today, timeZone: utc)
+        XCTAssertTrue(scan.allSatisfy { $0.provider == ProviderKind.claude.rawValue })
+        let buckets = scan.filter { $0.model == ScanEntry.messageBucketModel }
+        XCTAssertFalse(buckets.isEmpty)
+        XCTAssertTrue(buckets.allSatisfy { $0.messageCount > 0 && $0.inputTokens == 0 && $0.costUSD == nil })
+        XCTAssertEqual(Set(buckets.map(\.date)),
+                       Set(scan.filter { $0.model != ScanEntry.messageBucketModel }.map(\.date)),
+                       "a message count for every day with usage")
+        XCTAssertEqual(scan.map(\.messageCount),
+                       QARenderSnapshot.claudeMessagesScanSample(today: today, timeZone: utc).map(\.messageCount))
+    }
+
     /// The provider-panel renders draw from sample rows that are the same on
     /// every run and show what the panel marks: a borrowed rate, a model with
     /// no rate, idle days. No Demo surface reads them.

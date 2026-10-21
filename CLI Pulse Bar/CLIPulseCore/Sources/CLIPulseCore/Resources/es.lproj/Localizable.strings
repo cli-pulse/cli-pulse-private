@@ -1247,7 +1247,9 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "sessions.detected_footer" = "Estas sesiones de Claude se están ejecutando en este Mac, pero no las inició CLI Pulse, así que el helper no puede enviarles entrada ni detenerlas de forma segura. Úsalas desde el terminal donde se abrieron.";
 "sessions.section_active" = "Activas";
 "sessions.section_recent" = "Recientes · últimos 30 min";
-"sessions.freshness_legend" = "En ejecución = proceso confirmado. Activa = registro escrito en los últimos 5 min. Reciente = registro escrito en los últimos 30 min.";
+"sessions.legend_running" = "En ejecución = proceso confirmado.";
+"sessions.legend_recent_activity" = "Activa = registro escrito en los últimos 5 min.";
+"sessions.legend_recent" = "Reciente = registro escrito en los últimos 30 min.";
 "sessions.send" = "Enviar";
 "sessions.approve_help" = "Aprueba la solicitud de permiso pendiente de Claude vinculada a esta sesión local (⌘↩).";
 "sessions.reject_help" = "Rechaza la solicitud de permiso pendiente de Claude. Claude seguirá esperando otra decisión o recurrirá a su propio aviso.";
@@ -1629,6 +1631,8 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "provider_panel.chart_label" = "%1$@ por día, últimos %2$d días";
 "provider_panel.close_day" = "Ocultar los detalles del día";
 "provider_panel.chart_hint" = "Desliza hacia arriba o hacia abajo para elegir un día. Sus modelos aparecen debajo de la gráfica.";
+"provider_panel.cost_unknown" = "costo desconocido";
+"provider_panel.cost_unknown_help" = "Una barra gris y corta es un día con uso cuyo costo se desconoce.";
 "folder_access.dir_clipulse_config" = "Configuración de CLI Pulse";
 "folder_access.dir_clipulse_data" = "Datos de CLI Pulse";
 "folder_access.dir_codex_session_logs" = "Registros de sesión de Codex";
@@ -1911,6 +1915,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "provider_card.section_plan_and_source" = "Plan y fuente";
 "provider_card.section_usage_totals" = "Totales de uso";
 "provider_card.section_daily_chart" = "Gráfica diaria";
+"provider_card.quota_source" = "Fuente de la cuota: %@";
 "providers.tracked_count_one" = "%d supervisado";
 "watch.active_count_one" = "%d activo";
 "menu_bar.tier_migration_one" = "Se conservaron tus %d proveedores más usados para ajustarse al plan gratuito. Se desactivó %d: edítalo en Ajustes › Proveedores.";

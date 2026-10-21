@@ -54,19 +54,36 @@ public struct UsageDayBarsChart: View {
     }
 
     public var body: some View {
+        // The tallest day with a known value. In Cost, a day with usage and
+        // no known cost (`Day.costIsUnknown`) would be an empty slot, the
+        // same as a day with no usage; v1.58 draws it as a short grey stub on
+        // the baseline, a few percent of this (`UnknownCostStub`).
+        let top = days.map { $0.value(metric) }.max() ?? 0
         VStack(alignment: .leading, spacing: 3) {
             Chart(days) { day in
-                BarMark(
-                    x: .value(L10n.usageDashboard.chartDay, day.dateKey),
-                    y: .value(metric.label, day.value(metric)))
-                    .foregroundStyle(barColor(day).gradient)
-                    .cornerRadius(1.5)
+                if metric.drawsUnknownCostStub(day) {
+                    BarMark(
+                        x: .value(L10n.usageDashboard.chartDay, day.dateKey),
+                        y: .value(metric.label, metric.plottedValue(day, top: top)))
+                        .foregroundStyle(UnknownCostStub.color(selected: selection == day.dateKey))
+                        .cornerRadius(1.5)
+                } else {
+                    BarMark(
+                        x: .value(L10n.usageDashboard.chartDay, day.dateKey),
+                        y: .value(metric.label, day.value(metric)))
+                        .foregroundStyle(barColor(day).gradient)
+                        .cornerRadius(1.5)
+                }
             }
             .chartXAxis(.hidden)
+            // Every day unknown: the stubs stand on an axis of 1 that has no
+            // figures, so no cost is read off them. Otherwise the axis is
+            // Swift Charts' own, as before.
+            .modifier(UnknownCostAxis(noKnownValue: top <= 0))
             .chartYAxis {
                 AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
                     AxisGridLine()
-                    if let number = value.as(Double.self) {
+                    if top > 0, let number = value.as(Double.self) {
                         AxisValueLabel {
                             Text(axisText(number))
                                 .font(.system(size: axisFontSize))
@@ -165,6 +182,36 @@ public struct UsageDayBarsChart: View {
         guard count > 0, plot.width > 0, x >= plot.minX, x <= plot.maxX else { return nil }
         let column = Int(((x - plot.minX) / plot.width * CGFloat(count)).rounded(.down))
         return min(count - 1, max(0, column))
+    }
+}
+
+/// v1.58: how the cost charts draw a day with usage and no known cost
+/// (`UsageChartMetric.drawsUnknownCostStub`): a short bar in a neutral grey,
+/// not in the provider's colour or the green of a cost, so it reads as a day
+/// that was used and not as a small cost. The provider panel's chart, the
+/// iPhone card's, the Mac card's small one and the Usage Dashboard's Trends
+/// all draw it so.
+public enum UnknownCostStub {
+    /// Grey; stronger while its day is the selected one.
+    public static func color(selected: Bool = false) -> Color {
+        Color.secondary.opacity(selected ? 0.7 : 0.4)
+    }
+}
+
+/// v1.58: the y axis of a cost chart none of whose days has a known cost:
+/// 0 to 1, so the unknown-cost stubs (`UsageChartMetric.unknownCostStubValue`)
+/// keep their few percent instead of filling an axis Swift Charts would fit
+/// to them. Charts with a known value keep their automatic axis.
+@available(iOS 16.0, macOS 13.0, *)
+struct UnknownCostAxis: ViewModifier {
+    let noKnownValue: Bool
+
+    func body(content: Content) -> some View {
+        if noKnownValue {
+            content.chartYScale(domain: 0.0...1.0)
+        } else {
+            content
+        }
     }
 }
 
@@ -403,8 +450,15 @@ public struct ProviderUsageHistorySection: View {
                 selection: $selection, height: 90,
                 selectsOnHover: false, tapTogglesSelection: true,
                 accessibilityValueText: { [basis = days.basis, showsCost = showCost] day in
-                    day.summary(basis: basis, showsCost: showsCost)
+                    day.spokenSummary(basis: basis, showsCost: showsCost)
                 })
+            // v1.58: what a grey bar is, while the chart draws one.
+            if days.drawsUnknownCostStub(metric) {
+                Text(L10n.providerPanel.costUnknownHelp)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let day = days.day(selection) {
                 dayDetail(day)
                     .transition(.opacity)

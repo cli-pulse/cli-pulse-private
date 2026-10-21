@@ -332,6 +332,63 @@ public enum QARenderSnapshot {
         return rows
     }
 
+    /// The provider-panel sample as the account syncs it (`get_daily_usage`):
+    /// the cost each device uploaded, and a model with no rate arriving with a
+    /// cost of 0 (`APIClient.syncDailyUsage`). What the iPhone card reads.
+    public static func providerPanelSyncedSample(
+        _ kind: ProviderKind, today: Date = Date(), timeZone: TimeZone = .current
+    ) -> [DailyUsage] {
+        providerPanelSample(kind, today: today, timeZone: timeZone).map {
+            DailyUsage(date: $0.date, provider: $0.provider, model: $0.model,
+                       inputTokens: $0.inputTokens, cachedTokens: $0.cachedTokens,
+                       outputTokens: $0.outputTokens, cost: $0.costUSD ?? 0)
+        }
+    }
+
+    /// v1.58: the synced Claude sample with two days whose every row arrived
+    /// with a cost of 0, so nothing of their cost is known
+    /// (`ProviderUsageDays.Day.costIsUnknown`): the latest day with usage
+    /// before today, and the eighth before it. The `chart-cost-unknown-days`
+    /// render draws the cost charts' grey stubs from it. Deterministic.
+    public static func costUnknownSample(
+        today: Date = Date(), timeZone: TimeZone = .current
+    ) -> (rows: [DailyUsage], unknownDays: [String]) {
+        let rows = providerPanelSyncedSample(.claude, today: today, timeZone: timeZone)
+        let todayKey = DayKey.string(from: today, in: timeZone)
+        let active = Array(Set(rows.map(\.date))).filter { $0 < todayKey }.sorted(by: >)
+        let unknown = [active.first, active.count > 8 ? active[8] : nil].compactMap { $0 }
+        let zeroed = rows.map { row -> DailyUsage in
+            guard unknown.contains(row.date) else { return row }
+            return DailyUsage(date: row.date, provider: row.provider, model: row.model,
+                              inputTokens: row.inputTokens, cachedTokens: row.cachedTokens,
+                              outputTokens: row.outputTokens, cost: 0)
+        }
+        return (zeroed, unknown)
+    }
+
+    /// v1.58: this Mac's scan for the Claude card with message counts
+    /// (`card-claude-this-mac-messages`): the provider-panel sample's Claude
+    /// rows and, each day, the message-count bucket the scanner writes
+    /// (`ScanEntry.messageBucketModel`), about one message per 40K tokens, a
+    /// heavy month (a busy day near 850). Demo mode on the Mac has no scan,
+    /// so no Demo card shows messages. Deterministic.
+    public static func claudeMessagesScanSample(
+        today: Date = Date(), timeZone: TimeZone = .current
+    ) -> [CostUsageScanResult.DailyEntry] {
+        let rows = providerPanelSample(.claude, today: today, timeZone: timeZone)
+        var tokensByDay: [String: Int] = [:]
+        for row in rows {
+            tokensByDay[row.date, default: 0] += row.inputTokens + row.cachedTokens + row.outputTokens
+        }
+        let buckets = tokensByDay.keys.sorted().map { day in
+            CostUsageScanResult.DailyEntry(
+                date: day, provider: ProviderKind.claude.rawValue, model: ScanEntry.messageBucketModel,
+                inputTokens: 0, cachedTokens: 0, outputTokens: 0, costUSD: nil,
+                messageCount: max(1, (tokensByDay[day] ?? 0) / 40_000))
+        }
+        return rows + buckets
+    }
+
     /// Every surface, in drawing order. The order is also the state order:
     /// everything signed out comes before Demo mode is entered, because the
     /// renderer, like the app, has no way back out of it.
@@ -355,11 +412,13 @@ public enum QARenderSnapshot {
         surfaces += [.about, .subscription]
         surfaces += providerEditorKinds.map { .providerEditor($0) }
         surfaces.append(.usageDashboardPanel)
+        surfaces.append(.usageDashboardPanelCost)
         surfaces += providerPanelKinds.map { .providerUsagePanel($0) }
         surfaces += providerCardPanelKinds.map { .providerCardPanel($0) }
         surfaces += [.providerUsageCardHistory, .firstRunWelcome]
         surfaces.append(.codexResetCreditsStates)
         surfaces.append(.webhookEventFilterStates)
+        surfaces += [.costUnknownDays, .claudeCardThisMacMessages]
         return surfaces
     }
 
@@ -792,6 +851,18 @@ public enum QARenderSurface: Hashable {
     /// a saved filter, and a saved filter that holds the retired "Long
     /// session" type.
     case webhookEventFilterStates
+    /// v1.58: the Usage Dashboard panel with its Trends chart in Cost, the
+    /// choice the panel remembers (`UsageChartMetric.defaultsKey`).
+    case usageDashboardPanelCost
+    /// v1.58: the cost charts' grey stub for a day with usage and no known
+    /// cost, on card-wide strips: the Mac card's small chart, the iPhone
+    /// card's history (the panel's chart) with that day tapped, and the
+    /// Usage Dashboard's Trends.
+    case costUnknownDays
+    /// v1.58: the Claude card with this Mac's message counts beside every
+    /// device's tokens, as a signed-in Mac that scans its logs sees it. Demo
+    /// mode on the Mac has no scan, so no Demo card shows messages.
+    case claudeCardThisMacMessages
 
     public enum Kind: String, Codable, Sendable {
         /// The menu-bar popover (`MenuBarView`), 380 points wide.
@@ -808,9 +879,10 @@ public enum QARenderSurface: Hashable {
     public var kind: Kind {
         switch self {
         case .about, .subscription, .providerEditor, .firstRunWelcome, .codexResetCreditsStates,
-             .webhookEventFilterStates:
+             .webhookEventFilterStates,
+             .costUnknownDays, .claudeCardThisMacMessages:
             return .window
-        case .usageDashboardPanel, .providerUsagePanel, .providerCardPanel:
+        case .usageDashboardPanel, .usageDashboardPanelCost, .providerUsagePanel, .providerCardPanel:
             return .panel
         case .providerUsageCardHistory:
             return .window
@@ -846,6 +918,9 @@ public enum QARenderSurface: Hashable {
         case .firstRunWelcome: return "window-first-run-welcome"
         case .codexResetCreditsStates: return "card-codex-reset-credits"
         case .webhookEventFilterStates: return "card-webhook-event-filter"
+        case .usageDashboardPanelCost: return "panel-usage-dashboard-cost"
+        case .costUnknownDays: return "chart-cost-unknown-days"
+        case .claudeCardThisMacMessages: return "card-claude-this-mac-messages"
         }
     }
 

@@ -1234,7 +1234,9 @@
 "sessions.detected_footer" = "이 Claude 세션들은 이 Mac에서 실행 중이지만 CLI Pulse가 시작한 것이 아니어서 헬퍼가 안전하게 입력을 보내거나 중지할 수 없습니다. 원래 실행한 터미널에서 사용하세요.";
 "sessions.section_active" = "활성";
 "sessions.section_recent" = "최근 · 지난 30분";
-"sessions.freshness_legend" = "실행 중 = 프로세스 확인됨. 최근 활동 = 5분 이내에 로그 기록됨. 최근 = 30분 이내에 로그 기록됨.";
+"sessions.legend_running" = "실행 중 = 프로세스 확인됨.";
+"sessions.legend_recent_activity" = "최근 활동 = 5분 이내에 로그 기록됨.";
+"sessions.legend_recent" = "최근 = 30분 이내에 로그 기록됨.";
 "sessions.send" = "보내기";
 "sessions.approve_help" = "이 로컬 세션에 연결된 대기 중인 Claude 권한 요청을 승인합니다(⌘↩).";
 "sessions.reject_help" = "대기 중인 Claude 권한 요청을 거부합니다. Claude는 다른 결정을 계속 기다리거나 자체 프롬프트로 돌아갑니다.";
@@ -1616,6 +1618,8 @@
 "provider_panel.chart_label" = "최근 %2$d일 일별 %1$@";
 "provider_panel.close_day" = "이날 세부 정보 숨기기";
 "provider_panel.chart_hint" = "위아래로 쓸어 날짜를 고르면 그날의 모델이 차트 아래에 표시됩니다.";
+"provider_panel.cost_unknown" = "비용 알 수 없음";
+"provider_panel.cost_unknown_help" = "짧은 회색 막대는 사용량은 있지만 비용을 알 수 없는 날입니다.";
 "folder_access.dir_clipulse_config" = "CLI Pulse 설정";
 "folder_access.dir_clipulse_data" = "CLI Pulse 데이터";
 "folder_access.dir_codex_session_logs" = "Codex 세션 로그";
@@ -1898,6 +1902,7 @@
 "provider_card.section_plan_and_source" = "요금제 및 소스";
 "provider_card.section_usage_totals" = "사용량 합계";
 "provider_card.section_daily_chart" = "일별 차트";
+"provider_card.quota_source" = "할당량 소스: %@";
 "providers.tracked_count_one" = "%d개 추적 중";
 "watch.active_count_one" = "%d개 활성";
 "menu_bar.tier_migration_one" = "무료 플랜에 맞추기 위해 가장 많이 사용하는 공급자 %d개를 유지했습니다. %d개는 비활성화되었습니다 — 설정 › 공급자에서 편집하세요.";

@@ -800,10 +800,13 @@ struct SessionsTab: View {
                         subtitle: L10n.sessions.emptyHint
                     )
                 }
-                Text(L10n.sessions.freshnessLegend)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+                // v1.58: one line for each badge a row shows.
+                if let legend = SessionFreshnessLegend.text(for: state.sessions, now: now) {
+                    Text(legend)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }

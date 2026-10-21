@@ -1291,7 +1291,9 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "sessions.detected_footer" = "These Claude sessions are running on this Mac but were not started by CLI Pulse, so the helper can't safely send input or stop them. Use them in the originating terminal instead.";
 "sessions.section_active" = "Active";
 "sessions.section_recent" = "Recent · last 30 min";
-"sessions.freshness_legend" = "Running = process confirmed. Recent activity = log written in the last 5 min. Recent = log written in the last 30 min.";
+"sessions.legend_running" = "Running = process confirmed.";
+"sessions.legend_recent_activity" = "Recent activity = log written in the last 5 min.";
+"sessions.legend_recent" = "Recent = log written in the last 30 min.";
 "sessions.send" = "Send";
 "sessions.approve_help" = "Approve the pending Claude permission request bound to this local session (⌘↩).";
 "sessions.reject_help" = "Reject the pending Claude permission request. Claude will continue waiting for a different decision or fall back to its own prompt.";
@@ -1674,6 +1676,8 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "provider_panel.chart_label" = "Daily %1$@, last %2$d days";
 "provider_panel.close_day" = "Hide this day's details";
 "provider_panel.chart_hint" = "Swipe up or down to choose a day. Its models are listed below the chart.";
+"provider_panel.cost_unknown" = "cost unknown";
+"provider_panel.cost_unknown_help" = "A short gray bar is a day with usage whose cost is not known.";
 "folder_access.dir_clipulse_config" = "CLI Pulse Config";
 "folder_access.dir_clipulse_data" = "CLI Pulse Data";
 "folder_access.dir_codex_session_logs" = "Codex Session Logs";
@@ -1940,6 +1944,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "provider_card.section_plan_and_source" = "Plan and Source";
 "provider_card.section_usage_totals" = "Usage Totals";
 "provider_card.section_daily_chart" = "Daily Chart";
+"provider_card.quota_source" = "Quota source: %@";
 "providers.tracked_count_one" = "%d tracked";
 "watch.active_count_one" = "%d active";
 "menu_bar.tier_migration_one" = "Kept your %d most-used providers to fit the free plan. Disabled %d — edit in Settings › Providers.";

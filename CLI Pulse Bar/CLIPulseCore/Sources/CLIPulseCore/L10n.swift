@@ -466,6 +466,12 @@ public enum L10n {
         public static var scopePicker: String { tr("provider_panel.scope_picker") }
         public static var scopeThisMacHelp: String { tr("provider_panel.scope_this_mac_help") }
         public static var scopeAllDevicesHelp: String { tr("provider_panel.scope_all_devices_help") }
+        /// v1.58: a day's cost, spoken, when none of it is known: what
+        /// VoiceOver reads where the screen shows "—" (`Day.spokenSummary`).
+        public static var costUnknown: String { tr("provider_panel.cost_unknown") }
+        /// v1.58: what the grey bar on a cost chart is (the provider card's
+        /// chart, the Usage Dashboard's Trends).
+        public static var costUnknownHelp: String { tr("provider_panel.cost_unknown_help") }
         /// The selected day: date, cost, tokens.
         public static func daySummary(_ day: String, _ cost: String, _ tokens: String) -> String {
             tr("provider_panel.day_summary", day, cost, tokens)
@@ -623,6 +629,11 @@ public enum L10n {
         public static var messagesThisMac: String { tr("provider_card.messages_this_mac") }
         public static func chartTokensHelp(_ highest: String) -> String { tr("provider_card.chart_tokens_help", highest) }
         public static func chartCostHelp(_ highest: String) -> String { tr("provider_card.chart_cost_help", highest) }
+        /// v1.58: the grey bars on the card's chart in Cost.
+        public static var chartCostUnknownHelp: String { providerPanel.costUnknownHelp }
+        /// v1.58: the plan-and-source line, "Quota source: This Mac"
+        /// (`ProviderCardUsage.quotaSourceText`).
+        public static func quotaSource(_ source: String) -> String { tr("provider_card.quota_source", source) }
         public static var sectionsMenu: String { tr("provider_card.sections_menu") }
         public static var sectionsAllShown: String { tr("provider_card.sections_all_shown") }
         public static func sectionsHiddenCount(_ count: Int) -> String { tr("provider_card.sections_hidden_count", count) }
@@ -977,7 +988,11 @@ public enum L10n {
         public static var detectedFooter: String { tr("sessions.detected_footer") }
         public static var sectionActive: String { tr("sessions.section_active") }
         public static var sectionRecent: String { tr("sessions.section_recent") }
-        public static var freshnessLegend: String { tr("sessions.freshness_legend") }
+        /// v1.58: the legend under the Sessions list, one line for each
+        /// badge the list shows (`SessionFreshnessLegend`).
+        public static var legendRunning: String { tr("sessions.legend_running") }
+        public static var legendRecentActivity: String { tr("sessions.legend_recent_activity") }
+        public static var legendRecent: String { tr("sessions.legend_recent") }
         public static var send: String { tr("sessions.send") }
         public static var approveHelp: String { tr("sessions.approve_help") }
         public static var rejectHelp: String { tr("sessions.reject_help") }

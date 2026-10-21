@@ -122,10 +122,14 @@ struct iOSSessionsTab: View {
                     }
                     .padding(.vertical, 20)
                 }
-                Text(L10n.sessions.freshnessLegend)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+                // v1.58: one line for each badge a row shows; since 1.57
+                // every synced row reads "Running".
+                if let legend = SessionFreshnessLegend.text(for: state.sessions, now: now) {
+                    Text(legend)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -170,15 +174,17 @@ struct iOSSessionsTab: View {
     private var sessionList: some View {
         let now = Date()
         let buckets = SessionFreshnessTierClassifier.partition(state.sessions, now: now)
+        // v1.58: one line for each badge a row shows.
+        let legend = SessionFreshnessLegend.text(for: state.sessions, now: now)
         return List {
             // The legend the iPhone shows under its list, under the last section.
             if !buckets.active.isEmpty {
                 iPadSessionSection(header: L10n.sessions.sectionActive, sessions: buckets.active, now: now,
-                                   legend: buckets.recent.isEmpty)
+                                   legend: buckets.recent.isEmpty ? legend : nil)
             }
             if !buckets.recent.isEmpty {
                 iPadSessionSection(header: L10n.sessions.sectionRecent, sessions: buckets.recent, now: now,
-                                   legend: true)
+                                   legend: legend)
             }
         }
         // Wide enough for a session's name and project beside its badge; at
@@ -204,7 +210,7 @@ struct iOSSessionsTab: View {
     }
 
     private func iPadSessionSection(header: String, sessions: [SessionRecord], now: Date,
-                                    legend: Bool) -> some View {
+                                    legend: String?) -> some View {
         Section {
             ForEach(sessions) { session in
                 HStack(spacing: 10) {
@@ -263,8 +269,8 @@ struct iOSSessionsTab: View {
                     .foregroundStyle(.tertiary)
             }
         } footer: {
-            if legend {
-                Text(L10n.sessions.freshnessLegend)
+            if let legend {
+                Text(legend)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)

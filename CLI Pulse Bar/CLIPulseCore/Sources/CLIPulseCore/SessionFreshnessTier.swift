@@ -155,3 +155,58 @@ public enum SessionFreshnessTierClassifier {
         return (active.sorted(by: order), recent.sorted(by: order))
     }
 }
+
+/// v1.58: the legend under a Sessions list (Mac, iPhone, iPad), one line for
+/// each badge the list actually shows, in the order the sections run.
+///
+/// It used to explain all three badges whatever the rows were. Since 1.57
+/// every session the cloud holds is a process-scan row and reads "Running",
+/// so on the iPhone and iPad (and on a Mac with no recent session logs) the
+/// legend explained "Recent activity" and "Recent", which no row showed; in
+/// Spanish it defined "Activa" under an "Activas" header whose rows all read
+/// "En ejecución". A line is there only when a row wears its badge.
+public enum SessionFreshnessLegend {
+    /// The lines for `sessions` as the list draws them at `now`: Running for
+    /// a process-confirmed row, Recent activity and Recent for a row known
+    /// only from its log. Empty when the list shows no row.
+    public static func lines(for sessions: [SessionRecord], now: Date) -> [String] {
+        lines(for: Set(sessions.map { SessionFreshnessTierClassifier.classify($0, now: now) }))
+    }
+
+    /// The lines for the tiers present, hidden rows ignored.
+    public static func lines(for tiers: Set<FreshnessTier>) -> [String] {
+        var lines: [String] = []
+        if tiers.contains(.activeProcess) { lines.append(L10n.sessions.legendRunning) }
+        if tiers.contains(.activeJsonl) { lines.append(L10n.sessions.legendRecentActivity) }
+        if tiers.contains(.recentJsonl) { lines.append(L10n.sessions.legendRecent) }
+        return lines
+    }
+
+    /// The legend as one text, a line a badge; nil when there is nothing to
+    /// explain.
+    public static func text(for sessions: [SessionRecord], now: Date) -> String? {
+        let lines = lines(for: sessions, now: now)
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+}
+
+/// v1.58: the session count the iPhone's and iPad's Overview show (the
+/// Sessions tile, the iPad sidebar's "Active Sessions"): the rows the
+/// Sessions tab lists under Active, so the two never disagree.
+///
+/// They showed `dashboard_summary`'s count, every session row still marked
+/// Running, with no time window. A row is marked Ended only when the device
+/// that uploaded it syncs again (`helper_sync`, ten minutes after its process
+/// is gone), so a Mac that sleeps or shuts down with AI tools open leaves
+/// them counted on the iPhone's tile for as long as it is away, while the
+/// Sessions tab, which keeps a row only while its producer keeps rewriting it
+/// (`SessionFreshnessTierClassifier.processFreshnessWindow`), lists none.
+/// The iPhone and iPad list every device's sessions, so the rows they list
+/// are the count. The Mac, the Watch and the widgets keep the dashboard's.
+public enum SessionListCount {
+    public static func active(_ sessions: [SessionRecord], now: Date) -> Int {
+        sessions.reduce(0) { count, session in
+            count + (SessionFreshnessTierClassifier.classify(session, now: now).section == .active ? 1 : 0)
+        }
+    }
+}
