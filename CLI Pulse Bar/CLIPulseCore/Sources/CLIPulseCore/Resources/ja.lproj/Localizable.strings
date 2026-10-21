@@ -1679,6 +1679,14 @@
 "provider_panel.chart_hint" = "上下にスワイプして日を選ぶと、その日のモデルがグラフの下に表示されます。";
 "provider_panel.cost_unknown" = "コスト不明";
 "provider_panel.cost_unknown_help" = "グレーの短いバーは、使用量はあるもののコストが不明な日です。";
+"projects.title" = "プロジェクト";
+"projects.unknown" = "不明";
+"projects.anonymous" = "プロジェクト %d";
+"projects.shown_of" = "%2$d 件のプロジェクトのうち上位 %1$d 件";
+"projects.help" = "各セッションを実行したフォルダごとに、この Mac のログから集計しています。\nこの一覧はアカウントに同期されません。";
+"projects.unknown_help" = "これらのセッションのログには、どのフォルダで実行したかが記録されていません。";
+"projects.numbered_help" = "この Mac の全プロジェクトの中での順位で番号を付けているため、同じプロジェクトはどの一覧でも同じ番号です。";
+"projects.folder_blocked" = "%@ のプロジェクトは表示されていません。CLI Pulse がこの Mac でそのログフォルダにアクセスできないためです。";
 "folder_access.dir_clipulse_config" = "CLI Pulse 設定";
 "folder_access.dir_clipulse_data" = "CLI Pulse データ";
 "folder_access.dir_codex_session_logs" = "Codex セッションログ";

@@ -7,6 +7,9 @@ import AppKit
 struct OverviewTab: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var providerState: ProviderState
+    /// v1.58: Top Projects names projects "Project N" with it on, and shows
+    /// no path.
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: true) {
@@ -114,7 +117,7 @@ struct OverviewTab: View {
                     }
 
                     providerBreakdown(dash)
-                    topProjects(dash)
+                    topProjects
                     riskSignals(dash)
                 } else if state.isLoading {
                     ProgressView()
@@ -849,18 +852,26 @@ struct OverviewTab: View {
 
     // MARK: - Top Projects
 
-    /// Only with projects to list, like the iPhone and Watch
-    /// (`showsTopProjectsCard`): nothing fills them yet, and the empty card
-    /// told everyone "No projects tracked yet".
+    /// v1.58 (P1-4): this Mac's top projects over the last 30 days, Codex and
+    /// Claude together, from its session-log scan
+    /// (`CostUsageScanResult.projects`), in input + output tokens as the Cost
+    /// Summary above counts its 30 days (`ProjectUsageList.overview`). The
+    /// card's first real data: `dashboard_summary` has no project column, so
+    /// the account's `top_projects` stays empty and the iPhone and Watch still
+    /// draw no card. Drawn only with a project to list, so a Mac that does not
+    /// scan (the scan declined, or no folder access) shows none, as before;
+    /// the empty card told everyone "No projects tracked yet". When the App
+    /// Store build may read one provider's log folder and not the other's,
+    /// the card says whose projects it cannot list.
     @ViewBuilder
-    private func topProjects(_ dash: DashboardSummary) -> some View {
-        if dash.showsTopProjectsCard {
-            VStack(alignment: .leading, spacing: 6) {
-                SectionHeader(title: L10n.dashboard.topProjects, icon: "folder")
-                TopProjectsList(projects: dash.top_projects, style: .macOS)
-            }
-            .padding(10)
-            .glassCard(cornerRadius: 8, elevated: false)
+    private var topProjects: some View {
+        let list = ProjectUsageList.overview(
+            state.costUsageScanResult?.projects ?? [],
+            todayKey: DayKey.string(from: Date()),
+            showsCost: state.showCost, hidePersonalInfo: hidePersonalInfo)
+        if !list.isEmpty {
+            TopProjectsCard(list: list, folderNote: ProjectUsageList.overviewFolderNote(
+                unreadable: CostUsageScanner.logProvidersWithoutFolderAccess()))
         }
     }
 

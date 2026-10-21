@@ -522,6 +522,31 @@ public enum L10n {
         public static var chartHint: String { tr("provider_panel.chart_hint") }
     }
 
+    /// v1.58 (P1-4): the project lists (`ProjectUsageList`) in the usage
+    /// panel's provider mode and on the Mac Overview's Top Projects card.
+    public enum projects {
+        /// The panel section's title.
+        public static var title: String { tr("projects.title") }
+        /// A project whose logs name no folder.
+        public static var unknown: String { tr("projects.unknown") }
+        /// A named project with "Hide personal information" on: "Project 2".
+        public static func anonymous(_ number: Int) -> String { tr("projects.anonymous", number) }
+        /// Under a list cut short: "Top 5 of 12 projects".
+        public static func shownOf(_ shown: Int, _ total: Int) -> String { tr("projects.shown_of", shown, total) }
+        /// What a list counts, and that the list is not synced (only the
+        /// list: a running session's folder name does sync while signed in
+        /// and paired, as the scan's consent says).
+        public static var help: String { tr("projects.help") }
+        /// Hovering "Unknown".
+        public static var unknownHelp: String { tr("projects.unknown_help") }
+        /// With "Hide personal information" on: why a list's "Project N"
+        /// can skip numbers or run out of order.
+        public static var numberedHelp: String { tr("projects.numbered_help") }
+        /// A provider whose log folder the App Store build may not read:
+        /// "Claude's projects are not listed: …".
+        public static func folderBlocked(_ provider: String) -> String { tr("projects.folder_blocked", provider) }
+    }
+
     // MARK: - Providers
 
     /// v1.44 W5: the notice shown once, after the app enables its own login

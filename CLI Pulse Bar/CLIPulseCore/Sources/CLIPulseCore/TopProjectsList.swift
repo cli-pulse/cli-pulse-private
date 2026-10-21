@@ -1,9 +1,11 @@
 import SwiftUI
 
 /// v1.10 P2-1 slice 3: shared renderer for the Overview "Top Projects"
-/// card body. Each platform wraps this in its own header + background;
-/// the rows and divider logic live here. There is no empty state: the card
-/// draws only with rows (`DashboardSummary.showsTopProjectsCard`).
+/// card body on the iPhone, from the account's `top_projects`. There is no
+/// empty state: the card draws only with rows
+/// (`DashboardSummary.showsTopProjectsCard`). Since 1.58 the Mac draws its
+/// own card from this Mac's scan (`TopProjectsCard`), so only the iOS style
+/// is left.
 public struct TopProjectsList: View {
 
     public struct Style: Sendable {
@@ -16,13 +18,6 @@ public struct TopProjectsList: View {
             self.amountFont = amountFont
             self.rowSpacing = rowSpacing
         }
-
-        /// Tight menubar typography: 11/10, monospaced digits in rows.
-        public static let macOS = Style(
-            nameFont: .system(size: 11, weight: .medium),
-            amountFont: .system(size: 10, weight: .medium, design: .monospaced),
-            rowSpacing: 2
-        )
 
         /// iOS uses Dynamic Type sizes with monospaced digits for numbers.
         public static let iOS = Style(

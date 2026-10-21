@@ -408,9 +408,10 @@ internal enum DemoDataProvider {
             unresolved_alerts: cloudAlerts.filter { !$0.is_resolved }.count,
             provider_breakdown: breakdowns,
             // Empty, as every real producer leaves it (APIClient, DataRefreshManager),
-            // so the Top Projects card hides here too. Sample rows put it in every
-            // App Store screenshot while no customer could see it. Put rows back
-            // only in the change that gives a real account some.
+            // so the iPhone's and Watch's Top Projects card hides here too. Sample
+            // rows put it in every App Store screenshot while no customer could see
+            // it. Since 1.58 the Mac's card reads this Mac's own scan instead, and
+            // Demo's Mac gives it one (`macScan`).
             top_projects: [],
             // Empty, as every real producer leaves it (APIClient's
             // `dashboard_summary` row has no hourly column, and the local
@@ -615,6 +616,71 @@ internal enum DemoDataProvider {
         return rows
     }
 
+    /// v1.58 (P1-4): the folders Demo's Mac scan splits its usage across,
+    /// with each one's share of Codex's and of Claude's usage. Invented: no
+    /// real name or path. The first three are the projects Demo's sessions
+    /// run in. Six, so the lists show the "Top 5 of 6" line a busy Mac does.
+    static let macProjects: [(name: String, codex: Double, claude: Double)] = [
+        ("cli-pulse-ios", 0.46, 0.12),
+        ("provider-layer", 0.14, 0.41),
+        ("cli-pulse-helper", 0.09, 0.19),
+        ("web-dashboard", 0.17, 0.14),
+        ("docs-site", 0.08, 0.09),
+        ("release-tools", 0.06, 0.05),
+    ]
+
+    /// Where Demo's projects live. Invented, like the names.
+    static let macProjectsFolder = "/Users/demo/Developer"
+
+    /// v1.58 (P1-4): Demo's Mac as a Mac that scans its session logs and is
+    /// the only device that uploads the account's usage: its scan rows are
+    /// the account's synced rows (`rows`, `providerCardHistory`), so every
+    /// card, the usage panel's This Mac and All devices, and the Cost
+    /// Summary agree, as on a real Mac with one device. Like every real
+    /// scan it has Claude's message counts (the `__claude_msg__` bucket,
+    /// one message per 190 tokens, as the store set's local history), and
+    /// its rows split by project (`macProjects`), each day and model
+    /// apportioned in whole tokens and cents so the projects add up to the
+    /// rows exactly. Deterministic: a day's shares lean a little from day to
+    /// day (`unit`), the same in every language and run.
+    static func macScan(rows: [DailyUsage]) -> CostUsageScanResult {
+        var entries: [CostUsageScanResult.DailyEntry] = []
+        var projects: [CostUsageScanResult.ProjectEntry] = []
+        var claudeTokensByDay: [String: Int] = [:]
+        let identities = macProjects.map { ProjectIdentity.folder(macProjectsFolder + "/" + $0.name) }
+        for (index, row) in rows.enumerated() where row.provider == "Codex" || row.provider == "Claude" {
+            entries.append(.init(
+                date: row.date, provider: row.provider, model: row.model,
+                inputTokens: row.inputTokens, cachedTokens: row.cachedTokens, outputTokens: row.outputTokens,
+                costUSD: row.cost))
+            if row.provider == "Claude" {
+                claudeTokensByDay[row.date, default: 0] += row.inputTokens + row.cachedTokens + row.outputTokens
+            }
+            let isCodex = row.provider == "Codex"
+            let weights = macProjects.enumerated().map { offset, project in
+                (isCodex ? project.codex : project.claude) * (0.8 + 0.4 * unit(index, 300 + UInt64(offset)))
+            }
+            let inputs = apportion(row.inputTokens, by: weights)
+            let cached = apportion(row.cachedTokens, by: weights)
+            let outputs = apportion(row.outputTokens, by: weights)
+            let cents = apportion(Int((row.cost * 100).rounded()), by: weights)
+            for offset in identities.indices
+            where inputs[offset] > 0 || cached[offset] > 0 || outputs[offset] > 0 || cents[offset] > 0 {
+                projects.append(.init(
+                    provider: row.provider, project: identities[offset], date: row.date, model: row.model,
+                    inputTokens: inputs[offset], cachedTokens: cached[offset], outputTokens: outputs[offset],
+                    costUSD: Double(cents[offset]) / 100))
+            }
+        }
+        for (day, tokens) in claudeTokensByDay.sorted(by: { $0.key < $1.key }) {
+            entries.append(.init(
+                date: day, provider: "Claude", model: ScanEntry.messageBucketModel,
+                inputTokens: 0, cachedTokens: 0, outputTokens: 0, costUSD: nil,
+                messageCount: max(1, tokens / 190)))
+        }
+        return CostUsageScanResult(entries: entries, projects: projects)
+    }
+
     /// `total` split in proportion to `weights` in whole units, adding up to
     /// `total` exactly: each takes its floor, and the units left over go to
     /// the largest remainders.
@@ -682,6 +748,13 @@ extension AppState {
         // Review uses) draws that chart, and the Mac's tests run the iPhone's
         // Demo too (`DemoProviderCardHistoryTests`).
         dailyUsage = DemoDataProvider.providerCardHistory(providers: demo.providers)
+        #if os(macOS)
+        // v1.58: and Demo's Mac scans its logs, as a real one does, so the
+        // Overview's Top Projects and the usage panel's Projects have this
+        // Mac's projects to list. Its rows are the synced ones: it is the
+        // account's only uploading device (`DemoDataProvider.macScan`).
+        costUsageScanResult = DemoDataProvider.macScan(rows: dailyUsage)
+        #endif
         buildProviderDetails()
         updateCostSummary()
         publishWidgetData()

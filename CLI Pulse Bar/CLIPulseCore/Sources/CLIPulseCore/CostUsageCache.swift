@@ -143,6 +143,25 @@ struct CostUsageCache: Codable {
     /// Claude. For Codex this is rebuilt from `files` on every refresh, from the
     /// files that count (`CodexCopyResolver`).
     var days: [String: [String: [Int]]] = [:]
+    /// Claude only (1.58, P1-4): project directory → the folder it was made
+    /// from, for each directory one of whose transcripts recorded a `cwd`
+    /// that leads back to it (`CostUsageScanner.learnClaudeProjectRoots`).
+    /// Kept so a directory's transcripts are opened for it once, not on every
+    /// refresh. A directory missing here is looked up again on the next
+    /// refresh, a few transcripts at a time
+    /// (`CostUsageScanner.claudeProjectLookupLimit`). Optional, so a cache
+    /// written before 1.58 still loads; it has none yet.
+    var projectRoots: [String: String]? = nil
+}
+
+/// Codex (1.58, P1-4): what a rollout's first line says about where it ran.
+struct CostUsageFileProject: Codable, Equatable {
+    /// `session_meta.payload.cwd` as written; nil when the line has none.
+    var cwd: String?
+    /// `ProjectPathNormalizer.repositoryHash` of `payload.git.repository_url`.
+    /// The URL itself is never kept: it can carry a token or `user@host`.
+    /// nil when the line has none.
+    var repository: String?
 }
 
 struct CostUsageFileUsage: Codable {
@@ -167,6 +186,11 @@ struct CostUsageFileUsage: Codable {
     /// response once. Kept while the log is being written to; nil otherwise,
     /// and a Claude log without it is read again from the start when it grows.
     var claude: CostUsageClaudeLogState? = nil
+    /// Codex only (1.58, P1-4): where the session ran, from its first line.
+    /// nil until that line has been read for it: an entry written before 1.58
+    /// is given it by one more read of the first line
+    /// (`CostUsageScanner.fillCodexProjects`), not by a re-parse.
+    var project: CostUsageFileProject? = nil
 }
 
 /// What one Claude response adds to a log's totals, keyed by

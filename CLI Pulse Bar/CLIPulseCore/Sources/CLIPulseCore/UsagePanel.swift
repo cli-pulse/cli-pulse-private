@@ -3,7 +3,8 @@
 //
 // - all providers: the Usage Dashboard, from this Mac's usage archive;
 // - one provider: its last 30 days by day and model, from this Mac's scan
-//   (or the rows synced to the account), with a Token / Cost toggle.
+//   (or the rows synced to the account), with a Token / Cost toggle, and
+//   (v1.58, P1-4) this Mac's top projects for that provider.
 //
 // `UsagePanelModel` keeps the data live. The panel used to be handed the
 // archive snapshot it opened with and never read it again (D11), so a panel
@@ -28,6 +29,11 @@ public final class UsagePanelModel: ObservableObject {
     @Published public private(set) var scanEntries: [CostUsageScanResult.DailyEntry] = [] {
         didSet { daysCache = [:] }
     }
+    /// v1.58 (P1-4): this Mac's scan rows split by project
+    /// (`CostUsageScanResult.projects`), every provider's: a list names a
+    /// project by its place among all of them when personal information is
+    /// hidden (`ProjectUsageRanking.anonymousNumbers`).
+    @Published public private(set) var scanProjects: [CostUsageScanResult.ProjectEntry] = []
     /// The rows synced to the account (`AppState.dailyUsage`); none while
     /// signed out.
     @Published public private(set) var cloudRows: [DailyUsage] = [] {
@@ -142,6 +148,9 @@ public final class UsagePanelModel: ObservableObject {
         scan.map { $0?.entries ?? [] }
             .sink { [weak self] in self?.scanEntries = $0 }
             .store(in: &sourceObservers)
+        scan.map { $0?.projects ?? [] }
+            .sink { [weak self] in self?.scanProjects = $0 }
+            .store(in: &sourceObservers)
         cloud
             .sink { [weak self] in self?.cloudRows = $0 }
             .store(in: &sourceObservers)
@@ -227,14 +236,25 @@ public final class UsagePanelModel: ObservableObject {
 
 // MARK: - Provider mode
 
-/// One provider's last 30 days: bars, the selected day's models, the total.
-/// Laid out at a height that does not change from day to day, so the panel
-/// does not jump as the pointer moves over the bars.
+/// One provider's last 30 days: bars, the selected day's models, the total,
+/// and (v1.58) this Mac's top projects for it. Laid out at a height that does
+/// not change from day to day, so the panel does not jump as the pointer
+/// moves over the bars.
 public struct ProviderUsagePanelView: View {
     public let data: ProviderUsageDays
+    /// v1.58 (P1-4): this Mac's scan rows by project, every provider's
+    /// (`UsagePanelModel.scanProjects`). The Projects card lists
+    /// `data.provider`'s.
+    public let projects: [CostUsageScanResult.ProjectEntry]
     public let availableScopes: [UsageDataScope]
     @Binding public var scope: UsageDataScope
     public let needsFolderAccess: Bool
+    /// v1.58 (P1-4): the log providers whose folder the App Store build may
+    /// not read on this Mac (`CostUsageScanner.logProvidersWithoutFolderAccess`),
+    /// even while another provider's is allowed and the scan is not empty.
+    /// For `data.provider` among them, This Mac asks for the folder and the
+    /// Projects card says why it lists nothing.
+    public let unreadableProviders: Set<String>
     /// Back to the Usage Dashboard; nil hides the button.
     public let onShowAllProviders: (() -> Void)?
     /// Opens the popover's Settings, where the log folders are granted; nil
@@ -243,6 +263,7 @@ public struct ProviderUsagePanelView: View {
 
     @AppStorage(UsageChartMetric.defaultsKey) private var metricRaw = UsageChartMetric.tokens.rawValue
     @AppStorage("cli_pulse_show_cost") private var showCost = true
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
     @ObservedObject private var localeOverride = LocaleOverrideStore.shared
     @Environment(\.colorScheme) private var colorScheme
     /// nil: the latest day with usage.
@@ -254,17 +275,21 @@ public struct ProviderUsagePanelView: View {
 
     public init(
         data: ProviderUsageDays,
+        projects: [CostUsageScanResult.ProjectEntry] = [],
         availableScopes: [UsageDataScope],
         scope: Binding<UsageDataScope>,
         needsFolderAccess: Bool,
+        unreadableProviders: Set<String> = [],
         onShowAllProviders: (() -> Void)?,
         onOpenSettings: (() -> Void)? = nil,
         initialSelection: String? = nil)
     {
         self.data = data
+        self.projects = projects
         self.availableScopes = availableScopes
         self._scope = scope
         self.needsFolderAccess = needsFolderAccess
+        self.unreadableProviders = unreadableProviders
         self.onShowAllProviders = onShowAllProviders
         self.onOpenSettings = onOpenSettings
         self._selection = State(initialValue: initialSelection)
@@ -294,6 +319,7 @@ public struct ProviderUsagePanelView: View {
             if data.hasUsage {
                 chartCard
                 totalsCard
+                projectsCard
             } else {
                 emptyState
             }
@@ -511,11 +537,42 @@ public struct ProviderUsagePanelView: View {
         .glassCard(elevated: false)
     }
 
-    /// Whether the empty panel asks for the log folders: macOS blocks them,
+    // MARK: Projects
+
+    /// This Mac's top projects for the provider over the panel's window, in
+    /// the panel's count of tokens. This Mac's whatever the scope above shows:
+    /// projects are worked out from this Mac's logs and never synced, so the
+    /// card names its scope itself.
+    private var projectList: ProjectUsageList {
+        ProjectUsageList.build(
+            projects, provider: data.provider, basis: data.basis, days: Self.windowDays,
+            todayKey: data.days.last?.dateKey ?? DayKey.string(from: Date()),
+            showsCost: showCost, hidePersonalInfo: hidePersonalInfo)
+    }
+
+    /// Drawn with a project to list, or with the note saying why the
+    /// provider has none: the App Store build may not read its log folder.
+    @ViewBuilder
+    private var projectsCard: some View {
+        let list = projectList
+        let note = list.isEmpty
+            ? ProjectUsageList.folderNote(provider: data.provider, unreadable: unreadableProviders)
+            : nil
+        if ProviderProjectsCard.draws(list: list, folderNote: note) {
+            ProviderProjectsCard(
+                list: list, days: Self.windowDays, folderNote: note, onOpenSettings: onOpenSettings)
+        }
+    }
+
+    /// Whether the empty panel asks for the log folders: macOS blocks them
+    /// (all of them, or, v1.58, this provider's while another's is allowed),
     /// the scope is this Mac's, and `provider` is one the scan reads (Codex,
     /// Claude). For any other, granting access would show nothing more.
-    static func asksForFolderAccess(provider: String, scope: UsageDataScope, needsFolderAccess: Bool) -> Bool {
-        needsFolderAccess && scope == .thisMac
+    static func asksForFolderAccess(
+        provider: String, scope: UsageDataScope, needsFolderAccess: Bool,
+        unreadableProviders: Set<String> = []) -> Bool
+    {
+        (needsFolderAccess || unreadableProviders.contains(provider)) && scope == .thisMac
             && CostUsageScanner.logProviders.contains { $0.rawValue == provider }
     }
 
@@ -523,7 +580,9 @@ public struct ProviderUsagePanelView: View {
     /// there was usage is not known, so it says that, not "no usage".
     private var emptyState: some View {
         VStack(spacing: 6) {
-            if Self.asksForFolderAccess(provider: data.provider, scope: scope, needsFolderAccess: needsFolderAccess) {
+            if Self.asksForFolderAccess(
+                provider: data.provider, scope: scope, needsFolderAccess: needsFolderAccess,
+                unreadableProviders: unreadableProviders) {
                 Image(systemName: "folder.badge.questionmark")
                     .font(.system(size: 22))
                     .foregroundStyle(.orange)
@@ -626,11 +685,15 @@ struct UsagePanelContent: View {
             let scope = model.scope(for: provider)
             ProviderUsagePanelView(
                 data: model.days(for: provider, in: scope),
+                projects: model.scanProjects,
                 availableScopes: model.availableScopes(for: provider),
                 scope: Binding(
                     get: { model.scope(for: provider) },
                     set: { model.scopeChoice[provider] = $0 }),
                 needsFolderAccess: model.needsFolderAccess,
+                // Read as the panel draws, so a folder granted since shows
+                // at the next refresh, which redraws it.
+                unreadableProviders: CostUsageScanner.logProvidersWithoutFolderAccess(),
                 onShowAllProviders: { model.mode = .allProviders },
                 onOpenSettings: onOpenSettings)
                 // A new provider starts on its own latest day.

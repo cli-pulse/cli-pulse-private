@@ -272,7 +272,8 @@ public enum QARenderSnapshot {
     /// 30 days of scan rows for one provider, for the provider-panel renders:
     /// several models a day, idle days and quieter weekends. Deterministic
     /// (`DemoDataProvider.unit`, a SplitMix64 step), so every language draws
-    /// the same figures. Demo mode has no local scan and never shows these.
+    /// the same figures. Demo mode never shows these: its Mac scan is its own
+    /// (`DemoDataProvider.macScan`), the account's synced rows.
     ///
     /// Codex rows follow OpenAI's convention, input including the cached
     /// input. One Codex model is priced at a borrowed rate ("≈"), and Claude
@@ -429,8 +430,10 @@ public enum QARenderSnapshot {
     /// (`card-claude-this-mac-messages`): the provider-panel sample's Claude
     /// rows and, each day, the message-count bucket the scanner writes
     /// (`ScanEntry.messageBucketModel`), about one message per 40K tokens, a
-    /// heavy month (a busy day near 850). Demo mode on the Mac has no scan,
-    /// so no Demo card shows messages. Deterministic.
+    /// heavy month (a busy day near 850). Demo's own Claude card shows
+    /// messages too, from its Mac's scan (`DemoDataProvider.macScan`); this
+    /// sample's tokens and costs run wider than Demo's, so the card's usage
+    /// layouts are reviewed with longer figures. Deterministic.
     public static func claudeMessagesScanSample(
         today: Date = Date(), timeZone: TimeZone = .current
     ) -> [CostUsageScanResult.DailyEntry] {
@@ -446,6 +449,75 @@ public enum QARenderSnapshot {
                 messageCount: max(1, (tokensByDay[day] ?? 0) / 40_000))
         }
         return rows + buckets
+    }
+    /// v1.58 (P1-4): the sample rows of `providerPanelSample`, split by
+    /// project, for the provider-panel renders and the Top Projects states
+    /// (`QARenderSurface.topProjectsStates`). Invented folders under
+    /// `/Users/sample/Projects`, more than a list shows (so "Top 5 of 7"),
+    /// a name long enough to be cut, and for Codex a share whose logs name
+    /// no folder ("Unknown"). Each row is apportioned in whole tokens and
+    /// cents, so the projects add up to the rows exactly; a model with no
+    /// rate leaves its projects without one too. Deterministic, like the rows.
+    public static func providerPanelProjectsSample(
+        _ kind: ProviderKind, days: Int = 30, today: Date = Date(), timeZone: TimeZone = .current
+    ) -> [CostUsageScanResult.ProjectEntry] {
+        let shares: [(name: String?, share: Double)] = kind == .codex
+            ? [("demo-app", 0.38), ("api-gateway", 0.19), ("customer-analytics-dashboard-monorepo", 0.13),
+               (nil, 0.11), ("infra-scripts", 0.08), ("docs", 0.06), ("design-system", 0.05)]
+            : [("demo-app", 0.30), ("api-gateway", 0.27), ("mobile-client", 0.18), ("design-system", 0.11),
+               ("customer-analytics-dashboard-monorepo", 0.09), ("docs", 0.05)]
+        let projects = shares.map { share in
+            share.name.map { ProjectIdentity.folder(sampleProjectsFolder + "/" + $0) } ?? .unknown
+        }
+        let salt: UInt64 = kind == .codex ? 400 : 600
+        var entries: [CostUsageScanResult.ProjectEntry] = []
+        for (index, row) in providerPanelSample(kind, days: days, today: today, timeZone: timeZone).enumerated() {
+            let weights = shares.enumerated().map { offset, share in
+                share.share * (0.7 + 0.6 * DemoDataProvider.unit(index, salt + UInt64(offset)))
+            }
+            let inputs = DemoDataProvider.apportion(row.inputTokens, by: weights)
+            let cached = DemoDataProvider.apportion(row.cachedTokens, by: weights)
+            let outputs = DemoDataProvider.apportion(row.outputTokens, by: weights)
+            let cents = row.costUSD.map { DemoDataProvider.apportion(Int(($0 * 100).rounded()), by: weights) }
+            for offset in projects.indices
+            where inputs[offset] > 0 || cached[offset] > 0 || outputs[offset] > 0 || (cents?[offset] ?? 0) > 0 {
+                entries.append(.init(
+                    provider: row.provider, project: projects[offset], date: row.date, model: row.model,
+                    inputTokens: inputs[offset], cachedTokens: cached[offset], outputTokens: outputs[offset],
+                    costUSD: cents.map { Double($0[offset]) / 100 }, priceIsApproximate: row.priceIsApproximate))
+            }
+        }
+        return entries
+    }
+
+    /// Where the sample projects live. Invented.
+    public static let sampleProjectsFolder = "/Users/sample/Projects"
+
+    /// v1.58 (P1-4): three Codex projects for the states strips, the last
+    /// of them run only on a model with no rate, so its line reads "No rate"
+    /// (ranked last by cost, it never shows among the panel sample's top
+    /// five). Over the last two days ending `today`.
+    public static func projectsNoRateSample(
+        today: Date = Date(), timeZone: TimeZone = .current
+    ) -> [CostUsageScanResult.ProjectEntry] {
+        let calendar = DayKey.calendar(in: timeZone)
+        let days = [0, 1].map { offset -> String in
+            let date = calendar.date(byAdding: .day, value: -offset, to: today) ?? today
+            return DayKey.string(from: date, in: timeZone)
+        }
+        let rows: [(name: String, model: String, input: Int, output: Int, cost: Double?)] = [
+            ("demo-app", "gpt-5.5", 186_000, 14_200, 3.12),
+            ("api-gateway", "gpt-5.5", 64_500, 5_100, 1.07),
+            ("prototype-lab", "local-preview", 41_800, 2_600, nil),
+        ]
+        return days.flatMap { day in
+            rows.map { row in
+                CostUsageScanResult.ProjectEntry(
+                    provider: ProviderKind.codex.rawValue,
+                    project: .folder(sampleProjectsFolder + "/" + row.name), date: day, model: row.model,
+                    inputTokens: row.input, cachedTokens: 0, outputTokens: row.output, costUSD: row.cost)
+            }
+        }
     }
 
     /// Every surface, in drawing order. The order is also the state order:
@@ -482,6 +554,8 @@ public enum QARenderSnapshot {
             .costUnknownEveryDay, .providerPanelCostUnknown, .providerPanelNoRateDay,
             .usageDashboardPanelCostUnknown, .demoSessionsWithLogs, .cardSourceLines,
         ]
+        surfaces.append(.topProjectsStates)
+        surfaces.append(.panelProjectsStates)
         return surfaces
     }
 
@@ -923,8 +997,9 @@ public enum QARenderSurface: Hashable {
     /// Usage Dashboard's Trends.
     case costUnknownDays
     /// v1.58: the Claude card with this Mac's message counts beside every
-    /// device's tokens, as a signed-in Mac that scans its logs sees it. Demo
-    /// mode on the Mac has no scan, so no Demo card shows messages.
+    /// device's tokens, as a signed-in Mac that scans its logs sees it, with
+    /// longer figures than Demo's own Claude card, which has messages too
+    /// (`DemoDataProvider.macScan`).
     case claudeCardThisMacMessages
     /// v1.58: the cost charts with no day's cost known: stubs only, on an
     /// axis without figures (the Mac card's small chart, the iPhone card's,
@@ -946,6 +1021,19 @@ public enum QARenderSurface: Hashable {
     /// not show: signed in (API) with an account and a plan, merged, and a
     /// tool with no quota source.
     case cardSourceLines
+    /// v1.58 (P1-4): the Mac Overview's Top Projects card in the states it
+    /// draws, at the card's width: names with their figures, "Hide personal
+    /// information" on, costs hidden, both, a project with no rate, and the
+    /// App Store build's note for a provider whose log folder it may not
+    /// read, which the unsandboxed QA build never reaches otherwise.
+    case topProjectsStates
+    /// v1.58 (P1-4): the usage panel's Projects card
+    /// (`ProviderProjectsCard`) in the states the panel renders do not
+    /// show: "Hide personal information" on (the only part of the panel the
+    /// switch changes), with costs hidden too, a project with no rate, and
+    /// the note in its place when the App Store build may not read the
+    /// provider's log folder. Dark, at the 440-point panel's card width.
+    case panelProjectsStates
 
     public enum Kind: String, Codable, Sendable {
         /// The menu-bar popover (`MenuBarView`), 380 points wide.
@@ -962,11 +1050,12 @@ public enum QARenderSurface: Hashable {
     public var kind: Kind {
         switch self {
         case .about, .subscription, .providerEditor, .firstRunWelcome, .codexResetCreditsStates,
-             .webhookEventFilterStates,
+             .webhookEventFilterStates, .topProjectsStates,
              .costUnknownDays, .claudeCardThisMacMessages, .costUnknownEveryDay, .cardSourceLines:
             return .window
         case .usageDashboardPanel, .usageDashboardPanelCost, .providerUsagePanel, .providerCardPanel,
-             .providerPanelCostUnknown, .providerPanelNoRateDay, .usageDashboardPanelCostUnknown:
+             .providerPanelCostUnknown, .providerPanelNoRateDay, .usageDashboardPanelCostUnknown,
+             .panelProjectsStates:
             return .panel
         case .providerUsageCardHistory:
             return .window
@@ -1011,6 +1100,8 @@ public enum QARenderSurface: Hashable {
         case .usageDashboardPanelCostUnknown: return "panel-usage-dashboard-cost-unknown"
         case .demoSessionsWithLogs: return "demo-sessions-with-logs"
         case .cardSourceLines: return "card-source-lines"
+        case .topProjectsStates: return "card-top-projects"
+        case .panelProjectsStates: return "card-panel-projects"
         }
     }
 

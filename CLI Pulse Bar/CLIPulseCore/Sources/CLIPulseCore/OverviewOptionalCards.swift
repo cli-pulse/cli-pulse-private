@@ -14,11 +14,14 @@ import Foundation
 // in Demo exactly as they do for everyone else.
 
 public extension DashboardSummary {
-    /// The Top Projects card draws only with projects to list. Nothing fills
-    /// `top_projects` today: the cloud's `dashboard_summary` has no project
-    /// column (`APIClient.dashboardSummary(from:)`) and the local refresh
-    /// keeps no per-project totals (`DataRefreshManager`). Until 1.55 the card
-    /// drew anyway, telling everyone "No projects tracked yet".
+    /// The iPhone's and Watch's Top Projects card draws only with projects to
+    /// list. Nothing fills `top_projects`: the cloud's `dashboard_summary` has
+    /// no project column (`APIClient.dashboardSummary(from:)`), and the local
+    /// refresh leaves it empty (`DataRefreshManager`). Until 1.55 the card
+    /// drew anyway, telling everyone "No projects tracked yet". Since 1.58 the
+    /// Mac's card reads this Mac's own session-log scan instead
+    /// (`CostUsageScanResult.projects`, `ProjectUsageList`), which never
+    /// leaves the Mac.
     var showsTopProjectsCard: Bool { !top_projects.isEmpty }
 
     /// The Risk Signals card draws only with a signal to show.

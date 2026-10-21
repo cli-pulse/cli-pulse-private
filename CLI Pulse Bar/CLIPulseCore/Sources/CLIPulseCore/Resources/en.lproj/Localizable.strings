@@ -1678,6 +1678,14 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "provider_panel.chart_hint" = "Swipe up or down to choose a day. Its models are listed below the chart.";
 "provider_panel.cost_unknown" = "cost unknown";
 "provider_panel.cost_unknown_help" = "A short gray bar marks a day with usage whose cost is not known.";
+"projects.title" = "Projects";
+"projects.unknown" = "Unknown";
+"projects.anonymous" = "Project %d";
+"projects.shown_of" = "Top %1$d of %2$d projects";
+"projects.help" = "Grouped by the folder each session ran in, from this Mac's session logs.\nThis list is not synced to your account.";
+"projects.unknown_help" = "These sessions' logs do not say which folder they ran in.";
+"projects.numbered_help" = "Numbered by place among all of this Mac's projects, so a project has the same number in every list.";
+"projects.folder_blocked" = "%@'s projects are not listed: CLI Pulse has no access to its log folder on this Mac.";
 "folder_access.dir_clipulse_config" = "CLI Pulse Config";
 "folder_access.dir_clipulse_data" = "CLI Pulse Data";
 "folder_access.dir_codex_session_logs" = "Codex Session Logs";
