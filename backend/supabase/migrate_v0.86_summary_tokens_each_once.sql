@@ -14,10 +14,9 @@
 --
 -- The three summary RPCs added `input + cached + output` for every provider,
 -- so every Codex figure they return counted Codex's cached input twice. Cached
--- input is most of a Codex user's input, so Codex's Today and 7-day tokens on
--- the iPhone and iPad Overview, the Apple Watch, the widgets and the card a
--- provider without daily rows falls back to read close to twice what was
--- used. The Mac stopped doing the same in its usage history in 1.55
+-- input is most of a Codex user's input, so Codex's Today and 7-day tokens
+-- wherever the apps show these figures (WHAT THE APPS SHOW, below) read close
+-- to twice what was used. The Mac stopped doing the same in its usage history in 1.55
 -- (`ArchiveTokenBasis`, "each token once"), and the iPhone's usage dashboard
 -- counts the same rows that way, so on one account the Overview's Usage Today
 -- and the usage dashboard's today disagreed for every Codex user.
@@ -45,7 +44,32 @@
 -- (`run_v086_summary_tokens_each_once_tests.sh`).
 --
 -- So Codex's figures drop to input + output; Claude's and every other
--- provider's do not move. Costs never counted tokens and do not move either.
+-- provider's do not move, except where a row holds a negative count: no
+-- column has a check against one, and such a count now adds 0 instead of
+-- taking tokens away, as on the Mac (step 0 counts those rows; expect none).
+-- Costs never counted tokens and do not move either.
+--
+-- ── WHAT THE APPS SHOW ────────────────────────────────────────
+-- These figures reach the apps as bare token counts. No label in any app
+-- names a basis ("Usage Today", "Usage", "Today · N tokens", "N tokens",
+-- "Today's Usage"), and nothing in the answer says which rule the server
+-- runs, so no label becomes false and none is added here. Where they show:
+--   * iPhone / iPad Overview: the Usage Today tile (dashboard_summary) and
+--     the Provider Usage rows (provider_summary / provider_account_summary
+--     today_usage); the Apple Watch's Pulse, rings and provider detail
+--     (Today, This Week); the widgets, Siri's status and the PDF / CSV export
+--     where they carry the iPhone's figure;
+--   * the iPhone / iPad provider card's Today and This Week, only for a
+--     provider with no daily rows in the 30 days (with rows the card counts
+--     the rows' "I/O" and does not move);
+--   * the Mac's Overview Usage Today and widgets only when the Mac has no
+--     log scan, or its provider cards count no tokens today (otherwise they
+--     are the cards' I/O);
+--   * Android's Overview, Providers list, provider detail and export.
+-- After this, a Codex figure equals the iPhone card's I/O for the same rows
+-- (Codex's input holds its cached input). A Claude figure still counts its
+-- cache reads and writes, each once, so it stays above the card's I/O by
+-- design: the card labels I/O, these count every token.
 --
 -- ── WHAT DOES NOT CHANGE (apps up to 1.57 keep working) ───────
 --   * the three signatures: one overload each, `(p_user_today date default
@@ -59,9 +83,10 @@
 --     before; nothing after the client's today), the costs, the quota and
 --     account fields, the dashboard's session, device and alert counts.
 -- What changes: `today_usage` / `total_usage` of a provider with Codex rows,
--- `dashboard_summary.today_usage` of an account with Codex rows today, and,
--- because both lists are sorted by the 7-day tokens, where Codex sits in the
--- order of provider_summary's and provider_account_summary's rows.
+-- `dashboard_summary.today_usage` of an account with Codex rows today (and
+-- of any provider with a row holding a negative count), and, because both
+-- lists are sorted by the 7-day tokens, where Codex sits in the order of
+-- provider_summary's and provider_account_summary's rows.
 -- No row of any table is written.
 --
 -- ── HOW ───────────────────────────────────────────────────────
@@ -106,6 +131,12 @@
 --        from public.daily_usage_metrics
 --       where provider = 'Codex' and metric_date >= current_date - 29;
 --
+--    Rows whose figure the clamp at 0 would change, any provider (expect 0;
+--    a count above 0 means those providers' figures move too):
+--      select count(*) as rows_with_a_negative_count
+--        from public.daily_usage_metrics
+--       where input_tokens < 0 or cached_tokens < 0 or output_tokens < 0;
+--
 -- 1. Apply this file as it stands. It carries its own begin/commit, refuses
 --    to run without the three functions, and changes no row.
 --
@@ -123,7 +154,8 @@
 --         and p.proname in ('dashboard_summary', 'provider_summary', 'provider_account_summary');  -- 3
 --
 --    Then open the iPhone app signed in to an account with Codex usage today:
---    the Overview's Usage Today equals the usage dashboard's today.
+--    the Overview's Usage Today equals the Activity heatmap's today, and the
+--    Overview's Codex row equals the Codex card's Today (I/O).
 --
 -- ROLLBACK: apply the definitions saved in step 0. When they are the ones in
 -- this repo (v0.44's two, v0.72's provider_account_summary), applying
