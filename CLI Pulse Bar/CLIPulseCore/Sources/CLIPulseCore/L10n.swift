@@ -469,8 +469,9 @@ public enum L10n {
         /// v1.58: a day's cost, spoken, when none of it is known: what
         /// VoiceOver reads where the screen shows "—" (`Day.spokenSummary`).
         public static var costUnknown: String { tr("provider_panel.cost_unknown") }
-        /// v1.58: what the grey bar on a cost chart is (the provider card's
-        /// chart, the Usage Dashboard's Trends).
+        /// v1.58: what the grey bar on a cost chart is: under the provider
+        /// panel's, the iPhone card's and the Usage Dashboard's Trends chart,
+        /// and in the Mac card's chart help.
         public static var costUnknownHelp: String { tr("provider_panel.cost_unknown_help") }
         /// The selected day: date, cost, tokens.
         public static func daySummary(_ day: String, _ cost: String, _ tokens: String) -> String {

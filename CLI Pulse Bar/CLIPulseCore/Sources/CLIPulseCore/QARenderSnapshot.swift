@@ -855,7 +855,7 @@ public enum QARenderSurface: Hashable {
     /// choice the panel remembers (`UsageChartMetric.defaultsKey`).
     case usageDashboardPanelCost
     /// v1.58: the cost charts' grey stub for a day with usage and no known
-    /// cost, on card-wide strips: the Mac card's small chart, the iPhone
+    /// cost, on strips: the Mac card's small chart, the iPhone
     /// card's history (the panel's chart) with that day tapped, and the
     /// Usage Dashboard's Trends.
     case costUnknownDays

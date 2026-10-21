@@ -1004,7 +1004,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 await captureWindow(
                     QACostUnknownDays(sample: QARenderSnapshot.costUnknownSample()),
                     surface: surface, index: index,
-                    note: "v1.58: a day with usage and no known cost, in Cost, on card-wide strips, from the"
+                    note: "v1.58: a day with usage and no known cost, in Cost, on strips, from the"
                         + " Claude sample as synced rows with two days whose every row arrived with a cost"
                         + " of 0 (QARenderSnapshot.costUnknownSample): the Mac card's small chart; the iPhone"
                         + " card's history, the panel's chart, with the later of the two days tapped (its"
@@ -1971,11 +1971,9 @@ final class QARenderRefusingURLProtocol: URLProtocol {
 
     override func stopLoading() {}
 }
-/// The rows `QARenderSurface.codexResetCreditsStates` draws, built the way the
-/// card builds them (`CodexResetCreditsCardState.resolve`), from fixed
-/// readings relative to `now`.
+
 /// v1.58: the cost charts' grey stub for a day with usage and no known
-/// cost (`ProviderUsageDays.Day.costIsUnknown`), on card-wide strips, from
+/// cost (`ProviderUsageDays.Day.costIsUnknown`), on strips, from
 /// `QARenderSnapshot.costUnknownSample`. The caller sets the charts to Cost.
 private struct QACostUnknownDays: View {
     let sample: (rows: [DailyUsage], unknownDays: [String])
@@ -2012,23 +2010,30 @@ private struct QACostUnknownDays: View {
                 ProviderUsageHistorySection(
                     days: days, accent: accent, showCost: true, initialSelection: sample.unknownDays.first)
             }
-            strip {
+            // Trends at about the width it has in the usage panel (its
+            // content at the panel's 480 points), not a card's: narrower,
+            // its heading wraps beside the range picker, which the panel
+            // never shows.
+            strip(width: 400) {
                 DashboardTrends(archive: archive)
             }
         }
         .padding(12)
-        .frame(width: 380, alignment: .leading)
+        .frame(width: 424, alignment: .leading)
     }
 
-    private func strip<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+    private func strip<Content: View>(width: CGFloat = 356, @ViewBuilder _ content: () -> Content) -> some View {
         content()
             .padding(10)
-            .frame(width: 356, alignment: .leading)
+            .frame(width: width, alignment: .leading)
             .background(PulseTheme.cardBackground.opacity(0.5))
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
+/// The rows `QARenderSurface.codexResetCreditsStates` draws, built the way the
+/// card builds them (`CodexResetCreditsCardState.resolve`), from fixed
+/// readings relative to `now`.
 private struct QAResetCreditsStates: View {
     let now: Date
 
