@@ -62,9 +62,16 @@
 --   * the iPhone / iPad provider card's Today and This Week, only for a
 --     provider with no daily rows in the 30 days (with rows the card counts
 --     the rows' "I/O" and does not move);
---   * the Mac's Overview Usage Today and widgets only when the Mac has no
---     log scan, or its provider cards count no tokens today (otherwise they
---     are the cards' I/O);
+--   * the Mac's Overview Usage Today and the widgets' Usage figure only when
+--     the Mac has no log scan, or its provider cards count no tokens today
+--     (otherwise they are the cards' I/O);
+--   * on a signed-in Mac, the Overview's Provider Usage rows (a bare number
+--     beside the cost) and the single-provider widget (a bare number, "used"
+--     after it when the provider has a quota): both read the providers'
+--     today_usage, which there is provider_account_summary's
+--     (provider_summary's on the fallback), unless that provider's collector
+--     on the Mac reports a non-zero figure of its own, which replaces it
+--     (Codex's reports the used percent of its headline window);
 --   * Android's Overview, Providers list, provider detail and export.
 -- After this, a Codex figure equals the iPhone card's I/O for the same rows
 -- (Codex's input holds its cached input). A Claude figure still counts its
@@ -98,16 +105,39 @@
 -- (ci_check_rpc_contract.py's mirror check holds them together).
 --
 -- ── APPLY (owner) ─────────────────────────────────────────────
--- 0. Preflight, read-only. Expect three rows, each `p_user_today date`,
---    prosecdef = true, rule = false (v0.44 / v0.72 in place, this not yet):
+-- 0. Preflight, read-only. Run this and keep its answer (step 2 compares
+--    with it):
 --
---      select p.proname, pg_get_function_identity_arguments(p.oid),
---             p.prosecdef, p.prosrc like '%v0.86 each token once%' as rule
+--      select p.proname, pg_get_function_identity_arguments(p.oid) as args,
+--             p.prosecdef, p.prosrc like '%v0.86 each token once%' as rule,
+--             md5(p.prosrc) as body_md5,
+--             has_function_privilege('anon', p.oid, 'EXECUTE') as anon,
+--             has_function_privilege('authenticated', p.oid, 'EXECUTE')
+--               as authenticated
 --        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 --       where n.nspname = 'public'
 --         and p.proname in ('dashboard_summary', 'provider_summary',
 --                           'provider_account_summary')
 --       order by 1;
+--
+--    Expect three rows, each args `p_user_today date`, prosecdef = true,
+--    rule = false (v0.44 / v0.72 in place, this not yet), anon = false and
+--    authenticated = true (v0.44's and v0.72's grants), and body_md5 exactly
+--    this repo's v0.44 and v0.72 bodies (CI computes these from the files and
+--    fails when they go stale):
+--
+--      v0.44  dashboard_summary         4a58c930294e5e315e1ac36be859d670
+--      v0.72  provider_account_summary  9ee3b5ed4ea4d9471fec611686d4020e
+--      v0.44  provider_summary          9399a6a7d63d86b2b96d8255b61403ef
+--
+--    If any body_md5 differs, STOP. Production runs a body this repo does not
+--    have, and v0.86 replaces whole bodies, so that difference would be lost
+--    without anyone seeing it; rollback_v0.86.sql would not bring it back
+--    either. Diff the definitions saved below against migrate_v0.44 /
+--    migrate_v0.72 and decide before going on; if you go on, roll back only
+--    from the saved definitions. If anon or authenticated differs from the
+--    expected values, v0.86 keeps production's grants as they are; step 2
+--    expects exactly step 0's values again.
 --
 --    Save the current definitions (the exact rollback source):
 --      select pg_get_functiondef(p.oid) from pg_proc p
@@ -137,31 +167,36 @@
 --        from public.daily_usage_metrics
 --       where input_tokens < 0 or cached_tokens < 0 or output_tokens < 0;
 --
--- 1. Apply this file as it stands. It carries its own begin/commit, refuses
---    to run without the three functions, and changes no row.
+-- 1. Apply this file as it stands, with the Supabase MCP's `apply_migration`
+--    under the name `v0_86_summary_tokens_each_once`: that also writes its
+--    row in `supabase_migrations.schema_migrations`. Any other route
+--    (`supabase db query --file`, the SQL editor) runs the SQL without
+--    writing that row, which is how the ledger lost v0.72's; record the row
+--    by hand then. If apply_migration times out, run step 2 before trying
+--    again: it may have gone through. The ledger row is not the proof; step
+--    2's checks are. The file carries its own begin/commit, refuses to run
+--    without the three functions, and changes no row.
 --
--- 2. Post-apply, read-only: the preflight query gives the same three rows
---    with rule = true, and
+-- 2. Post-apply, read-only: step 0's query again gives three rows with
+--    rule = true, the same args and prosecdef, anon and authenticated exactly
+--    as step 0 recorded them (v0.86 grants and revokes nothing), and
+--    body_md5 exactly v0.86's bodies (CI checks these too):
 --
---      select has_function_privilege('anon', 'public.provider_summary(date)', 'EXECUTE');                  -- false
---      select has_function_privilege('authenticated', 'public.provider_summary(date)', 'EXECUTE');         -- true
---      select has_function_privilege('anon', 'public.dashboard_summary(date)', 'EXECUTE');                 -- false
---      select has_function_privilege('authenticated', 'public.dashboard_summary(date)', 'EXECUTE');        -- true
---      select has_function_privilege('anon', 'public.provider_account_summary(date)', 'EXECUTE');          -- false
---      select has_function_privilege('authenticated', 'public.provider_account_summary(date)', 'EXECUTE'); -- true
---      select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
---       where n.nspname = 'public'
---         and p.proname in ('dashboard_summary', 'provider_summary', 'provider_account_summary');  -- 3
+--      v0.86  dashboard_summary         293d69f4f49ce4be45d96df8a0f6b388
+--      v0.86  provider_account_summary  5b3a9271536ba43d45e41c725b7c643b
+--      v0.86  provider_summary          b6c0a8723dbeffda85e3783d5d8091ea
+--
+--    Three rows means one overload of each, as before.
 --
 --    Then open the iPhone app signed in to an account with Codex usage today:
 --    the Overview's Usage Today equals the Activity heatmap's today, and the
 --    Overview's Codex row equals the Codex card's Today (I/O).
 --
--- ROLLBACK: apply the definitions saved in step 0. When they are the ones in
--- this repo (v0.44's two, v0.72's provider_account_summary), applying
--- `rollback_v0.86.sql` does the same; CI applies it after this file and
--- checks the three bodies are v0.44's and v0.72's again. Nothing to restore
--- in any table.
+-- ROLLBACK: apply the definitions saved in step 0. When step 0's body_md5
+-- values were the three listed there (this repo's v0.44 and v0.72 bodies),
+-- applying `rollback_v0.86.sql` does the same; CI applies it after this file
+-- and checks the three bodies are v0.44's and v0.72's again. Otherwise use
+-- only the saved definitions. Nothing to restore in any table.
 -- ============================================================
 
 begin;

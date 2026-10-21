@@ -19,8 +19,12 @@
 #     arguments and return type, the same grants (anon cannot call them),
 #     SECURITY DEFINER with a pinned search_path, a call without
 #     p_user_today still answers, an unauthenticated one is refused;
-#   * v0.86 refuses to run without the functions it replaces, applies twice
-#     cleanly, and rollback_v0.86.sql puts the exact pre-v0.86 bodies back;
+#   * v0.86 refuses to run without the functions it replaces (v0.44's and
+#     v0.72's, each case on its own), applies twice cleanly, and
+#     rollback_v0.86.sql puts the exact pre-v0.86 bodies back;
+#   * the APPLY steps in v0.86's header hold: step 0's query runs as printed
+#     and gives the answer it says to expect, and the md5 values it and step 2
+#     list are the bodies these files install;
 #   * a fresh install (schema.sql + app_rpc.sql + helper_rpc.sql) installs the
 #     same bodies and gives the same figures.
 #
@@ -111,6 +115,25 @@ BODIES="select string_agg(p.proname || '=' || md5(p.prosrc), ' ' order by p.pron
 RULE="select coalesce(bool_and(p.prosrc like '%v0.86 each token once%'), false)
         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
        where n.nspname = 'public' and p.proname in ($FUNCS)"   # no ';': check() wraps it
+
+# APPLY in v0.86's header lists the md5 of each body before (v0.44, v0.72) and
+# after (v0.86), for the owner to compare production with. They must be the
+# bodies these files install, or the owner would stop on a stale number, or
+# go on past a real difference.
+header_md5s() { # header_md5s <'44|72' or '86'>: "name=md5 ..." as $BODIES prints it
+    grep -E "^--[[:space:]]+v0\.($1)[[:space:]]+[a-z_]+[[:space:]]+[0-9a-f]{32}[[:space:]]*$" "$V086" \
+        | awk '{print $3 "=" $4}' | LC_ALL=C sort | paste -sd' ' -
+}
+# APPLY step 0's query, run as the header prints it, and the answer it says
+# to expect: args, SECURITY DEFINER, the marker, the listed md5, anon cannot
+# execute, authenticated can.
+STEP0_SQL="$(sed -n '/^-- 0\. Preflight/,/order by 1;/p' "$V086" | sed -n '/select p\.proname/,$p' | sed 's/^--//')"
+step0() { psql_q -c "$STEP0_SQL" | paste -sd' ' -; }
+step0_expected() { # step0_expected <rule t|f> <'44|72' or '86'>
+    grep -E "^--[[:space:]]+v0\.($2)[[:space:]]+[a-z_]+[[:space:]]+[0-9a-f]{32}[[:space:]]*$" "$V086" \
+        | awk -v rule="$1" '{print $3 "|p_user_today date|t|" rule "|" $4 "|f|t"}' \
+        | LC_ALL=C sort | paste -sd' ' -
+}
 
 load_fixture() {
     psql_q -v fixture="$(cat "$FIXTURE")" >/dev/null <<'SQL'
@@ -252,22 +275,36 @@ apply "$SQL_DIR/schema.sql"
 apply "$SQL_DIR/app_rpc.sql"
 apply "$SQL_DIR/helper_rpc.sql"
 
-echo "v0.86 without the function it replaces:"
-psql_q -c "drop function public.provider_account_summary(date);"
-before_refusal="$(psql_q -c "$BODIES")"
-if out="$(psql_q -f "$V086" 2>&1)"; then
-    fail "v0.86 applied without provider_account_summary"
-else
-    [[ "$out" == *"apply v0.72 first"* ]] && pass "v0.86 refuses to run without v0.72's function" \
-                                          || fail "v0.86 failed without v0.72's function, but not on its precondition: $out"
-fi
-same "and replaced nothing" "$before_refusal" "$(psql_q -c "$BODIES")"
-check "and created nothing" "to_regprocedure('public.provider_account_summary(date)') is null"
-
 echo "putting back the definitions production runs (v0.44, v0.72) ..."
 apply "$V044"
 apply "$V072"
 apply "$V072"   # twice, as its own suite does: it is written to be re-run
+production_bodies="$(psql_q -c "$BODIES")"
+
+# refuse <function v0.86 replaces> <the migration that puts it back> <message>:
+# drop the function, apply v0.86, expect its precondition's error, and expect
+# the two bodies left to still be production's (v0.86 replaced nothing).
+refuse() {
+    local fn="$1" restore="$2" message="$3" before out
+    psql_q -c "drop function public.$fn(date);"
+    before="$(psql_q -c "$BODIES")"
+    if out="$(psql_q -f "$V086" 2>&1)"; then
+        fail "[refusal] v0.86 applied without $fn"
+    else
+        [[ "$out" == *"$message"* ]] \
+            && pass "[refusal] v0.86 refuses to run without $fn: '$message'" \
+            || fail "[refusal] v0.86 failed without $fn, but not on its precondition: $out"
+    fi
+    same "[refusal] without $fn, v0.86 replaced neither of the other two" "$before" "$(psql_q -c "$BODIES")"
+    check "[refusal] and did not create $fn" "to_regprocedure('public.$fn(date)') is null"
+    apply "$restore"
+}
+echo "v0.86 without a function it replaces:"
+refuse provider_account_summary "$V072" "apply v0.72 first"
+refuse provider_summary "$V044" "apply v0.44 first"
+same "[refusal] v0.44 and v0.72 put back give production's bodies again" \
+     "$production_bodies" "$(psql_q -c "$BODIES")"
+
 check "[preflight] the header's rule query reads false before v0.86" "not ($RULE)"
 load_fixture
 contract_before="$(psql_q -c "$CONTRACT")"
@@ -275,6 +312,10 @@ bodies_before="$(psql_q -c "$BODIES")"
 rest_ps_before="$(rest_of provider_summary)"
 rest_pas_before="$(rest_of provider_account_summary)"
 rest_dash_before="$(dashboard_rest)"
+same "[preflight] the md5 values APPLY step 0 lists are v0.44's and v0.72's bodies" \
+     "$(header_md5s '44|72')" "$bodies_before"
+same "[preflight] APPLY step 0's query, as printed, gives the answer it says to expect" \
+     "$(step0_expected f '44|72')" "$(step0)"
 
 echo "before v0.86 (the control):"
 check_figures "control" before
@@ -287,6 +328,10 @@ apply "$V086"
 apply "$V086"
 echo "  re-applied cleanly (idempotent)"
 check "[postflight] the header's rule query reads true" "($RULE)"
+same "[postflight] the md5 values APPLY step 2 lists are v0.86's bodies" \
+     "$(header_md5s 86)" "$(psql_q -c "$BODIES")"
+same "[postflight] step 0's query gives v0.86's bodies, the args, SECURITY DEFINER and grants unchanged" \
+     "$(step0_expected t 86)" "$(step0)"
 
 echo "after v0.86:"
 check_figures "each once" after

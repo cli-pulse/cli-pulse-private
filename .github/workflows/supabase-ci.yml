@@ -481,7 +481,9 @@ jobs:
     # come from the fixture the Mac's code is asserted against too. Both
     # install paths: production's definitions (v0.44, v0.72) then v0.86 with
     # the double count reproduced first as the control, and the canonical
-    # files; plus rollback_v0.86.sql back to the exact pre-v0.86 bodies.
+    # files; plus rollback_v0.86.sql back to the exact pre-v0.86 bodies, the
+    # refusal without v0.44's or v0.72's functions, and the header's APPLY
+    # query and body md5 values (what the owner compares production with).
     name: Summary tokens each once (v0.86)
     runs-on: ubuntu-latest
     timeout-minutes: 10

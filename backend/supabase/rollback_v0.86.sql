@@ -8,8 +8,9 @@
 -- file equals the one those files install). Their tokens are then
 -- input + cached + output again, which counts Codex's cached input twice.
 --
--- Use it only when the definitions saved before applying v0.86 (its APPLY
--- step 0) are these; otherwise apply the saved ones. Same signatures and
+-- Use it only when v0.86's APPLY step 0 found these bodies (its body_md5
+-- values were the three it lists); otherwise apply the definitions saved in
+-- that step. Same signatures and
 -- return type, so `create or replace` keeps every grant. Changes no row.
 -- ============================================================
 
