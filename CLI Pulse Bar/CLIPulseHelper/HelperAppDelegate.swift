@@ -5,6 +5,8 @@ import os
 
 final class HelperAppDelegate: NSObject, NSApplicationDelegate {
     private var daemon: HelperDaemon?
+    /// Held, shared, for as long as this helper runs (`HelperCachePurge`).
+    private var cacheLock: HelperCachePurge.HeldLock?
     private let logger = Logger(subsystem: "yyh.CLI-Pulse.helper", category: "lifecycle")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -22,6 +24,18 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
         // never reached the collectors this helper runs. Follow the app's copy
         // in the app group instead, before any collector runs.
         PrivacySettings.shared.followAppCopy(in: UserDefaults(suiteName: HelperIPC.suiteName))
+
+        // 1.58: the app may be emptying this helper's cache folder for it right
+        // now (`HelperCachePurge`, for a helper that background sync never
+        // starts). Wait until it is done before anything opens the URL cache,
+        // then keep the lock for as long as this helper runs, so an app that
+        // launches meanwhile leaves the folder alone.
+        cacheLock = HelperCachePurge.waitForTheAppThenHoldTheLock()
+        if cacheLock == nil {
+            logger.error(
+                "Helper cache lock not taken: the app held it past the limit, or its file could not be opened"
+            )
+        }
 
         // 1.57: this helper's own URL cache kept the collectors' requests with
         // their tokens up to 1.56 (its Cache.db is not the app's). Empty it and

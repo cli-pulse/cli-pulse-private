@@ -515,11 +515,17 @@ with CLI Pulse 1.55, and later releases follow them:
   any website. Earlier versions could leave copies of such requests, and the
   answers to them, in an app's own web cache, and cookies that providers set
   in its cookie file. Each app, and the Mac's background helper, empties both
-  once, the first time it starts after updating to v1.57. Each Mac build
-  empties only its own: if you switched between the App Store build and the
-  direct-download build before v1.57, what the other build left stays until
-  that build runs v1.57 or later. You can delete that build's web cache
-  yourself. For the App Store build it is the folders
+  once, the first time it starts after updating to v1.57. A background helper
+  that does not start, for example while background sync is off, cannot do
+  that itself. Since v1.58 the direct-download app empties both for its
+  helper, once, at the first launch when the helper is not running and
+  background sync is off, unless the helper already has. The App Store
+  build's app cannot reach its helper's folders, so in that build the helper
+  still empties them itself, the first time it starts.
+  Each Mac build empties only its own: if you switched between the App Store
+  build and the direct-download build before v1.57, what the other build left
+  stays until that build runs v1.57 or later. You can delete that build's web
+  cache yourself. For the App Store build it is the folders
   `~/Library/Containers/yyh.CLI-Pulse/Data/Library/Caches/yyh.CLI-Pulse` and
   `~/Library/Containers/yyh.CLI-Pulse.helper/Data/Library/Caches/yyh.CLI-Pulse.helper`;
   for the direct-download build, `~/Library/Caches/yyh.CLI-Pulse` and
