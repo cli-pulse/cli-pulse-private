@@ -91,19 +91,31 @@ public extension PersonalInfoMask {
     /// A project a surface knows only by its folder's name (a session row, an
     /// alert, an export), or nil when there is none: with the switch off the
     /// name, with it on "Project N" (`numbers`) or "Hidden project".
+    /// `english`: those two in English whatever the UI language, for the
+    /// English data exports and an alert's stored English.
     static func projectName(
         _ name: String?,
         numbers: ProjectNameNumbers,
-        hidePersonalInfo: Bool
+        hidePersonalInfo: Bool,
+        english: Bool = false
     ) -> String? {
         guard let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
             return nil
         }
         guard hidePersonalInfo else { return trimmed }
-        if let number = numbers.number(forName: trimmed) {
-            return L10n.projects.anonymous(number)
-        }
-        return L10n.projects.hidden
+        return numberedProjectName(trimmed, numbers: numbers, english: english)
+            ?? (english ? L10n.projects.hiddenEnglish : L10n.projects.hidden)
+    }
+
+    /// "Project N" for a name `numbers` numbers, or nil for one it does not
+    /// (which `projectName` calls "Hidden project").
+    private static func numberedProjectName(
+        _ name: String,
+        numbers: ProjectNameNumbers,
+        english: Bool = false
+    ) -> String? {
+        numbers.number(forName: name.trimmingCharacters(in: .whitespacesAndNewlines))
+            .map { L10n.projects.anonymous($0, english: english) }
     }
 
     // MARK: - Sessions
@@ -112,20 +124,21 @@ public extension PersonalInfoMask {
     /// ("Codex · cli-pulse-ios" for a scan row, the stored name for others).
     /// With it on, never the stored name: a scan row is its provider and its
     /// masked project ("Codex · Project 2"), or "Codex process" without one;
-    /// any other row is "Codex session".
+    /// any other row is "Codex session". `english` as for `projectName`.
     static func sessionTitle(
         _ session: SessionRecord,
         numbers: ProjectNameNumbers,
-        hidePersonalInfo: Bool
+        hidePersonalInfo: Bool,
+        english: Bool = false
     ) -> String {
         guard hidePersonalInfo else { return session.displayName }
         guard session.isProcessScanRow else {
-            return L10n.sessions.rowFallbackLabel(session.provider)
+            return L10n.sessions.rowFallbackLabel(session.provider, english: english)
         }
-        if let project = sessionProject(session, numbers: numbers, hidePersonalInfo: true) {
+        if let project = sessionProject(session, numbers: numbers, hidePersonalInfo: true, english: english) {
             return "\(session.provider) · \(project)"
         }
-        return L10n.sessions.rowProcessLabel(session.provider)
+        return L10n.sessions.rowProcessLabel(session.provider, english: english)
     }
 
     /// The project under a session's title, or nil when there is none to show
@@ -133,9 +146,10 @@ public extension PersonalInfoMask {
     static func sessionProject(
         _ session: SessionRecord,
         numbers: ProjectNameNumbers,
-        hidePersonalInfo: Bool
+        hidePersonalInfo: Bool,
+        english: Bool = false
     ) -> String? {
-        projectName(session.displayProject, numbers: numbers, hidePersonalInfo: hidePersonalInfo)
+        projectName(session.displayProject, numbers: numbers, hidePersonalInfo: hidePersonalInfo, english: english)
     }
 
     /// A session detail's Project field, and the documents' (the cost report
@@ -153,9 +167,12 @@ public extension PersonalInfoMask {
     /// An alert's title and message in the reader's language
     /// (`AlertPresentation`). With the switch on, a session the alert names
     /// is its provider ("Codex is consuming high CPU": the stored name can be
-    /// a command line), and a project is masked by `projectName`; in an alert
-    /// no template recognises, the stored English, with the session's stored
-    /// name and the project's replaced the same way wherever they occur.
+    /// a command line), or with no provider to name it by no session at all
+    /// ("A session is consuming high CPU"); a project is "Project N", or the
+    /// message says "in a hidden project". An alert no template recognises
+    /// shows its stored English, with the session's stored name and the
+    /// project's replaced wherever they occur, in English like the rest of
+    /// the sentence (`alertStoredText`).
     static func alertText(
         _ alert: AlertRecord,
         numbers: ProjectNameNumbers,
@@ -163,8 +180,8 @@ public extension PersonalInfoMask {
     ) -> AlertPresentation.Text {
         guard hidePersonalInfo else { return AlertPresentation.text(for: alert) }
         let naming = AlertPresentation.Naming(
-            session: { _, provider in alertSessionStandIn(alert, provider: provider) },
-            project: { projectName($0, numbers: numbers, hidePersonalInfo: true) ?? $0 })
+            session: { _, provider in alertProvider(alert, provider: provider) },
+            project: { numberedProjectName($0, numbers: numbers) })
         let shown = AlertPresentation.text(for: alert, naming: naming)
         guard !shown.recognized else { return shown }
         return AlertPresentation.Text(
@@ -198,7 +215,9 @@ public extension PersonalInfoMask {
 
     /// The stored English of an alert with its personal parts replaced, for
     /// the alerts export (a data file, so not translated): the session's
-    /// stored name by its provider, the project by `projectName`.
+    /// stored name by its provider (or "Session"), the project by "Project N"
+    /// or "Hidden project", all in English, so a sentence stays in one
+    /// language whatever the reader's.
     static func alertStoredText(
         _ alert: AlertRecord,
         numbers: ProjectNameNumbers,
@@ -210,29 +229,31 @@ public extension PersonalInfoMask {
     }
 
     /// What an alert's session is called with the switch on: its provider,
-    /// as the alert's template or `related_provider` names it, or "Session".
-    private static func alertSessionStandIn(_ alert: AlertRecord, provider: String?) -> String {
+    /// as `related_provider` or the alert's template names it, or nil when
+    /// neither does.
+    private static func alertProvider(_ alert: AlertRecord, provider: String?) -> String? {
         for candidate in [alert.related_provider, provider] {
             if let value = candidate?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
                 return value
             }
         }
-        return L10n.alertKind.sourceSession
+        return nil
     }
 
-    /// `text` with every occurrence of the alert's session name and project
-    /// name replaced (the longer first, so a name inside the other is not
-    /// split). A value shorter than two characters is left alone: replacing
-    /// it would rewrite ordinary words.
+    /// `text`, an alert's stored English, with every occurrence of the
+    /// alert's session name and project name replaced by English stand-ins
+    /// (the longer first, so a name inside the other is not split). A value
+    /// shorter than two characters is left alone: replacing it would rewrite
+    /// ordinary words.
     private static func maskedStoredText(_ text: String, of alert: AlertRecord, numbers: ProjectNameNumbers) -> String {
         var replacements: [(String, String)] = []
         if let session = alert.related_session_name?.trimmingCharacters(in: .whitespacesAndNewlines),
            session.count >= 2 {
-            replacements.append((session, alertSessionStandIn(alert, provider: nil)))
+            replacements.append((session, alertProvider(alert, provider: nil) ?? L10n.alertKind.sourceSessionEnglish))
         }
         if let project = alert.related_project_name?.trimmingCharacters(in: .whitespacesAndNewlines),
            project.count >= 2,
-           let shown = projectName(project, numbers: numbers, hidePersonalInfo: true) {
+           let shown = projectName(project, numbers: numbers, hidePersonalInfo: true, english: true) {
             replacements.append((project, shown))
         }
         var result = text
@@ -279,15 +300,35 @@ public extension PersonalInfoMask {
 
 public extension AppState {
 
-    /// The numbers the Sessions tab, Alerts and the exports give the
-    /// projects they name (`ProjectNameNumbers.scan`): Projects' numbers over
-    /// this Mac's last 30 days, ranked as Projects ranks them with costs
-    /// shown or hidden. `.none` with the switch off (nothing is masked, so
-    /// nothing is numbered) and on a device without a scan.
+    /// The numbers the Sessions tab, Alerts, the exports and an alert's
+    /// banner give the projects they name (`ProjectNameNumbers.scan`):
+    /// Projects' numbers over this Mac's last 30 days, ranked as Projects
+    /// ranks them with costs shown or hidden. `.none` with the switch off
+    /// (nothing is masked, so nothing is numbered) and on a device without a
+    /// scan.
+    ///
+    /// Asked for on every redraw of the Sessions tab (once per section) and
+    /// Alerts, and a year's scan can hold thousands of project entries, so
+    /// the answer is kept until the scan, the ranking (`showCost`) or the
+    /// day changes (`projectNameNumbersMemo`, emptied when a new scan is
+    /// set).
     func projectNameNumbers(hidePersonalInfo: Bool, now: Date = Date()) -> ProjectNameNumbers {
         guard hidePersonalInfo, let projects = costUsageScanResult?.projects, !projects.isEmpty else {
             return .none
         }
-        return .scan(projects, todayKey: DayKey.string(from: now), rankByCost: showCost)
+        let todayKey = DayKey.string(from: now)
+        if let memo = projectNameNumbersMemo, memo.todayKey == todayKey, memo.rankByCost == showCost {
+            return memo.numbers
+        }
+        let numbers = ProjectNameNumbers.scan(projects, todayKey: todayKey, rankByCost: showCost)
+        projectNameNumbersMemo = ProjectNameNumbersMemo(todayKey: todayKey, rankByCost: showCost, numbers: numbers)
+        return numbers
     }
+}
+
+/// `AppState.projectNameNumbers`' last answer and what it was for.
+struct ProjectNameNumbersMemo: Equatable {
+    let todayKey: String
+    let rankByCost: Bool
+    let numbers: ProjectNameNumbers
 }

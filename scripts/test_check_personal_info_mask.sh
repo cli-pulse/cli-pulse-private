@@ -263,6 +263,7 @@ SHOWN='struct V: View {
             chipView(icon: "terminal", text: session)
         }
         Text(PersonalInfoMask.projectName(alert.related_project_name, numbers: numbers, hidePersonalInfo: hidePersonalInfo) ?? "")
+        Text(PersonalInfoMask.projectName(proj.name, numbers: .none, hidePersonalInfo: hidePersonalInfo) ?? "")
         Text(L10n.detail.project)
         Button(L10n.dashboard.exportSessions) {
             _ = ExportService.exportSessionsCSV(
@@ -327,6 +328,39 @@ expect 1 "a banner not told the switch from the defaults fails"
 
 new_tree; rm "$T/$CORE/DataRefreshManager.swift"
 expect 1 "a missing DataRefreshManager fails"
+
+# The stored fields under common words, found by the receiver's name.
+
+new_tree; view 'Text(alert.title)'
+expect 1 "the Mac alert row back on alert.title (a command line) fails"
+
+new_tree; view_in "$IOS" 'Text(session.name)'
+expect 1 "the iPhone session detail back on session.name fails"
+
+new_tree; view_in "$WATCH" 'Text(alert.message).font(.caption2)'
+expect 1 "the Watch alert back on alert.message fails"
+
+new_tree; view 'let t = alerts.filter { a in a.title.contains(query) }'
+expect 1 "a closure reading a.title fails (a search over the stored title is a read too)"
+
+new_tree; view_in "$IOS" 'Text(selectedSession?.name ?? "")'
+expect 1 "an optional-chained selectedSession?.name fails"
+
+new_tree; view_in "$WATCH" 'Text(proj.name)'
+expect 1 "the Watch Top Projects back on proj.name fails"
+
+new_tree; view 'let s = PersonalInfoMask.projectName(session.name, numbers: n, hidePersonalInfo: hidePersonalInfo)'
+expect 1 "a session name is not a project: session.name inside projectName fails"
+
+new_tree; view 'let t = Text(L10n.alert.title)
+alert.title = "x"
+// Text(alert.title) used to be here
+let doc = "session.name is masked"'
+expect 0 "a catalogue entry, a write, a comment and string text are not reads of the stored fields"
+
+new_tree; view 'Text(session.name)'
+allowlist '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar/V.swift", "line": "Text(session.name)", "reason": "A made-up editor where the owner types the session name, so it shows as typed."}]}'
+expect 0 "an allowlisted session.name read with a reason passes"
 
 new_tree; view 'Text(chip.project)'
 allowlist '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar/V.swift", "line": "Text(chip.project)", "reason": "A made-up chip whose project is a placeholder the app wrote, not a folder."}]}'

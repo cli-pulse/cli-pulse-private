@@ -719,7 +719,7 @@ struct iOSOverviewTab: View {
                     Text(L10n.dashboard.topProjects)
                         .font(.subheadline.weight(.semibold))
                 }
-                TopProjectsList(projects: dash.top_projects, style: .iOS)
+                TopProjectsList(projects: dash.top_projects, style: .iOS, hidePersonalInfo: hidePersonalInfo)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()

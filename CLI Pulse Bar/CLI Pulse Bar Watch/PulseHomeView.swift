@@ -357,7 +357,9 @@ struct PulseHomeView: View {
                     SectionHeader(title: L10n.dashboard.topProjects, icon: "folder")
                     ForEach(Array(dash.top_projects.prefix(3))) { proj in
                         HStack(spacing: 6) {
-                            Text(proj.name)
+                            // v1.58 (P1-6): no scan here to number it by.
+                            Text(PersonalInfoMask.projectName(
+                                proj.name, numbers: .none, hidePersonalInfo: hidePersonalInfo) ?? "")
                                 .font(.caption)
                                 .lineLimit(1)
                             Spacer()

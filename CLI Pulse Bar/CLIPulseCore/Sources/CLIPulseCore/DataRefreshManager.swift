@@ -2967,10 +2967,13 @@ extension AppState {
         let content = UNMutableNotificationContent()
         content.title = AlertPresentation.notificationTitle(for: alert)
         // v1.58 (P1-6): a banner is on screen too, so it follows "Hide
-        // personal information": a session the alert names is its provider.
-        // No project numbers: the title names no project.
+        // personal information": a session the alert names is its provider,
+        // and a project the title names (the server's "Budget exceeded:
+        // <project>") has the number the Alerts tab gives it.
         content.body = PersonalInfoMask.alertText(
-            alert, numbers: .none, hidePersonalInfo: PersonalInfoMask.isOn()
+            alert,
+            numbers: projectNameNumbers(hidePersonalInfo: PersonalInfoMask.isOn()),
+            hidePersonalInfo: PersonalInfoMask.isOn()
         ).title
         content.sound = alert.alertSeverity == .critical ? .defaultCritical : .default
 

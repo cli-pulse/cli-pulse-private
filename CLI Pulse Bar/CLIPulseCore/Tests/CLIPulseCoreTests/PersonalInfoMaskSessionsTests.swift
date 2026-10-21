@@ -65,10 +65,11 @@ final class PersonalInfoMaskSessionsTests: XCTestCase {
     }
 
     private func alert(
-        id: String, title: String, message: String, project: String?, session: String?, provider: String?
+        id: String, type: String = "Usage Spike", title: String, message: String, project: String?,
+        session: String?, provider: String?
     ) -> AlertRecord {
         AlertRecord(
-            id: id, type: "Usage Spike", severity: "Warning", title: title, message: message,
+            id: id, type: type, severity: "Warning", title: title, message: message,
             created_at: "2026-10-21T09:00:00Z", is_read: false, is_resolved: false, acknowledged_at: nil,
             snoozed_until: nil, related_project_id: nil, related_project_name: project,
             related_session_id: nil, related_session_name: session, related_provider: provider,
@@ -92,10 +93,10 @@ final class PersonalInfoMaskSessionsTests: XCTestCase {
     func testANameWithoutOneFolderIsAHiddenProject() {
         XCTAssertNil(numbers.number(forName: "web"))
         for name in ["web", "other-device-app"] {
-            XCTAssertEqual(PersonalInfoMask.projectName(name, numbers: numbers, hidePersonalInfo: true), "已隐藏的项目")
+            XCTAssertEqual(PersonalInfoMask.projectName(name, numbers: numbers, hidePersonalInfo: true), "隐藏的项目")
         }
         XCTAssertEqual(
-            PersonalInfoMask.projectName("demo-app", numbers: .none, hidePersonalInfo: true), "已隐藏的项目",
+            PersonalInfoMask.projectName("demo-app", numbers: .none, hidePersonalInfo: true), "隐藏的项目",
             "a device without a scan has no numbers")
         XCTAssertEqual(ProjectNameNumbers.scan([], todayKey: today, rankByCost: true), .none)
     }
@@ -128,6 +129,39 @@ final class PersonalInfoMaskSessionsTests: XCTestCase {
         XCTAssertEqual(state.projectNameNumbers(hidePersonalInfo: true, now: now), .none)
     }
 
+    /// The answer is kept between redraws, and a new scan, the other ranking
+    /// or another day asks again.
+    @MainActor
+    func testTheAppKeepsItsNumbersUntilTheScanTheRankingOrTheDayChanges() {
+        let state = AppState()
+        let savedShowCost = state.showCost
+        defer { state.showCost = savedShowCost }
+        state.showCost = true
+        let now = ISO8601DateFormatter().date(from: "2026-10-21T12:00:00Z")!
+        let byTokens = [
+            entry(folder("/Users/sample/Projects/demo-app"), cost: 9, input: 100),
+            entry(folder("/Users/sample/Projects/sample-service"), cost: 1, input: 50_000),
+        ]
+        state.costUsageScanResult = CostUsageScanResult(entries: [], projects: byTokens)
+        XCTAssertNil(state.projectNameNumbersMemo)
+        let first = state.projectNameNumbers(hidePersonalInfo: true, now: now)
+        XCTAssertEqual(first.numbersByName, ["demo-app": 1, "sample-service": 2])
+        XCTAssertEqual(state.projectNameNumbersMemo?.numbers, first, "kept for the next redraw")
+
+        state.showCost = false
+        XCTAssertEqual(state.projectNameNumbers(hidePersonalInfo: true, now: now).numbersByName,
+                       ["sample-service": 1, "demo-app": 2], "costs hidden: ranked by tokens, not the kept answer")
+
+        state.costUsageScanResult = CostUsageScanResult(
+            entries: [], projects: [entry(folder("/Users/sample/Projects/web"), cost: 1)])
+        XCTAssertNil(state.projectNameNumbersMemo, "a new scan empties it")
+        XCTAssertEqual(state.projectNameNumbers(hidePersonalInfo: true, now: now).numbersByName, ["web": 1])
+
+        let later = now.addingTimeInterval(40 * 86_400)
+        XCTAssertEqual(state.projectNameNumbers(hidePersonalInfo: true, now: later), .none,
+                       "another day asks again: the entry is older than 30 days then")
+    }
+
     // MARK: - Sessions
 
     func testAScanRowIsItsProviderAndItsMaskedProject() {
@@ -137,7 +171,7 @@ final class PersonalInfoMaskSessionsTests: XCTestCase {
         let elsewhere = session("proc-7311", name: QARenderSnapshot.privacyCommandLine, provider: "Claude",
                                 project: "other-device-app")
         XCTAssertEqual(PersonalInfoMask.sessionTitle(elsewhere, numbers: numbers, hidePersonalInfo: true),
-                       "Claude · 已隐藏的项目")
+                       "Claude · 隐藏的项目")
         let placeholder = session("local-1", name: "codex", project: SessionRecord.scanRowUnknownProject)
         XCTAssertEqual(PersonalInfoMask.sessionTitle(placeholder, numbers: numbers, hidePersonalInfo: true), "Codex 进程")
     }
@@ -198,12 +232,33 @@ final class PersonalInfoMaskSessionsTests: XCTestCase {
         XCTAssertEqual(on.message, "项目 1 中 Codex 进程的 CPU 占用为 72.5%。")
         XCTAssertFalse((on.title + on.message).contains("demo-app"))
 
+        // A project with no number is said in the sentence's own words, not
+        // the "Hidden project" label put into it (which left "隐藏的项目 中",
+        // a stray space, and "in Hidden project" in English). On iPhone and
+        // the Watch (no numbers) every desktop alert with a project reads so.
+        let elsewhere = alert(
+            id: "session-spike-proc-8841", title: "codex-other is consuming high CPU",
+            message: "Process CPU is 72.5% for Codex in other-device-app.", project: "other-device-app",
+            session: "codex-other", provider: "Codex")
+        for (record, numbers) in [(elsewhere, numbers), (desktop, ProjectNameNumbers.none)] {
+            let hidden = PersonalInfoMask.alertText(record, numbers: numbers, hidePersonalInfo: true)
+            XCTAssertEqual(hidden.message, "隐藏的项目中 Codex 进程的 CPU 占用为 72.5%。")
+            XCTAssertFalse(hidden.message.contains("隐藏的项目 "), hidden.message)
+        }
+        XCTAssertEqual(
+            PersonalInfoMask.alertText(elsewhere, numbers: numbers, hidePersonalInfo: false).message,
+            "other-device-app 中 Codex 进程的 CPU 占用为 72.5%。", "negative control: the switch off")
+
         let swift = alert(
             id: "session-spike-local-1-3f9a2c1e", title: "ios-dashboard is consuming high CPU",
             message: "Using ~46% of total system CPU (10 cores) for Codex.", project: "demo-app",
             session: "ios-dashboard", provider: nil)
         XCTAssertEqual(PersonalInfoMask.alertText(swift, numbers: numbers, hidePersonalInfo: true).title,
                        "Codex 正占用大量 CPU", "the provider the message names, when the record names none")
+
+        LocaleOverrideStore.shared.set("en")
+        XCTAssertEqual(PersonalInfoMask.alertText(elsewhere, numbers: numbers, hidePersonalInfo: true).message,
+                       "Process CPU is 72.5% for Codex in a hidden project.")
     }
 
     /// An alert no template recognises shows its stored English: with the
@@ -215,12 +270,75 @@ final class PersonalInfoMaskSessionsTests: XCTestCase {
             session: "codex-demo-app", provider: "Codex")
         let on = PersonalInfoMask.alertText(newer, numbers: numbers, hidePersonalInfo: true)
         XCTAssertFalse(on.recognized)
-        XCTAssertEqual(on.title, "Codex stalled in 项目 1")
+        // The stored English keeps to English: the stand-ins are not the
+        // reader's "项目 1" inside an English sentence.
+        XCTAssertEqual(on.title, "Codex stalled in Project 1")
         XCTAssertEqual(on.message, "No output from Codex for 20 minutes.")
         XCTAssertEqual(PersonalInfoMask.alertText(newer, numbers: numbers, hidePersonalInfo: false).title,
                        "codex-demo-app stalled in demo-app")
         let stored = PersonalInfoMask.alertStoredText(newer, numbers: numbers, hidePersonalInfo: true)
-        XCTAssertEqual(stored.title, "Codex stalled in 项目 1")
+        XCTAssertEqual(stored.title, "Codex stalled in Project 1")
+        let unnamed = alert(
+            id: "newer-kind-2", title: "codex-other stalled in other-device-app",
+            message: "No output from codex-other.", project: "other-device-app",
+            session: "codex-other", provider: nil)
+        let hidden = PersonalInfoMask.alertStoredText(unnamed, numbers: numbers, hidePersonalInfo: true)
+        XCTAssertEqual(hidden.title, "Session stalled in Hidden project")
+        XCTAssertEqual(hidden.message, "No output from Session.")
+    }
+
+    /// A session alert that names no provider (the record has none, and the
+    /// helper's long-running template names none) says "a session" in the
+    /// title's own words: "Session" put into the template doubled the noun
+    /// in Korean ("세션 세션이…") and had no article in Spanish.
+    func testASessionAlertWithNoProviderNamesNoSession() {
+        let longAlert = alert(
+            id: "session-long-proc-7311", type: "Session Too Long",
+            title: "\(QARenderSnapshot.privacyCommandLine) has been running for a long time",
+            message: "Long-running local agent session detected by helper.", project: nil,
+            session: QARenderSnapshot.privacyCommandLine, provider: nil)
+        let on = PersonalInfoMask.alertText(longAlert, numbers: numbers, hidePersonalInfo: true)
+        XCTAssertTrue(on.recognized)
+        XCTAssertEqual(on.title, "会话已运行很长时间")
+        XCTAssertEqual(
+            PersonalInfoMask.alertText(longAlert, numbers: numbers, hidePersonalInfo: false).title,
+            "\(QARenderSnapshot.privacyCommandLine) 已运行很长时间", "negative control: the switch off")
+        LocaleOverrideStore.shared.set("ko")
+        XCTAssertEqual(PersonalInfoMask.alertText(longAlert, numbers: numbers, hidePersonalInfo: true).title,
+                       "세션이 오랫동안 실행 중입니다")
+        LocaleOverrideStore.shared.set("es")
+        XCTAssertEqual(PersonalInfoMask.alertText(longAlert, numbers: numbers, hidePersonalInfo: true).title,
+                       "Una sesión lleva mucho tiempo en ejecución")
+    }
+
+    /// The server's project budget alert (app_rpc.sql: "Budget exceeded:
+    /// <project>"), which no template recognises: the Alerts tab, the banner
+    /// (`DataRefreshManager.sendNotification`, the same call with the same
+    /// numbers) and the export all give the project the number Projects
+    /// gives it.
+    func testTheServersProjectBudgetAlertNamesTheProjectByItsNumber() {
+        let budget = AlertRecord(
+            id: "4f6c2a7e-qa", type: "Project Budget Exceeded", severity: "Warning",
+            title: "Budget exceeded: sample-service",
+            message: "Project \"sample-service\" has accumulated $12.34 this week (threshold: $10.00)",
+            created_at: "2026-10-21T09:00:00Z", is_read: false, is_resolved: false, acknowledged_at: nil,
+            snoozed_until: nil, related_project_id: nil, related_project_name: "sample-service",
+            related_session_id: nil, related_session_name: nil, related_provider: "Claude",
+            related_device_name: nil, source_kind: nil)
+        let on = PersonalInfoMask.alertText(budget, numbers: numbers, hidePersonalInfo: true)
+        XCTAssertFalse(on.recognized)
+        XCTAssertEqual(on.title, "Budget exceeded: Project 2")
+        XCTAssertEqual(on.message, "Project \"Project 2\" has accumulated $12.34 this week (threshold: $10.00)")
+        XCTAssertEqual(PersonalInfoMask.alertProject(budget, numbers: numbers, hidePersonalInfo: true), "项目 2",
+                       "the chip, in the reader's language, names the same number")
+        let stored = PersonalInfoMask.alertStoredText(budget, numbers: numbers, hidePersonalInfo: true)
+        XCTAssertEqual(stored.title, "Budget exceeded: Project 2")
+        XCTAssertEqual(PersonalInfoMask.alertText(budget, numbers: .none, hidePersonalInfo: true).title,
+                       "Budget exceeded: Hidden project", "a device without a scan")
+        let off = PersonalInfoMask.alertText(budget, numbers: numbers, hidePersonalInfo: false)
+        XCTAssertEqual(off.title, "Budget exceeded: sample-service", "negative control: the switch off")
+        XCTAssertEqual(PersonalInfoMask.alertStoredText(budget, numbers: numbers, hidePersonalInfo: false).message,
+                       budget.message)
     }
 
     // MARK: - Exports
@@ -243,8 +361,11 @@ final class PersonalInfoMaskSessionsTests: XCTestCase {
     func testTheSessionsExportShowsNoNameOrPathWithTheSwitchOn() {
         let on = ExportService.sessionsCSV(sessions: exportSessions, hidePersonalInfo: true, projectNumbers: numbers)
         XCTAssertEqual(leaks(on), [])
-        XCTAssertTrue(on.contains(",Claude · 项目 2,Claude,项目 2,"), on)
-        XCTAssertTrue(on.contains(",Codex 会话,Codex,项目 1,"), on)
+        // A data file: the app's words are English like its headers and
+        // Status, whatever the reader's language (zh-Hans here).
+        XCTAssertTrue(on.contains(",Claude · Project 2,Claude,Project 2,"), on)
+        XCTAssertTrue(on.contains(",Codex session,Codex,Project 1,"), on)
+        XCTAssertFalse(on.contains("项目") || on.contains("会话"), on)
         let off = ExportService.sessionsCSV(sessions: exportSessions, hidePersonalInfo: false, projectNumbers: .none)
         XCTAssertTrue(off.contains(QARenderSnapshot.privacyCommandLine), "negative control: the switch off")
         XCTAssertFalse(leaks(off).isEmpty)
@@ -266,6 +387,10 @@ final class PersonalInfoMaskSessionsTests: XCTestCase {
         let on = ExportService.alertsCSV(alerts: alerts, hidePersonalInfo: true, projectNumbers: numbers)
         XCTAssertEqual(leaks(on), [])
         XCTAssertTrue(on.contains("Claude is consuming high CPU"), on)
+        XCTAssertTrue(on.contains("Process CPU is 72.5% for Codex in Project 1."), on)
+        XCTAssertFalse(on.contains("项目") || on.contains("会话"), "every sentence in one language: \(on)")
+        let hidden = ExportService.alertsCSV(alerts: alerts, hidePersonalInfo: true, projectNumbers: .none)
+        XCTAssertTrue(hidden.contains("Process CPU is 72.5% for Codex in Hidden project.,Codex,Hidden project,"), hidden)
         let off = ExportService.alertsCSV(alerts: alerts, hidePersonalInfo: false, projectNumbers: .none)
         XCTAssertTrue(off.contains(QARenderSnapshot.privacyCommandLine), "negative control: the switch off")
     }
@@ -314,8 +439,8 @@ final class PersonalInfoMaskSessionsTests: XCTestCase {
 
     /// Settings › Advanced says what the switch hides, in every language.
     func testTheSwitchsLineNamesWhatItHides() {
-        XCTAssertEqual(L10n.advanced.hidePersonalInfoHelp, "隐藏邮箱地址、项目文件夹的名称和路径，以及会话名称，屏幕上和导出的文件中都不显示。")
-        XCTAssertEqual(L10n.projects.hidden, "已隐藏的项目")
+        XCTAssertEqual(L10n.advanced.hidePersonalInfoHelp, "在屏幕上和导出的文件中隐藏邮箱地址、项目文件夹的名称和路径，以及会话名称。")
+        XCTAssertEqual(L10n.projects.hidden, "隐藏的项目")
         for language in ["en", "zh-Hans", "zh-Hant", "ja", "ko", "es"] {
             LocaleOverrideStore.shared.set(language)
             let line = L10n.advanced.hidePersonalInfoHelp

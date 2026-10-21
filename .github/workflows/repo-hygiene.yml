@@ -326,7 +326,8 @@ jobs:
       # CLIPulseCore, and its tests pin what the mask does. They cannot pin
       # that anything CALLS it: these are shown by the Mac, iPhone and Watch
       # apps, and no test target builds those. A view back on
-      # `Label(detail.accountEmail, …)` or `alert.related_project_name`, a
+      # `Label(detail.accountEmail, …)`, `alert.related_project_name`,
+      # `alert.title` or `session.name` (both can hold a command line), a
       # literal `hidePersonalInfo: false`, an export not told the switch, or a
       # lost line in the WatchConnectivity hand-off would show them again with
       # every suite green.

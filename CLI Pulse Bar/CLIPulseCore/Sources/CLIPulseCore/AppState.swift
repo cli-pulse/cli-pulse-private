@@ -344,7 +344,14 @@ public final class AppState: ObservableObject {
     }
 
     // MARK: - Cost Usage Scan (precise token data from local JSONL logs, macOS only)
-    @Published public var costUsageScanResult: CostUsageScanResult?
+    @Published public var costUsageScanResult: CostUsageScanResult? {
+        // v1.58 (P1-6): a new scan can number the projects differently.
+        didSet { projectNameNumbersMemo = nil }
+    }
+    /// `projectNameNumbers(hidePersonalInfo:now:)`'s last answer
+    /// (PersonalInfoMaskSessions.swift). Not published: keeping it changes
+    /// nothing anyone sees.
+    var projectNameNumbersMemo: ProjectNameNumbersMemo?
     /// v1.9.4: true when the last cost scan returned empty AND the app is
     /// sandboxed AND no bookmark has been granted for the session-log dirs.
     /// Drives a one-shot banner in Providers tab nudging the user to grant

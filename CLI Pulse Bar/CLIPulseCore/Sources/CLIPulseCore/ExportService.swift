@@ -12,9 +12,10 @@ public enum ExportService {
     /// title as the Sessions tab shows it then ("Codex · Project 2", "Claude
     /// session"), never the stored name, which can be a command line with a
     /// path in it; and Project is the masked project ("Project 2", "Hidden
-    /// project", or empty for none). Both are then words the app wrote, in
-    /// the reader's language. With it off both columns are the stored values,
-    /// as before.
+    /// project", or empty for none). Both are then words the app wrote, and
+    /// in English whatever the reader's language: this is a data file, whose
+    /// headers, Status and stored values are English too. With it off both
+    /// columns are the stored values, as before.
     public static func exportSessionsCSV(
         sessions: [SessionRecord],
         hidePersonalInfo: Bool,
@@ -33,10 +34,11 @@ public enum ExportService {
         var csv = "ID,Name,Provider,Project,Status,Usage,Cost,Requests,Errors,Started,Last Active\n"
         for s in sessions {
             let name = hidePersonalInfo
-                ? PersonalInfoMask.sessionTitle(s, numbers: projectNumbers, hidePersonalInfo: true)
+                ? PersonalInfoMask.sessionTitle(s, numbers: projectNumbers, hidePersonalInfo: true, english: true)
                 : s.name
             let project = hidePersonalInfo
-                ? PersonalInfoMask.sessionProject(s, numbers: projectNumbers, hidePersonalInfo: true) ?? ""
+                ? PersonalInfoMask.sessionProject(
+                    s, numbers: projectNumbers, hidePersonalInfo: true, english: true) ?? ""
                 : s.project
             csv += "\(esc(s.id)),\(esc(name)),\(esc(s.provider)),\(esc(project)),"
             csv += "\(esc(s.status)),\(s.total_usage),\(s.estimated_cost),"
@@ -66,8 +68,9 @@ public enum ExportService {
     ///
     /// v1.58 (P1-6): with "Hide personal information" on, the stored English
     /// Title and Message have the session's stored name replaced by its
-    /// provider and the project by its masked name
-    /// (`PersonalInfoMask.alertStoredText`), and Project is masked.
+    /// provider and the project by "Project N" or "Hidden project"
+    /// (`PersonalInfoMask.alertStoredText`), and Project is masked the same
+    /// way: in English, as the rest of this data file is.
     public static func exportAlertsCSV(
         alerts: [AlertRecord],
         hidePersonalInfo: Bool,
@@ -88,7 +91,8 @@ public enum ExportService {
             let text = PersonalInfoMask.alertStoredText(
                 a, numbers: projectNumbers, hidePersonalInfo: hidePersonalInfo)
             let project = hidePersonalInfo
-                ? PersonalInfoMask.alertProject(a, numbers: projectNumbers, hidePersonalInfo: true) ?? ""
+                ? PersonalInfoMask.projectName(
+                    a.related_project_name, numbers: projectNumbers, hidePersonalInfo: true, english: true) ?? ""
                 : a.related_project_name ?? ""
             csv += "\(esc(a.id)),\(esc(a.type)),\(esc(a.severity)),\(esc(text.title)),"
             csv += "\(esc(text.message)),\(esc(a.related_provider ?? "")),"

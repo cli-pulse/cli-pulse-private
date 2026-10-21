@@ -60,6 +60,17 @@ This reads the app targets' Swift (and one Core file) and checks five things:
      coming back if one is made public again, and covers the stored fields.)
      No app target calls `AlertPresentation.text(`.
 
+     Three more stored fields carry a command line or a folder's name under a
+     word every other type uses too: an alert's `title` and `message` (the
+     Companion CLI titles a session alert with the start of a command line),
+     a session's `name`, and the iPhone/Watch Top Projects' `TopProject.name`.
+     They are found by the receiver's name, which is what the views call
+     them: `alert.title` / `alert.message` (also `a.`, `selectedAlert.`) and
+     `session.name` (also `s.`, `selectedSession.`) are never read (show them
+     through `alertText` / `sessionTitle`); `proj.name` / `project.name` /
+     `topProject.name` only inside `PersonalInfoMask.projectName(…)`. `?.`
+     counts as a read; the same allowlist applies.
+
   5. THE EXPORTS AND THE NOTIFICATION ARE TOLD THE SWITCH.
      Every `ExportService.exportSessionsCSV` / `exportCostReportCSV` /
      `exportAlertsCSV` / `exportPDFReport` call in the app targets passes
@@ -71,9 +82,11 @@ This reads the app targets' Swift (and one Core file) and checks five things:
 WHAT IT CANNOT SEE
   A label, project or session name that reaches the screen under another name
   (a Core type that copies it into a field called something else) is invisible
-  here; today Core carries them only under the names above. A session's stored
-  `name` is not checked: the word is too common to tell apart, and the apps
-  have no read of it. Nor does it check the position a call passes as
+  here; today Core carries them only under the names above. An alert's title
+  or message, or a session's or a top project's name, read through a receiver
+  called something else (`item.title`, `$0.name`, a key path to it) is not
+  seen: those words are on every other type too, so only the receiver names
+  the views use are matched. Nor does it check the position a call passes as
   `index:`, or the numbers a call passes as `numbers:`. A path shown as text
   (the Sessions tab's diagnostics, which go through `PersonalInfoMask.homeFolder`)
   is not followed. It proves the wiring, not the pixels: the pixels are the QA
@@ -137,6 +150,18 @@ MIN_EXPORT_CALLS_REAL_TREE = 5
 RAW_ALERT_TEXT = re.compile(r"\bAlertPresentation\s*\.\s*text\s*\(")
 
 LABEL_READ = re.compile(r"(\\?)\.\s*(" + "|".join(FIELD_MASKS) + r")\b")
+
+# Rule 4's fields under common words, found by the receiver's name: (pattern,
+# the calls a read may sit inside, what to show it through). An empty set:
+# never read it. Group 1 is the receiver, group 2 the field.
+RECEIVER_READS = [
+    (re.compile(r"\b(alert|a|selectedAlert)\s*\??\s*\.\s*(title|message)\b"), set(),
+     "PersonalInfoMask.alertText"),
+    (re.compile(r"\b(session|s|selectedSession)\s*\??\s*\.\s*(name)\b"), set(),
+     "PersonalInfoMask.sessionTitle"),
+    (re.compile(r"\b(proj|project|topProject)\s*\??\s*\.\s*(name)\b"), {"projectName"},
+     "PersonalInfoMask.projectName"),
+]
 LITERAL_SWITCH = re.compile(r"\bhidePersonalInfo\s*:\s*(true|false)\b")
 SWITCH_DECL = re.compile(r"\b(?:var|let)\s+hidePersonalInfo\b")
 APP_STORAGE_ON_KEY = re.compile(r"@AppStorage\s*\(\s*PersonalInfoMask\s*\.\s*defaultsKey\s*\)")
@@ -294,6 +319,26 @@ def label_reads(src: str, code: str) -> list[tuple[int, str, bool]]:
     return [
         (pos, field, any(ch == "(" and callee(code, at) in FIELD_MASKS[field] for at, ch in opens[pos]))
         for pos, field in found
+    ]
+
+
+def receiver_reads(code: str) -> list[tuple[int, str, bool, str]]:
+    """(offset of the field name, `receiver.field`, masked?, what to show it
+    through) for every read of an alert's title or message, a session's name
+    or a top project's name (`RECEIVER_READS`)."""
+    found: list[tuple[int, str, set[str], str]] = []
+    for pattern, masks, through in RECEIVER_READS:
+        for m in pattern.finditer(code):
+            before = code[:m.start()].rstrip()
+            if re.search(r"\bL10n\s*\.(?:\s*\w+\s*\.)*$", before):
+                continue                 # a catalogue entry, not a record
+            if re.match(r"\s*=(?!=)", code[m.end():]):
+                continue                 # a write, not a read
+            found.append((m.start(2), f"{m.group(1)}.{m.group(2)}", masks, through))
+    opens = enclosing_opens(code, [pos for pos, _, _, _ in found])
+    return [
+        (pos, what, any(ch == "(" and callee(code, at) in masks for at, ch in opens[pos]), through)
+        for pos, what, masks, through in found
     ]
 
 
@@ -510,6 +555,17 @@ def main() -> int:
                     else "at all (show it through PersonalInfoMask.alertSessionName)"
                 )
                 errors.append(f"{rel}:{line_of(src, pos)}: `.{field}` is read {where}: {key[1]}")
+            for pos, what, is_masked, through in receiver_reads(code):
+                if is_masked:
+                    continue
+                key = (rel, line_text(src, pos))
+                if key in allowed:
+                    used.add(key)
+                    continue
+                errors.append(
+                    f"{rel}:{line_of(src, pos)}: `{what}` is read outside the mask (show it through"
+                    f" {through}): {key[1]}"
+                )
             check_switch(rel, src, code, errors)
             file_showing, file_exports = check_showing(rel, src, code, errors)
             showing += file_showing

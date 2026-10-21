@@ -42,10 +42,17 @@ public enum AlertPresentation {
     /// `PersonalInfoMask.alertText` passes its own.
     struct Naming {
         /// The session's stored name, and the provider the alert's message
-        /// names (nil when it names none) → what to show.
-        var session: (_ storedName: String, _ provider: String?) -> String
-        /// The project's stored name → what to show.
-        var project: (_ storedName: String) -> String
+        /// names (nil when it names none) → what to show, or nil to name no
+        /// session at all ("A session is consuming high CPU"): a bare
+        /// "Session" placed into the title reads "세션 세션이…" in Korean and
+        /// has no article in Spanish.
+        var session: (_ storedName: String, _ provider: String?) -> String?
+        /// The project's stored name → what to show, or nil for a project
+        /// whose name is hidden, which the message then says in its own words
+        /// ("… in a hidden project"): a label placed mid-sentence reads
+        /// "in Hidden project", and in Chinese and Japanese leaves a stray
+        /// space after it.
+        var project: (_ storedName: String) -> String?
 
         static let asStored = Naming(session: { name, _ in name }, project: { $0 })
     }
@@ -81,10 +88,14 @@ public enum AlertPresentation {
     private static func sessionCPU(_ a: AlertRecord, _ naming: Naming) -> Text? {
         guard a.type == "Usage Spike", a.id.hasPrefix("session-spike-") else { return nil }
         let stored = stripSuffix(a.title, " is consuming high CPU")
+        func title(_ provider: String?) -> String {
+            naming.session(stored, provider).map(L10n.alertKind.sessionCPUTitle)
+                ?? L10n.alertKind.sessionCPUTitleUnnamed
+        }
 
         // Swift AlertGenerator: normalized against total system capacity.
         if let m = capture(a.message, #"^Using ~(\d+)% of total system CPU \((\d+) cores\) for (.+)\.$"#) {
-            return Text(title: L10n.alertKind.sessionCPUTitle(naming.session(stored, m[2])),
+            return Text(title: title(m[2]),
                         message: L10n.alertKind.sessionCPUMessageSystem(m[0], m[1], m[2]),
                         recognized: true)
         }
@@ -92,13 +103,14 @@ public enum AlertPresentation {
         // tried before the Python form below, whose greedy `(.+)` would
         // otherwise swallow " in <project>" into the provider.
         if let m = capture(a.message, #"^Process CPU is (\d+(?:\.\d+)?)% for (.+) in (.+)\.$"#) {
-            return Text(title: L10n.alertKind.sessionCPUTitle(naming.session(stored, m[1])),
-                        message: L10n.alertKind.sessionCPUMessageProcessInProject(m[0], m[1], naming.project(m[2])),
-                        recognized: true)
+            let message = naming.project(m[2]).map {
+                L10n.alertKind.sessionCPUMessageProcessInProject(m[0], m[1], $0)
+            } ?? L10n.alertKind.sessionCPUMessageProcessInHiddenProject(m[0], m[1])
+            return Text(title: title(m[1]), message: message, recognized: true)
         }
         // Python helper: raw process CPU, no project.
         if let m = capture(a.message, #"^Process CPU is (\d+(?:\.\d+)?)% for (.+)\.$"#) {
-            return Text(title: L10n.alertKind.sessionCPUTitle(naming.session(stored, m[1])),
+            return Text(title: title(m[1]),
                         message: L10n.alertKind.sessionCPUMessageProcess(m[0], m[1]),
                         recognized: true)
         }
@@ -110,7 +122,9 @@ public enum AlertPresentation {
               a.message == "Long-running local agent session detected by helper."
         else { return nil }
         let stored = stripSuffix(a.title, " has been running for a long time")
-        return Text(title: L10n.alertKind.sessionLongTitle(naming.session(stored, nil)),
+        let title = naming.session(stored, nil).map(L10n.alertKind.sessionLongTitle)
+            ?? L10n.alertKind.sessionLongTitleUnnamed
+        return Text(title: title,
                     message: L10n.alertKind.sessionLongMessage,
                     recognized: true)
     }

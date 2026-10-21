@@ -1741,10 +1741,13 @@
 "alert_kind.quota_title" = "%1$@ %2$@ %3$@%% 사용됨";
 "alert_kind.session_cpu_message_process" = "%2$@ 프로세스의 CPU 사용률은 %1$@%%입니다.";
 "alert_kind.session_cpu_message_process_in_project" = "%3$@의 %2$@ 프로세스 CPU 사용률은 %1$@%%입니다.";
+"alert_kind.session_cpu_message_process_in_hidden_project" = "숨겨진 프로젝트의 %2$@ 프로세스 CPU 사용률은 %1$@%%입니다.";
 "alert_kind.session_cpu_message_system" = "%3$@ 세션이 시스템 전체 CPU(%2$@코어)의 약 %1$@%%를 사용하고 있습니다.";
 "alert_kind.session_cpu_title" = "%@ 세션의 CPU 사용률이 높습니다";
+"alert_kind.session_cpu_title_unnamed" = "세션의 CPU 사용률이 높습니다";
 "alert_kind.session_long_message" = "헬퍼가 오래 실행 중인 로컬 에이전트 세션을 감지했습니다.";
 "alert_kind.session_long_title" = "%@ 세션이 오랫동안 실행 중입니다";
+"alert_kind.session_long_title_unnamed" = "세션이 오랫동안 실행 중입니다";
 "alert_kind.severity_critical" = "심각";
 "alert_kind.severity_info" = "정보";
 "alert_kind.severity_warning" = "경고";
