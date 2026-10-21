@@ -284,9 +284,6 @@ MIRRORED_FUNCTIONS = {
     "provider_summary": "app_rpc.sql",
 }
 
-# Kept for readers of older notes: the v0.72 subset is the same mapping.
-V072_MIRRORED_FUNCTIONS = MIRRORED_FUNCTIONS
-
 
 def _normalized_function_block(path: pathlib.Path, name: str) -> str | None:
     """Return one function's CREATE block with insignificant whitespace folded.
@@ -350,10 +347,6 @@ def collect_mirror_failures() -> list[str]:
                 f"{migration.name} and {canonical.name}"
             )
     return failures
-
-
-# The old name, for anything that imports it.
-collect_v072_mirror_failures = collect_mirror_failures
 
 
 # ─────────────────────────────────────────────────────────────────────────────
