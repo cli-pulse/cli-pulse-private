@@ -88,7 +88,7 @@ public extension QARenderSnapshot {
         alerts: [AlertRecord],
         projects: [ProjectIdentity]
     ) -> [String] {
-        let providers = Set(ProviderKind.allCases.map { $0.rawValue.lowercased() })
+        let providers = Set(ProviderKind.offered.map { $0.rawValue.lowercased() })
         var found: Set<String> = ["/Users/"]
         func add(_ value: String?) {
             guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
