@@ -253,11 +253,13 @@ Starting the scan turns on:
   dates, plus each conversation's file path, project folder and session id, and
   for a Codex conversation a one-way hash of its repository's address (the
   address itself is never kept: it can hold a token). Those are how the Sessions
-  list can name your conversations, and how Projects (the usage panel and the
+  list can name your conversations, how Projects (the usage panel and the
   Overview's Top Projects card) adds up usage by folder and counts a Codex
-  worktree or a clone in `/private/tmp` for the checkout it came from. They stay
-  on your Mac; of what the logs give, only the daily numbers in the table sync,
-  and only when you are signed in.
+  worktree or a clone in `/private/tmp` for the checkout it came from, and how
+  the usage panel's Sessions list adds up the last 30 days by session, a
+  session's subagents included, named by its project folder. They stay on your
+  Mac; of what the logs give, only the daily numbers in the table sync, and only
+  when you are signed in.
 * **The programs running on your Mac.** To find AI CLI sessions that are running
   now, CLI Pulse reads the command line of each running program and looks for a
   project marker (such as `.git`) in the folders it names. What it keeps from

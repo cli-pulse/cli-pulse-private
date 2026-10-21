@@ -520,6 +520,79 @@ public enum QARenderSnapshot {
         }
     }
 
+    /// v1.58 (P1-5): the panel sample's project rows of `kind`
+    /// (`providerPanelProjectsSample`) cut into sessions of four days each
+    /// (`DemoDataProvider.sessions`), so they add up to the rows exactly:
+    /// several sessions per project, some with more than one model, Claude's
+    /// with up to four subagents and Codex's up to two, an "Unknown" Codex
+    /// session, and the latest last active before `today`. Deterministic.
+    public static func providerPanelSessionsSample(
+        _ kind: ProviderKind, days: Int = 30, today: Date = Date(), timeZone: TimeZone = .current
+    ) -> (entries: [CostUsageScanResult.SessionEntry], details: [CostUsageScanResult.SessionDetail]) {
+        DemoDataProvider.sessions(
+            from: providerPanelProjectsSample(kind, days: days, today: today, timeZone: timeZone),
+            daysPerSession: 4, now: today, timeZone: timeZone, salt: kind == .codex ? 820 : 840)
+    }
+
+    /// v1.58 (P1-5): `projectsNoRateSample` as sessions, a session per
+    /// project over its two days: the last of them has no rate.
+    public static func sessionsNoRateSample(
+        today: Date = Date(), timeZone: TimeZone = .current
+    ) -> (entries: [CostUsageScanResult.SessionEntry], details: [CostUsageScanResult.SessionDetail]) {
+        DemoDataProvider.sessions(
+            from: projectsNoRateSample(today: today, timeZone: timeZone),
+            daysPerSession: 2, now: today, timeZone: timeZone, salt: 860)
+    }
+
+    /// v1.58 (P1-5): the Sessions card's edge cases, from rows of their own
+    /// over the last two days ending `today`: two Codex sessions, one in a
+    /// folder whose name is too long for the line (cut in the middle) whose
+    /// cost runs to four figures and is a lower bound (part of it ran on a
+    /// model with no rate, "≥$1,234.56"); and a single Claude session, its
+    /// list "1 session".
+    public static func sessionsEdgeSample(
+        today: Date = Date(), timeZone: TimeZone = .current
+    ) -> (
+        entries: [CostUsageScanResult.SessionEntry], details: [CostUsageScanResult.SessionDetail],
+        projects: [CostUsageScanResult.ProjectEntry]
+    ) {
+        let calendar = DayKey.calendar(in: timeZone)
+        let yesterday = DayKey.string(from: calendar.date(byAdding: .day, value: -1, to: today) ?? today, in: timeZone)
+        let todayKey = DayKey.string(from: today, in: timeZone)
+        let long = ProjectIdentity.folder(sampleProjectsFolder + "/customer-analytics-dashboard-monorepo-legacy-migration")
+        let demo = ProjectIdentity.folder(sampleProjectsFolder + "/demo-app")
+        let rows: [(session: String, provider: ProviderKind, project: ProjectIdentity, day: String, model: String,
+                    input: Int, cached: Int, output: Int, cost: Double?)] = [
+            ("codex:edge-long", .codex, long, yesterday, "gpt-5.5", 412_600_000, 371_300_000, 2_180_000, 1_034.56),
+            ("codex:edge-long", .codex, long, todayKey, "gpt-5.5", 80_400_000, 72_100_000, 410_000, 200),
+            ("codex:edge-long", .codex, long, todayKey, "local-preview", 1_250_000, 0, 42_000, nil),
+            ("codex:edge-demo", .codex, demo, todayKey, "gpt-5.5", 3_400_000, 2_900_000, 61_000, 7.48),
+            ("claude:edge-one", .claude, demo, todayKey, "claude-sonnet-4-5", 18_200, 2_410_000, 64_000, 3.27),
+        ]
+        let entries = rows.map {
+            CostUsageScanResult.SessionEntry(
+                provider: $0.provider.rawValue, session: $0.session, date: $0.day, model: $0.model,
+                inputTokens: $0.input, cachedTokens: $0.cached, outputTokens: $0.output, costUSD: $0.cost)
+        }
+        let projects = rows.map {
+            CostUsageScanResult.ProjectEntry(
+                provider: $0.provider.rawValue, project: $0.project, date: $0.day, model: $0.model,
+                inputTokens: $0.input, cachedTokens: $0.cached, outputTokens: $0.output, costUSD: $0.cost)
+        }
+        let details = [
+            CostUsageScanResult.SessionDetail(
+                provider: ProviderKind.codex.rawValue, key: "codex:edge-long", project: long,
+                lastActivity: today.addingTimeInterval(-40 * 60), subagentLastDays: [todayKey, todayKey, yesterday]),
+            CostUsageScanResult.SessionDetail(
+                provider: ProviderKind.codex.rawValue, key: "codex:edge-demo", project: demo,
+                lastActivity: today.addingTimeInterval(-3 * 3600)),
+            CostUsageScanResult.SessionDetail(
+                provider: ProviderKind.claude.rawValue, key: "claude:edge-one", project: demo,
+                lastActivity: today.addingTimeInterval(-25 * 60), subagentLastDays: [todayKey]),
+        ]
+        return (entries, details, projects)
+    }
+
     /// Every surface, in drawing order. The order is also the state order:
     /// everything signed out comes before Demo mode is entered, because the
     /// renderer, like the app, has no way back out of it.
@@ -556,6 +629,8 @@ public enum QARenderSnapshot {
         ]
         surfaces.append(.topProjectsStates)
         surfaces.append(.panelProjectsStates)
+        surfaces.append(.panelSessionsStates)
+        surfaces += [.panelSessionsMoreStates, .providerUsagePanelLaptop]
         return surfaces
     }
 
@@ -1034,6 +1109,22 @@ public enum QARenderSurface: Hashable {
     /// the note in its place when the App Store build may not read the
     /// provider's log folder. Dark, at the 440-point panel's card width.
     case panelProjectsStates
+    /// v1.58 (P1-5): the usage panel's Sessions card
+    /// (`ProviderSessionsCard`) in the states the panel renders do not show:
+    /// latest first, "Hide personal information" on (projects as "Project
+    /// N"), costs hidden (ranked by tokens), and a session with no rate.
+    /// Dark, at the 440-point panel's card width.
+    case panelSessionsStates
+    /// v1.58 (P1-5): more of the Sessions card's states: more rows shown
+    /// ("Show 20 more" pressed) with "Hide personal information" on and an
+    /// "Unknown" row; a long project name beside a four-figure cost; a
+    /// single session. Dark, at the 440-point panel's card width.
+    case panelSessionsMoreStates
+    /// v1.58 (P1-5): the Codex panel at 440 points in a panel capped at a
+    /// 900-point screen's 876 (`DashboardPanelController`: the screen's
+    /// visible height less 24), drawn page by page as a laptop shows it: the
+    /// panel scrolls, the Sessions card with it.
+    case providerUsagePanelLaptop
 
     public enum Kind: String, Codable, Sendable {
         /// The menu-bar popover (`MenuBarView`), 380 points wide.
@@ -1055,7 +1146,7 @@ public enum QARenderSurface: Hashable {
             return .window
         case .usageDashboardPanel, .usageDashboardPanelCost, .providerUsagePanel, .providerCardPanel,
              .providerPanelCostUnknown, .providerPanelNoRateDay, .usageDashboardPanelCostUnknown,
-             .panelProjectsStates:
+             .panelProjectsStates, .panelSessionsStates, .panelSessionsMoreStates, .providerUsagePanelLaptop:
             return .panel
         case .providerUsageCardHistory:
             return .window
@@ -1102,6 +1193,9 @@ public enum QARenderSurface: Hashable {
         case .cardSourceLines: return "card-source-lines"
         case .topProjectsStates: return "card-top-projects"
         case .panelProjectsStates: return "card-panel-projects"
+        case .panelSessionsStates: return "card-panel-sessions"
+        case .panelSessionsMoreStates: return "card-panel-sessions-more"
+        case .providerUsagePanelLaptop: return "panel-provider-usage-codex-laptop"
         }
     }
 

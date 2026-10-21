@@ -127,11 +127,13 @@ public final class DashboardPanelController {
         let available = leftEdge - visible.minX - 16
         let width = min(520, max(440, available))
 
-        // Size the panel to the content's NATURAL height so everything fits on
-        // one page with no vertical scrollbar. Probe a copy at this width; the
-        // panel scrolls only when the content is taller than the screen
-        // (small displays). Later changes of height are followed through
-        // `fit(height:)`.
+        // Size the panel to the content's NATURAL height, so it has no
+        // vertical scrollbar while it fits the screen. Probe a copy at this
+        // width; the panel scrolls only when the content is taller than the
+        // screen: a provider's mode with its Projects and (v1.58) Sessions
+        // cards is about 1,200 points, so on every laptop screen it scrolls,
+        // as one page (the Sessions card has no scroll view of its own).
+        // Later changes of height are followed through `fit(height:)`.
         let maxHeight = visible.height - 24
         let probe = NSHostingView(rootView:
             UsagePanelContent(model: model)

@@ -3,8 +3,9 @@
 //
 // - all providers: the Usage Dashboard, from this Mac's usage archive;
 // - one provider: its last 30 days by day and model, from this Mac's scan
-//   (or the rows synced to the account), with a Token / Cost toggle, and
-//   (v1.58, P1-4) this Mac's top projects for that provider.
+//   (or the rows synced to the account), with a Token / Cost toggle,
+//   (v1.58, P1-4) this Mac's top projects for that provider, and (P1-5) its
+//   sessions over the same 30 days.
 //
 // `UsagePanelModel` keeps the data live. The panel used to be handed the
 // archive snapshot it opened with and never read it again (D11), so a panel
@@ -34,6 +35,10 @@ public final class UsagePanelModel: ObservableObject {
     /// project by its place among all of them when personal information is
     /// hidden (`ProjectUsageRanking.anonymousNumbers`).
     @Published public private(set) var scanProjects: [CostUsageScanResult.ProjectEntry] = []
+    /// v1.58 (P1-5): this Mac's scan rows split by session, and what each
+    /// session is (`CostUsageScanResult.sessions`, `.sessionDetails`).
+    @Published public private(set) var scanSessions: [CostUsageScanResult.SessionEntry] = []
+    @Published public private(set) var scanSessionDetails: [CostUsageScanResult.SessionDetail] = []
     /// The rows synced to the account (`AppState.dailyUsage`); none while
     /// signed out.
     @Published public private(set) var cloudRows: [DailyUsage] = [] {
@@ -151,6 +156,12 @@ public final class UsagePanelModel: ObservableObject {
         scan.map { $0?.projects ?? [] }
             .sink { [weak self] in self?.scanProjects = $0 }
             .store(in: &sourceObservers)
+        scan.map { $0?.sessions ?? [] }
+            .sink { [weak self] in self?.scanSessions = $0 }
+            .store(in: &sourceObservers)
+        scan.map { $0?.sessionDetails ?? [] }
+            .sink { [weak self] in self?.scanSessionDetails = $0 }
+            .store(in: &sourceObservers)
         cloud
             .sink { [weak self] in self?.cloudRows = $0 }
             .store(in: &sourceObservers)
@@ -237,7 +248,7 @@ public final class UsagePanelModel: ObservableObject {
 // MARK: - Provider mode
 
 /// One provider's last 30 days: bars, the selected day's models, the total,
-/// and (v1.58) this Mac's top projects for it. Laid out at a height that does
+/// and (v1.58) this Mac's top projects and its sessions. Laid out at a height that does
 /// not change from day to day, so the panel does not jump as the pointer
 /// moves over the bars.
 public struct ProviderUsagePanelView: View {
@@ -246,6 +257,11 @@ public struct ProviderUsagePanelView: View {
     /// (`UsagePanelModel.scanProjects`). The Projects card lists
     /// `data.provider`'s.
     public let projects: [CostUsageScanResult.ProjectEntry]
+    /// v1.58 (P1-5): this Mac's scan rows by session, and what each session
+    /// is, every provider's (`UsagePanelModel.scanSessions`). The Sessions
+    /// card lists `data.provider`'s.
+    public let sessions: [CostUsageScanResult.SessionEntry]
+    public let sessionDetails: [CostUsageScanResult.SessionDetail]
     public let availableScopes: [UsageDataScope]
     @Binding public var scope: UsageDataScope
     public let needsFolderAccess: Bool
@@ -276,6 +292,8 @@ public struct ProviderUsagePanelView: View {
     public init(
         data: ProviderUsageDays,
         projects: [CostUsageScanResult.ProjectEntry] = [],
+        sessions: [CostUsageScanResult.SessionEntry] = [],
+        sessionDetails: [CostUsageScanResult.SessionDetail] = [],
         availableScopes: [UsageDataScope],
         scope: Binding<UsageDataScope>,
         needsFolderAccess: Bool,
@@ -286,6 +304,8 @@ public struct ProviderUsagePanelView: View {
     {
         self.data = data
         self.projects = projects
+        self.sessions = sessions
+        self.sessionDetails = sessionDetails
         self.availableScopes = availableScopes
         self._scope = scope
         self.needsFolderAccess = needsFolderAccess
@@ -320,6 +340,7 @@ public struct ProviderUsagePanelView: View {
                 chartCard
                 totalsCard
                 projectsCard
+                sessionsCard
             } else {
                 emptyState
             }
@@ -564,6 +585,28 @@ public struct ProviderUsagePanelView: View {
         }
     }
 
+    // MARK: Sessions
+
+    /// The window's last day, as the Projects card reads it.
+    private var windowTodayKey: String {
+        data.days.last?.dateKey ?? DayKey.string(from: Date())
+    }
+
+    /// This Mac's sessions of the provider over the panel's window, drawn
+    /// with one to list. This Mac's whatever the scope above shows, as
+    /// Projects, and named by the project each ran in.
+    @ViewBuilder
+    private var sessionsCard: some View {
+        if ProviderSessionsCard.hasSessions(
+            sessions, provider: data.provider, days: Self.windowDays, todayKey: windowTodayKey) {
+            ProviderSessionsCard(
+                sessions: sessions, details: sessionDetails, projects: projects, provider: data.provider,
+                days: Self.windowDays, todayKey: windowTodayKey, showsCost: showCost,
+                hidePersonalInfo: hidePersonalInfo)
+                .equatable()
+        }
+    }
+
     /// Whether the empty panel asks for the log folders: macOS blocks them
     /// (all of them, or, v1.58, this provider's while another's is allowed),
     /// the scope is this Mac's, and `provider` is one the scan reads (Codex,
@@ -612,11 +655,49 @@ public struct ProviderUsagePanelView: View {
     }
 }
 
+// MARK: - The panel's own scroll view
+
+/// The slide-out panel's scroll view: it scrolls only when the panel is
+/// taller than the screen allows, and its content is laid out at its natural
+/// height either way, so the root can measure it (`UsagePanelRootView`).
+///
+/// Scrolling is turned off by giving the scroll view no axes, not with
+/// `.scrollDisabled`. That modifier travels down the environment and, as
+/// documented from macOS 13, turns off every scroll view inside too: a day's
+/// model list showing some of its rows would keep the rest out of reach on a
+/// screen tall enough for the panel. Nothing below can turn it back on:
+/// measured on macOS 27, neither `.scrollDisabled(false)` nor setting
+/// `isScrollEnabled` to true below it does. macOS 27 happens to spare a
+/// nested list; 13 and 14, which this app supports, were not measured
+/// (`UsagePanelScrollTests` keeps the modifier out). The axes cannot disable
+/// anything but this one view, and it is the same `ScrollView` type either
+/// way, so the panel's content keeps its identity and its state (the
+/// Sessions card's order and rows shown) when the panel starts or stops
+/// scrolling. `MenuBarView.scrollingUnderDisclosure` does the same.
+struct UsagePanelScroller<Content: View>: View {
+    /// Whether the content fits the panel: no scrolling, no indicators.
+    let fits: Bool
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ScrollView(fits ? [] : .vertical) {
+            // Without a vertical axis the scroll view proposes its own
+            // height; the content keeps its natural one, so a panel that
+            // grows is measured at its new height, not squeezed into the
+            // old one.
+            content.fixedSize(horizontal: false, vertical: true)
+        }
+        .scrollIndicators(fits ? .hidden : .automatic)
+    }
+}
+
 // MARK: - The panel's content, in either mode
 
 /// What the slide-out panel hosts. Measures its own natural height and
 /// reports it, so the panel follows content that grows or shrinks (a refresh,
-/// a mode switch), and scrolls only when taller than the screen allows.
+/// a mode switch, more sessions shown), and scrolls only when taller than the
+/// screen allows: in a provider's mode with its Sessions card (v1.58), about
+/// 1,200 points, that is every laptop screen.
 struct UsagePanelRootView: View {
     @ObservedObject var model: UsagePanelModel
     let width: CGFloat
@@ -628,15 +709,13 @@ struct UsagePanelRootView: View {
 
     var body: some View {
         let fits = naturalHeight <= maxHeight
-        ScrollView(.vertical) {
+        UsagePanelScroller(fits: fits) {
             UsagePanelContent(model: model, onOpenSettings: onOpenSettings)
                 .frame(width: width)
                 .background(GeometryReader { geo in
                     Color.clear.preference(key: UsagePanelHeightKey.self, value: geo.size.height)
                 })
         }
-        .scrollDisabled(fits)
-        .scrollIndicators(fits ? .hidden : .automatic)
         .frame(width: width)
         .onPreferenceChange(UsagePanelHeightKey.self) { height in
             naturalHeight = height
@@ -686,6 +765,8 @@ struct UsagePanelContent: View {
             ProviderUsagePanelView(
                 data: model.days(for: provider, in: scope),
                 projects: model.scanProjects,
+                sessions: model.scanSessions,
+                sessionDetails: model.scanSessionDetails,
                 availableScopes: model.availableScopes(for: provider),
                 scope: Binding(
                     get: { model.scope(for: provider) },

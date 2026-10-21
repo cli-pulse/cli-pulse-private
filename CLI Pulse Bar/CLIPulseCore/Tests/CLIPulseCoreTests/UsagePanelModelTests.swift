@@ -225,6 +225,50 @@ final class UsagePanelModelTests: XCTestCase {
         XCTAssertTrue(model.scanProjects.isEmpty)
     }
 
+    /// v1.58 (P1-5): and its rows by session with what each session is,
+    /// which the provider mode's Sessions card lists; a refresh replaces
+    /// them, and a scan that is gone takes them with it.
+    func testTheProviderModeFollowsTheScansSessions() {
+        let scan = CurrentValueSubject<CostUsageScanResult?, Never>(nil)
+        let model = UsagePanelModel(notificationCenter: NotificationCenter(), now: fixedNow, loadArchive: { DailyUsageArchive() })
+        model.follow(scan: scan.eraseToAnyPublisher(), cloud: Just([]).eraseToAnyPublisher(),
+                     needsFolderAccess: Just(false).eraseToAnyPublisher())
+        XCTAssertTrue(model.scanSessions.isEmpty)
+        XCTAssertTrue(model.scanSessionDetails.isEmpty)
+
+        func session(_ key: String, _ tokens: Int) -> CostUsageScanResult.SessionEntry {
+            .init(provider: "Codex", session: key, date: "2026-10-06", model: "m",
+                  inputTokens: tokens, cachedTokens: 0, outputTokens: 0, costUSD: 1)
+        }
+        func detail(_ key: String) -> CostUsageScanResult.SessionDetail {
+            .init(provider: "Codex", key: key, project: .folder("/Users/sample/Projects/demo-app"),
+                  lastActivity: fixedNow())
+        }
+        scan.send(CostUsageScanResult(entries: [], sessions: [session("a", 500)], sessionDetails: [detail("a")]))
+        XCTAssertEqual(model.scanSessions.map(\.inputTokens), [500])
+        XCTAssertEqual(model.scanSessionDetails.map(\.key), ["a"])
+        scan.send(CostUsageScanResult(entries: [], sessions: [session("b", 800)], sessionDetails: [detail("b")]))
+        XCTAssertEqual(model.scanSessions.map(\.session), ["b"])
+        XCTAssertEqual(model.scanSessionDetails.map(\.key), ["b"])
+        scan.send(nil)
+        XCTAssertTrue(model.scanSessions.isEmpty)
+        XCTAssertTrue(model.scanSessionDetails.isEmpty)
+    }
+
+    /// The panel draws the Sessions card for a provider with a session in
+    /// its 30 days, and not for one without.
+    func testTheSessionsCardIsDrawnOnlyWithASessionInTheWindow() {
+        let today = "2026-10-21"
+        func session(_ provider: String, _ date: String) -> CostUsageScanResult.SessionEntry {
+            .init(provider: provider, session: "s", date: date, model: "m",
+                  inputTokens: 1, cachedTokens: 0, outputTokens: 0, costUSD: 0)
+        }
+        XCTAssertTrue(ProviderSessionsCard.hasSessions([session("Codex", today)], provider: "Codex", todayKey: today))
+        XCTAssertFalse(ProviderSessionsCard.hasSessions([session("Claude", today)], provider: "Codex", todayKey: today))
+        XCTAssertFalse(ProviderSessionsCard.hasSessions([session("Codex", "2026-09-21")], provider: "Codex", todayKey: today))
+        XCTAssertTrue(ProviderSessionsCard.hasSessions([session("Codex", "2026-09-22")], provider: "Codex", todayKey: today))
+    }
+
     func testThisMacIsShownFirstAndAPickedScopeIsKept() {
         let scan = CurrentValueSubject<CostUsageScanResult?, Never>(
             CostUsageScanResult(entries: [entry("2026-10-06", "Codex", tokens: 500, cost: 1)]))

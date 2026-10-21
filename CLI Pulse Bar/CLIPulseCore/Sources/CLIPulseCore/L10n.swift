@@ -547,6 +547,76 @@ public enum L10n {
         public static func folderBlocked(_ provider: String) -> String { tr("projects.folder_blocked", provider) }
     }
 
+    /// v1.58 (P1-5): the usage panel's Sessions list (`SessionUsageList`),
+    /// one provider's sessions over the last 30 days. Its title is
+    /// `sessions.title`; "Conversations" is not a word the app uses.
+    public enum sessionHistory {
+        /// How many sessions the list holds: "1 session", "12 sessions".
+        public static func count(_ count: Int) -> String {
+            guard count != 1 else { return tr("session_history.count_one") }
+            let grouped: String = DisplayFormat.count(count)
+            return tr("session_history.count_other", grouped)
+        }
+        /// A session's I/O tokens and, on top of them, its cached tokens
+        /// (Claude, whose input leaves cache out): "1.2M I/O · 9.8M cached".
+        public static func ioCached(_ io: String, _ cached: String) -> String {
+            tr("session_history.io_cached", io, cached)
+        }
+        /// A session's I/O tokens and the cached part of them (Codex, whose
+        /// input includes its cached input): "1.2M I/O, incl. 980K cached".
+        public static func ioInclCached(_ io: String, _ cached: String) -> String {
+            tr("session_history.io_incl_cached", io, cached)
+        }
+        /// A session's I/O tokens when it cached nothing: "1.2M I/O", as a
+        /// model row says it.
+        public static func io(_ io: String) -> String { providerPanel.modelIOTokens(io) }
+        /// VoiceOver's "gpt-5.5 and 2 other models".
+        public static func spokenModels(_ model: String, others: Int) -> String {
+            others == 1
+                ? tr("session_history.spoken_models_one", model)
+                : tr("session_history.spoken_models_other", model, others)
+        }
+        /// VoiceOver's "1,234,567 input and output tokens".
+        public static func spokenIO(_ io: String) -> String { tr("session_history.spoken_io", io) }
+        /// VoiceOver's "1,234,567 input and output tokens, of which 980,123
+        /// cached" (Codex).
+        public static func spokenIOInclCached(_ io: String, _ cached: String) -> String {
+            tr("session_history.spoken_io_incl_cached", io, cached)
+        }
+        /// VoiceOver's "1,234,567 input and output tokens, plus 9,876,543
+        /// cached tokens" (Claude).
+        public static func spokenIOPlusCached(_ io: String, _ cached: String) -> String {
+            tr("session_history.spoken_io_plus_cached", io, cached)
+        }
+        /// Under a list that shows some of its sessions: "5 of 56 sessions".
+        public static func shownOf(_ shown: Int, _ total: Int) -> String {
+            let shownCount: String = DisplayFormat.count(shown)
+            let totalCount: String = DisplayFormat.count(total)
+            return tr("session_history.shown_of", shownCount, totalCount)
+        }
+        /// The button that shows more sessions: "Show 20 more".
+        public static func showMore(_ count: Int) -> String {
+            let grouped: String = DisplayFormat.count(count)
+            return tr("session_history.show_more", grouped)
+        }
+        /// The button that goes back to the first five.
+        public static var showLess: String { tr("session_history.show_less") }
+        /// Hovering "Unknown" on a session's line.
+        public static var unknownHelp: String { tr("session_history.unknown_help") }
+        /// When the session's logs were last written: "Last active Oct 20 at 2:05 PM".
+        public static func lastActive(_ moment: String) -> String { tr("session_history.last_active", moment) }
+        /// "includes 3 subagents", after the last-active time.
+        public static func subagents(_ count: Int) -> String {
+            count == 1 ? tr("session_history.subagents_one") : tr("session_history.subagents_other", count)
+        }
+        /// The order picker's choice for latest activity first.
+        public static var sortLatest: String { tr("session_history.sort_latest") }
+        /// The order picker's name for VoiceOver.
+        public static var sortPicker: String { tr("session_history.sort_picker") }
+        /// What the list holds, and that it is not synced.
+        public static var help: String { tr("session_history.help") }
+    }
+
     // MARK: - Providers
 
     /// v1.44 W5: the notice shown once, after the app enables its own login

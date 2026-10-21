@@ -123,11 +123,17 @@ extension CostUsageScanner {
         var checkoutsByName: [String: Set<String>] = [:]
     }
 
-    /// `codexProjectEntries`, and how it folded temporary folders.
+    /// `codexProjectEntries`, how it folded temporary folders, and the
+    /// project each counted log with usage in the reported days counts for,
+    /// by path (`codexSessions`, P1-5).
     static func codexProjects(
         cache: CostUsageCache, range: DayRange, home: String
-    ) -> (entries: [CostUsageScanResult.ProjectEntry], folding: CodexFolding) {
+    ) -> (
+        entries: [CostUsageScanResult.ProjectEntry], folding: CodexFolding,
+        identities: [String: ProjectIdentity]
+    ) {
         struct Log {
+            let path: String
             let root: String?
             let repository: String?
             let days: [String: [String: [Int]]]
@@ -154,6 +160,7 @@ extension CostUsageScanner {
             let project = usage.project
                 ?? codexFileProject(firstLine: readCodexFirstLine(fileURL: URL(fileURLWithPath: path)))
             logs.append(Log(
+                path: path,
                 root: ProjectPathNormalizer.root(project?.cwd, home: home),
                 repository: project?.repository,
                 days: days,
@@ -217,8 +224,10 @@ extension CostUsageScanner {
         }
 
         var rows: [ProjectIdentity: [String: [String: [Int]]]] = [:]
+        var identities: [String: ProjectIdentity] = [:]
         for log in logs {
             let project = identity(log)
+            identities[log.path] = project
             for (day, models) in log.days {
                 for (model, packed) in models {
                     let existing = rows[project]?[day]?[model] ?? []
@@ -243,7 +252,7 @@ extension CostUsageScanner {
                 }
             }
         }
-        return (entries, folding)
+        return (entries, folding, identities)
     }
 
     /// The key of `weights` with the largest weight; the smaller key wins a
@@ -285,16 +294,20 @@ extension CostUsageScanner {
 
         /// The project directory a transcript at `path` sits under (the first
         /// directory below its projects root), how deep below the root it
-        /// sits, and the root. nil for a transcript directly in a root.
-        func place(_ path: String) -> (directory: String, depth: Int, root: URL)? {
+        /// sits, the root, and the component under the directory: the
+        /// transcript's own file name (`<id>.jsonl`) for a session's
+        /// transcript, the session's folder (`<id>`) for one written below it
+        /// (a subagent, a workflow run). nil for a transcript directly in a
+        /// root.
+        func place(_ path: String) -> (directory: String, depth: Int, root: URL, below: String)? {
             for (prefix, root) in prefixes where path.hasPrefix(prefix) {
                 let relative = path.dropFirst(prefix.count).split(separator: "/")
                 guard relative.count >= 2 else { return nil }
-                return (String(relative[0]), relative.count, root)
+                return (String(relative[0]), relative.count, root, String(relative[1]))
             }
             for root in roots {
                 if let relative = CostUsageScanner.claudeTranscriptPath(URL(fileURLWithPath: path), under: root) {
-                    return (relative[0], relative.count, root)
+                    return (relative[0], relative.count, root, relative[1])
                 }
             }
             return nil
@@ -378,6 +391,19 @@ extension CostUsageScanner {
         cache: CostUsageCache, roots: [URL], range: DayRange, home: String,
         codexFolding: CodexFolding = CodexFolding()
     ) -> [CostUsageScanResult.ProjectEntry] {
+        claudeSplit(cache: cache, roots: roots, range: range, home: home, codexFolding: codexFolding).projects
+    }
+
+    /// The Claude rows of the reported days by project
+    /// (`claudeProjectEntries`) and by session (P1-5): a session is a
+    /// transcript `<directory>/<id>.jsonl` with everything written under
+    /// `<directory>/<id>/` (`claudeSession`), and counts for its directory's
+    /// project. Both splits are priced as `entriesFromClaudeCache` prices the
+    /// day's row, so each adds up to the rows.
+    static func claudeSplit(
+        cache: CostUsageCache, roots: [URL], range: DayRange, home: String,
+        codexFolding: CodexFolding = CodexFolding()
+    ) -> (projects: [CostUsageScanResult.ProjectEntry], sessions: SessionSplit) {
         let places = ClaudeProjectPlaces(roots: roots)
         let known = cache.projectRoots ?? [:]
         var identities: [String: ProjectIdentity] = [:]
@@ -419,49 +445,97 @@ extension CostUsageScanner {
 
         var rows: [ProjectIdentity: [String: [String: [Int]]]] = [:]
         var totals: [String: [String: [Int]]] = [:]
+        var sessionRows: [String: [String: [String: [Int]]]] = [:]
+        var sessions = SessionAccumulator()
         for (path, usage) in cache.files where claudeHasUsage(usage, range: range) {
-            let project = identity(directory: places.place(path)?.directory)
+            let place = places.place(path)
+            let project = identity(directory: place?.directory)
+            let session = claudeSession(path: path, place: place)
+            var tokensByDay: [String: Int] = [:]
             for (day, models) in usage.days
             where DayRange.isInRange(dayKey: day, since: range.sinceKey, until: range.untilKey) {
                 for (model, packed) in models where model != claudeMsgBucketModel {
                     let existing = rows[project]?[day]?[model] ?? []
                     rows[project, default: [:]][day, default: [:]][model] = addPacked(a: existing, b: packed, sign: 1)
                     totals[day, default: [:]][model] = addPacked(a: totals[day]?[model] ?? [], b: packed, sign: 1)
+                    sessionRows[session.key, default: [:]][day, default: [:]][model] = addPacked(
+                        a: sessionRows[session.key]?[day]?[model] ?? [], b: packed, sign: 1)
+                    if packed.prefix(4).contains(where: { $0 > 0 }) {
+                        let io = plusSaturating(max(0, packed[safeIdx: 0] ?? 0), max(0, packed[safeIdx: 3] ?? 0))
+                        tokensByDay[day] = plusSaturating(tokensByDay[day] ?? 0, io)
+                    }
                 }
             }
+            sessions.add(
+                key: session.key, project: project, tokensByDay: tokensByDay, isSubagent: session.isSubagent,
+                modifiedUnixMs: usage.mtimeUnixMs)
         }
 
+        // As `entriesFromClaudeCache` prices the day's row: its stored cost,
+        // or, when the whole row stored none, its tokens priced as a sum.
+        // With a stored cost each part takes its own stored share, which may
+        // be 0, so the projects of a row, and its sessions, add up to the row.
         let costScale = 1_000_000_000.0
+        func priced(day: String, model: String, packed: [Int])
+            -> (input: Int, cached: Int, output: Int, cost: Double?, approximate: Bool)?
+        {
+            let input = packed[safeIdx: 0] ?? 0
+            let cacheRead = packed[safeIdx: 1] ?? 0
+            let cacheCreate = packed[safeIdx: 2] ?? 0
+            let output = packed[safeIdx: 3] ?? 0
+            let costNanos = packed[safeIdx: 4] ?? 0
+            guard input > 0 || cacheRead > 0 || cacheCreate > 0 || output > 0 else { return nil }
+            let rowHasCost = (totals[day]?[model]?[safeIdx: 4] ?? 0) > 0
+            let cost: Double? = rowHasCost
+                ? Double(max(0, costNanos)) / costScale
+                : Pricing.claudeAggregateCostUSD(
+                    model: model, inputTokens: input, cacheReadInputTokens: cacheRead,
+                    cacheCreationInputTokens: cacheCreate, outputTokens: output)
+            return (input, cacheRead + cacheCreate, output, cost,
+                    Pricing.claudePriceResolution(model)?.isApproximate ?? false)
+        }
+
         var entries: [CostUsageScanResult.ProjectEntry] = []
         for (project, days) in rows {
             for (day, models) in days {
                 for (model, packed) in models {
-                    let input = packed[safeIdx: 0] ?? 0
-                    let cacheRead = packed[safeIdx: 1] ?? 0
-                    let cacheCreate = packed[safeIdx: 2] ?? 0
-                    let output = packed[safeIdx: 3] ?? 0
-                    let costNanos = packed[safeIdx: 4] ?? 0
-                    guard input > 0 || cacheRead > 0 || cacheCreate > 0 || output > 0 else { continue }
-                    // As `entriesFromClaudeCache` prices the day's row: its
-                    // stored cost, or, when the whole row stored none, its
-                    // tokens priced as a sum. With a stored cost each project
-                    // takes its own stored share, which may be 0, so the
-                    // projects of a row add up to the row.
-                    let rowHasCost = (totals[day]?[model]?[safeIdx: 4] ?? 0) > 0
-                    let cost: Double? = rowHasCost
-                        ? Double(max(0, costNanos)) / costScale
-                        : Pricing.claudeAggregateCostUSD(
-                            model: model, inputTokens: input, cacheReadInputTokens: cacheRead,
-                            cacheCreationInputTokens: cacheCreate, outputTokens: output)
+                    guard let part = priced(day: day, model: model, packed: packed) else { continue }
                     entries.append(.init(
                         provider: "Claude", project: project, date: day, model: model,
-                        inputTokens: input, cachedTokens: cacheRead + cacheCreate, outputTokens: output,
-                        costUSD: cost,
-                        priceIsApproximate: Pricing.claudePriceResolution(model)?.isApproximate ?? false))
+                        inputTokens: part.input, cachedTokens: part.cached, outputTokens: part.output,
+                        costUSD: part.cost, priceIsApproximate: part.approximate))
                 }
             }
         }
-        return entries
+        var split = SessionSplit()
+        for (key, days) in sessionRows {
+            for (day, models) in days {
+                for (model, packed) in models {
+                    guard let part = priced(day: day, model: model, packed: packed) else { continue }
+                    split.entries.append(.init(
+                        provider: "Claude", session: key, date: day, model: model,
+                        inputTokens: part.input, cachedTokens: part.cached, outputTokens: part.output,
+                        costUSD: part.cost, priceIsApproximate: part.approximate))
+                }
+            }
+        }
+        split.details = sessions.details(provider: "Claude")
+        return (entries, split)
+    }
+
+    /// The session a Claude transcript belongs to: `<directory>/<id>` for
+    /// the transcript `<directory>/<id>.jsonl` and for everything Claude Code
+    /// writes under `<directory>/<id>/` (subagents, workflow runs), which are
+    /// the session's subagents. A transcript outside any project directory,
+    /// which Claude Code does not write, is a session of its own.
+    static func claudeSession(
+        path: String, place: (directory: String, depth: Int, root: URL, below: String)?
+    ) -> (key: String, isSubagent: Bool) {
+        guard let place else { return ("claude-file:" + path, false) }
+        if place.depth == 2 {
+            return ("claude:" + place.directory + "/" + (place.below as NSString).deletingPathExtension, false)
+        }
+        return ("claude:" + place.directory + "/" + place.below, true)
     }
 }
 #endif
