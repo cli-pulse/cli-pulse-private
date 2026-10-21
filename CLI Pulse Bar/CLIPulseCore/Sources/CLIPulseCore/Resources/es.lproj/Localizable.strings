@@ -1637,7 +1637,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "projects.unknown" = "Desconocido";
 "projects.anonymous" = "Proyecto %d";
 "projects.shown_of" = "Los %1$d principales de %2$d proyectos";
-"projects.help" = "Agrupados por la carpeta en la que se ejecutó cada sesión, a partir de los registros de sesión de este Mac. Esta lista no se sincroniza con tu cuenta.";
+"projects.help" = "Agrupados por la carpeta en la que se ejecutó cada sesión, a partir de los registros de sesión de este Mac.\nEsta lista no se sincroniza con tu cuenta.";
 "projects.unknown_help" = "Los registros de estas sesiones no indican en qué carpeta se ejecutaron.";
 "projects.numbered_help" = "Numerados por su puesto entre todos los proyectos de este Mac, así que cada proyecto tiene el mismo número en todas las listas.";
 "projects.folder_blocked" = "Los proyectos de %@ no aparecen: CLI Pulse no tiene acceso a su carpeta de registros en este Mac.";

@@ -1670,7 +1670,7 @@
 "projects.unknown" = "未知";
 "projects.anonymous" = "專案 %d";
 "projects.shown_of" = "%2$d 個專案中的前 %1$d 個";
-"projects.help" = "根據這台 Mac 的工作階段日誌，依每個工作階段執行時所在的資料夾分組。這份清單不會同步到你的帳號。";
+"projects.help" = "根據這台 Mac 的工作階段日誌，依每個工作階段執行時所在的資料夾分組。\n這份清單不會同步到你的帳號。";
 "projects.unknown_help" = "這些工作階段的日誌沒有記錄它們在哪個資料夾中執行。";
 "projects.numbered_help" = "依在這台 Mac 所有專案中的排名編號，因此同一個專案在每份清單中的編號都相同。";
 "projects.folder_blocked" = "未列出 %@ 的專案：CLI Pulse 無權存取這台 Mac 上它的日誌資料夾。";
