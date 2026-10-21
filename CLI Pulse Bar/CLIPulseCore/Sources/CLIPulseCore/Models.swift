@@ -723,7 +723,11 @@ public struct SessionRecord: Codable, Identifiable, Sendable, Hashable {
     /// an empty project, or a scan producer's placeholder on a scan row. A
     /// row that showed `project` as stored put the English "unknown" under a
     /// title that reads "Claude 进程" in Chinese.
-    public var displayProject: String? {
+    ///
+    /// Internal since v1.58 (P1-6), like `detailProject` and `displayName`:
+    /// the apps show it through `PersonalInfoMask.sessionProject`, which
+    /// follows "Hide personal information".
+    var displayProject: String? {
         let clean = project.trimmingCharacters(in: .whitespacesAndNewlines)
         if clean.isEmpty { return nil }
         if isProcessScanRow, Self.scanRowPlaceholderProjects.contains(clean) { return nil }
@@ -732,7 +736,7 @@ public struct SessionRecord: Codable, Identifiable, Sendable, Hashable {
 
     /// The project as a session detail's Project field shows it: the project,
     /// or "Unknown" in the reader's language when there is none to show.
-    public var detailProject: String {
+    var detailProject: String {
         displayProject ?? L10n.status.unknown
     }
 
@@ -779,7 +783,8 @@ public struct SessionRecord: Codable, Identifiable, Sendable, Hashable {
     /// is rendered through the same fallback label managed rows use. Keyed on
     /// the `jsonl-` id as well as the exact name, so a real process or cloud
     /// session that happens to be called "Claude session" keeps its own name.
-    public var displayName: String {
+    /// The apps show it through `PersonalInfoMask.sessionTitle`.
+    var displayName: String {
         if id.hasPrefix("jsonl-"), name == Self.jsonlSessionName(provider: provider) {
             return L10n.sessions.rowFallbackLabel(provider)
         }

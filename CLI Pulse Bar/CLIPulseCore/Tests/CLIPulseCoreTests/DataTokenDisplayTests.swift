@@ -207,7 +207,7 @@ final class DataTokenDisplayTests: XCTestCase {
                               status: "running", total_usage: 1200, estimated_cost: 1.5, cost_status: "Estimated",
                               requests: 3, error_count: 0)
         withLocale("ja") {
-            let row = PDFReportGenerator.topSessionRow(s)
+            let row = PDFReportGenerator.topSessionRow(s, hidePersonalInfo: false, projectNumbers: .none)
             XCTAssertEqual(row.last, L10n.status.running)
             XCTAssertEqual(row.last, "実行中")
             XCTAssertEqual(s.status, "running")
@@ -324,7 +324,7 @@ final class DataTokenDisplayTests: XCTestCase {
                    mapped: "ProviderDisplay.clientLabelDisplay($0, provider: session.provider)",
                    raw: [".navigationTitle(session.clientLabel ?? session.id)"]),
             Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/PDFReportGenerator.swift",
-                   mapped: "drawTableRow(topSessionRow(s),"),
+                   mapped: "topSessionRow(s, hidePersonalInfo: hidePersonalInfo, projectNumbers: projectNumbers)"),
             // The display mappers recognize these labels by exact match, so the
             // senders must build them with the same helpers or the translation
             // silently stops.

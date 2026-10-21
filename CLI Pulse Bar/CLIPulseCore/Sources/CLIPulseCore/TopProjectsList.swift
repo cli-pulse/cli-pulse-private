@@ -6,6 +6,11 @@ import SwiftUI
 /// (`DashboardSummary.showsTopProjectsCard`). Since 1.58 the Mac draws its
 /// own card from this Mac's scan (`TopProjectsCard`), so only the iOS style
 /// is left.
+///
+/// v1.58 (P1-6): with "Hide personal information" on, a project is "Hidden
+/// project" (`PersonalInfoMask.projectName`; the iPhone has no scan to number
+/// it by). Nothing fills `top_projects` today, so this is for the day
+/// something does.
 public struct TopProjectsList: View {
 
     public struct Style: Sendable {
@@ -29,16 +34,18 @@ public struct TopProjectsList: View {
 
     private let projects: [TopProject]
     private let style: Style
+    private let hidePersonalInfo: Bool
 
-    public init(projects: [TopProject], style: Style) {
+    public init(projects: [TopProject], style: Style, hidePersonalInfo: Bool) {
         self.projects = projects
         self.style = style
+        self.hidePersonalInfo = hidePersonalInfo
     }
 
     public var body: some View {
         ForEach(projects) { project in
             HStack {
-                Text(project.name)
+                Text(PersonalInfoMask.projectName(project.name, numbers: .none, hidePersonalInfo: hidePersonalInfo) ?? "")
                     .font(style.nameFont)
                     .lineLimit(1)
                 Spacer()

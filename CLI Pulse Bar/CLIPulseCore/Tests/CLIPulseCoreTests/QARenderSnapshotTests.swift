@@ -797,6 +797,116 @@ final class QARenderSnapshotTests: XCTestCase {
         XCTAssertTrue(QARenderSnapshot.localizationIsActive(language: "ja", probes: [english, japanese]))
     }
 
+    // MARK: - Hide personal information (v1.58, P1-6)
+
+    /// Every privacy surface is drawn, last, with its kind; none is a store
+    /// shot.
+    func testTheReviewSetDrawsEveryPrivacySurface() {
+        let catalog = QARenderSnapshot.catalog
+        let expected: [(QARenderPrivacySurface, String, QARenderSurface.Kind)] = [
+            (.overview, "hide-personal-info-overview", .popover),
+            (.sessions, "hide-personal-info-sessions", .popover),
+            (.alerts, "hide-personal-info-alerts", .popover),
+            (.panel, "hide-personal-info-panel-codex", .panel),
+            (.exports, "hide-personal-info-exports", .document),
+        ]
+        XCTAssertEqual(expected.map(\.0), QARenderPrivacySurface.allCases)
+        for (which, id, kind) in expected {
+            let surface = QARenderSurface.hidePersonalInfo(which)
+            XCTAssertTrue(catalog.contains(surface), "\(id) is not rendered")
+            XCTAssertEqual(surface.id, id)
+            XCTAssertEqual(surface.kind, kind)
+            XCTAssertFalse(QARenderSnapshot.storeCatalog.contains { $0.surface == surface })
+        }
+        XCTAssertEqual(
+            Array(catalog.suffix(QARenderPrivacySurface.allCases.count)),
+            QARenderPrivacySurface.allCases.map { .hidePersonalInfo($0) },
+            "drawn after everything else, so the switch they turn on and off is off for every other surface")
+    }
+
+    /// What the privacy renders look for: every project name and path, every
+    /// session's stored name (the command line included) and project, every
+    /// alert's, and "/Users/"; not the app's own words, a provider's name or
+    /// a placeholder.
+    func testThePersonalStringsAreTheDatasNamesAndPaths() {
+        let now = Date()
+        let sessions = DemoDataProvider.generate().sessions + QARenderSnapshot.logSessionsSample(now: now)
+            + QARenderSnapshot.privacySessionsSample(now: now)
+            + [SessionRecord(id: "jsonl-claude-9", name: "Claude session", provider: "Claude", project: "unknown",
+                             device_name: "MacBook Pro", started_at: "", last_active_at: "", status: "Running",
+                             total_usage: 0, estimated_cost: 0, cost_status: "Estimated", requests: 0, error_count: 0),
+               SessionRecord(id: "local-9", name: "claude", provider: "Claude", project: "unknown",
+                             device_name: "MacBook Pro", started_at: "", last_active_at: "", status: "Running",
+                             total_usage: 0, estimated_cost: 0, cost_status: "Estimated", requests: 0, error_count: 0)]
+        let projects = [ProjectIdentity.folder("/Users/demo/Developer/cli-pulse-ios"), .unknown]
+        let strings = QARenderSnapshot.personalStrings(
+            sessions: sessions, alerts: QARenderSnapshot.privacyAlertsSample(now: now), projects: projects)
+        for expected in ["/Users/", "/Users/demo/Developer/cli-pulse-ios", "cli-pulse-ios", "provider-layer",
+                         "ios-dashboard", "Claude · demo-app", "sample-service", QARenderSnapshot.privacyCommandLine,
+                         "codex exec --cd /Users/sample/Projects/demo-app", "codex-demo-app", "demo-app"] {
+            XCTAssertTrue(strings.contains(expected), expected)
+        }
+        for left in ["Claude session", "claude", "unknown", "MacBook Pro", "build-box"] {
+            XCTAssertFalse(strings.contains(left), left)
+        }
+        XCTAssertEqual(strings, strings.sorted())
+        XCTAssertEqual(strings.count, Set(strings).count)
+    }
+
+    func testAPrivacyCheckPassesOnlyWithTextAControlAndNoLeak() {
+        let needles = ["demo-app", "/Users/"]
+        let pass = QARenderSnapshot.privacyCheck(
+            id: "hide-personal-info-sessions", source: "accessibility", needles: needles,
+            textsOn: ["Codex · 项目 1", "Codex 会话"], textsOff: ["Codex · demo-app"])
+        XCTAssertTrue(pass.passed)
+        XCTAssertEqual(pass.shownWithSwitchOff, ["demo-app"])
+        XCTAssertNil(QARenderSnapshot.privacyProblem(pass))
+
+        // Negative controls: each way a check must fail.
+        let leak = QARenderSnapshot.privacyCheck(
+            id: "x", source: "sessions.csv", needles: needles,
+            textsOn: ["codex exec --cd /Users/sample/Projects/demo-app"], textsOff: ["demo-app"])
+        XCTAssertFalse(leak.passed)
+        XCTAssertEqual(leak.leaks, ["demo-app", "/Users/"], "a name inside a longer line is shown")
+        XCTAssertEqual(QARenderSnapshot.privacyProblem(leak),
+                       "privacy: x (sessions.csv) shows with the switch on: demo-app, /Users/")
+        let blind = QARenderSnapshot.privacyCheck(
+            id: "x", source: "accessibility", needles: needles, textsOn: ["Codex 会话"], textsOff: ["Codex 会话"])
+        XCTAssertFalse(blind.passed, "a control that shows nothing could not have seen a leak")
+        XCTAssertTrue(QARenderSnapshot.privacyProblem(blind)?.contains("control") ?? false)
+        // The control is the switch-off reading alone: what leaked with the
+        // switch on does not stand in for it.
+        let blindButLeaking = QARenderSnapshot.privacyCheck(
+            id: "x", source: "accessibility", needles: needles, textsOn: ["demo-app"], textsOff: ["Codex 会话"])
+        XCTAssertEqual(blindButLeaking.shownWithSwitchOff, [])
+        XCTAssertEqual(blindButLeaking.leaks, ["demo-app"])
+        XCTAssertTrue(QARenderSnapshot.privacyProblem(blindButLeaking)?.contains("control") ?? false)
+        let nothingRead = QARenderSnapshot.privacyCheck(
+            id: "x", source: "accessibility", needles: needles, textsOn: [], textsOff: ["demo-app"])
+        XCTAssertFalse(nothingRead.passed)
+        XCTAssertTrue(QARenderSnapshot.privacyProblem(nothingRead)?.contains("no text") ?? false)
+        let caseMatters = QARenderSnapshot.privacyCheck(
+            id: "x", source: "accessibility", needles: ["demo-app"], textsOn: ["Demo-App"], textsOff: ["demo-app"])
+        XCTAssertTrue(caseMatters.leaks.isEmpty)
+    }
+
+    /// The samples are what the producers write: the Companion CLI names a
+    /// process row by the first 48 characters of its command line, and its
+    /// alert and the desktop app's are templates `AlertPresentation`
+    /// recognises.
+    func testThePrivacySamplesAreWhatTheProducersWrite() {
+        XCTAssertEqual(QARenderSnapshot.privacyCommandLine.count, 48)
+        let now = Date()
+        let rows = QARenderSnapshot.privacySessionsSample(now: now)
+        XCTAssertTrue(rows[0].isProcessScanRow)
+        XCTAssertFalse(rows[1].isProcessScanRow || rows[1].id.hasPrefix("jsonl-"))
+        XCTAssertTrue(rows.allSatisfy { SessionFreshnessTierClassifier.classify($0, now: now).isVisible },
+                      "both rows are listed in the Sessions tab")
+        for alert in QARenderSnapshot.privacyAlertsSample(now: now) {
+            XCTAssertTrue(AlertPresentation.text(for: alert).recognized, alert.id)
+        }
+    }
+
     // MARK: - Manifest
 
     func testManifestRoundTripsAsSortedJSON() throws {
@@ -827,6 +937,15 @@ final class QARenderSnapshotTests: XCTestCase {
             blockedRequests: ["https://status.example.com/api/v2/status.json"],
             warnings: []
         )
+        var withChecks = manifest
+        withChecks.privacyChecks = [.init(
+            id: "hide-personal-info-sessions", source: "accessibility", textsRead: 120, lookedFor: 14,
+            shownWithSwitchOff: ["cli-pulse-ios"], leaks: [])]
+        XCTAssertEqual(
+            try JSONDecoder().decode(QARenderManifest.self, from: try withChecks.encoded()), withChecks)
+        XCTAssertFalse(
+            String(decoding: try manifest.encoded(), as: UTF8.self).contains("privacyChecks"),
+            "a run that drew no privacy surface writes no privacyChecks")
         let data = try manifest.encoded()
         XCTAssertEqual(try JSONDecoder().decode(QARenderManifest.self, from: data), manifest)
         let text = try XCTUnwrap(String(data: data, encoding: .utf8))

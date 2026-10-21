@@ -5,6 +5,9 @@ struct AlertsTab: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var alertState: AlertState
     @State private var filter: AlertFilter = .open
+    /// v1.58 (P1-6): numbers the projects the rows name
+    /// (`AppState.projectNameNumbers`) while "Hide personal information" is on.
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     enum AlertFilter: String, CaseIterable {
         case open = "Open"
@@ -89,8 +92,9 @@ struct AlertsTab: View {
                         subtitle: filter == .open ? L10n.alerts.noUnresolved : L10n.alerts.noMatching
                     )
                 } else {
+                    let numbers = state.projectNameNumbers(hidePersonalInfo: hidePersonalInfo)
                     ForEach(filteredAlerts) { alert in
-                        AlertRow(alert: alert) {
+                        AlertRow(alert: alert, projectNumbers: numbers) {
                             await state.acknowledgeAlert(alert)
                         } onResolve: {
                             await state.resolveAlert(alert)
@@ -125,17 +129,22 @@ struct AlertsTab: View {
 
 struct AlertRow: View {
     let alert: AlertRecord
+    /// v1.58 (P1-6): the numbers "Project N" gives this Mac's projects.
+    let projectNumbers: ProjectNameNumbers
     let onAcknowledge: () async -> Void
     let onResolve: () async -> Void
     let onSnooze: (Int) async -> Void
 
     @State private var showSnooze = false
+    /// With it on, a session the alert names is its provider, its project is
+    /// masked, and its session chip says "Session" (`PersonalInfoMask`).
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     var body: some View {
         // The stored title/message stay English (they are also the webhook
         // payload and neighbours of the suppression key); only this rendering
         // is translated. An unrecognized template returns the stored text.
-        let shown = AlertPresentation.text(for: alert)
+        let shown = PersonalInfoMask.alertText(alert, numbers: projectNumbers, hidePersonalInfo: hidePersonalInfo)
         VStack(alignment: .leading, spacing: 6) {
             // Header. On the first line's baseline, so a title that wraps
             // (Spanish, often) keeps the dot and the time beside its first
@@ -164,10 +173,11 @@ struct AlertRow: View {
                 if let provider = alert.related_provider {
                     chipView(icon: "cpu", text: provider)
                 }
-                if let project = alert.related_project_name {
+                if let project = PersonalInfoMask.alertProject(
+                    alert, numbers: projectNumbers, hidePersonalInfo: hidePersonalInfo) {
                     chipView(icon: "folder", text: project)
                 }
-                if let session = alert.related_session_name {
+                if let session = PersonalInfoMask.alertSessionName(alert, hidePersonalInfo: hidePersonalInfo) {
                     chipView(icon: "terminal", text: session)
                 }
                 if let device = alert.related_device_name {

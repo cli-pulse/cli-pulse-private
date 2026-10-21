@@ -148,9 +148,13 @@ struct iOSAlertRow: View {
     var onNavigate: ((AppState.Tab) -> Void)? = nil
 
     @State private var showSnooze = false
+    /// v1.58 (P1-6): with it on, a session the alert names is its provider,
+    /// its project "Hidden project" (no scan on the iPhone, so no numbers),
+    /// and its session chip says "Session".
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     var body: some View {
-        let shown = AlertPresentation.text(for: alert)
+        let shown = PersonalInfoMask.alertText(alert, numbers: .none, hidePersonalInfo: hidePersonalInfo)
         VStack(alignment: .leading, spacing: 8) {
             // Header
             HStack(spacing: 8) {
@@ -178,10 +182,11 @@ struct iOSAlertRow: View {
                     }
                     .buttonStyle(.plain)
                 }
-                if let project = alert.related_project_name {
+                if let project = PersonalInfoMask.alertProject(
+                    alert, numbers: .none, hidePersonalInfo: hidePersonalInfo) {
                     chipView(icon: "folder", text: project)
                 }
-                if let session = alert.related_session_name {
+                if let session = PersonalInfoMask.alertSessionName(alert, hidePersonalInfo: hidePersonalInfo) {
                     Button { onNavigate?(.sessions) } label: {
                         chipView(icon: "terminal", text: session, tappable: onNavigate != nil)
                     }

@@ -164,6 +164,11 @@ activated cannot have active controls. Read a switch's state from its knob.
 | `card-panel-sessions` | The usage panel's Sessions card (v1.58, P1-5) in the states `panel-provider-usage-*` do not show, dark as the panel is, at the 440-point panel's card width: Codex latest first; Claude with Hide personal information on (each session's project as "Project N", the number Projects gives the folder, with no path on hover, and the footnote line saying how they are numbered); Claude with costs hidden too (no cost, ranked by I/O tokens, the order picker reading Tokens, each line naming its model with the most tokens); and three Codex sessions that cached nothing (no "cached" part), one with no rate ("No rate" in grey) |
 | `card-panel-sessions-more` | More of the Sessions card's states, the same way: Codex with Hide personal information on and 25 rows shown ("Show 20 more" pressed once, so "Show less" too), "Unknown" rows un-numbered among "Project N" ones; two Codex sessions, one in a folder whose name is cut in the middle beside a four-figure cost that is a lower bound ("≥$1,234.56"); and a single Claude session ("1 session", no order picker). From `QARenderSnapshot.sessionsEdgeSample` and the panel sample |
 | `panel-provider-usage-codex-laptop` | `panel-provider-usage-codex` at 440 points in a panel 876 points tall, the cap `DashboardPanelController` puts on it on a 900-point laptop screen (the visible height less 24), drawn page by page: with the Sessions card the provider panel is about 1,200 points, so on a laptop it scrolls, as one page, down to the Sessions card's footnote |
+| `hide-personal-info-overview` | The Overview with Hide personal information on (v1.58, P1-6): Top Projects as "Project N" with no path on hover. Like every `hide-personal-info-*` surface, drawn from Demo with `QARenderSnapshot.logSessionsSample`, `privacySessionsSample` and `privacyAlertsSample` put in (another Mac's Companion CLI row named by the start of a command line, a row whose name is a command line with a path, and their session alerts), and checked as "Hide personal information" below says |
+| `hide-personal-info-sessions` | The Sessions tab with the switch on: a scan row reads "Codex · Project 1" (the number Projects gives that folder), a project no folder of this Mac's has a number for reads "Hidden project", and a row titled by its stored name reads "Codex session" |
+| `hide-personal-info-alerts` | Alerts with the switch on: a session alert names its provider ("Claude is consuming high CPU", not the command line), the desktop app's message reads "… in Project N" or "… in a hidden project" and the project chip "Project N" or "Hidden project", the session chip reads "Session" |
+| `hide-personal-info-panel-codex` | The usage panel as the Demo Codex card opens it, with the switch on: Projects and Sessions name "Project N" with no path on hover |
+| `hide-personal-info-exports` | The Export menu's four files written with the switch on, kept beside the PNG (`…-cost-report.csv`, `…-sessions.csv`, `…-alerts.csv`, `…-report.pdf`), and the PDF's first page drawn (kind `document`). The sessions and alerts CSVs are data files: their stand-ins ("Project 1", "Hidden project", "Codex session") are English like their headers in every language; the cost report and the PDF are in the reader's language |
 | `language-menu` | The globe menu's items, read from its real `NSMenu` (see below) |
 
 `manifest.json` lists every PNG with its id, kind, page, size in points and
@@ -172,6 +177,25 @@ pixels, and a `suspectBlank` flag; the language actually in effect three ways
 for AppKit) and a `localizationProbe` of catalogue keys next to their English;
 the settings the run changed (`forcedSettings`); the surfaces it cannot draw and
 why (`skipped`); `blockedRequests`; and `warnings`.
+
+### Hide personal information
+
+There is no UI test target and no OCR. Each `hide-personal-info-*` surface is
+drawn with the switch on, and the renderer reads back the text of what it drew:
+for a view, every label, title, value and help (hover) text in its
+accessibility tree, page by page (the renderer sets AppKit's
+`AXEnhancedUserInterface`, as VoiceOver does, so SwiftUI builds the tree for a
+window that is never on screen); for an export, the file's own text (the CSV's
+lines, the PDF's text as PDFKit reads it). It looks for every personal string
+of the data it drew (`QARenderSnapshot.personalStrings`: each session's project
+and stored name, each alert's project and session name, each of this Mac's
+projects' folder name and path, and `/Users/`). Before drawing, it reads the
+same surface with the switch off: that reading must show some of them, or the
+check could not have seen a leak. `manifest.json`'s `privacyChecks` records,
+per surface (and per export file), how many strings were read, how many it
+looked for, which the switch-off reading showed and which the switch-on one
+showed (`leaks`, which must be empty). A failed check is a `privacy:` warning
+and the app exits 6.
 
 ### The language menu
 
@@ -324,7 +348,9 @@ panels are composed and pushed: AGENTS.md, "Mac screenshots (six languages)".
 The app: 0 clean; 3 some render looks blank; 4 a coverage warning (for example
 `SettingsTab` gained a section the catalog does not name); 5 a store-set
 warning (including legacy scroll bars, a gray usage panel, and a cost page
-that cannot open above a card); 64 refused (including the store set in a `DEVID_BUILD` build); 65 the
+that cannot open above a card); 6 a `hide-personal-info-*` surface failed its
+privacy check (a personal string shown with the switch on, no text read, or a
+control that showed none with it off); 64 refused (including the store set in a `DEVID_BUILD` build); 65 the
 language was not in effect; 66 the store set's local history could not be
 written inside the QA home or read back; 67 a store shot that is not allowed;
 70 watchdog (15 minutes); 73 output directory not usable or not empty; 74

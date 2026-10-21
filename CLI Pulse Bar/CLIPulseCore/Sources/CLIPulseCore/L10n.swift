@@ -530,7 +530,18 @@ public enum L10n {
         /// A project whose logs name no folder.
         public static var unknown: String { tr("projects.unknown") }
         /// A named project with "Hide personal information" on: "Project 2".
-        public static func anonymous(_ number: Int) -> String { tr("projects.anonymous", number) }
+        /// `english: true` is "Project 2" whatever the UI language: inside an
+        /// alert's stored English and in the English data exports (v1.58, P1-6).
+        public static func anonymous(_ number: Int, english: Bool = false) -> String {
+            tr("projects.anonymous", english: english, number)
+        }
+        /// v1.58 (P1-6): with "Hide personal information" on, a project
+        /// known only by a folder name Projects gives no number (another
+        /// device's, an older one, one two folders share): "Hidden project".
+        public static var hidden: String { tr("projects.hidden") }
+        /// `hidden` in English whatever the UI language, for the same places
+        /// as `anonymous(_:english:)`.
+        public static var hiddenEnglish: String { tr("projects.hidden", english: true) }
         /// Under a list cut short: "Top 5 of 12 projects".
         public static func shownOf(_ shown: Int, _ total: Int) -> String { tr("projects.shown_of", shown, total) }
         /// What a list counts, and that the list is not synced (only the
@@ -1187,7 +1198,11 @@ public enum L10n {
         public static var localFastPathTitle: String { tr("sessions.local_fast_path_title") }
         public static var localFastPathOnDetail: String { tr("sessions.local_fast_path_on_detail") }
         public static var localFastPathOffDetail: String { tr("sessions.local_fast_path_off_detail") }
-        public static func rowFallbackLabel(_ a0: String) -> String { tr("sessions.row_fallback_label", a0) }
+        /// `english: true`: "Codex session" whatever the UI language, for the
+        /// English sessions export with "Hide personal information" on.
+        public static func rowFallbackLabel(_ a0: String, english: Bool = false) -> String {
+            tr("sessions.row_fallback_label", english: english, a0)
+        }
         public static func rowLabelOnDevice(_ a0: String, _ a1: String) -> String { tr("sessions.row_label_on_device", a0, a1) }
         public static func rowLocalLabel(_ a0: String) -> String { tr("sessions.row_local_label", a0) }
         public static func rowInAppTerminalLabel(_ a0: String) -> String { tr("sessions.row_in_app_terminal_label", a0) }
@@ -1202,7 +1217,10 @@ public enum L10n {
         public static var previewHeaderClaude: String { tr("sessions.preview_header_claude") }
         public static var tierBadgeRecentActivity: String { tr("sessions.tier_badge_recent_activity") }
         public static var tierBadgeRecent: String { tr("sessions.tier_badge_recent") }
-        public static func rowProcessLabel(_ a0: String) -> String { tr("sessions.row_process_label", a0) }
+        /// `english: true` as for `rowFallbackLabel`.
+        public static func rowProcessLabel(_ a0: String, english: Bool = false) -> String {
+            tr("sessions.row_process_label", english: english, a0)
+        }
         public static var managedSectionHeader: String { tr("sessions.managed_section_header") }
         public static var diagnosticsInodeHint: String { tr("sessions.diagnostics_inode_hint") }
         public static var previewEmptyClaude: String { tr("sessions.preview_empty_claude") }
@@ -2302,7 +2320,11 @@ public enum L10n {
         /// `AdvancedUploadCopy`.
         public static var backgroundSyncHintLocalMode: String { tr("advanced.background_sync_hint_local_mode") }
         public static var fullDetails: String { tr("advanced.full_details") }
-        public static var hideEmails: String { tr("advanced.hide_emails") }
+        /// The line under "Hide personal information" (Settings › Advanced):
+        /// what the switch hides. v1.58 (P1-6): it said "Hide email addresses
+        /// in the UI" while the switch came to cover projects, paths,
+        /// session names and the exports.
+        public static var hidePersonalInfoHelp: String { tr("advanced.hide_personal_info_help") }
         public static var trackGit: String { tr("advanced.track_git") }
         public static var trackGitHint: String { tr("advanced.track_git_hint") }
         public static var gitConsentTitle: String { tr("advanced.git_consent_title") }
@@ -3017,6 +3039,10 @@ public enum L10n {
         public static func sessionCPUTitle(_ session: String) -> String {
             tr("alert_kind.session_cpu_title", session)
         }
+        /// v1.58 (P1-6): the title when the alert's session is not named
+        /// ("Hide personal information" on and no provider to name it by):
+        /// "A session is consuming high CPU".
+        public static var sessionCPUTitleUnnamed: String { tr("alert_kind.session_cpu_title_unnamed") }
         /// Swift `AlertGenerator`: normalized against total system capacity.
         public static func sessionCPUMessageSystem(_ percent: String, _ cores: String, _ provider: String) -> String {
             tr("alert_kind.session_cpu_message_system", percent, cores, provider)
@@ -3029,10 +3055,20 @@ public enum L10n {
         public static func sessionCPUMessageProcessInProject(_ percent: String, _ provider: String, _ project: String) -> String {
             tr("alert_kind.session_cpu_message_process_in_project", percent, provider, project)
         }
+        /// v1.58 (P1-6): the same with "Hide personal information" on and a
+        /// project that has no number: "… for Codex in a hidden project.",
+        /// worded for the sentence rather than the "Hidden project" label put
+        /// into it.
+        public static func sessionCPUMessageProcessInHiddenProject(_ percent: String, _ provider: String) -> String {
+            tr("alert_kind.session_cpu_message_process_in_hidden_project", percent, provider)
+        }
 
         public static func sessionLongTitle(_ session: String) -> String {
             tr("alert_kind.session_long_title", session)
         }
+        /// v1.58 (P1-6): as `sessionCPUTitleUnnamed`: "A session has been
+        /// running for a long time".
+        public static var sessionLongTitleUnnamed: String { tr("alert_kind.session_long_title_unnamed") }
         public static var sessionLongMessage: String { tr("alert_kind.session_long_message") }
 
         public static func quotaTitle(_ provider: String, _ tier: String, _ used: String) -> String {
@@ -3074,6 +3110,10 @@ public enum L10n {
 
         public static var sourceDevice: String { tr("alert_kind.source_device") }
         public static var sourceSession: String { tr("alert_kind.source_session") }
+        /// "Session" in English whatever the UI language: what stands in for
+        /// a session's stored name inside an alert's stored English with "Hide
+        /// personal information" on and no provider to name it by (v1.58, P1-6).
+        public static var sourceSessionEnglish: String { tr("alert_kind.source_session", english: true) }
         public static var sourceQuota: String { tr("alert_kind.source_quota") }
         public static var sourceBudget: String { tr("alert_kind.source_budget") }
         public static var sourceProvider: String { tr("alert_kind.source_provider") }

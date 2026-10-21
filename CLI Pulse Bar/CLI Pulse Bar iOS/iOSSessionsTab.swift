@@ -5,6 +5,11 @@ struct iOSSessionsTab: View {
     @EnvironmentObject var state: AppState
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedSession: SessionRecord?
+    /// v1.58 (P1-6): the iPad list's titles and projects follow "Hide
+    /// personal information" as the iPhone rows do (`PersonalInfoMask`). No
+    /// project numbers: the iPhone has no scan, so a project is "Hidden
+    /// project".
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     private var isIPad: Bool { horizontalSizeClass == .regular }
 
@@ -222,7 +227,8 @@ struct iOSSessionsTab: View {
                         // provider and project, not its command line. Two
                         // lines: beside "En ejecución" one line cut
                         // "Gemini · cli-pulse-helper" short.
-                        Text(session.displayName)
+                        Text(PersonalInfoMask.sessionTitle(
+                            session, numbers: .none, hidePersonalInfo: hidePersonalInfo))
                             .font(.subheadline.weight(.medium))
                             .lineLimit(2)
                         // One line: beside a long badge ("En ejecución") the
@@ -236,7 +242,8 @@ struct iOSSessionsTab: View {
                             } else {
                                 Text(session.provider).font(.caption2)
                                     .fixedSize()
-                                if let project = session.displayProject {
+                                if let project = PersonalInfoMask.sessionProject(
+                                    session, numbers: .none, hidePersonalInfo: hidePersonalInfo) {
                                     Text(project).font(.caption2)
                                         .lineLimit(1)
                                 }
@@ -325,6 +332,13 @@ struct SessionDetailView: View {
     /// The moment its badge is classified at: the list's
     /// (`AppState.sessionsClock`), so in Demo it matches the row tapped.
     var now = Date()
+    /// v1.58 (P1-6): the title and the Project field follow "Hide personal
+    /// information" (`PersonalInfoMask`; no project numbers on the iPhone).
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
+
+    private var title: String {
+        PersonalInfoMask.sessionTitle(session, numbers: .none, hidePersonalInfo: hidePersonalInfo)
+    }
 
     var body: some View {
         ScrollView {
@@ -339,7 +353,7 @@ struct SessionDetailView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(session.displayName)
+                        Text(title)
                             .font(.title3.weight(.bold))
                         HStack(spacing: 6) {
                             // The badge the session's row shows: on iPad the
@@ -365,7 +379,11 @@ struct SessionDetailView: View {
                     GridItem(.flexible()),
                 ], spacing: 16) {
                     detailItem(label: L10n.detail.provider, value: session.provider, icon: "cpu")
-                    detailItem(label: L10n.detail.project, value: session.detailProject, icon: "folder")
+                    detailItem(
+                        label: L10n.detail.project,
+                        value: PersonalInfoMask.sessionDetailProject(
+                            session, numbers: .none, hidePersonalInfo: hidePersonalInfo),
+                        icon: "folder")
                     detailItem(label: L10n.detail.device, value: session.device_name, icon: "desktopcomputer")
                     detailItem(label: L10n.detail.started, value: RelativeTime.format(session.started_at), icon: "clock")
                 }
@@ -397,7 +415,7 @@ struct SessionDetailView: View {
             }
             .padding(24)
         }
-        .navigationTitle(session.displayName)
+        .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -443,6 +461,10 @@ struct iOSSessionRow: View {
     /// rendered outside the analytics section split (legacy callers).
     let freshnessTier: FreshnessTier?
 
+    /// v1.58 (P1-6): the title and project follow "Hide personal
+    /// information" (`PersonalInfoMask`; no project numbers on the iPhone).
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
+
     init(session: SessionRecord, showCost: Bool, freshnessTier: FreshnessTier? = nil) {
         self.session = session
         self.showCost = showCost
@@ -455,7 +477,7 @@ struct iOSSessionRow: View {
                 Image(systemName: session.providerKind?.iconName ?? "terminal")
                     .foregroundStyle(PulseTheme.providerColor(session.provider))
 
-                Text(session.displayName)
+                Text(PersonalInfoMask.sessionTitle(session, numbers: .none, hidePersonalInfo: hidePersonalInfo))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
 
@@ -480,7 +502,8 @@ struct iOSSessionRow: View {
             HStack(spacing: 14) {
                 if !session.titleNamesProviderAndProject {
                     Label(session.provider, systemImage: "cpu")
-                    if let project = session.displayProject {
+                    if let project = PersonalInfoMask.sessionProject(
+                        session, numbers: .none, hidePersonalInfo: hidePersonalInfo) {
                         Label(project, systemImage: "folder")
                     }
                 }

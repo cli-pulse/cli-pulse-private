@@ -14,6 +14,7 @@ MAC="CLI Pulse Bar/CLI Pulse Bar"
 IOS="CLI Pulse Bar/CLI Pulse Bar iOS"
 WATCH="CLI Pulse Bar/CLI Pulse Bar Watch"
 WIDGETS="CLI Pulse Bar/CLI Pulse Widgets"
+CORE="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore"
 pass=0; fail=0
 
 PHONE_OK='final class PhoneSessionManager {
@@ -43,17 +44,29 @@ WATCH_OK='final class WatchSessionManager {
     }
 }'
 
+NOTIFY_OK='final class DataRefreshManager {
+    func sendNotification(for alert: AlertRecord) {
+        let content = UNMutableNotificationContent()
+        content.title = AlertPresentation.notificationTitle(for: alert)
+        content.body = PersonalInfoMask.alertText(
+            alert, numbers: .none, hidePersonalInfo: PersonalInfoMask.isOn()
+        ).title
+    }
+}'
+
 new_tree() {
   T="$(mktemp -d)"
-  mkdir -p "$T/$MAC" "$T/$IOS" "$T/$WATCH" "$T/$WIDGETS" "$T/scripts"
+  mkdir -p "$T/$MAC" "$T/$IOS" "$T/$WATCH" "$T/$WIDGETS" "$T/$CORE" "$T/scripts"
   printf '{"entries": []}\n' > "$T/scripts/personal_info_mask_allowlist.json"
   printf '%s\n' "$PHONE_OK" > "$T/$IOS/PhoneSessionManager.swift"
   printf '%s\n' "$WATCH_OK" > "$T/$WATCH/WatchSessionManager.swift"
+  printf '%s\n' "$NOTIFY_OK" > "$T/$CORE/DataRefreshManager.swift"
 }
 view()      { printf '%s\n' "$1" > "$T/$MAC/V.swift"; }
 view_in()   { printf '%s\n' "$2" > "$T/$1/V.swift"; }
 phone()     { printf '%s\n' "$1" > "$T/$IOS/PhoneSessionManager.swift"; }
 watch_mgr() { printf '%s\n' "$1" > "$T/$WATCH/WatchSessionManager.swift"; }
+notifier()  { printf '%s\n' "$1" > "$T/$CORE/DataRefreshManager.swift"; }
 allowlist() { printf '%s\n' "$1" > "$T/scripts/personal_info_mask_allowlist.json"; }
 
 expect() {  # expect <want-exit> <name>
@@ -229,6 +242,129 @@ new_tree; watch_mgr 'final class WatchSessionManager {
     }
 }'
 expect 0 "an adopt nested inside the accepted block passes"
+
+# v1.58 (P1-6): projects, session names, alerts, exports and the banner.
+
+SHOWN='struct V: View {
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
+    let numbers: ProjectNameNumbers
+    var body: some View {
+        Text(PersonalInfoMask.sessionTitle(session, numbers: numbers, hidePersonalInfo: hidePersonalInfo))
+        if let project = PersonalInfoMask.sessionProject(session, numbers: numbers, hidePersonalInfo: hidePersonalInfo) {
+            Label(project, systemImage: "folder")
+        }
+        Text(PersonalInfoMask.sessionDetailProject(session, numbers: numbers, hidePersonalInfo: hidePersonalInfo))
+        let shown = PersonalInfoMask.alertText(alert, numbers: numbers, hidePersonalInfo: hidePersonalInfo)
+        Text(shown.title)
+        if let project = PersonalInfoMask.alertProject(alert, numbers: numbers, hidePersonalInfo: hidePersonalInfo) {
+            chipView(icon: "folder", text: project)
+        }
+        if let session = PersonalInfoMask.alertSessionName(alert, hidePersonalInfo: hidePersonalInfo) {
+            chipView(icon: "terminal", text: session)
+        }
+        Text(PersonalInfoMask.projectName(alert.related_project_name, numbers: numbers, hidePersonalInfo: hidePersonalInfo) ?? "")
+        Text(PersonalInfoMask.projectName(proj.name, numbers: .none, hidePersonalInfo: hidePersonalInfo) ?? "")
+        Text(L10n.detail.project)
+        Button(L10n.dashboard.exportSessions) {
+            _ = ExportService.exportSessionsCSV(
+                sessions: sessions, hidePersonalInfo: hidePersonalInfo, projectNumbers: numbers)
+        }
+    }
+}'
+
+new_tree; view "$SHOWN"
+expect 0 "sessions, alerts and projects shown through the mask, an export told the switch, pass"
+
+new_tree; view 'let t = Text(session.displayProject ?? "")'
+expect 1 "a session row back on Text(session.displayProject) fails"
+
+new_tree; view 'let t = Label(session.project, systemImage: "folder")'
+expect 1 "the stored project of a session shown with Label fails"
+
+new_tree; view 'let t = Text(session.detailProject)'
+expect 1 "a detail back on session.detailProject fails"
+
+new_tree; view_in "$WATCH" 'let t = Text(session.displayProject ?? title)'
+expect 1 "a Watch card back on session.displayProject fails"
+
+new_tree; view 'if let project = alert.related_project_name { chipView(icon: "folder", text: project) }'
+expect 1 "the project chip of an alert back on related_project_name fails"
+
+new_tree; view_in "$IOS" 'if let session = alert.related_session_name { chipView(icon: "terminal", text: session) }'
+expect 1 "the session chip of an alert back on related_session_name fails, even on iPhone"
+
+new_tree; view 'let p = PersonalInfoMask.projectName(alert.related_session_name, numbers: n, hidePersonalInfo: hidePersonalInfo)'
+expect 1 "a session name is not a project: reading it inside projectName fails"
+
+new_tree; view 'if alert.related_project_name != nil { showRelated() }'
+expect 1 "asking whether an alert names a project reads it (use alertProject)"
+
+new_tree; view 'let shown = AlertPresentation.text(for: alert)'
+expect 1 "an app calling AlertPresentation.text fails"
+
+new_tree; view_in "$WATCH" 'Text(AlertPresentation.text(for: alert).title)'
+expect 1 "the Watch calling AlertPresentation.text fails"
+
+new_tree; view 'let url = ExportService.exportSessionsCSV(sessions: state.sessions, projectNumbers: numbers)'
+expect 1 "an export not told the switch fails"
+
+new_tree; view 'let url = ExportService.exportPDFReport(dashboard: d, providers: p, sessions: s, dailyUsage: u, costForecast: f, hidePersonalInfo: false, projectNumbers: .none, destinationURL: url)'
+expect 1 "an export told a literal switch fails"
+
+new_tree; view_in "$IOS" 'if let url = ExportService.exportCostReportCSV(dashboard: d, providers: p, sessions: s) { ShareLink(item: url) { Text("x") } }'
+expect 1 "the cost report of the iPhone not told the switch fails"
+
+new_tree; view 'Text(PersonalInfoMask.sessionTitle(session, numbers: numbers, hidePersonalInfo: true))'
+expect 1 "a session title masked with a literal switch fails"
+
+new_tree; notifier "${NOTIFY_OK/PersonalInfoMask.alertText(/AlertPresentation.text(for: }"
+expect 1 "the banner back on AlertPresentation.text fails"
+
+new_tree; notifier "${NOTIFY_OK/hidePersonalInfo: PersonalInfoMask.isOn()/hidePersonalInfo: false}"
+expect 1 "a banner told a literal switch fails"
+
+new_tree; notifier "${NOTIFY_OK/hidePersonalInfo: PersonalInfoMask.isOn()/hidePersonalInfo: hide}"
+expect 1 "a banner not told the switch from the defaults fails"
+
+new_tree; rm "$T/$CORE/DataRefreshManager.swift"
+expect 1 "a missing DataRefreshManager fails"
+
+# The stored fields under common words, found by the receiver's name.
+
+new_tree; view 'Text(alert.title)'
+expect 1 "the Mac alert row back on alert.title (a command line) fails"
+
+new_tree; view_in "$IOS" 'Text(session.name)'
+expect 1 "the iPhone session detail back on session.name fails"
+
+new_tree; view_in "$WATCH" 'Text(alert.message).font(.caption2)'
+expect 1 "the Watch alert back on alert.message fails"
+
+new_tree; view 'let t = alerts.filter { a in a.title.contains(query) }'
+expect 1 "a closure reading a.title fails (a search over the stored title is a read too)"
+
+new_tree; view_in "$IOS" 'Text(selectedSession?.name ?? "")'
+expect 1 "an optional-chained selectedSession?.name fails"
+
+new_tree; view_in "$WATCH" 'Text(proj.name)'
+expect 1 "the Watch Top Projects back on proj.name fails"
+
+new_tree; view 'let s = PersonalInfoMask.projectName(session.name, numbers: n, hidePersonalInfo: hidePersonalInfo)'
+expect 1 "a session name is not a project: session.name inside projectName fails"
+
+new_tree; view 'let t = Text(L10n.alert.title)
+alert.title = "x"
+// Text(alert.title) used to be here
+let doc = "session.name is masked"'
+expect 0 "a catalogue entry, a write, a comment and string text are not reads of the stored fields"
+
+new_tree; view 'Text(session.name)'
+allowlist '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar/V.swift", "line": "Text(session.name)", "reason": "A made-up editor where the owner types the session name, so it shows as typed."}]}'
+expect 0 "an allowlisted session.name read with a reason passes"
+
+new_tree; view 'Text(chip.project)'
+allowlist '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar/V.swift", "line": "Text(chip.project)", "reason": "A made-up chip whose project is a placeholder the app wrote, not a folder."}]}'
+expect 0 "an allowlisted project read with a reason passes"
 
 echo "check_personal_info_mask: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

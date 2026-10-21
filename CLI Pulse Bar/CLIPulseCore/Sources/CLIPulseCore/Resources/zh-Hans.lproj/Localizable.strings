@@ -615,7 +615,7 @@
 "advanced.background_sync_hint" = "将用量数据同步到云端，供 iPhone、Apple Watch 和 Android 使用";
 "advanced.background_sync_hint_local_mode" = "在后台读取这台 Mac 的用量。本地模式下不上传任何数据。";
 "advanced.full_details" = "详细信息：";
-"advanced.hide_emails" = "在界面中隐藏邮箱地址";
+"advanced.hide_personal_info_help" = "在屏幕上和导出的文件中隐藏邮箱地址、项目文件夹的名称和路径，以及会话名称。";
 /* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */
 "advanced.track_git" = "追踪 git 活动（Yield Score）";
 "advanced.track_git_hint" = "只记录经哈希处理的提交元数据，不上传提交说明、diff 或路径。仅由 Companion CLI 收集。";
@@ -1669,6 +1669,7 @@
 "projects.title" = "项目";
 "projects.unknown" = "未知";
 "projects.anonymous" = "项目 %d";
+"projects.hidden" = "隐藏的项目";
 "projects.shown_of" = "%2$d 个项目中的前 %1$d 个";
 "projects.help" = "根据这台 Mac 的会话日志，按每个会话运行时所在的文件夹归类。\n此列表不会同步到你的账户。";
 "projects.unknown_help" = "这些会话的日志没有记录它们在哪个文件夹中运行。";
@@ -1770,10 +1771,13 @@
 "alert_kind.quota_title" = "%1$@「%2$@」配额已使用 %3$@%%";
 "alert_kind.session_cpu_message_process" = "%2$@ 进程的 CPU 占用为 %1$@%%。";
 "alert_kind.session_cpu_message_process_in_project" = "%3$@ 中 %2$@ 进程的 CPU 占用为 %1$@%%。";
+"alert_kind.session_cpu_message_process_in_hidden_project" = "隐藏的项目中 %2$@ 进程的 CPU 占用为 %1$@%%。";
 "alert_kind.session_cpu_message_system" = "%3$@ 占用了约 %1$@%% 的系统总 CPU（共 %2$@ 核）。";
 "alert_kind.session_cpu_title" = "%@ 正占用大量 CPU";
+"alert_kind.session_cpu_title_unnamed" = "会话正占用大量 CPU";
 "alert_kind.session_long_message" = "检测到长时间运行的 AI 工具会话。";
 "alert_kind.session_long_title" = "%@ 已运行很长时间";
+"alert_kind.session_long_title_unnamed" = "会话已运行很长时间";
 "alert_kind.severity_critical" = "严重";
 "alert_kind.severity_info" = "信息";
 "alert_kind.severity_warning" = "警告";

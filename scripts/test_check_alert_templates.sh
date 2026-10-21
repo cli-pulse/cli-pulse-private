@@ -184,6 +184,17 @@ plant() {  # plant <name> <needle> <file> <old> <new>
 build
 expect_ok "three templates, each recognised by a matcher and pinned by a fixture"
 
+# v1.58 (P1-6): the matchers that name a session or a project also take the
+# Naming "Hide personal information" passes; they are still read.
+build
+if edit "$SWIFT" 'sessionCPU(_ a: AlertRecord) -> Text? {' 'sessionCPU(_ a: AlertRecord, _ naming: Naming) -> Text? {' \
+    && edit "$SWIFT" 'sessionLong(_ a: AlertRecord) -> Text? {' 'sessionLong(_ a: AlertRecord, _ naming: Naming) -> Text? {'; then
+    expect_ok "matchers that also take the Naming parameter are read"
+else
+    echo "FAIL: [Naming parameter] the edit did not land, so the case proves nothing."
+    fail=$((fail + 1))
+fi
+
 # ── the producer is reworded: the stored English no longer matches ──────────
 plant "session CPU message reworded (the audit's case)" \
     "'Process CPU at 91.2% for api gateway.' is recognised by no AlertPresentation matcher" \

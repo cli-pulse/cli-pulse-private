@@ -987,7 +987,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "advanced.background_sync_hint" = "Sincroniza los datos de uso con la nube para el iPhone, el Apple Watch y Android";
 "advanced.background_sync_hint_local_mode" = "Lee el uso de este Mac en segundo plano. En modo local no se sube nada.";
 "advanced.full_details" = "Detalles completos:";
-"advanced.hide_emails" = "Ocultar direcciones de correo en la interfaz";
+"advanced.hide_personal_info_help" = "Oculta direcciones de correo, nombres y rutas de carpetas de proyecto, y nombres de sesión, en pantalla y al exportar.";
 /* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */
 "advanced.track_git" = "Seguimiento de actividad de git (Yield Score)";
 "advanced.track_git_hint" = "Únicamente se suben metadatos de commits protegidos con hash: ni mensajes, ni diffs, ni rutas. Solo los recopila Companion CLI.";
@@ -1636,6 +1636,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "projects.title" = "Proyectos";
 "projects.unknown" = "Desconocido";
 "projects.anonymous" = "Proyecto %d";
+"projects.hidden" = "Proyecto oculto";
 "projects.shown_of" = "Los %1$d principales de %2$d proyectos";
 "projects.help" = "Agrupados por la carpeta en la que se ejecutó cada sesión, a partir de los registros de sesión de este Mac.\nEsta lista no se sincroniza con tu cuenta.";
 "projects.unknown_help" = "Los registros de estas sesiones no indican en qué carpeta se ejecutaron.";
@@ -1753,10 +1754,13 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "alert_kind.quota_title" = "%1$@: cuota «%2$@» al %3$@%%";
 "alert_kind.session_cpu_message_process" = "La CPU del proceso de %2$@ es del %1$@%%.";
 "alert_kind.session_cpu_message_process_in_project" = "La CPU del proceso de %2$@ en %3$@ es del %1$@%%.";
+"alert_kind.session_cpu_message_process_in_hidden_project" = "La CPU del proceso de %2$@ en un proyecto oculto es del %1$@%%.";
 "alert_kind.session_cpu_message_system" = "%3$@ usa ~%1$@%% de la CPU total del sistema (%2$@ núcleos).";
 "alert_kind.session_cpu_title" = "%@ está consumiendo mucha CPU";
+"alert_kind.session_cpu_title_unnamed" = "Una sesión está consumiendo mucha CPU";
 "alert_kind.session_long_message" = "Se detectó una sesión de agente local de larga duración.";
 "alert_kind.session_long_title" = "%@ lleva mucho tiempo en ejecución";
+"alert_kind.session_long_title_unnamed" = "Una sesión lleva mucho tiempo en ejecución";
 "alert_kind.severity_critical" = "Crítico";
 "alert_kind.severity_info" = "Info";
 "alert_kind.severity_warning" = "Advertencia";

@@ -95,6 +95,10 @@ struct WatchSessionsView: View {
 struct SessionCard: View {
     let session: SessionRecord
     let showCost: Bool
+    /// v1.58 (P1-6): "Hide personal information", the iPhone's choice
+    /// (`PersonalInfoMask.adoptPhoneChoice`): the title and project are
+    /// masked. No project numbers: the Watch has no scan.
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     private var color: Color { PulseTheme.providerColor(session.provider) }
 
@@ -107,7 +111,8 @@ struct SessionCard: View {
             VStack(alignment: .leading, spacing: 3) {
                 // The project, or the row's title when there is none to show
                 // (a producer's placeholder: "Claude process", translated).
-                Text(session.displayProject ?? session.displayName)
+                Text(PersonalInfoMask.sessionProject(session, numbers: .none, hidePersonalInfo: hidePersonalInfo)
+                    ?? PersonalInfoMask.sessionTitle(session, numbers: .none, hidePersonalInfo: hidePersonalInfo))
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
 
@@ -153,6 +158,10 @@ struct SessionCard: View {
 
 struct SessionCompactRow: View {
     let session: SessionRecord
+    /// v1.58 (P1-6): "Hide personal information", the iPhone's choice
+    /// (`PersonalInfoMask.adoptPhoneChoice`): the title and project are
+    /// masked. No project numbers: the Watch has no scan.
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -161,7 +170,8 @@ struct SessionCompactRow: View {
                 .foregroundStyle(PulseTheme.providerColor(session.provider))
                 .frame(width: 16)
 
-            Text(session.displayProject ?? session.displayName)
+            Text(PersonalInfoMask.sessionProject(session, numbers: .none, hidePersonalInfo: hidePersonalInfo)
+                ?? PersonalInfoMask.sessionTitle(session, numbers: .none, hidePersonalInfo: hidePersonalInfo))
                 .font(.caption)
                 .lineLimit(1)
 
@@ -222,6 +232,10 @@ struct ActivitySpark: View {
 struct WatchSessionDetailView: View {
     let session: SessionRecord
     let showCost: Bool
+    /// v1.58 (P1-6): "Hide personal information", the iPhone's choice
+    /// (`PersonalInfoMask.adoptPhoneChoice`): the title and project are
+    /// masked. No project numbers: the Watch has no scan.
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     var body: some View {
         List {
@@ -232,7 +246,8 @@ struct WatchSessionDetailView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         // The iPhone detail's title: a scan row's provider
                         // and project, not its command line.
-                        Text(session.displayName)
+                        Text(PersonalInfoMask.sessionTitle(
+                            session, numbers: .none, hidePersonalInfo: hidePersonalInfo))
                             .font(.caption.weight(.bold))
                             .lineLimit(2)
                         StatusBadge(
@@ -249,7 +264,11 @@ struct WatchSessionDetailView: View {
                 // session detail uses, not the plural dashboard headings
                 // ("Top Projects: my-app") or the alert's "Created".
                 WatchMetricRow(label: L10n.detail.provider, value: session.provider, icon: "cpu")
-                WatchMetricRow(label: L10n.detail.project, value: session.detailProject, icon: "folder")
+                WatchMetricRow(
+                    label: L10n.detail.project,
+                    value: PersonalInfoMask.sessionDetailProject(
+                        session, numbers: .none, hidePersonalInfo: hidePersonalInfo),
+                    icon: "folder")
                 WatchMetricRow(label: L10n.detail.device, value: session.device_name, icon: "desktopcomputer")
                 WatchMetricRow(label: L10n.detail.started, value: RelativeTime.format(session.started_at), icon: "clock")
             }

@@ -5,6 +5,7 @@
 #if CLIPULSE_QA_RENDER
 import AppKit
 import CryptoKit
+import PDFKit
 import SwiftUI
 import CLIPulseCore
 
@@ -289,6 +290,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             Self.log("renders that look blank: \(blank.joined(separator: ", "))")
             return 3
         }
+        if manifest.warnings.contains(where: { $0.hasPrefix("privacy:") }) { return 6 }
         return manifest.warnings.contains(where: { $0.hasPrefix("coverage:") }) ? 4 : 0
     }
 
@@ -1154,6 +1156,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                     + " hover); Claude with costs hidden too (ranked by I/O tokens, the picker reads"
                     + " Tokens); and three Codex sessions with one that has no rate."
             )
+
+        case .hidePersonalInfo(let which):
+            await captureHidingPersonalInfo(which, surface: surface, index: index)
         }
     }
 
@@ -1473,10 +1478,14 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         viewState: QARenderViewState? = nil,
         note: String? = nil
     ) async {
-        // The same root and environment the MenuBarExtra scene gives it. The
-        // popover's own background is a window material the offscreen window
-        // does not have, so an opaque window background stands in for it.
-        let root = MenuBarView()
+        await capture(popoverRoot(viewState: viewState), surface: surface, index: index, note: note)
+    }
+
+    /// The same root and environment the MenuBarExtra scene gives it. The
+    /// popover's own background is a window material the offscreen window
+    /// does not have, so an opaque window background stands in for it.
+    private func popoverRoot(viewState: QARenderViewState? = nil) -> some View {
+        MenuBarView()
             .environmentObject(state)
             .environmentObject(state.subscriptionManager)
             .environmentObject(state.authState)
@@ -1484,7 +1493,6 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             .environmentObject(state.providerState)
             .environment(\.qaRenderViewState, viewState)
             .background(Color(nsColor: .windowBackgroundColor))
-        await capture(root, surface: surface, index: index, note: note)
     }
 
     private func captureWindow<Content: View>(
@@ -1646,6 +1654,15 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
     /// Token/Cost choice). 480 points wide, the latest day with usage
     /// selected.
     private func captureProviderCardPanel(_ kind: ProviderKind, surface: QARenderSurface, index: Int) async {
+        let (panel, note) = providerCardPanel(kind)
+        await capture(
+            panel, surface: surface, index: index, scrolls: false,
+            prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: surface.id) },
+            note: note)
+    }
+
+    /// The panel `captureProviderCardPanel` draws, and its note.
+    private func providerCardPanel(_ kind: ProviderKind) -> (some View, String) {
         let provider = kind.rawValue
         // As `EnhancedProviderCard.cardUsage` builds it.
         let usage = state.providers.first { $0.provider == provider }
@@ -1682,15 +1699,11 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             }
             .environment(\.colorScheme, .dark)
             .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-        await capture(
-            panel, surface: surface, index: index, scrolls: false,
-            prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: surface.id) },
-            note: "The usage panel as clicking the Demo \(provider) card's small chart opens it, 480 points"
+        return (panel, "The usage panel as clicking the Demo \(provider) card's small chart opens it, 480 points"
                 + " wide: Demo's synced rows, opened on the card's scope (\(card.scope.rawValue), shown:"
                 + " \(scope.rawValue)), chart in \(metric.rawValue) as the card's is, tokens counted as the"
                 + " card counts them (I/O, as the panel says under its total): its days and total are the"
-                + " card's figures."
-        )
+                + " card's figures.")
     }
 
     /// v1.57: the iPhone provider card's history section with a day tapped,
@@ -1735,6 +1748,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         /// The main scroll view's content, measured once every page was
         /// drawn; nil when nothing scrolls.
         let layout: ScrollLayout?
+        /// v1.58 (P1-6): with `readsText`, every string the drawn view's
+        /// accessibility tree held, page by page (`accessibilityTexts`).
+        var texts: [String] = []
     }
 
     /// A scroll view's content, in points from its top: how tall it is, how
@@ -1787,6 +1803,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         id: String,
         settle firstSettle: Double,
         scrolls: Bool = true,
+        readsText: Bool = false,
         prepare: ((NSView) -> Void)? = nil
     ) async -> DrawnPages? {
         // Every root gets `displayLocaleRoot()`, as every scene root of the
@@ -1822,7 +1839,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
 
         var pages: [NSBitmapImageRep] = []
         var layout: ScrollLayout?
+        var texts: [String] = []
         if let first = snapshot(hosting) { pages.append(first) }
+        if readsText { texts += accessibilityTexts(of: hosting) }
         if scrolls, let scrollView = mainScrollView(in: hosting), let document = scrollView.documentView {
             var offset = 0.0
             while pages.count < QARenderSnapshot.maxPages,
@@ -1836,6 +1855,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 scrollTo(scrollView, offsetFromTop: offset)
                 await settle(hosting, seconds: 0.35)
                 if let page = snapshot(hosting) { pages.append(page) }
+                if readsText { texts += accessibilityTexts(of: hosting) }
             }
             if QARenderSnapshot.nextPageOffset(
                 after: offset,
@@ -1848,7 +1868,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             }
             layout = scrollLayout(scrollView)
         }
-        return DrawnPages(pages: pages, hosting: hosting, window: window, layout: layout)
+        return DrawnPages(pages: pages, hosting: hosting, window: window, layout: layout, texts: texts)
     }
 
     /// - Parameter scrolls: whether a view taller than its window is drawn
@@ -1857,17 +1877,21 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
     ///   day's models), and paged it would be such a list that scrolled, a
     ///   page a few rows on, with the panel around it again each time.
     ///   `panel-provider-usage-codex-laptop` draws the panel scrolling.
+    ///   `readsText` (v1.58, P1-6): returns the text the drawn view held
+    ///   (`DrawnPages.texts`); empty otherwise.
+    @discardableResult
     private func capture<Content: View>(
         _ content: Content,
         surface: QARenderSurface,
         index: Int,
         scrolls: Bool = true,
+        readsText: Bool = false,
         prepare: ((NSView) -> Void)? = nil,
         note: String?
-    ) async {
+    ) async -> [String] {
         guard let drawn = await drawPages(
-            content, id: surface.id, settle: 0.8, scrolls: scrolls, prepare: prepare) else {
-            return
+            content, id: surface.id, settle: 0.8, scrolls: scrolls, readsText: readsText, prepare: prepare) else {
+            return []
         }
         drawn.window.contentView = nil
         let pages = drawn.pages
@@ -1895,6 +1919,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 note: note
             ))
         }
+        return drawn.texts
     }
 
     /// A borderless window holding `view`. It is never ordered in, so it is
@@ -2008,6 +2033,228 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             }
         }
         return QARenderSnapshot.looksBlank(rgbaSamples: samples)
+    }
+
+    // MARK: Hide personal information (v1.58, P1-6)
+
+    /// One `hide-personal-info-*` surface: Demo with the privacy samples put
+    /// in (other devices' sessions and alerts whose stored names carry a
+    /// path), read once with the switch off as the control, then drawn with
+    /// it on, and both readings checked against every project name, folder
+    /// path and session name of that data (`QARenderSnapshot.privacyCheck`).
+    /// A failed check is a "privacy:" warning, and the run exits 6.
+    private func captureHidingPersonalInfo(
+        _ which: QARenderPrivacySurface, surface: QARenderSurface, index: Int
+    ) async {
+        enterDemoIfNeeded()
+        shapeExistingUser(onboardingV2: false)
+        // SwiftUI builds a view's accessibility tree only when an assistive
+        // app asks for one; this says one does, as VoiceOver would.
+        NSApp.setValue(true, forKey: "accessibilityEnhancedUserInterface")
+        let now = state.sessionsClock()
+        let savedSessions = state.sessions
+        let savedAlerts = state.alertState.alerts
+        state.sessions = savedSessions + QARenderSnapshot.logSessionsSample(now: now)
+            + QARenderSnapshot.privacySessionsSample(now: now)
+        state.alertState.alerts = savedAlerts + QARenderSnapshot.privacyAlertsSample(now: now)
+        defer {
+            state.sessions = savedSessions
+            state.alertState.alerts = savedAlerts
+            state.hidePersonalInfo = false
+            NSApp.setValue(false, forKey: "accessibilityEnhancedUserInterface")
+        }
+        let needles = QARenderSnapshot.personalStrings(
+            sessions: state.sessions, alerts: state.alertState.alerts, scan: state.costUsageScanResult)
+        let data = "Demo with QARenderSnapshot.logSessionsSample, privacySessionsSample and"
+            + " privacyAlertsSample put in (another Mac's Companion CLI row named by the start of a command"
+            + " line, a row named by a command line with a path, and their session alerts)."
+
+        func check(_ source: String, on: [String], off: [String]) {
+            let result = QARenderSnapshot.privacyCheck(
+                id: surface.id, source: source, needles: needles, textsOn: on, textsOff: off)
+            manifest.privacyChecks = (manifest.privacyChecks ?? []) + [result]
+            if let problem = QARenderSnapshot.privacyProblem(result) {
+                manifest.warnings.append(problem)
+                Self.log(problem)
+            }
+        }
+
+        switch which {
+        case .overview, .sessions, .alerts:
+            let tab: AppState.Tab = which == .overview ? .overview : which == .sessions ? .sessions : .alerts
+            state.selectedTab = tab
+            state.hidePersonalInfo = false
+            let off = await readTexts(of: popoverRoot(), id: surface.id)
+            state.hidePersonalInfo = true
+            let on = await capture(
+                popoverRoot(), surface: surface, index: index, readsText: true,
+                note: "v1.58 (P1-6): the \(tab.rawValue) tab with Hide personal information on. \(data)"
+                    + " Its text (every label, value and hover text the drawn view exposes) was read back and"
+                    + " holds none of the data's project names, folder paths or session names; the same tab"
+                    + " read with the switch off held them (render.json privacyChecks).")
+            check("accessibility", on: on, off: off)
+
+        case .panel:
+            state.hidePersonalInfo = false
+            let off = await readTexts(of: providerCardPanel(.codex).0, id: surface.id)
+            state.hidePersonalInfo = true
+            let (panel, note) = providerCardPanel(.codex)
+            let on = await capture(
+                panel, surface: surface, index: index, scrolls: false, readsText: true,
+                prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: surface.id) },
+                note: "v1.58 (P1-6), Hide personal information on: " + note
+                    + " Projects and Sessions name \"Project N\" with no path on hover; its text was read"
+                    + " back and checked (render.json privacyChecks).")
+            check("accessibility", on: on, off: off)
+
+        case .exports:
+            state.hidePersonalInfo = false
+            let off = exportTexts()
+            state.hidePersonalInfo = true
+            let on = exportTexts()
+            for name in on.keys.sorted() {
+                check(name, on: on[name]?.texts ?? [], off: off[name]?.texts ?? [])
+            }
+            for (_, file) in off { try? FileManager.default.removeItem(at: file.url) }
+            for name in on.keys.sorted() {
+                guard let file = on[name] else { continue }
+                let stem = (QARenderSnapshot.fileName(index: index, surface: surface, page: 1) as NSString)
+                    .deletingPathExtension
+                let kept = request.outputDirectory.appendingPathComponent("\(stem)-\(name)")
+                try? FileManager.default.removeItem(at: kept)
+                do {
+                    try FileManager.default.moveItem(at: file.url, to: kept)
+                } catch {
+                    manifest.warnings.append("\(surface.id): could not keep \(name): \(error)")
+                }
+                if name.hasSuffix(".pdf") {
+                    drawFirstPage(ofPDF: kept, surface: surface, index: index, note:
+                        "v1.58 (P1-6): the PDF report's first page, exported with Hide personal information on"
+                            + " (\(kept.lastPathComponent), kept beside it with the three CSVs). \(data) The text"
+                            + " of every file was read back and holds none of the data's project names, folder"
+                            + " paths or session names; with the switch off it held them (render.json"
+                            + " privacyChecks).")
+                }
+            }
+        }
+    }
+
+    /// The text `content` holds, drawn offscreen and read through its
+    /// accessibility tree, without writing a picture.
+    private func readTexts<Content: View>(of content: Content, id: String) async -> [String] {
+        guard let drawn = await drawPages(content, id: id, settle: 0.8, scrolls: true, readsText: true) else {
+            return []
+        }
+        drawn.window.contentView = nil
+        return drawn.texts
+    }
+
+    /// Every label, title, value and help (hover) text in `view`'s
+    /// accessibility tree, depth first.
+    private func accessibilityTexts(of view: NSView) -> [String] {
+        var texts: [String] = []
+        var seen = Set<ObjectIdentifier>()
+        let selectors = [
+            #selector(NSAccessibilityProtocol.accessibilityLabel),
+            #selector(NSAccessibilityProtocol.accessibilityTitle),
+            #selector(NSAccessibilityProtocol.accessibilityValue),
+            #selector(NSAccessibilityProtocol.accessibilityHelp),
+        ]
+        let children = #selector(NSAccessibilityProtocol.accessibilityChildren)
+        func string(_ object: NSObject, _ selector: Selector) -> String? {
+            guard object.responds(to: selector) else { return nil }
+            let value = object.perform(selector)?.takeUnretainedValue()
+            if let text = value as? String { return text }
+            if let text = value as? NSAttributedString { return text.string }
+            return nil
+        }
+        func visit(_ element: Any, depth: Int) {
+            guard depth < 120, let object = element as? NSObject,
+                  seen.insert(ObjectIdentifier(object)).inserted else { return }
+            for selector in selectors {
+                if let text = string(object, selector), !text.isEmpty { texts.append(text) }
+            }
+            if object.responds(to: children),
+               let kids = object.perform(children)?.takeUnretainedValue() as? [Any] {
+                for kid in kids { visit(kid, depth: depth + 1) }
+            }
+        }
+        visit(view, depth: 0)
+        return texts
+    }
+
+    /// The four files the Export menu writes, made from Demo's state as the
+    /// menu makes them, with the switch as it is now; and each one's text
+    /// (the CSV's lines, the PDF's text as PDFKit reads it).
+    private func exportTexts() -> [String: (url: URL, texts: [String])] {
+        let hide = PersonalInfoMask.isOn()
+        let numbers = state.projectNameNumbers(hidePersonalInfo: hide)
+        let pdf = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString)-cli-pulse-report.pdf")
+        let files: [(String, URL?)] = [
+            ("cost-report.csv", ExportService.exportCostReportCSV(
+                dashboard: state.dashboard, providers: state.providerState.providers, sessions: state.sessions,
+                hidePersonalInfo: hide, projectNumbers: numbers)),
+            ("sessions.csv", ExportService.exportSessionsCSV(
+                sessions: state.sessions, hidePersonalInfo: hide, projectNumbers: numbers)),
+            ("alerts.csv", ExportService.exportAlertsCSV(
+                alerts: state.alertState.alerts, hidePersonalInfo: hide, projectNumbers: numbers)),
+            ("report.pdf", ExportService.exportPDFReport(
+                dashboard: state.dashboard, providers: state.providerState.providers, sessions: state.sessions,
+                dailyUsage: state.dailyUsage, costForecast: state.costForecast,
+                hidePersonalInfo: hide, projectNumbers: numbers, destinationURL: pdf)),
+        ]
+        var result: [String: (url: URL, texts: [String])] = [:]
+        for (name, url) in files {
+            guard let url else {
+                manifest.warnings.append("privacy: the \(name) export was not written")
+                continue
+            }
+            let text = name.hasSuffix(".pdf")
+                ? PDFDocument(url: url)?.string ?? ""
+                : (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            result[name] = (url, text.components(separatedBy: .newlines).filter { !$0.isEmpty })
+        }
+        return result
+    }
+
+    /// A PDF's first page, drawn white-backed at the run's scale, as a
+    /// `document` render.
+    private func drawFirstPage(ofPDF url: URL, surface: QARenderSurface, index: Int, note: String) {
+        guard let page = PDFDocument(url: url)?.page(at: 0) else {
+            manifest.warnings.append("\(surface.id): \(url.lastPathComponent) has no page to draw")
+            return
+        }
+        let bounds = page.bounds(for: .mediaBox)
+        let scale = CGFloat(request.scale)
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(bounds.width * scale), pixelsHigh: Int(bounds.height * scale),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+            let context = NSGraphicsContext(bitmapImageRep: rep)
+        else { return }
+        // In pixels: the context is made before `size` says points.
+        let cg = context.cgContext
+        cg.setFillColor(NSColor.white.cgColor)
+        cg.fill(CGRect(x: 0, y: 0, width: rep.pixelsWide, height: rep.pixelsHigh))
+        cg.scaleBy(x: scale, y: scale)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        page.draw(with: .mediaBox, to: cg)
+        NSGraphicsContext.restoreGraphicsState()
+        rep.size = bounds.size
+        let file = QARenderSnapshot.fileName(index: index, surface: surface, page: 1)
+        do {
+            try write(rep, to: request.outputDirectory.appendingPathComponent(file))
+        } catch {
+            manifest.warnings.append("\(file): \(error)")
+            return
+        }
+        manifest.renders.append(.init(
+            id: surface.id, kind: surface.kind, file: file, page: 1, pageCount: 1,
+            width: Double(bounds.width), height: Double(bounds.height),
+            pixelWidth: rep.pixelsWide, pixelHeight: rep.pixelsHigh,
+            suspectBlank: looksBlank(rep), note: note))
     }
 
     // MARK: Language menu

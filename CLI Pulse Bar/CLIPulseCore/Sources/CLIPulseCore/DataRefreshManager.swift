@@ -2966,7 +2966,15 @@ extension AppState {
     func sendNotification(for alert: AlertRecord) {
         let content = UNMutableNotificationContent()
         content.title = AlertPresentation.notificationTitle(for: alert)
-        content.body = AlertPresentation.text(for: alert).title
+        // v1.58 (P1-6): a banner is on screen too, so it follows "Hide
+        // personal information": a session the alert names is its provider,
+        // and a project the title names (the server's "Budget exceeded:
+        // <project>") has the number the Alerts tab gives it.
+        content.body = PersonalInfoMask.alertText(
+            alert,
+            numbers: projectNameNumbers(hidePersonalInfo: PersonalInfoMask.isOn()),
+            hidePersonalInfo: PersonalInfoMask.isOn()
+        ).title
         content.sound = alert.alertSeverity == .critical ? .defaultCritical : .default
 
         let request = UNNotificationRequest(identifier: alert.id, content: content, trigger: nil)

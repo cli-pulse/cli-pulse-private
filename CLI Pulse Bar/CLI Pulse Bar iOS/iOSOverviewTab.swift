@@ -4,6 +4,9 @@ import CLIPulseCore
 struct iOSOverviewTab: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var providerState: ProviderState
+    /// v1.58 (P1-6): the exports follow "Hide personal information" (no
+    /// project numbers: the iPhone has no scan).
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var isIPad: Bool { horizontalSizeClass == .regular }
@@ -115,11 +118,14 @@ struct iOSOverviewTab: View {
                 ToolbarItem(placement: .secondaryAction) {
                     Menu {
                         if let url = ExportService.exportCostReportCSV(
-                            dashboard: state.dashboard, providers: providerState.providers, sessions: state.sessions
+                            dashboard: state.dashboard, providers: providerState.providers, sessions: state.sessions,
+                            hidePersonalInfo: hidePersonalInfo, projectNumbers: .none
                         ) {
                             ShareLink(item: url) { Label(L10n.dashboard.exportCostReport, systemImage: "doc.text") }
                         }
-                        if let url = ExportService.exportSessionsCSV(sessions: state.sessions) {
+                        if let url = ExportService.exportSessionsCSV(
+                            sessions: state.sessions, hidePersonalInfo: hidePersonalInfo, projectNumbers: .none
+                        ) {
                             ShareLink(item: url) { Label(L10n.dashboard.exportSessions, systemImage: "list.bullet") }
                         }
                         if let url = ExportService.exportProviderSummaryCSV(providers: providerState.providers) {
@@ -713,7 +719,7 @@ struct iOSOverviewTab: View {
                     Text(L10n.dashboard.topProjects)
                         .font(.subheadline.weight(.semibold))
                 }
-                TopProjectsList(projects: dash.top_projects, style: .iOS)
+                TopProjectsList(projects: dash.top_projects, style: .iOS, hidePersonalInfo: hidePersonalInfo)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
