@@ -279,7 +279,7 @@ wn_fail "es-MX no longer equal to es-ES" "share the listing directory 'es/'"
 wn_fixture; wn_mutate "macos-zh-Hant.txt" 's.replace("工作階段", "會話", 1)'
 wn_fail "a Mainland term in zh-Hant" "uses '會話'; zh-Hant says '工作階段'"
 
-wn_fixture; wn_mutate "en-US.txt" 's + "\n• Tap the day again, or ✕, to close the list.\n"'
+wn_fixture; wn_mutate "en-US.txt" 's.rstrip("\n") + "\n• Tap the day again, or ✕, to close the list.\n"'
 wn_fail "the '✕' App Store Connect refused in the 1.57 iOS What's New" "whatsnew_154/en-US.txt: line 24: '✕' (U+2715 MULTIPLICATION X): App Store Connect refused it"
 
 wn_fixture; wn_mutate "macos-ko.txt" 's + "\n• 새 기능 🎉\n"'

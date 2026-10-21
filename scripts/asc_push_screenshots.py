@@ -56,8 +56,14 @@ Then, one locale at a time:
   * reads the set back and fails unless it holds exactly the new panels, in
     order, each COMPLETE with the md5 and size that were sent. App Store
     Connect reports a panel COMPLETE before it fills in its checksum (seconds
-    to a minute later), so the read-back is repeated, for at most POLL_TIMEOUT,
-    until every screenshot has one.
+    to a minute later), and lists a set in its previous order for a while
+    after the order was set, so the read-back is repeated until every
+    screenshot has a checksum (for at most POLL_TIMEOUT) and the set lists them
+    in the order sent (for at most ORDER_TIMEOUT). On 2026-10-20, before the
+    second wait existed, 5 of the 7 iPad locales failed with a MISMATCH that
+    was only the order: each set still listed a re-uploaded 04_sessions after
+    the 05_alerts it had been put before, and a read 20 to 55 seconds later
+    found it in place.
 If the new ones cannot all be uploaded, it deletes what it added and leaves the
 old set as it was, whatever stopped it: a refused write, a panel the store
 failed to process, or a read that ended the run (a 5xx, a lost connection,
@@ -101,6 +107,10 @@ DISPLAY_TYPE = shots.DISPLAY_TYPE   # the iPhone's; a run uses its platform's
 MAX_PER_SET = 10
 POLL_SECONDS = 5
 POLL_TIMEOUT = 600
+# How long the read-back waits for a set to list its screenshots in the order
+# just sent. On 2026-10-20 the read right after the order PATCH still showed
+# the old order in 5 of 7 iPad sets; reads 20 to 55 s later found it in place.
+ORDER_TIMEOUT = 120
 SHOT_FIELDS = "fileName,fileSize,sourceFileChecksum,assetDeliveryState"
 
 die = pusher.die
@@ -186,6 +196,27 @@ def poll_set(asc, set_id: str, waiting) -> tuple[list[dict], list[dict]]:
         late = [r for r in rows if waiting(r)]
         if not late or time.monotonic() > deadline:
             return rows, late
+        time.sleep(POLL_SECONDS)
+
+
+def read_back(asc, set_id: str, order_ids: list[str], order_timeout: float
+              ) -> tuple[list[dict], list[dict], bool, float]:
+    """Read the set after its order was set, until every screenshot has a
+    checksum (for at most POLL_TIMEOUT) and the set lists `order_ids` in that
+    order (for at most `order_timeout` seconds: App Store Connect lists the
+    previous order for a while after the PATCH). (the rows, those still without
+    a checksum, whether the order is the one sent, seconds waited.) The caller
+    compares; this only decides when the store has had its chance to settle,
+    and writes nothing."""
+    start = time.monotonic()
+    while True:
+        rows = set_rows(asc, set_id)
+        late = [r for r in rows if not checksum(r)]
+        in_order = [r["id"] for r in rows] == order_ids
+        waited = time.monotonic() - start
+        if ((not late or waited > POLL_TIMEOUT)
+                and (in_order or waited >= order_timeout)):
+            return rows, late, in_order, waited
         time.sleep(POLL_SECONDS)
 
 
@@ -422,15 +453,23 @@ def replace_set(asc, loc: str, set_id: str, live: list[dict], panels: list[Panel
                       {"data": [{"type": "appScreenshots", "id": i} for i in order_ids]})
     if order is None:
         print(f"  [{loc}] setting the order FAILED")
-    after, late = poll_set(asc, set_id, lambda r: not checksum(r))
-    ok = [r["id"] for r in after] == order_ids and matches(after, panels)
+    # Wait for the order only when the store took it: an order it refused does
+    # not settle into place.
+    order_timeout = ORDER_TIMEOUT if order is not None else 0
+    after, late, in_order, waited = read_back(asc, set_id, order_ids, order_timeout)
+    ok = in_order and matches(after, panels)
     if not ok:
         if late:
             print(f"  [{loc}] {len(late)} screenshot(s) still without a checksum after "
                   f"{POLL_TIMEOUT}s")
+        if not in_order and order is not None:
+            print(f"  [{loc}] the set does not list the {len(order_ids)} screenshot(s) in the "
+                  f"order sent, {waited:.0f}s after it was sent (waited up to {ORDER_TIMEOUT}s)")
         print(f"  [{loc}] MISMATCH after upload: the set holds {describe(after)}")
         return False
-    print(f"  [{loc}] OK: {len(order_ids)} screenshot(s), in order, COMPLETE, checksums match")
+    settled = f" (read back after {waited:.0f}s)" if waited >= POLL_SECONDS else ""
+    print(f"  [{loc}] OK: {len(order_ids)} screenshot(s), in order, COMPLETE, checksums match"
+          + settled)
     return True
 
 

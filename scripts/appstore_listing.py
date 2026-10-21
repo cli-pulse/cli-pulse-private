@@ -235,7 +235,9 @@ _CJK = re.compile(r"[぀-ヿ㐀-鿿가-힯]")
 # (zero-width space, byte-order mark, a stray carriage return) included, before
 # a pusher can stop halfway through the locales. Combining marks are refused
 # too: the texts are written precomposed (NFC). To allow a new character, add
-# it to ACCEPTED_SYMBOLS once App Store Connect has accepted it in a text.
+# it to ACCEPTED_SYMBOLS once App Store Connect has accepted it in a text (saved
+# through its web form on a version still being prepared, say), in the PR that
+# adds a text using it: the self-test wants every entry used by a text.
 ACCEPTED_SYMBOLS = (
     " \n"
     "\"$%&'()+,-./:;{}~"     # ASCII, as used in the listing and What's New

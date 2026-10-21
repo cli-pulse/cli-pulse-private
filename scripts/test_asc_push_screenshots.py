@@ -28,6 +28,12 @@ of the endpoints the pusher uses and checks what it WOULD do:
     fails, saying why, if it never comes; a rerun that finds a COMPLETE panel
     with the right name and size but no checksum yet waits for it instead of
     re-uploading and deleting it, and changes nothing if it never comes;
+  * App Store Connect lists a set in its previous order for a while after the
+    order is set (the 1.57 iPad push, 2026-10-20: a rerun that reused 01, 02
+    and 05 and uploaded 04 read back 01 02 05 04 and failed in 5 of 7
+    locales): the read-back waits for the order sent, writes nothing more
+    while it waits, and fails, saying so, if the order never shows; without
+    the wait the same rerun fails as it did (the negative control);
   * a set that would exceed 10 with both present deletes only the overflow
     first, the rest once the new panels are COMPLETE;
   * --apply without --platform is refused; --platform MAC_OS touches only the
@@ -125,6 +131,13 @@ class FakeASC:
     checksum_lag = 0
     lag: dict = {}                 # shot id -> set reads left without its checksum
     wrong_checksum: set = set()    # fileNames a set read reports with another file's checksum
+    # As on 2026-10-20: after the order PATCH, a set read still lists the set
+    # in its previous order, for this many reads of that set.
+    order_lag = 0
+    stale_order: dict = {}         # set id -> [reads left, the previous order]
+    fail_order = False             # the order PATCH is refused
+    set_reads = 0                  # reads of any set's screenshots
+    reads_at_order = 0             # set_reads when the order was last sent
     constructed = 0
     next_id = 0
 
@@ -148,7 +161,13 @@ class FakeASC:
                              for k, v in s["sets"].items() if v["loc"] == lid]}
         if path.startswith("/appScreenshotSets/") and path.endswith("/appScreenshots"):
             sid = path.split("/")[2]
-            rows = [self._shot(i) for i in s["sets"][sid]["shots"]]
+            FakeASC.set_reads += 1
+            ids = list(s["sets"][sid]["shots"])
+            stale = FakeASC.stale_order.get(sid)
+            if stale and stale[0] > 0:
+                stale[0] -= 1
+                ids = [i for i in stale[1] if i in ids] + [i for i in ids if i not in stale[1]]
+            rows = [self._shot(i) for i in ids]
             for r in rows:
                 if FakeASC.lag.get(r["id"], 0) > 0:
                     FakeASC.lag[r["id"]] -= 1
@@ -206,6 +225,11 @@ class FakeASC:
             sid = path.split("/")[2]
             ids = [d["id"] for d in data]
             assert sorted(ids) == sorted(s["sets"][sid]["shots"]), (ids, s["sets"][sid]["shots"])
+            FakeASC.reads_at_order = FakeASC.set_reads
+            if FakeASC.fail_order:
+                return None
+            if FakeASC.order_lag:
+                FakeASC.stale_order[sid] = [FakeASC.order_lag, list(s["sets"][sid]["shots"])]
             s["sets"][sid]["shots"] = ids
             return {}
         if method == "POST" and path == "/appScreenshotSets":
@@ -282,6 +306,11 @@ def fresh(**kw) -> None:
     FakeASC.checksum_lag = 0
     FakeASC.lag = {}
     FakeASC.wrong_checksum = set()
+    FakeASC.order_lag = 0
+    FakeASC.stale_order = {}
+    FakeASC.fail_order = False
+    FakeASC.set_reads = 0
+    FakeASC.reads_at_order = 0
     FakeASC.constructed = 0
 
 
@@ -311,6 +340,7 @@ RealShotsASC = pusher.ShotsASC
 pusher.ShotsASC = FakeASC
 pusher.time.sleep = lambda _s: None
 pusher.POLL_TIMEOUT = 0.5   # sleep is a no-op here; a stuck poll must end, not hang
+pusher.ORDER_TIMEOUT = 0.5
 shots.REPO = TMP
 try:
     # 1. dry run
@@ -970,6 +1000,80 @@ try:
     check("an iPad panel the store fails: the new ones are removed, the five old ones intact",
           code == 1 and ipad_files("en-US") == old_en and len(old_en) == 5
           and "the live set is untouched" in out, out)
+
+    # I8. 2026-10-20, the 1.57 iPad push: a rerun finds 01, 02 and 05 already
+    # uploaded and an old 04 between them. It uploads the new 04 (the set now
+    # lists it last), deletes the old one, sets the order 01 02 04 05, and the
+    # store lists the previous order 01 02 05 04 for a few reads. The read-back
+    # waits for the order instead of failing; 5 of 7 locales failed without it.
+    def rerun_with_old_04(order_lag: int) -> str:
+        fresh_ipad_repo()
+        fresh_ipad()
+        sid = "ipad-en-US"
+        for i in FakeASC.store["sets"][sid]["shots"]:
+            FakeASC.store["shots"].pop(i)
+        FakeASC.store["sets"][sid]["shots"] = []
+        for p_, m in ipad_want("en"):
+            i = f"live-{p_[:2]}"
+            local = next(x for x in shots.expected_composed("en", TMP, platform=IPAD) if x.name == p_)
+            FakeASC.store["shots"][i] = {
+                "fileName": p_, "fileSize": local.stat().st_size, "state": "COMPLETE",
+                "sourceFileChecksum": "4" * 32 if p_.startswith("04") else m, "set": sid}
+            FakeASC.store["sets"][sid]["shots"].append(i)
+        FakeASC.order_lag = order_lag
+        return sid
+
+    sid = rerun_with_old_04(order_lag=3)
+    code, out = run("--apply", *IPAD_ARGS, "--version", "1.54.0", "--locale", "en-US")
+    posts = [p_ for m, p_ in FakeASC.log if m == "POST"]
+    dels = [p_ for m, p_ in FakeASC.log if m == "DELETE"]
+    orders = [p_ for m, p_ in FakeASC.log if m == "PATCH" and "relationships" in p_]
+    check("a set that lists its old order for a while after the order is set: the read-back "
+          "waits for it, and the push is verified",
+          code == 0 and "MISMATCH" not in out and "[en-US] OK: 4 screenshot(s), in order" in out
+          and "APPLY OK" in out and ipad_files("en-US") == ipad_want("en"), out)
+    check("... with one upload, one delete and one order write: the wait writes nothing",
+          "3 panel(s) already uploaded by an earlier run: reusing them" in out
+          and posts == ["/appScreenshots"] and dels == ["/appScreenshots/live-04"]
+          and orders == [f"/appScreenshotSets/{sid}/relationships/appScreenshots"]
+          and FakeASC.stale_order[sid][0] == 0, str(FakeASC.log))
+
+    # ... the same rerun without the wait for the order: the MISMATCH of 2026-10-20.
+    # The control shows the fake reproduces the incident and the wait is the fix.
+    saved = pusher.ORDER_TIMEOUT
+    pusher.ORDER_TIMEOUT = -1
+    try:
+        rerun_with_old_04(order_lag=3)
+        code, out = run("--apply", *IPAD_ARGS, "--version", "1.54.0", "--locale", "en-US")
+    finally:
+        pusher.ORDER_TIMEOUT = saved
+    check("negative control: with no wait for the order, the same rerun fails as on 2026-10-20",
+          code == 1 and "[en-US] MISMATCH after upload: the set holds 01_overview_2064x2752.png"
+          "[COMPLETE], 02_providers_2064x2752.png[COMPLETE], 05_alerts_2064x2752.png[COMPLETE], "
+          "04_sessions_2064x2752.png[COMPLETE]" in out, out)
+
+    # ... and an order that never shows: the wait is bounded, and the run says so.
+    rerun_with_old_04(order_lag=10**9)
+    code, out = run("--apply", *IPAD_ARGS, "--version", "1.54.0", "--locale", "en-US")
+    waiting_reads = FakeASC.set_reads - FakeASC.reads_at_order
+    check("an order that never shows: the read-back gives up at ORDER_TIMEOUT, says the order "
+          "is not the one sent, and fails",
+          code == 1 and "does not list the 4 screenshot(s) in the order sent" in out
+          and "MISMATCH after upload" in out and "APPLY INCOMPLETE" in out
+          and "still without a checksum" not in out and waiting_reads > 2,
+          f"{waiting_reads} set read(s) after the order\n{out}")
+
+    # ... and an order the store refused: nothing to wait for. One read, and the
+    # run fails at once instead of after ORDER_TIMEOUT. (The case above, which
+    # does wait, is the control that the read count tells the two apart.)
+    rerun_with_old_04(order_lag=0)
+    FakeASC.fail_order = True
+    code, out = run("--apply", *IPAD_ARGS, "--version", "1.54.0", "--locale", "en-US")
+    reads = FakeASC.set_reads - FakeASC.reads_at_order
+    check("an order the store refused: no wait for it (one read), and the run fails saying so",
+          code == 1 and "setting the order FAILED" in out and "MISMATCH after upload" in out
+          and "in the order sent" not in out and reads == 1,
+          f"{reads} set read(s) after the order\n{out}")
 
     # I7. --locale
     fresh_ipad()
