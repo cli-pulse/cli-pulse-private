@@ -1993,6 +1993,7 @@
 "integrations.event_type_retired" = "「%@」のアラートは発生しなくなりました。選択を解除するとフィルターから外れます。";
 "integrations.event_filter_not_loaded" = "保存済みのフィルターをまだ読み込んでいません。読み込み後に変更できます。";
 "integrations.event_filter_signed_out" = "フィルターは CLI Pulse アカウントに保存されます。変更するにはサインインしてください。";
+"integrations.event_filter_unreadable" = "このバージョンの CLI Pulse では保存済みのフィルターを読み取れないため、ここでは変更できません。";
 "quota_tier.overall" = "全体";
 "status_text.percent_left" = "残り %d%%";
 "status_text.window_percent_left" = "%1$@: 残り %2$d%%";

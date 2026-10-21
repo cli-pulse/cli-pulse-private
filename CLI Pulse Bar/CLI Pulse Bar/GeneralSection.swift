@@ -198,8 +198,11 @@ struct GeneralSection: View {
 
                 WebhookEventFilterDisclosure(
                     filter: state.webhookEventFilter,
-                    isLoaded: state.webhookEventFilterLoaded,
-                    isSignedIn: state.isAuthenticated,
+                    status: state.webhookEventFilterStatus,
+                    // Demo mode reads as signed in but has no account: there
+                    // is no saved filter to read, and a read would fail each
+                    // time the filter opens.
+                    isSignedIn: state.isAuthenticated && !state.isDemoMode,
                     isExpanded: $webhookFilterExpanded,
                     toggleSeverity: { severity in
                         state.editWebhookEventFilter { Self.toggle(severity, in: &$0.severities) }
@@ -287,21 +290,25 @@ struct GeneralSection: View {
 ///
 /// It draws what it is given, so the QA renderer draws it in each state
 /// (`QAWebhookEventFilterStates`). Until the saved filter has been read the
-/// chips cannot be changed, and say why: a change before that would save the
-/// chips on screen over a filter nobody has seen. A type the chips no longer
-/// offer is shown while the filter holds it (`WebhookEventFilter.typeChips`),
-/// with a line saying it is no longer raised.
+/// chips cannot be changed, and say why (`WebhookEventFilterStatus.line`): a
+/// change before that would save the chips on screen over a filter nobody has
+/// seen, and a change to one this build cannot read would replace it. A type
+/// the chips no longer offer is shown while the filter holds it
+/// (`WebhookEventFilter.typeChips`), with a line saying it is no longer raised.
 struct WebhookEventFilterDisclosure: View {
     let filter: WebhookEventFilter
-    let isLoaded: Bool
-    /// Signed out there is no saved filter to read: the line says the filter
-    /// is the account's instead of waiting for a read that cannot come.
+    let status: WebhookEventFilterStatus
+    /// Signed out, or in Demo mode, there is no saved filter to read: the
+    /// line says the filter is the account's instead of waiting for a read
+    /// that cannot come.
     var isSignedIn = true
     @Binding var isExpanded: Bool
     var toggleSeverity: (String) -> Void = { _ in }
     var toggleType: (String) -> Void = { _ in }
     /// Called when the filter opens before the saved one has been read.
     var loadSaved: (() async -> Void)?
+
+    private var isLoaded: Bool { status == .read }
 
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
@@ -310,8 +317,8 @@ struct WebhookEventFilterDisclosure: View {
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
 
-                if !isLoaded {
-                    Text(isSignedIn ? L10n.integrations.eventFilterNotLoaded : L10n.integrations.eventFilterSignedOut)
+                if let line = status.line(isSignedIn: isSignedIn) {
+                    Text(line)
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -356,7 +363,7 @@ struct WebhookEventFilterDisclosure: View {
                 }
                 // Until the saved filter is read, a change would save these
                 // chips over it, so they cannot be changed.
-                .disabled(!isLoaded)
+                .disabled(status != .read)
                 .opacity(isLoaded ? 1 : 0.45)
 
                 if let note = WebhookEventFilter.retiredTypeNote(for: filter) {
@@ -368,7 +375,9 @@ struct WebhookEventFilterDisclosure: View {
             }
             .padding(.top, 4)
             .task {
-                if !isLoaded, isSignedIn { await loadSaved?() }
+                // Not after a read found a filter this build cannot read: the
+                // next would find the same (the refresh still reads it).
+                if status == .notRead, isSignedIn { await loadSaved?() }
             }
         } label: {
             HStack(spacing: 4) {

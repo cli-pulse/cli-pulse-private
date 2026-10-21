@@ -1963,6 +1963,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "integrations.event_type_retired" = "Ya no se generan alertas de tipo «%@». Desmarca este tipo para quitarlo del filtro.";
 "integrations.event_filter_not_loaded" = "Tu filtro guardado aún no se ha cargado. Podrás cambiarlo cuando se cargue.";
 "integrations.event_filter_signed_out" = "El filtro se guarda en tu cuenta de CLI Pulse. Inicia sesión para cambiarlo.";
+"integrations.event_filter_unreadable" = "Esta versión de CLI Pulse no puede leer tu filtro guardado, así que no puedes cambiarlo aquí.";
 "quota_tier.overall" = "General";
 "status_text.percent_left" = "%d%% restante";
 "status_text.window_percent_left" = "%1$@: %2$d%% restante";

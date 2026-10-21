@@ -1354,6 +1354,36 @@ public struct WebhookEventFilter: Codable, Sendable, Equatable {
     }
 }
 
+/// Whether the account's saved webhook event filter has been read, which
+/// decides whether the chips can change it.
+public enum WebhookEventFilterStatus: Sendable, Equatable {
+    /// Not read yet: before the first read, after a read that failed (the
+    /// next refresh reads it again), and while no account is signed in.
+    case notRead
+    /// Read: the chips show the account's saved filter and change it.
+    case read
+    /// Read, and the account holds a filter this build cannot read. The
+    /// chips cannot change it, since a save would replace it, and opening the
+    /// filter does not read it again; every refresh still does, and a
+    /// readable filter found there makes it `read`.
+    case unreadable
+
+    /// The line above the chips while they cannot be changed, saying why;
+    /// `nil` once the saved filter is read. Signed out (Demo mode included,
+    /// which has no account) there is nothing to read, so the line says the
+    /// filter is the account's rather than promise a read that cannot come.
+    public func line(isSignedIn: Bool) -> String? {
+        switch self {
+        case .read:
+            return nil
+        case .unreadable:
+            return L10n.integrations.eventFilterUnreadable
+        case .notRead:
+            return isSignedIn ? L10n.integrations.eventFilterNotLoaded : L10n.integrations.eventFilterSignedOut
+        }
+    }
+}
+
 // MARK: - Daily Usage (from CostUsageScanner)
 
 public struct DailyUsage: Codable, Identifiable, Sendable {

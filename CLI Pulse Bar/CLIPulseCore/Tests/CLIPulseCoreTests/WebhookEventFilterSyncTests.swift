@@ -13,20 +13,23 @@ import XCTest
 @MainActor
 final class WebhookEventFilterSyncTests: XCTestCase {
     private let userID = "6f1c2a4e-3b5d-4c7e-9a1b-2d3e4f5a6b7c"
-    private var outboxDefaults: UserDefaults!
-    private var outboxSuite: String!
+    private let otherUserID = "0b9e8d7c-6f5a-4b3c-9d2e-1f0a9b8c7d6e"
+    /// This test's own defaults: the state's (Demo mode is stored there) and
+    /// the deletion outbox's, never the process's standard defaults.
+    private var defaults: UserDefaults!
+    private var defaultsSuite: String!
 
     override func setUp() {
         super.setUp()
         WebhookFilterStubProtocol.reset()
-        outboxSuite = "WebhookEventFilterSyncTests-\(UUID().uuidString)"
-        outboxDefaults = UserDefaults(suiteName: outboxSuite)
+        defaultsSuite = "WebhookEventFilterSyncTests-\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: defaultsSuite)
     }
 
     override func tearDown() {
         WebhookFilterStubProtocol.reset()
-        outboxDefaults.removePersistentDomain(forName: outboxSuite)
-        outboxDefaults = nil
+        defaults.removePersistentDomain(forName: defaultsSuite)
+        defaults = nil
         super.tearDown()
     }
 
@@ -47,9 +50,11 @@ final class WebhookEventFilterSyncTests: XCTestCase {
 
     private func makeState(api: APIClient) -> AppState {
         let state = AppState(
+            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            defaults: defaults,
             api: api,
             providerAccountDeletionOutbox: ProviderAccountDeletionOutbox(
-                defaults: outboxDefaults, storageKey: "outbox-\(UUID().uuidString)"),
+                defaults: defaults, storageKey: "outbox-\(UUID().uuidString)"),
             performLaunchSetup: false)
         state.isAuthenticated = true
         state.userId = userID
@@ -72,6 +77,12 @@ final class WebhookEventFilterSyncTests: XCTestCase {
             if request.url?.path == "/rest/v1/user_settings" { return (200, rows) }
             return (200, Data("[]".utf8))
         }
+    }
+
+    /// The reads of `user_settings`, in the order they were sent.
+    private func settingsReads() -> [URLRequest] {
+        WebhookFilterStubProtocol.recordedRequests()
+            .filter { $0.httpMethod == "GET" && $0.url?.path == "/rest/v1/user_settings" }
     }
 
     /// The JSON bodies of the settings writes, in the order they were sent.
@@ -137,8 +148,8 @@ final class WebhookEventFilterSyncTests: XCTestCase {
     func test_an_empty_filter_is_saved_as_null_and_nothing_else_is_sent() async throws {
         WebhookFilterStubProtocol.handler = { _ in (201, Data()) }
         let api = await makeAPI()
-        try await api.updateWebhookEventFilter(WebhookEventFilter())
-        try await api.updateWebhookEventFilter(WebhookEventFilter(severities: ["Warning"]))
+        try await api.updateWebhookEventFilter(WebhookEventFilter(), forUser: userID)
+        try await api.updateWebhookEventFilter(WebhookEventFilter(severities: ["Warning"]), forUser: userID)
 
         let writes = try settingsWrites()
         XCTAssertEqual(writes.count, 2)
@@ -179,6 +190,7 @@ final class WebhookEventFilterSyncTests: XCTestCase {
     func test_chips_cannot_change_until_the_saved_filter_is_read() async throws {
         WebhookFilterStubProtocol.handler = { _ in (201, Data()) }
         let state = makeState(api: await makeAPI())
+        XCTAssertEqual(state.webhookEventFilterStatus, .notRead)
         XCTAssertFalse(state.webhookEventFilterLoaded)
         XCTAssertNil(state.editWebhookEventFilter { $0.severities = ["Critical"] },
                      "a change before the read would save these chips over the account's filter")
@@ -208,6 +220,24 @@ final class WebhookEventFilterSyncTests: XCTestCase {
         await state.loadWebhookEventFilter()
         XCTAssertTrue(state.webhookEventFilterLoaded)
         XCTAssertEqual(state.webhookEventFilter, WebhookEventFilter(types: ["device_offline"]))
+    }
+
+    /// Demo mode (App Review's path) reads as signed in but has no account:
+    /// opening the filter reads nothing, and the Mac's filter is told it is
+    /// signed out (`test_the_views_go_through_the_account_filter`), so its
+    /// line says the filter is the account's instead of "hasn't loaded yet"
+    /// for good.
+    func test_demo_mode_reads_no_saved_filter() async throws {
+        answerSettingsRead(with: settingsRows(filterJSON: #"{"types":["device_offline"]}"#))
+        let state = makeState(api: await makeAPI())
+        state.isDemoMode = true
+        await state.loadWebhookEventFilter()
+        XCTAssertTrue(settingsReads().isEmpty, "Demo mode read a filter it has no account for")
+        XCTAssertEqual(state.webhookEventFilterStatus, .notRead)
+        withLocale("zh-Hans") {
+            XCTAssertEqual(state.webhookEventFilterStatus.line(isSignedIn: false),
+                           "筛选条件保存在你的 CLI\u{00A0}Pulse 账户中，登录后才能更改。")
+        }
     }
 
     func test_a_change_saves_the_whole_filter_and_clearing_it_saves_null() async throws {
@@ -277,13 +307,36 @@ final class WebhookEventFilterSyncTests: XCTestCase {
         XCTAssertEqual(state.webhookEventFilter, WebhookEventFilter(severities: ["Warning"]))
     }
 
-    func test_an_unreadable_saved_filter_cannot_be_overwritten_from_the_chips() async throws {
-        WebhookFilterStubProtocol.handler = { _ in (201, Data()) }
+    /// A saved filter this build cannot read is its own state: the chips
+    /// cannot change it, the line says so rather than "hasn't loaded yet",
+    /// and opening the filter does not read it again. A refresh that finds a
+    /// readable filter makes the chips changeable again.
+    func test_an_unreadable_saved_filter_cannot_be_changed_and_says_so() async throws {
+        answerSettingsRead(with: settingsRows(filterJSON: #"{"types":"cost_spike"}"#))
         let state = makeState(api: await makeAPI())
-        state.applySavedWebhookEventFilter(nil, readAt: state.webhookEventFilterEpoch)
+        // An earlier read found a filter; this refresh finds one it cannot read.
+        state.applySavedWebhookEventFilter(WebhookEventFilter(types: ["cost_spike"]),
+                                           readAt: state.webhookEventFilterEpoch)
+        await state.refreshYieldScore()
+        XCTAssertEqual(state.webhookEventFilterStatus, .unreadable, "an unreadable filter read as not loaded yet")
         XCTAssertFalse(state.webhookEventFilterLoaded)
+        XCTAssertEqual(state.webhookEventFilter, WebhookEventFilter(),
+                       "the chips still showed an earlier read's filter")
         XCTAssertNil(state.editWebhookEventFilter { $0.severities = ["Critical"] })
+
+        let reads = settingsReads().count
+        await state.loadWebhookEventFilter()
+        XCTAssertEqual(settingsReads().count, reads, "opening the filter read an unreadable filter again")
         XCTAssertTrue(try settingsWrites().isEmpty)
+        withLocale("zh-Hans") {
+            XCTAssertEqual(state.webhookEventFilterStatus.line(isSignedIn: true),
+                           "此版本的 CLI\u{00A0}Pulse 无法读取已保存的筛选条件，因此无法在此更改。")
+        }
+
+        answerSettingsRead(with: settingsRows(filterJSON: #"{"types":["cost_spike"]}"#))
+        await state.refreshYieldScore()
+        XCTAssertEqual(state.webhookEventFilterStatus, .read)
+        XCTAssertEqual(state.webhookEventFilter, WebhookEventFilter(types: ["cost_spike"]))
     }
 
     /// Signing out, or another account signing in, returns the chips to "not
@@ -296,12 +349,36 @@ final class WebhookEventFilterSyncTests: XCTestCase {
         let queued = state.editWebhookEventFilter { $0.types = ["cost_spike"] }
 
         state.resetWebhookEventFilter()   // what sign-out and an account switch call
-        state.userId = "0b9e8d7c-6f5a-4b3c-9d2e-1f0a9b8c7d6e"
+        state.userId = otherUserID
         await queued?.value
 
         XCTAssertTrue(try settingsWrites().isEmpty, "a save for the previous account was sent")
         XCTAssertFalse(state.webhookEventFilterLoaded)
         XCTAssertEqual(state.webhookEventFilter, WebhookEventFilter())
+    }
+
+    /// The write is addressed to the API's own account, which can move to
+    /// another account (a sign-in on top of a signed-in session) before the
+    /// state hears of it. A save made for the previous account is then
+    /// refused where the request is built, not written into the new row.
+    func test_a_save_is_never_written_into_another_account() async throws {
+        WebhookFilterStubProtocol.handler = { _ in (201, Data()) }
+        let api = await makeAPI()
+        let sent = try await api.updateWebhookEventFilter(WebhookEventFilter(types: ["cost_spike"]),
+                                                          forUser: otherUserID)
+        XCTAssertFalse(sent)
+        XCTAssertTrue(try settingsWrites().isEmpty, "a write for one account was sent as another")
+
+        let state = makeState(api: api)
+        state.applySavedWebhookEventFilter(WebhookEventFilter(), readAt: state.webhookEventFilterEpoch)
+        // The API is now the other account's; the state has not heard yet.
+        _ = await api.beginExternalAuthorizationTransition(generation: 2)
+        _ = await api.installExternalAuthenticatedSession(
+            accessToken: "token-b", refreshToken: "refresh-b", userID: otherUserID, transitionGeneration: 2)
+        await state.editWebhookEventFilter { $0.types = ["cost_spike"] }?.value
+        XCTAssertTrue(try settingsWrites().isEmpty,
+                      "the previous account's filter was written into the next account's row")
+        XCTAssertNil(state.lastError, "a save refused for another account showed an error")
     }
 
     func test_sign_out_and_an_account_switch_reset_the_filter() throws {
@@ -339,7 +416,7 @@ final class WebhookEventFilterSyncTests: XCTestCase {
                        "a selected type nobody can see")
         withLocale("zh-Hans") {
             XCTAssertEqual(WebhookEventFilter.retiredTypeNote(for: state.webhookEventFilter),
-                           "已不再产生“会话时间过长”告警。取消选择即可将其从筛选中移除。")
+                           "已不再产生「会话时间过长」告警。取消选择即可将其从筛选条件中移除。")
         }
 
         await state.editWebhookEventFilter { $0.types.removeAll { $0 == "session_long" } }?.value
@@ -348,11 +425,17 @@ final class WebhookEventFilterSyncTests: XCTestCase {
         XCTAssertTrue(try settingsWrites().last?["webhook_event_filter"] is NSNull)
     }
 
-    func test_the_not_loaded_and_signed_out_lines_are_translated() {
+    /// The line above the chips for each state, in zh-Hans.
+    func test_each_state_has_its_own_translated_line() {
         withLocale("zh-Hans") {
-            XCTAssertEqual(L10n.integrations.eventFilterNotLoaded, "已保存的筛选尚未加载，加载后才能更改。")
+            XCTAssertEqual(WebhookEventFilterStatus.notRead.line(isSignedIn: true),
+                           "已保存的筛选条件尚未加载，加载后才能更改。")
             // The brand is laid out unbroken (U+00A0, `L10n.displayFormat`).
-            XCTAssertEqual(L10n.integrations.eventFilterSignedOut, "筛选保存在你的 CLI\u{00A0}Pulse 账户中，登录后才能更改。")
+            XCTAssertEqual(WebhookEventFilterStatus.notRead.line(isSignedIn: false),
+                           "筛选条件保存在你的 CLI\u{00A0}Pulse 账户中，登录后才能更改。")
+            XCTAssertEqual(WebhookEventFilterStatus.unreadable.line(isSignedIn: true),
+                           "此版本的 CLI\u{00A0}Pulse 无法读取已保存的筛选条件，因此无法在此更改。")
+            XCTAssertNil(WebhookEventFilterStatus.read.line(isSignedIn: true))
         }
     }
 
@@ -367,12 +450,14 @@ final class WebhookEventFilterSyncTests: XCTestCase {
                              encoding: .utf8)
         for wired in [
             "state.editWebhookEventFilter {",
-            "isLoaded: state.webhookEventFilterLoaded,",
-            "isSignedIn: state.isAuthenticated,",
-            "if !isLoaded, isSignedIn { await loadSaved?() }",
+            "status: state.webhookEventFilterStatus,",
+            // Demo mode reads as signed in and has no account.
+            "isSignedIn: state.isAuthenticated && !state.isDemoMode,",
+            "if status == .notRead, isSignedIn { await loadSaved?() }",
             "loadSaved: { await state.loadWebhookEventFilter() }",
+            "if let line = status.line(isSignedIn: isSignedIn) {",
             "ForEach(WebhookEventFilter.typeChips(for: filter), id: \\.self)",
-            ".disabled(!isLoaded)",
+            ".disabled(status != .read)",
             "WebhookEventFilter.retiredTypeNote(for: filter)",
         ] {
             XCTAssertTrue(mac.contains(wired), "GeneralSection.swift no longer has \(wired)")

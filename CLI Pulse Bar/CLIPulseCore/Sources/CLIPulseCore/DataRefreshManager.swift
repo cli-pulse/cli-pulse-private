@@ -3037,9 +3037,14 @@ extension AppState {
         let save = Task { [weak self] in
             await previous?.value
             guard let self else { return }
-            if self.userId == account, self.webhookEventFilterLoaded {
+            if !account.isEmpty, self.userId == account, self.webhookEventFilterLoaded {
                 do {
-                    try await self.api.updateWebhookEventFilter(self.webhookEventFilter)
+                    // Addressed to `account`. The API's own session can move
+                    // to another account before this one hears of it (a
+                    // sign-in on top of a signed-in session), and the write
+                    // goes to the API's account: it refuses rather than write
+                    // this filter into that account's row.
+                    try await self.api.updateWebhookEventFilter(self.webhookEventFilter, forUser: account)
                 } catch {
                     self.lastError = L10n.integrations.saveSettingsFailed(error.localizedDescription)
                 }
@@ -3054,7 +3059,13 @@ extension AppState {
     /// Read the account's saved filter now, rather than with the next refresh.
     /// The Integrations filter calls it when it opens before the filter has
     /// been read (a refresh that failed, or one still to come after launch).
+    ///
+    /// Nothing is read in Demo mode, which has no account to read from, nor
+    /// once a read has found a filter this build cannot read: the next read
+    /// would find the same, so opening the filter does not ask again (every
+    /// refresh still reads it).
     public func loadWebhookEventFilter() async {
+        guard !isDemoMode, webhookEventFilterStatus == .notRead else { return }
         let epoch = webhookEventFilterEpoch
         guard let snapshot = try? await api.settings() else { return }
         applySavedWebhookEventFilter(snapshot.webhook_event_filter, readAt: epoch)
@@ -3066,31 +3077,22 @@ extension AppState {
     /// and applying it would put the old chips back.
     ///
     /// `saved` is `nil` when the server holds a filter this build cannot read.
-    /// The chips then stay unchangeable rather than show "no filter" and save
-    /// over it.
+    /// The chips then cannot be changed (`unreadable`) rather than show "no
+    /// filter" and save over it, and they show nothing selected: what an
+    /// earlier read found is no longer the account's filter.
     func applySavedWebhookEventFilter(_ saved: WebhookEventFilter?, readAt epoch: UInt64) {
         guard epoch == webhookEventFilterEpoch, webhookEventFilterSavesInFlight == 0 else { return }
-        guard let saved else {
-            webhookEventFilterLoaded = false
-            return
-        }
-        if webhookEventFilter != saved { webhookEventFilter = saved }
-        if !webhookEventFilterLoaded { webhookEventFilterLoaded = true }
+        let filter = saved ?? WebhookEventFilter()
+        let status: WebhookEventFilterStatus = saved == nil ? .unreadable : .read
+        if webhookEventFilter != filter { webhookEventFilter = filter }
+        if webhookEventFilterStatus != status { webhookEventFilterStatus = status }
     }
 
     /// Back to "not read yet", for a sign-out or an account switch.
     func resetWebhookEventFilter() {
         webhookEventFilter = WebhookEventFilter()
-        webhookEventFilterLoaded = false
+        webhookEventFilterStatus = .notRead
         webhookEventFilterEpoch &+= 1
-    }
-
-    /// The QA build's offscreen renderer: show `filter` as the account's saved
-    /// one. Demo mode has no account to read it from.
-    public func showSavedWebhookEventFilterForQARender(_ filter: WebhookEventFilter) {
-        precondition(runtimeEnvironment.isQA, "the QA renderer's seam")
-        resetWebhookEventFilter()
-        applySavedWebhookEventFilter(filter, readAt: webhookEventFilterEpoch)
     }
 
     /// Send a test webhook to verify the user's URL works.

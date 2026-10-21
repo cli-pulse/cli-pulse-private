@@ -1605,8 +1605,14 @@ public actor APIClient {
     /// `SettingsPatch`, whose optional fields are left out when `nil`, and
     /// the Mac passed `nil` for an empty filter: clearing every chip sent
     /// nothing, and the server kept the old filter.
-    public func updateWebhookEventFilter(_ filter: WebhookEventFilter) async throws {
-        try await upsertSettings(WebhookEventFilterPatch(filter: filter))
+    ///
+    /// `account` is the account the filter was set for. When this client is
+    /// signed into another one by the time the write is built, nothing is
+    /// sent and the result is `false`: the write is addressed to this
+    /// client's account, and would put the filter into the wrong row.
+    @discardableResult
+    public func updateWebhookEventFilter(_ filter: WebhookEventFilter, forUser account: String) async throws -> Bool {
+        try await upsertSettings(WebhookEventFilterPatch(filter: filter), onlyFor: account)
     }
 
     /// The body of `updateWebhookEventFilter`: `{"webhook_event_filter": …}`,
@@ -1628,7 +1634,12 @@ public actor APIClient {
         }
     }
 
-    private func upsertSettings<Patch: Encodable>(_ patch: Patch) async throws {
+    /// With `account`, the write is sent only while this client is signed
+    /// into that account (checked as the body is built, with no suspension
+    /// in between); otherwise nothing is sent and the result is `false`.
+    @discardableResult
+    private func upsertSettings<Patch: Encodable>(_ patch: Patch, onlyFor account: String? = nil) async throws -> Bool {
+        if let account, userId != account { return false }
         guard let uid = userId, Self.isValidUUID(uid) else { throw APIError.invalidResponse }
         let envelope = SettingsUpsertEnvelope(user_id: uid, patch: patch)
         _ = try await restPost(
@@ -1636,6 +1647,7 @@ public actor APIClient {
             body: envelope,
             extraHeaders: ["Prefer": "resolution=merge-duplicates"]
         )
+        return true
     }
 
     /// Wraps a `SettingsPatch` together with its `user_id` so the upsert

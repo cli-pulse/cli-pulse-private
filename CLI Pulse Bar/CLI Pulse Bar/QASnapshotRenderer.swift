@@ -881,9 +881,12 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             state.showsRetiredProviderNotice = false
 
         case .demoSettingsWebhookFilter:
-            // Webhooks on, with an example URL, and a saved filter as a read
-            // of the account's settings would show it. The switch and URL are
-            // put back afterwards (the run's defaults are restored at exit too).
+            // Webhooks on, with an example URL, and the filter open, as Demo
+            // mode shows it (App Review's path): Demo has no account, so no
+            // saved filter is read and the chips cannot change. Every other
+            // state is on `webhookEventFilterStates`' strips. The switch and
+            // URL are put back afterwards (the run's defaults are restored at
+            // exit too).
             enterDemoIfNeeded()
             shapeExistingUser(onboardingV2: false)
             state.selectedTab = .settings
@@ -891,15 +894,15 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             let url = state.webhookURL
             state.webhookEnabled = true
             state.webhookURL = QAWebhookEventFilterStates.exampleURL
-            state.showSavedWebhookEventFilterForQARender(QAWebhookEventFilterStates.savedFilter)
             await capturePopover(
                 surface, index: index,
                 viewState: QARenderViewState(
                     settingsSection: QARenderSettingsSection.general.rawValue,
                     webhookFilterExpanded: true
                 ),
-                note: "Settings › General with webhook notifications on and the event filter open,"
-                    + " showing a saved filter of two severities and two types. The URL is an example."
+                note: "Settings › General in Demo mode with webhook notifications on and the event"
+                    + " filter open: Demo has no account, so the chips are dimmed under the line"
+                    + " that says the filter is saved to the account. The URL is an example."
             )
             state.webhookEnabled = enabled
             state.webhookURL = url
@@ -979,8 +982,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             await captureWindow(
                 QAWebhookEventFilterStates(), surface: surface, index: index,
                 note: "Settings › Integrations › Event Filter, open, each state on a strip as wide as"
-                    + " the popover's content (356 points): signed out (the filter is the account's);"
-                    + " before the account's saved filter has been read (chips cannot be changed);"
+                    + " the popover's content (356 points): signed out, and Demo mode (the filter is"
+                    + " the account's); before the account's saved filter has been read (chips cannot"
+                    + " be changed); a saved filter this build cannot read (chips cannot be changed);"
                     + " no filter saved; a saved filter of two"
                     + " severities and two types; a filter saved with \"Long session\", which nothing"
                     + " raises any more, shown selected with the line that says so."
@@ -2001,13 +2005,15 @@ struct QAWebhookEventFilterStates: View {
     static let savedFilter = WebhookEventFilter(
         severities: ["Critical", "Warning"], types: ["cost_spike", "device_offline"])
 
-    private var states: [(filter: WebhookEventFilter, isLoaded: Bool, isSignedIn: Bool)] {
+    private var states: [(filter: WebhookEventFilter, status: WebhookEventFilterStatus, isSignedIn: Bool)] {
         [
-            (WebhookEventFilter(), false, false),
-            (WebhookEventFilter(), false, true),
-            (WebhookEventFilter(), true, true),
-            (Self.savedFilter, true, true),
-            (WebhookEventFilter(severities: ["Critical"], types: ["session_long"]), true, true),
+            // Signed out; Demo mode draws the same (`GeneralSection`).
+            (WebhookEventFilter(), .notRead, false),
+            (WebhookEventFilter(), .notRead, true),
+            (WebhookEventFilter(), .unreadable, true),
+            (WebhookEventFilter(), .read, true),
+            (Self.savedFilter, .read, true),
+            (WebhookEventFilter(severities: ["Critical"], types: ["session_long"]), .read, true),
         ]
     }
 
@@ -2016,7 +2022,7 @@ struct QAWebhookEventFilterStates: View {
             ForEach(Array(states.enumerated()), id: \.offset) { _, state in
                 // 356 points: the popover's 380 less Settings' 12-point margins.
                 WebhookEventFilterDisclosure(
-                    filter: state.filter, isLoaded: state.isLoaded, isSignedIn: state.isSignedIn,
+                    filter: state.filter, status: state.status, isSignedIn: state.isSignedIn,
                     isExpanded: .constant(true))
                     .frame(width: 356, alignment: .leading)
                     .padding(8)

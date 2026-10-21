@@ -850,11 +850,13 @@ public final class AppState: ObservableObject {
     /// read with the account's settings (`applySavedWebhookEventFilter`),
     /// changed only through `editWebhookEventFilter`, which saves it.
     @Published public internal(set) var webhookEventFilter = WebhookEventFilter()
-    /// Whether `webhookEventFilter` is the account's saved filter yet. Until it
-    /// is, the chips cannot be changed: the first change would save "these
-    /// chips" over a filter nobody has seen (the Mac did exactly that before
-    /// 1.58, when it never read the filter back).
-    @Published public internal(set) var webhookEventFilterLoaded = false
+    /// Whether the account's saved filter has been read, and could be. Until
+    /// it is `read`, the chips cannot be changed: the first change would save
+    /// "these chips" over a filter nobody has seen (the Mac did exactly that
+    /// before 1.58, when it never read the filter back).
+    @Published public internal(set) var webhookEventFilterStatus = WebhookEventFilterStatus.notRead
+    /// Whether `webhookEventFilter` is the account's saved filter.
+    public var webhookEventFilterLoaded: Bool { webhookEventFilterStatus == .read }
     /// Moves on every change made here, every save that finishes and every
     /// sign-out. A read of the account's settings that began before it moved
     /// may predate the latest change, so it is not applied.

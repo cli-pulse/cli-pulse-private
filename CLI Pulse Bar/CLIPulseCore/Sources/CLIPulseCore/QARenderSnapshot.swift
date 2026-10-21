@@ -765,7 +765,8 @@ public enum QARenderSurface: Hashable {
     /// are no longer supported (`AppState.showsRetiredProviderNotice`).
     case demoRetiredProviderNotice
     /// 1.58: Settings › General with webhooks on and the event filter open,
-    /// showing a saved filter (Demo mode has no account to read one from).
+    /// as Demo mode shows it: no account, so no saved filter, and the chips
+    /// cannot change.
     case demoSettingsWebhookFilter
     case about
     case subscription
@@ -786,9 +787,10 @@ public enum QARenderSurface: Hashable {
     /// appears in the QA build, which is not sandboxed.
     case codexResetCreditsStates
     /// 1.58: the webhook event filter in each state it draws, at the
-    /// popover's content width: signed out, before the saved filter is read,
-    /// no filter saved, a saved filter, and a saved filter that holds the
-    /// retired "Long session" type.
+    /// popover's content width: signed out (and Demo mode), before the saved
+    /// filter is read, a saved filter this build cannot read, no filter saved,
+    /// a saved filter, and a saved filter that holds the retired "Long
+    /// session" type.
     case webhookEventFilterStates
 
     public enum Kind: String, Codable, Sendable {
