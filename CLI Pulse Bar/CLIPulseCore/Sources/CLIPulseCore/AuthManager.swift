@@ -751,6 +751,9 @@ extension AppState {
     // ObservableObject). The LHS assignments below now route through
     // AppState's computed forwarders to the child.
     func applyAuthenticatedState(_ session: AuthSessionState) {
+        // Another account without a sign-out in between: the webhook filter
+        // on screen is the previous account's (see `applySignedOutState`).
+        if userId != session.userId { resetWebhookEventFilter() }
         userId = session.userId
         userName = session.userName
         userEmail = session.userEmail
@@ -887,6 +890,11 @@ extension AppState {
         // settings read that would clear the flag needs an account.
         gitTrackingEnabled = false
         yieldScoreDailyRows = []
+        // The webhook event filter is the account's too (1.58 reads it). Left
+        // set, the next account would see these chips, and its first change
+        // would save them into that account; a save still queued for this
+        // account checks the account before it sends.
+        resetWebhookEventFilter()
         // iter16 hotfix (2026-04-29): signed-out + onboarding-completed
         // users used to land on `.overview` after a sign-out / delete-
         // account, which renders an empty "No Data Yet" state — a

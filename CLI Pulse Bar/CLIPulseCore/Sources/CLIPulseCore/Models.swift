@@ -1210,6 +1210,12 @@ public struct SettingsSnapshot: Codable, Sendable {
     public let data_retention_days: Int
     public let track_git_activity: Bool
     public let remote_control_enabled: Bool
+    /// `user_settings.webhook_event_filter`: an empty filter when the account
+    /// has none saved (the column is `null`, or there is no settings row yet),
+    /// and `nil` when it holds something this build cannot read. The two must
+    /// stay apart: an unreadable filter shown as an empty one would be
+    /// replaced by the next save.
+    public let webhook_event_filter: WebhookEventFilter?
 
     public init(
         notifications_enabled: Bool, push_policy: String,
@@ -1219,7 +1225,8 @@ public struct SettingsSnapshot: Codable, Sendable {
         repeated_failure_threshold: Int, alert_cooldown_minutes: Int,
         data_retention_days: Int,
         track_git_activity: Bool = false,
-        remote_control_enabled: Bool = false
+        remote_control_enabled: Bool = false,
+        webhook_event_filter: WebhookEventFilter? = WebhookEventFilter()
     ) {
         self.notifications_enabled = notifications_enabled
         self.push_policy = push_policy
@@ -1234,11 +1241,17 @@ public struct SettingsSnapshot: Codable, Sendable {
         self.data_retention_days = data_retention_days
         self.track_git_activity = track_git_activity
         self.remote_control_enabled = remote_control_enabled
+        self.webhook_event_filter = webhook_event_filter
     }
 }
 
 // MARK: - Webhook Event Filter
 
+/// The account's webhook event filter (`user_settings.webhook_event_filter`).
+///
+/// Every client edits the same row: the Mac's chips, Android's chips, and,
+/// for `providers`, nothing yet. So a client keeps whatever it read and does
+/// not show, and changes only what the person changed.
 public struct WebhookEventFilter: Codable, Sendable, Equatable {
     public var severities: [String]
     public var types: [String]
@@ -1250,13 +1263,29 @@ public struct WebhookEventFilter: Codable, Sendable, Equatable {
         self.providers = providers
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case severities, types, providers
+    }
+
+    /// A missing list is an empty one. Android writes only the lists that hold
+    /// something (`{"types":["cost_spike"]}`), and a decoder that required all
+    /// three read such a filter as unreadable.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            severities: try container.decodeIfPresent([String].self, forKey: .severities) ?? [],
+            types: try container.decodeIfPresent([String].self, forKey: .types) ?? [],
+            providers: try container.decodeIfPresent([String].self, forKey: .providers) ?? []
+        )
+    }
+
     public var isEmpty: Bool {
         severities.isEmpty && types.isEmpty && providers.isEmpty
     }
 
-    /// The values the Settings chips offer. They are what gets stored, synced by
-    /// `pushSettingsToServer` and matched by the webhook sender, so they stay raw;
-    /// `severityLabel` and `typeLabel` are what the chips show.
+    /// The values the Settings chips offer. They are what gets stored, saved by
+    /// `AppState.editWebhookEventFilter` and matched by the webhook sender, so
+    /// they stay raw; `severityLabel` and `typeLabel` are what the chips show.
     public static let selectableSeverities = ["Critical", "Warning", "Info"]
     public static let selectableTypes = ["cost_spike", "quota_exceeded", "device_offline"]
 
@@ -1268,17 +1297,47 @@ public struct WebhookEventFilter: Codable, Sendable, Equatable {
     /// webhook that never comes.
     ///
     /// A saved filter that holds it is left as it is, neither rewritten on
-    /// the server nor migrated here. The Mac never reads the saved filter back
-    /// (`webhookEventFilter` starts empty at launch), and every save writes
-    /// only the chips on screen, so the type leaves a filter the next time it
-    /// is saved from a Mac and cannot come back. Dropping it from a filter
-    /// that holds nothing else would widen that filter to every type, sending
-    /// alerts its owner never chose, while keeping it delivers what the
-    /// owner asked for, Session Too Long, from a Mac that has not updated
-    /// yet. send-webhook keeps matching it, and
+    /// the server nor migrated here: dropping it from a filter that holds no
+    /// other type would widen that filter to every type, sending alerts its
+    /// owner never chose. The Mac reads the saved filter back (1.58) and
+    /// shows the type as a selected chip while the filter holds it
+    /// (`typeChips(for:)`), with `retiredTypeNote` saying it is no longer
+    /// raised, so the owner sees it and can deselect it; once deselected it is
+    /// not offered again. send-webhook keeps matching it, and
     /// backend/supabase/ci_check_alert_types.py holds both lists to this one.
     /// The value still decodes, like any string, and `typeLabel` still names it.
     public static let retiredTypes = ["session_long"]
+
+    /// The type chips for `filter`: the offered types, then every other type
+    /// the filter holds, in the filter's order. A type the chips no longer
+    /// offer is shown while it is selected and disappears once deselected.
+    /// A chip the screen does not show would be a selection nobody can see:
+    /// "Alert Types" with nothing selected reads as "every type", while the
+    /// saved filter sends only the hidden one.
+    public static func typeChips(for filter: WebhookEventFilter) -> [String] {
+        var chips = selectableTypes
+        for type in filter.types where !chips.contains(type) {
+            chips.append(type)
+        }
+        return chips
+    }
+
+    /// The severity chips for `filter`, on the same rule as `typeChips(for:)`.
+    public static func severityChips(for filter: WebhookEventFilter) -> [String] {
+        var chips = selectableSeverities
+        for severity in filter.severities where !chips.contains(severity) {
+            chips.append(severity)
+        }
+        return chips
+    }
+
+    /// The line under the type chips while the filter holds a retired type:
+    /// "“Long session” alerts are no longer raised. …". `nil` when it holds
+    /// none. There is one retired type, so the line names one.
+    public static func retiredTypeNote(for filter: WebhookEventFilter) -> String? {
+        guard let held = filter.types.first(where: retiredTypes.contains) else { return nil }
+        return L10n.integrations.eventTypeRetired(typeLabel(held))
+    }
 
     public static func severityLabel(_ raw: String) -> String {
         AlertPresentation.severityLabel(raw)
@@ -1291,6 +1350,36 @@ public struct WebhookEventFilter: Codable, Sendable, Equatable {
         case "session_long": return L10n.integrations.eventTypeSessionLong
         case "device_offline": return L10n.integrations.eventTypeDeviceOffline
         default: return raw
+        }
+    }
+}
+
+/// Whether the account's saved webhook event filter has been read, which
+/// decides whether the chips can change it.
+public enum WebhookEventFilterStatus: Sendable, Equatable {
+    /// Not read yet: before the first read, after a read that failed (the
+    /// next refresh reads it again), and while no account is signed in.
+    case notRead
+    /// Read: the chips show the account's saved filter and change it.
+    case read
+    /// Read, and the account holds a filter this build cannot read. The
+    /// chips cannot change it, since a save would replace it, and opening the
+    /// filter does not read it again; every refresh still does, and a
+    /// readable filter found there makes it `read`.
+    case unreadable
+
+    /// The line above the chips while they cannot be changed, saying why;
+    /// `nil` once the saved filter is read. Signed out (Demo mode included,
+    /// which has no account) there is nothing to read, so the line says the
+    /// filter is the account's rather than promise a read that cannot come.
+    public func line(isSignedIn: Bool) -> String? {
+        switch self {
+        case .read:
+            return nil
+        case .unreadable:
+            return L10n.integrations.eventFilterUnreadable
+        case .notRead:
+            return isSignedIn ? L10n.integrations.eventFilterNotLoaded : L10n.integrations.eventFilterSignedOut
         }
     }
 }

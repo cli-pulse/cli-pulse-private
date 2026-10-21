@@ -1977,6 +1977,10 @@
 "integrations.event_type_quota_exceeded" = "配额超限";
 "integrations.event_type_session_long" = "会话时间过长";
 "integrations.event_type_device_offline" = "设备离线";
+"integrations.event_type_retired" = "已不再产生「%@」告警。取消选择即可将其从筛选条件中移除。";
+"integrations.event_filter_not_loaded" = "已保存的筛选条件尚未加载，加载后才能更改。";
+"integrations.event_filter_signed_out" = "筛选条件保存在你的 CLI Pulse 账户中，登录后才能更改。";
+"integrations.event_filter_unreadable" = "此版本的 CLI Pulse 无法读取已保存的筛选条件，因此无法在此更改。";
 "quota_tier.overall" = "总体";
 "status_text.percent_left" = "剩余 %d%%";
 "status_text.window_percent_left" = "%1$@：剩余 %2$d%%";

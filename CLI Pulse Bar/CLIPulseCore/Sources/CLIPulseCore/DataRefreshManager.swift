@@ -2985,20 +2985,114 @@ extension AppState {
         }
     }
 
-    /// Push webhook settings to the server.
-    public func pushSettingsToServer() {
-        Task {
+    /// Push the webhook switch and URL to the server: the Mac's and the
+    /// iPhone's Integrations call this. It never touches the event filter,
+    /// which `editWebhookEventFilter` saves on its own. The iPhone has no
+    /// filter chips, and when this also sent the filter, an iPhone could only
+    /// leave it alone by sending none at all (an empty filter was left out).
+    @discardableResult
+    public func pushSettingsToServer() -> Task<Void, Never> {
+        let patch = webhookSettingsPatch()
+        return Task {
             do {
-                let filter = webhookEventFilter.isEmpty ? nil : webhookEventFilter
-                try await api.updateSettings(APIClient.SettingsPatch(
-                    webhook_url: webhookURL.isEmpty ? nil : webhookURL,
-                    webhook_enabled: webhookEnabled,
-                    webhook_event_filter: filter
-                ))
+                try await api.updateSettings(patch)
             } catch {
                 lastError = L10n.integrations.saveSettingsFailed(error.localizedDescription)
             }
         }
+    }
+
+    /// What `pushSettingsToServer` sends.
+    func webhookSettingsPatch() -> APIClient.SettingsPatch {
+        APIClient.SettingsPatch(
+            webhook_url: webhookURL.isEmpty ? nil : webhookURL,
+            webhook_enabled: webhookEnabled
+        )
+    }
+
+    /// Change the webhook event filter, then save it.
+    ///
+    /// Refused (returns `nil`) until the account's saved filter has been read:
+    /// a change before that would save the chips on screen over a filter
+    /// nobody has seen. A change that changes nothing saves nothing.
+    @discardableResult
+    public func editWebhookEventFilter(_ change: (inout WebhookEventFilter) -> Void) -> Task<Void, Never>? {
+        guard webhookEventFilterLoaded else { return nil }
+        var filter = webhookEventFilter
+        change(&filter)
+        guard filter != webhookEventFilter else { return nil }
+        webhookEventFilter = filter
+        webhookEventFilterEpoch &+= 1
+        return saveWebhookEventFilter()
+    }
+
+    /// Saves run one after another, each sending the filter as it is when its
+    /// turn comes, so the last change is the last thing the server receives.
+    /// A save still waiting when the account changes sends nothing: it would
+    /// otherwise write the reset filter into the next account.
+    private func saveWebhookEventFilter() -> Task<Void, Never> {
+        let previous = webhookEventFilterSave
+        let account = userId
+        webhookEventFilterSavesInFlight += 1
+        let save = Task { [weak self] in
+            await previous?.value
+            guard let self else { return }
+            if !account.isEmpty, self.userId == account, self.webhookEventFilterLoaded {
+                do {
+                    // Addressed to `account`. The API's own session can move
+                    // to another account before this one hears of it (a
+                    // sign-in on top of a signed-in session), and the write
+                    // goes to the API's account: it refuses rather than write
+                    // this filter into that account's row.
+                    try await self.api.updateWebhookEventFilter(self.webhookEventFilter, forUser: account)
+                } catch {
+                    self.lastError = L10n.integrations.saveSettingsFailed(error.localizedDescription)
+                }
+            }
+            self.webhookEventFilterSavesInFlight -= 1
+            self.webhookEventFilterEpoch &+= 1
+        }
+        webhookEventFilterSave = save
+        return save
+    }
+
+    /// Read the account's saved filter now, rather than with the next refresh.
+    /// The Integrations filter calls it when it opens before the filter has
+    /// been read (a refresh that failed, or one still to come after launch).
+    ///
+    /// Nothing is read in Demo mode, which has no account to read from, nor
+    /// once a read has found a filter this build cannot read: the next read
+    /// would find the same, so opening the filter does not ask again (every
+    /// refresh still reads it).
+    public func loadWebhookEventFilter() async {
+        guard !isDemoMode, webhookEventFilterStatus == .notRead else { return }
+        let epoch = webhookEventFilterEpoch
+        guard let snapshot = try? await api.settings() else { return }
+        applySavedWebhookEventFilter(snapshot.webhook_event_filter, readAt: epoch)
+    }
+
+    /// Show the filter a read of the account's settings found, unless a change
+    /// made here, a save, or a sign-out happened since the read began, or a
+    /// save is still on its way: the read may then predate the latest change,
+    /// and applying it would put the old chips back.
+    ///
+    /// `saved` is `nil` when the server holds a filter this build cannot read.
+    /// The chips then cannot be changed (`unreadable`) rather than show "no
+    /// filter" and save over it, and they show nothing selected: what an
+    /// earlier read found is no longer the account's filter.
+    func applySavedWebhookEventFilter(_ saved: WebhookEventFilter?, readAt epoch: UInt64) {
+        guard epoch == webhookEventFilterEpoch, webhookEventFilterSavesInFlight == 0 else { return }
+        let filter = saved ?? WebhookEventFilter()
+        let status: WebhookEventFilterStatus = saved == nil ? .unreadable : .read
+        if webhookEventFilter != filter { webhookEventFilter = filter }
+        if webhookEventFilterStatus != status { webhookEventFilterStatus = status }
+    }
+
+    /// Back to "not read yet", for a sign-out or an account switch.
+    func resetWebhookEventFilter() {
+        webhookEventFilter = WebhookEventFilter()
+        webhookEventFilterStatus = .notRead
+        webhookEventFilterEpoch &+= 1
     }
 
     /// Send a test webhook to verify the user's URL works.
@@ -3176,11 +3270,18 @@ extension AppState {
 
     /// Pull last 90 days of daily yield rollups so the UI can re-aggregate
     /// over any of the supported windows (7/30/90) without an extra round trip.
-    /// Also re-syncs the user's track_git_activity opt-in from the server.
-    private func refreshYieldScore() async {
+    /// Also re-syncs the user's track_git_activity opt-in and (1.58) the saved
+    /// webhook event filter from the server. Internal so a test can run the
+    /// read the refresh runs.
+    func refreshYieldScore() async {
         let rows = await api.fetchYieldScoreDaily(days: 90)
         yieldScoreDailyRows = rows
+        let webhookFilterEpoch = webhookEventFilterEpoch
         if let snapshot = try? await api.settings() {
+            // The saved webhook filter comes with the same read (1.58). The
+            // Mac used to start every launch with no chips selected and save
+            // those chips over the account's filter at the first change.
+            applySavedWebhookEventFilter(snapshot.webhook_event_filter, readAt: webhookFilterEpoch)
             gitTrackingEnabled = snapshot.track_git_activity
             // Skip overwriting remoteControlEnabled while a toggle PATCH is
             // mid-flight — the snapshot may have been read before the user's

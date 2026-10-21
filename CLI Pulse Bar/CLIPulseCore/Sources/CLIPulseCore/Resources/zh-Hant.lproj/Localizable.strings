@@ -1977,6 +1977,10 @@
 "integrations.event_type_quota_exceeded" = "配額超限";
 "integrations.event_type_session_long" = "工作階段過長";
 "integrations.event_type_device_offline" = "裝置離線";
+"integrations.event_type_retired" = "已不再產生「%@」警示。取消選取即可將其從篩選條件中移除。";
+"integrations.event_filter_not_loaded" = "已儲存的篩選條件尚未載入，載入後才能變更。";
+"integrations.event_filter_signed_out" = "篩選條件儲存在你的 CLI Pulse 帳號中，登入後才能變更。";
+"integrations.event_filter_unreadable" = "此版本的 CLI Pulse 無法讀取已儲存的篩選條件，因此無法在此變更。";
 "quota_tier.overall" = "整體";
 "status_text.percent_left" = "剩餘 %d%%";
 "status_text.window_percent_left" = "%1$@：剩餘 %2$d%%";

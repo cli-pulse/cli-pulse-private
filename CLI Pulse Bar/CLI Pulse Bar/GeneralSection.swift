@@ -8,6 +8,10 @@ import CLIPulseCore
 struct GeneralSection: View {
     @EnvironmentObject var state: AppState
     @State private var alertThresholds: AlertThresholds = AlertThresholdsStore.load()
+    @State private var webhookFilterExpanded = false
+    #if CLIPULSE_QA_RENDER
+    @Environment(\.qaRenderViewState) private var qaRenderViewState
+    #endif
 
     /// The fixed refresh intervals the picker offers, in minutes.
     static let refreshMinutes = [1, 2, 5, 10, 30]
@@ -192,67 +196,31 @@ struct GeneralSection: View {
                     Spacer()
                 }
 
-                DisclosureGroup {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(L10n.integrations.eventFilterHint)
-                            .font(.system(size: 9))
-                            .foregroundStyle(.tertiary)
-
-                        // Chips keep their label on one line and the row wraps
-                        // between them: translated labels do not fit one row at
-                        // the popover's width, and a chip squeezed to fit broke
-                        // "デバイスオフライン" mid-word.
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text(L10n.integrations.filterSeverities)
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 70, alignment: .leading)
-                            WebhookChipFlowLayout(spacing: 4) {
-                                ForEach(WebhookEventFilter.selectableSeverities, id: \.self) { severity in
-                                    filterChip(
-                                        label: WebhookEventFilter.severityLabel(severity),
-                                        isSelected: state.webhookEventFilter.severities.contains(severity),
-                                        color: severity == "Critical" ? .red : (severity == "Warning" ? .orange : .blue)
-                                    ) {
-                                        toggleFilterItem(&state.webhookEventFilter.severities, severity)
-                                    }
-                                }
-                            }
-                        }
-
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text(L10n.integrations.filterTypes)
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 70, alignment: .leading)
-                            WebhookChipFlowLayout(spacing: 4) {
-                                ForEach(WebhookEventFilter.selectableTypes, id: \.self) { type in
-                                    filterChip(label: WebhookEventFilter.typeLabel(type), isSelected: state.webhookEventFilter.types.contains(type)) {
-                                        toggleFilterItem(&state.webhookEventFilter.types, type)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .padding(.top, 4)
-                    .onChange(of: state.webhookEventFilter) { _ in
-                        state.pushSettingsToServer()
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "line.3.horizontal.decrease.circle")
-                            .font(.system(size: 10))
-                        Text(L10n.integrations.eventFilter)
-                            .font(.system(size: 10))
-                        if !state.webhookEventFilter.isEmpty {
-                            Text("(\(state.webhookEventFilter.severities.count + state.webhookEventFilter.types.count))")
-                                .font(.system(size: 9))
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                }
+                WebhookEventFilterDisclosure(
+                    filter: state.webhookEventFilter,
+                    status: state.webhookEventFilterStatus,
+                    // Demo mode reads as signed in but has no account: there
+                    // is no saved filter to read, and a read would fail each
+                    // time the filter opens.
+                    isSignedIn: state.isAuthenticated && !state.isDemoMode,
+                    isExpanded: $webhookFilterExpanded,
+                    toggleSeverity: { severity in
+                        state.editWebhookEventFilter { Self.toggle(severity, in: &$0.severities) }
+                    },
+                    toggleType: { type in
+                        state.editWebhookEventFilter { Self.toggle(type, in: &$0.types) }
+                    },
+                    loadSaved: { await state.loadWebhookEventFilter() }
+                )
             }
         }
+        #if CLIPULSE_QA_RENDER
+        .onAppear {
+            // QA build only: the offscreen renderer opens the filter, as a
+            // person would by clicking it.
+            if qaRenderViewState?.webhookFilterExpanded == true { webhookFilterExpanded = true }
+        }
+        #endif
     }
 
     private var alertThresholdRow: some View {
@@ -307,6 +275,127 @@ struct GeneralSection: View {
         .padding(.top, 2)
     }
 
+    /// Selects `item` if it is not selected, deselects it if it is.
+    static func toggle(_ item: String, in list: inout [String]) {
+        if let index = list.firstIndex(of: item) {
+            list.remove(at: index)
+        } else {
+            list.append(item)
+        }
+    }
+}
+
+/// Settings › Integrations › Event Filter: the account's saved webhook event
+/// filter, as chips.
+///
+/// It draws what it is given, so the QA renderer draws it in each state
+/// (`QAWebhookEventFilterStates`). Until the saved filter has been read the
+/// chips cannot be changed, and say why (`WebhookEventFilterStatus.line`): a
+/// change before that would save the chips on screen over a filter nobody has
+/// seen, and a change to one this build cannot read would replace it. A type
+/// the chips no longer offer is shown while the filter holds it
+/// (`WebhookEventFilter.typeChips`), with a line saying it is no longer raised.
+struct WebhookEventFilterDisclosure: View {
+    let filter: WebhookEventFilter
+    let status: WebhookEventFilterStatus
+    /// Signed out, or in Demo mode, there is no saved filter to read: the
+    /// line says the filter is the account's instead of waiting for a read
+    /// that cannot come.
+    var isSignedIn = true
+    @Binding var isExpanded: Bool
+    var toggleSeverity: (String) -> Void = { _ in }
+    var toggleType: (String) -> Void = { _ in }
+    /// Called when the filter opens before the saved one has been read.
+    var loadSaved: (() async -> Void)?
+
+    private var isLoaded: Bool { status == .read }
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(L10n.integrations.eventFilterHint)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+
+                if let line = status.line(isSignedIn: isSignedIn) {
+                    Text(line)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    // Chips keep their label on one line and the row wraps
+                    // between them: translated labels do not fit one row at
+                    // the popover's width, and a chip squeezed to fit broke
+                    // "デバイスオフライン" mid-word.
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(L10n.integrations.filterSeverities)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 70, alignment: .leading)
+                        WebhookChipFlowLayout(spacing: 4) {
+                            ForEach(WebhookEventFilter.severityChips(for: filter), id: \.self) { severity in
+                                filterChip(
+                                    label: WebhookEventFilter.severityLabel(severity),
+                                    isSelected: filter.severities.contains(severity),
+                                    color: severity == "Critical" ? .red : (severity == "Warning" ? .orange : .blue)
+                                ) {
+                                    toggleSeverity(severity)
+                                }
+                            }
+                        }
+                    }
+
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(L10n.integrations.filterTypes)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 70, alignment: .leading)
+                        WebhookChipFlowLayout(spacing: 4) {
+                            ForEach(WebhookEventFilter.typeChips(for: filter), id: \.self) { type in
+                                filterChip(label: WebhookEventFilter.typeLabel(type), isSelected: filter.types.contains(type)) {
+                                    toggleType(type)
+                                }
+                            }
+                        }
+                    }
+                }
+                // Until the saved filter is read, a change would save these
+                // chips over it, so they cannot be changed.
+                .disabled(status != .read)
+                .opacity(isLoaded ? 1 : 0.45)
+
+                if let note = WebhookEventFilter.retiredTypeNote(for: filter) {
+                    Text(note)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(.top, 4)
+            .task {
+                // Not after a read found a filter this build cannot read: the
+                // next would find the same (the refresh still reads it).
+                if status == .notRead, isSignedIn { await loadSaved?() }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .font(.system(size: 10))
+                Text(L10n.integrations.eventFilter)
+                    .font(.system(size: 10))
+                // How many chips are selected; nothing until the saved
+                // filter is read, since these chips are not it yet.
+                if isLoaded, filter.severities.count + filter.types.count > 0 {
+                    Text("(\(filter.severities.count + filter.types.count))")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+    }
+
     private func filterChip(label: String, isSelected: Bool, color: Color = PulseTheme.accent, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
@@ -320,14 +409,6 @@ struct GeneralSection: View {
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
-    }
-
-    private func toggleFilterItem(_ array: inout [String], _ item: String) {
-        if let index = array.firstIndex(of: item) {
-            array.remove(at: index)
-        } else {
-            array.append(item)
-        }
     }
 }
 
