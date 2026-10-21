@@ -1687,6 +1687,15 @@
 "projects.unknown_help" = "これらのセッションのログには、どのフォルダで実行したかが記録されていません。";
 "projects.numbered_help" = "この Mac の全プロジェクトの中での順位で番号を付けているため、同じプロジェクトはどの一覧でも同じ番号です。";
 "projects.folder_blocked" = "%@ のプロジェクトは表示されていません。CLI Pulse がこの Mac でそのログフォルダにアクセスできないためです。";
+"session_history.count_one" = "1 件のセッション";
+"session_history.count_other" = "%@ 件のセッション";
+"session_history.io_cached" = "%1$@ I/O · キャッシュ %2$@";
+"session_history.last_active" = "最終アクティビティ: %@";
+"session_history.subagents_one" = "サブエージェント 1 件を含む";
+"session_history.subagents_other" = "サブエージェント %d 件を含む";
+"session_history.sort_latest" = "最新";
+"session_history.sort_picker" = "セッションの並べ替え";
+"session_history.help" = "この Mac のログから、セッションごとに 1 行（サブエージェントを含む）で表示しています。\nこの一覧はアカウントに同期されません。";
 "folder_access.dir_clipulse_config" = "CLI Pulse 設定";
 "folder_access.dir_clipulse_data" = "CLI Pulse データ";
 "folder_access.dir_codex_session_logs" = "Codex セッションログ";

@@ -1686,6 +1686,15 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "projects.unknown_help" = "These sessions' logs do not say which folder they ran in.";
 "projects.numbered_help" = "Numbered by place among all of this Mac's projects, so a project has the same number in every list.";
 "projects.folder_blocked" = "%@'s projects are not listed: CLI Pulse has no access to its log folder on this Mac.";
+"session_history.count_one" = "1 session";
+"session_history.count_other" = "%@ sessions";
+"session_history.io_cached" = "%1$@ I/O · %2$@ cached";
+"session_history.last_active" = "Last active %@";
+"session_history.subagents_one" = "includes 1 subagent";
+"session_history.subagents_other" = "includes %d subagents";
+"session_history.sort_latest" = "Latest";
+"session_history.sort_picker" = "Sort sessions by";
+"session_history.help" = "One row per session, its subagents included, from this Mac's session logs.\nThis list is not synced to your account.";
 "folder_access.dir_clipulse_config" = "CLI Pulse Config";
 "folder_access.dir_clipulse_data" = "CLI Pulse Data";
 "folder_access.dir_codex_session_logs" = "Codex Session Logs";

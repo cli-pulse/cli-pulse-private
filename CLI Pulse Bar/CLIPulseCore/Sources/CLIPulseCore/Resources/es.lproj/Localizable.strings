@@ -1641,6 +1641,15 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "projects.unknown_help" = "Los registros de estas sesiones no indican en qué carpeta se ejecutaron.";
 "projects.numbered_help" = "Numerados por su puesto entre todos los proyectos de este Mac, así que cada proyecto tiene el mismo número en todas las listas.";
 "projects.folder_blocked" = "Los proyectos de %@ no aparecen: CLI Pulse no tiene acceso a su carpeta de registros en este Mac.";
+"session_history.count_one" = "1 sesión";
+"session_history.count_other" = "%@ sesiones";
+"session_history.io_cached" = "%1$@ E/S · %2$@ en caché";
+"session_history.last_active" = "Última actividad: %@";
+"session_history.subagents_one" = "incluye 1 subagente";
+"session_history.subagents_other" = "incluye %d subagentes";
+"session_history.sort_latest" = "Recientes";
+"session_history.sort_picker" = "Ordenar sesiones por";
+"session_history.help" = "Una fila por sesión, con sus subagentes incluidos, a partir de los registros de sesión de este Mac.\nEsta lista no se sincroniza con tu cuenta.";
 "folder_access.dir_clipulse_config" = "Configuración de CLI Pulse";
 "folder_access.dir_clipulse_data" = "Datos de CLI Pulse";
 "folder_access.dir_codex_session_logs" = "Registros de sesión de Codex";

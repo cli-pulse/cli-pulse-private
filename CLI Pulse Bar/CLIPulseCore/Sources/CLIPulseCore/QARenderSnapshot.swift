@@ -520,6 +520,30 @@ public enum QARenderSnapshot {
         }
     }
 
+    /// v1.58 (P1-5): the panel sample's project rows of `kind`
+    /// (`providerPanelProjectsSample`) cut into sessions of four days each
+    /// (`DemoDataProvider.sessions`), so they add up to the rows exactly:
+    /// several sessions per project, some with more than one model, Claude's
+    /// with up to four subagents and Codex's up to two, an "Unknown" Codex
+    /// session, and the latest last active before `today`. Deterministic.
+    public static func providerPanelSessionsSample(
+        _ kind: ProviderKind, days: Int = 30, today: Date = Date(), timeZone: TimeZone = .current
+    ) -> (entries: [CostUsageScanResult.SessionEntry], details: [CostUsageScanResult.SessionDetail]) {
+        DemoDataProvider.sessions(
+            from: providerPanelProjectsSample(kind, days: days, today: today, timeZone: timeZone),
+            daysPerSession: 4, now: today, timeZone: timeZone, salt: kind == .codex ? 820 : 840)
+    }
+
+    /// v1.58 (P1-5): `projectsNoRateSample` as sessions, a session per
+    /// project over its two days: the last of them has no rate.
+    public static func sessionsNoRateSample(
+        today: Date = Date(), timeZone: TimeZone = .current
+    ) -> (entries: [CostUsageScanResult.SessionEntry], details: [CostUsageScanResult.SessionDetail]) {
+        DemoDataProvider.sessions(
+            from: projectsNoRateSample(today: today, timeZone: timeZone),
+            daysPerSession: 2, now: today, timeZone: timeZone, salt: 860)
+    }
+
     /// Every surface, in drawing order. The order is also the state order:
     /// everything signed out comes before Demo mode is entered, because the
     /// renderer, like the app, has no way back out of it.
@@ -556,6 +580,7 @@ public enum QARenderSnapshot {
         ]
         surfaces.append(.topProjectsStates)
         surfaces.append(.panelProjectsStates)
+        surfaces.append(.panelSessionsStates)
         return surfaces
     }
 
@@ -1034,6 +1059,12 @@ public enum QARenderSurface: Hashable {
     /// the note in its place when the App Store build may not read the
     /// provider's log folder. Dark, at the 440-point panel's card width.
     case panelProjectsStates
+    /// v1.58 (P1-5): the usage panel's Sessions card
+    /// (`ProviderSessionsCard`) in the states the panel renders do not show:
+    /// latest first, "Hide personal information" on (projects as "Project
+    /// N"), costs hidden (ranked by tokens), and a session with no rate.
+    /// Dark, at the 440-point panel's card width.
+    case panelSessionsStates
 
     public enum Kind: String, Codable, Sendable {
         /// The menu-bar popover (`MenuBarView`), 380 points wide.
@@ -1055,7 +1086,7 @@ public enum QARenderSurface: Hashable {
             return .window
         case .usageDashboardPanel, .usageDashboardPanelCost, .providerUsagePanel, .providerCardPanel,
              .providerPanelCostUnknown, .providerPanelNoRateDay, .usageDashboardPanelCostUnknown,
-             .panelProjectsStates:
+             .panelProjectsStates, .panelSessionsStates:
             return .panel
         case .providerUsageCardHistory:
             return .window
@@ -1102,6 +1133,7 @@ public enum QARenderSurface: Hashable {
         case .cardSourceLines: return "card-source-lines"
         case .topProjectsStates: return "card-top-projects"
         case .panelProjectsStates: return "card-panel-projects"
+        case .panelSessionsStates: return "card-panel-sessions"
         }
     }
 

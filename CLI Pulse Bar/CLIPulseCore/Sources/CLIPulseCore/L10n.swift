@@ -547,6 +547,34 @@ public enum L10n {
         public static func folderBlocked(_ provider: String) -> String { tr("projects.folder_blocked", provider) }
     }
 
+    /// v1.58 (P1-5): the usage panel's Sessions list (`SessionUsageList`),
+    /// one provider's sessions over the last 30 days. Its title is
+    /// `sessions.title`; "Conversations" is not a word the app uses.
+    public enum sessionHistory {
+        /// How many sessions the list holds: "1 session", "12 sessions".
+        public static func count(_ count: Int) -> String {
+            guard count != 1 else { return tr("session_history.count_one") }
+            let grouped: String = DisplayFormat.count(count)
+            return tr("session_history.count_other", grouped)
+        }
+        /// A session's I/O and cached tokens: "1.2M I/O · 980K cached".
+        public static func ioCached(_ io: String, _ cached: String) -> String {
+            tr("session_history.io_cached", io, cached)
+        }
+        /// When the session's logs were last written: "Last active Oct 20 at 2:05 PM".
+        public static func lastActive(_ moment: String) -> String { tr("session_history.last_active", moment) }
+        /// "includes 3 subagents", after the last-active time.
+        public static func subagents(_ count: Int) -> String {
+            count == 1 ? tr("session_history.subagents_one") : tr("session_history.subagents_other", count)
+        }
+        /// The order picker's choice for latest activity first.
+        public static var sortLatest: String { tr("session_history.sort_latest") }
+        /// The order picker's name for VoiceOver.
+        public static var sortPicker: String { tr("session_history.sort_picker") }
+        /// What the list holds, and that it is not synced.
+        public static var help: String { tr("session_history.help") }
+    }
+
     // MARK: - Providers
 
     /// v1.44 W5: the notice shown once, after the app enables its own login

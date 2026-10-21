@@ -1628,6 +1628,15 @@
 "projects.unknown_help" = "이 세션들의 로그에는 어느 폴더에서 실행되었는지 기록되어 있지 않습니다.";
 "projects.numbered_help" = "이 Mac의 전체 프로젝트 중 순위로 번호를 매기므로, 같은 프로젝트는 모든 목록에서 같은 번호입니다.";
 "projects.folder_blocked" = "%@ 프로젝트는 표시되지 않습니다. 이 Mac에서 CLI Pulse가 해당 로그 폴더에 접근할 수 없기 때문입니다.";
+"session_history.count_one" = "세션 1개";
+"session_history.count_other" = "세션 %@개";
+"session_history.io_cached" = "%1$@ I/O · 캐시 %2$@";
+"session_history.last_active" = "마지막 활동: %@";
+"session_history.subagents_one" = "하위 에이전트 1개 포함";
+"session_history.subagents_other" = "하위 에이전트 %d개 포함";
+"session_history.sort_latest" = "최근";
+"session_history.sort_picker" = "세션 정렬 기준";
+"session_history.help" = "이 Mac의 세션 로그에서 세션마다 한 줄로 표시하며, 하위 에이전트도 포함합니다.\n이 목록은 계정에 동기화되지 않습니다.";
 "folder_access.dir_clipulse_config" = "CLI Pulse 설정";
 "folder_access.dir_clipulse_data" = "CLI Pulse 데이터";
 "folder_access.dir_codex_session_logs" = "Codex 세션 로그";

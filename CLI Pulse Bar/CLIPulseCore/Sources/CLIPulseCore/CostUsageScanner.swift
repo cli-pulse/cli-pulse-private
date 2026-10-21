@@ -64,14 +64,25 @@ public struct CostUsageScanResult: Sendable {
     /// (`APIClient.syncDailyUsage` sends `entries`).
     public let projects: [ProjectEntry]
 
+    /// v1.58 (P1-5): `entries` again, split by the session each row's usage
+    /// was spent in (`SessionUsage.swift`), and what each session is. For
+    /// each provider the rows add up to its entries. Shown on this Mac only,
+    /// like `projects`: nothing uploads them.
+    public let sessions: [SessionEntry]
+    public let sessionDetails: [SessionDetail]
+
     public init(
         entries: [DailyEntry],
         activeSessionCandidates: [ActiveSessionCandidate] = [],
-        projects: [ProjectEntry] = []
+        projects: [ProjectEntry] = [],
+        sessions: [SessionEntry] = [],
+        sessionDetails: [SessionDetail] = []
     ) {
         self.entries = entries
         self.activeSessionCandidates = activeSessionCandidates
         self.projects = projects
+        self.sessions = sessions
+        self.sessionDetails = sessionDetails
     }
 
     /// Lightweight per-JSONL session summary. Cross-platform so that test
@@ -173,7 +184,8 @@ public enum CostUsageScanner {
         /// it is listed or opened, and its cache is neither loaded nor written.
         public var providers: Set<ProviderKind> = CostUsageScanner.logProviders
         /// v1.58 (P1-4): whether the scan also splits its rows by project
-        /// (`CostUsageScanResult.projects`). On by default. The year-long
+        /// (`CostUsageScanResult.projects`) and, P1-5, by session
+        /// (`CostUsageScanResult.sessions`). On by default. The year-long
         /// reads that fill the usage archive (`DailyUsageArchiveManager`) keep
         /// only the day rows, so they leave it off and open no transcript to
         /// learn its folder.
@@ -217,6 +229,7 @@ public enum CostUsageScanner {
         var allEntries: [CostUsageScanResult.DailyEntry] = []
         var allCandidates: [CostUsageScanResult.ActiveSessionCandidate] = []
         var allProjects: [CostUsageScanResult.ProjectEntry] = []
+        var allSessions = SessionSplit()
         let home = options.homeDirectory ?? realUserHome()
 
         // How Codex folded its temporary copies, for Claude's in the same ones.
@@ -233,6 +246,9 @@ public enum CostUsageScanner {
                 let codex = codexProjects(cache: codexCache, range: range, home: home)
                 allProjects.append(contentsOf: codex.entries)
                 codexFolding = codex.folding
+                let sessions = codexSessions(cache: codexCache, range: range, identities: codex.identities)
+                allSessions.entries.append(contentsOf: sessions.entries)
+                allSessions.details.append(contentsOf: sessions.details)
             }
         }
 
@@ -244,15 +260,19 @@ public enum CostUsageScanner {
                 options: options, cache: claudeCache, now: now
             ))
             if options.splitsByProject {
-                allProjects.append(contentsOf: claudeProjectEntries(
+                let claude = claudeSplit(
                     cache: claudeCache, roots: defaultClaudeProjectsRoots(options: options),
-                    range: range, home: home, codexFolding: codexFolding))
+                    range: range, home: home, codexFolding: codexFolding)
+                allProjects.append(contentsOf: claude.projects)
+                allSessions.entries.append(contentsOf: claude.sessions.entries)
+                allSessions.details.append(contentsOf: claude.sessions.details)
             }
         }
 
         reportUnpricedModels(allEntries)
         return CostUsageScanResult(
-            entries: allEntries, activeSessionCandidates: allCandidates, projects: allProjects)
+            entries: allEntries, activeSessionCandidates: allCandidates, projects: allProjects,
+            sessions: allSessions.entries, sessionDetails: allSessions.details)
     }
 
     /// Say out loud when tokens were counted but could not be priced.

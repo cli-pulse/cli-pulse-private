@@ -3,8 +3,9 @@
 //
 // - all providers: the Usage Dashboard, from this Mac's usage archive;
 // - one provider: its last 30 days by day and model, from this Mac's scan
-//   (or the rows synced to the account), with a Token / Cost toggle, and
-//   (v1.58, P1-4) this Mac's top projects for that provider.
+//   (or the rows synced to the account), with a Token / Cost toggle,
+//   (v1.58, P1-4) this Mac's top projects for that provider, and (P1-5) its
+//   sessions over the same 30 days.
 //
 // `UsagePanelModel` keeps the data live. The panel used to be handed the
 // archive snapshot it opened with and never read it again (D11), so a panel
@@ -34,6 +35,10 @@ public final class UsagePanelModel: ObservableObject {
     /// project by its place among all of them when personal information is
     /// hidden (`ProjectUsageRanking.anonymousNumbers`).
     @Published public private(set) var scanProjects: [CostUsageScanResult.ProjectEntry] = []
+    /// v1.58 (P1-5): this Mac's scan rows split by session, and what each
+    /// session is (`CostUsageScanResult.sessions`, `.sessionDetails`).
+    @Published public private(set) var scanSessions: [CostUsageScanResult.SessionEntry] = []
+    @Published public private(set) var scanSessionDetails: [CostUsageScanResult.SessionDetail] = []
     /// The rows synced to the account (`AppState.dailyUsage`); none while
     /// signed out.
     @Published public private(set) var cloudRows: [DailyUsage] = [] {
@@ -151,6 +156,12 @@ public final class UsagePanelModel: ObservableObject {
         scan.map { $0?.projects ?? [] }
             .sink { [weak self] in self?.scanProjects = $0 }
             .store(in: &sourceObservers)
+        scan.map { $0?.sessions ?? [] }
+            .sink { [weak self] in self?.scanSessions = $0 }
+            .store(in: &sourceObservers)
+        scan.map { $0?.sessionDetails ?? [] }
+            .sink { [weak self] in self?.scanSessionDetails = $0 }
+            .store(in: &sourceObservers)
         cloud
             .sink { [weak self] in self?.cloudRows = $0 }
             .store(in: &sourceObservers)
@@ -237,7 +248,7 @@ public final class UsagePanelModel: ObservableObject {
 // MARK: - Provider mode
 
 /// One provider's last 30 days: bars, the selected day's models, the total,
-/// and (v1.58) this Mac's top projects for it. Laid out at a height that does
+/// and (v1.58) this Mac's top projects and its sessions. Laid out at a height that does
 /// not change from day to day, so the panel does not jump as the pointer
 /// moves over the bars.
 public struct ProviderUsagePanelView: View {
@@ -246,6 +257,11 @@ public struct ProviderUsagePanelView: View {
     /// (`UsagePanelModel.scanProjects`). The Projects card lists
     /// `data.provider`'s.
     public let projects: [CostUsageScanResult.ProjectEntry]
+    /// v1.58 (P1-5): this Mac's scan rows by session, and what each session
+    /// is, every provider's (`UsagePanelModel.scanSessions`). The Sessions
+    /// card lists `data.provider`'s.
+    public let sessions: [CostUsageScanResult.SessionEntry]
+    public let sessionDetails: [CostUsageScanResult.SessionDetail]
     public let availableScopes: [UsageDataScope]
     @Binding public var scope: UsageDataScope
     public let needsFolderAccess: Bool
@@ -276,6 +292,8 @@ public struct ProviderUsagePanelView: View {
     public init(
         data: ProviderUsageDays,
         projects: [CostUsageScanResult.ProjectEntry] = [],
+        sessions: [CostUsageScanResult.SessionEntry] = [],
+        sessionDetails: [CostUsageScanResult.SessionDetail] = [],
         availableScopes: [UsageDataScope],
         scope: Binding<UsageDataScope>,
         needsFolderAccess: Bool,
@@ -286,6 +304,8 @@ public struct ProviderUsagePanelView: View {
     {
         self.data = data
         self.projects = projects
+        self.sessions = sessions
+        self.sessionDetails = sessionDetails
         self.availableScopes = availableScopes
         self._scope = scope
         self.needsFolderAccess = needsFolderAccess
@@ -320,6 +340,7 @@ public struct ProviderUsagePanelView: View {
                 chartCard
                 totalsCard
                 projectsCard
+                sessionsCard
             } else {
                 emptyState
             }
@@ -564,6 +585,28 @@ public struct ProviderUsagePanelView: View {
         }
     }
 
+    // MARK: Sessions
+
+    /// The window's last day, as the Projects card reads it.
+    private var windowTodayKey: String {
+        data.days.last?.dateKey ?? DayKey.string(from: Date())
+    }
+
+    /// This Mac's sessions of the provider over the panel's window, drawn
+    /// with one to list. This Mac's whatever the scope above shows, as
+    /// Projects, and named by the project each ran in.
+    @ViewBuilder
+    private var sessionsCard: some View {
+        if ProviderSessionsCard.hasSessions(
+            sessions, provider: data.provider, days: Self.windowDays, todayKey: windowTodayKey) {
+            ProviderSessionsCard(
+                sessions: sessions, details: sessionDetails, projects: projects, provider: data.provider,
+                days: Self.windowDays, todayKey: windowTodayKey, showsCost: showCost,
+                hidePersonalInfo: hidePersonalInfo)
+                .equatable()
+        }
+    }
+
     /// Whether the empty panel asks for the log folders: macOS blocks them
     /// (all of them, or, v1.58, this provider's while another's is allowed),
     /// the scope is this Mac's, and `provider` is one the scan reads (Codex,
@@ -686,6 +729,8 @@ struct UsagePanelContent: View {
             ProviderUsagePanelView(
                 data: model.days(for: provider, in: scope),
                 projects: model.scanProjects,
+                sessions: model.scanSessions,
+                sessionDetails: model.scanSessionDetails,
                 availableScopes: model.availableScopes(for: provider),
                 scope: Binding(
                     get: { model.scope(for: provider) },

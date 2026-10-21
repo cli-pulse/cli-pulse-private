@@ -647,7 +647,13 @@ internal enum DemoDataProvider {
     /// apportioned in whole tokens and cents so the projects add up to the
     /// rows exactly. Deterministic: a day's shares lean a little from day to
     /// day (`unit`), the same in every language and run.
-    static func macScan(rows: [DailyUsage]) -> CostUsageScanResult {
+    ///
+    /// v1.58 (P1-5): and by session (`sessions(from:…)`), the project rows
+    /// cut into sessions of a few days each, last active no later than
+    /// `now`, Demo's refresh: the Codex session in `cli-pulse-ios` and the
+    /// Claude one in `provider-layer` a minute before it, as the logs of
+    /// Demo's two running sessions on this Mac would be.
+    static func macScan(rows: [DailyUsage], now: Date = Date(), timeZone: TimeZone = .current) -> CostUsageScanResult {
         var entries: [CostUsageScanResult.DailyEntry] = []
         var projects: [CostUsageScanResult.ProjectEntry] = []
         var claudeTokensByDay: [String: Int] = [:]
@@ -682,7 +688,79 @@ internal enum DemoDataProvider {
                 inputTokens: 0, cachedTokens: 0, outputTokens: 0, costUSD: nil,
                 messageCount: max(1, tokens / 190)))
         }
-        return CostUsageScanResult(entries: entries, projects: projects)
+        let sessions = Self.sessions(
+            from: projects, daysPerSession: 3, now: now, timeZone: timeZone,
+            runningIn: ["Codex": "cli-pulse-ios", "Claude": "provider-layer"], salt: 700)
+        return CostUsageScanResult(
+            entries: entries, projects: projects, sessions: sessions.entries, sessionDetails: sessions.details)
+    }
+
+    /// v1.58 (P1-5): invented project rows cut into sessions as a Mac's scan
+    /// would split them: each project's rows in runs of `daysPerSession`
+    /// days (counted back from today), a session each, so the sessions add
+    /// up to the projects, and so to the rows, exactly. Each is last active
+    /// on its latest day: at an hour of that day for a past day, and before
+    /// `now` for today, a minute before it in the projects `runningIn` names
+    /// (by provider), whose logs a running session is writing. Claude
+    /// sessions have up to four subagents and Codex ones up to two, each
+    /// with usage on the session's latest day. Deterministic (`unit`).
+    static func sessions(
+        from projects: [CostUsageScanResult.ProjectEntry],
+        daysPerSession: Int,
+        now: Date,
+        timeZone: TimeZone = .current,
+        runningIn: [String: String] = [:],
+        salt: UInt64
+    ) -> (entries: [CostUsageScanResult.SessionEntry], details: [CostUsageScanResult.SessionDetail]) {
+        let calendar = DayKey.calendar(in: timeZone)
+        let today = calendar.startOfDay(for: now)
+        func daysAgo(_ key: String) -> Int {
+            guard let day = DayKey.date(from: key, in: timeZone) else { return 0 }
+            return max(0, calendar.dateComponents([.day], from: calendar.startOfDay(for: day), to: today).day ?? 0)
+        }
+        struct Session {
+            let provider: String
+            let project: ProjectIdentity
+            var latestDaysAgo: Int
+            var latestDay: String
+        }
+        var sessions: [String: Session] = [:]
+        var entries: [CostUsageScanResult.SessionEntry] = []
+        for entry in projects {
+            let ago = daysAgo(entry.date)
+            let key = entry.provider.lowercased() + ":" + entry.project.key + "#" + String(ago / max(1, daysPerSession))
+            entries.append(.init(
+                provider: entry.provider, session: key, date: entry.date, model: entry.model,
+                inputTokens: entry.inputTokens, cachedTokens: entry.cachedTokens, outputTokens: entry.outputTokens,
+                costUSD: entry.costUSD, priceIsApproximate: entry.priceIsApproximate))
+            var session = sessions[key]
+                ?? Session(provider: entry.provider, project: entry.project, latestDaysAgo: ago, latestDay: entry.date)
+            if ago < session.latestDaysAgo {
+                session.latestDaysAgo = ago
+                session.latestDay = entry.date
+            }
+            sessions[key] = session
+        }
+        var details: [CostUsageScanResult.SessionDetail] = []
+        for (index, key) in sessions.keys.sorted().enumerated() {
+            guard let session = sessions[key] else { continue }
+            let lastActivity: Date
+            if session.latestDaysAgo == 0 {
+                let running = runningIn[session.provider] == session.project.name
+                let minutes = running ? 1 : 20 + Int(unit(index, salt) * 280)
+                lastActivity = max(today, now.addingTimeInterval(-Double(minutes) * 60))
+            } else {
+                let day = calendar.date(byAdding: .day, value: -session.latestDaysAgo, to: today) ?? today
+                let minutes = 9 * 60 + Int(unit(index, salt + 1) * 13 * 60)
+                lastActivity = day.addingTimeInterval(Double(minutes) * 60)
+            }
+            let most = session.provider == "Claude" ? 5.0 : 3.0
+            let subagents = Int(unit(index, salt + 2) * most)
+            details.append(.init(
+                provider: session.provider, key: key, project: session.project, lastActivity: lastActivity,
+                subagentLastDays: Array(repeating: session.latestDay, count: subagents)))
+        }
+        return (entries, details)
     }
 
     /// `total` split in proportion to `weights` in whole units, adding up to
@@ -757,7 +835,7 @@ extension AppState {
         // Overview's Top Projects and the usage panel's Projects have this
         // Mac's projects to list. Its rows are the synced ones: it is the
         // account's only uploading device (`DemoDataProvider.macScan`).
-        costUsageScanResult = DemoDataProvider.macScan(rows: dailyUsage)
+        costUsageScanResult = DemoDataProvider.macScan(rows: dailyUsage, now: demo.refreshedAt)
         #endif
         buildProviderDetails()
         updateCostSummary()

@@ -1674,6 +1674,15 @@
 "projects.unknown_help" = "這些工作階段的日誌沒有記錄它們在哪個資料夾中執行。";
 "projects.numbered_help" = "依在這台 Mac 所有專案中的排名編號，因此同一個專案在每份清單中的編號都相同。";
 "projects.folder_blocked" = "未列出 %@ 的專案：CLI Pulse 無權存取這台 Mac 上它的日誌資料夾。";
+"session_history.count_one" = "1 個工作階段";
+"session_history.count_other" = "%@ 個工作階段";
+"session_history.io_cached" = "%1$@ I/O · 快取 %2$@";
+"session_history.last_active" = "最近活動：%@";
+"session_history.subagents_one" = "含 1 個子代理";
+"session_history.subagents_other" = "含 %d 個子代理";
+"session_history.sort_latest" = "最近";
+"session_history.sort_picker" = "工作階段排序方式";
+"session_history.help" = "根據這台 Mac 的工作階段日誌，每個工作階段一列，其子代理也計入其中。\n這份清單不會同步到你的帳號。";
 "folder_access.dir_clipulse_config" = "CLI Pulse 設定";
 "folder_access.dir_clipulse_data" = "CLI Pulse 資料";
 "folder_access.dir_codex_session_logs" = "Codex 工作階段日誌";
