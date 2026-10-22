@@ -1,0 +1,11 @@
+Hide personal information now also hides project folder names and session names, and the Overview, Apple Watch and widgets count Codex's cached input once.
+
+• Hide personal information (Settings › Advanced) now also hides project folder names and session names in Overview, Sessions, Alerts and exports, and a new line under the switch says what it hides. Apple Watch follows the switch on the iPhone it is paired with. Your account name, device names and anything in Remote Control are not hidden.
+
+• The Overview, Apple Watch and widgets now count Codex's cached input once, as the Codex card does. They used to count it twice, so their Codex token figures read higher than the card. Claude's figures there still add its cached tokens, so they can read higher than the Claude card.
+
+• The Overview's Sessions tile and the iPad sidebar's Active Sessions now count the sessions the Sessions tab lists under Active. They used to count every session still marked as running, so an AI tool left open on a Mac that went to sleep kept being counted. In Try Demo, the sessions no longer disappear after a few minutes.
+
+• The Sessions legend now explains only the labels the list shows.
+
+• Provider cards: when the chart shows Cost, a day with usage but no known cost is a short gray bar, and tapping it shows "cost unknown". A model that CLI Pulse prices at $0 now reads $0.00 instead of "—".

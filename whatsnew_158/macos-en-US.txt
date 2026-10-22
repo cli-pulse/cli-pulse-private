@@ -1,0 +1,19 @@
+Usage history now lists this Mac's projects and sessions for Codex and Claude, and the Overview's Top Projects shows this Mac's top projects.
+
+• Projects: click a Codex or Claude card's chart to open its usage history, which now lists this Mac's top five projects of the last 30 days by estimated cost, with their tokens. The Overview's Top Projects lists the top five for Codex and Claude together. A project is the folder its sessions ran in; hover over a name to see its path.
+
+• Sessions: under Projects, usage history lists this Mac's sessions of the last 30 days, one row per session with its subagents included: its project, model, tokens, estimated cost and when it was last active. Sort them by Cost or Latest. The list shows the first five, and you can show up to 20 more at a time.
+
+• Projects and sessions are worked out from this Mac's session logs, which CLI Pulse can read once you allow it in Settings › Advanced › CLI Tool Access. If it cannot read a provider's folder, Projects says so. Neither list is synced to your account.
+
+• Hide personal information (Settings › Advanced) now also hides project folder names and paths and session names: in Projects and Sessions, the Sessions tab, Alerts and their notifications, and exported CSV and PDF files. Projects read "Project 1", "Project 2" and so on, with the same number in every list. Device names are not hidden.
+
+• In Cost, the charts on cards, in usage history and in the Usage Dashboard's Trends now draw a day with usage but no known cost as a short gray bar, and a selected day's line says "cost unknown". A model that CLI Pulse prices at $0 now reads $0.00 in All devices and in Trends, as it already did in This Mac.
+
+• Trends now covers every calendar day: a day without usage is an empty slot instead of being left out.
+
+• Where a provider card shows a quota, its source line now reads "Quota source: This Mac", "Quota source: API" or "Quota source: Cloud + this Mac", so it is no longer confused with the This Mac or All devices of the usage figures.
+
+• The Sessions legend now explains only the labels the list shows.
+
+• Integrations: the webhook Event Filter now shows the filter saved to your account, and you can clear it so that every alert is sent. It can be changed once the saved filter has loaded. A filter saved with "Long session", which is no longer raised, shows that type until you deselect it.
