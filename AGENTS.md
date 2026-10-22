@@ -611,8 +611,8 @@ the macOS version's `APP_DESKTOP` sets. Seven store locales, six sets (es-ES and
 es-MX share `es`).
 
 ```bash
-xcodebuild build -project "CLI Pulse Bar/CLI Pulse Bar.xcodeproj" -scheme "CLIPulse QA" \
-  -configuration "Debug QA" -destination platform=macOS -derivedDataPath build/qa   # restore Package.resolved after
+scripts/lib/build_env.sh xcodebuild build -project "CLI Pulse Bar/CLI Pulse Bar.xcodeproj" -scheme "CLIPulse QA" \
+  -configuration "Debug QA" -destination platform=macOS -derivedDataPath build/qa   # shared packages; see "Swift packages for local builds"
 scripts/render_macos_qa_views.sh --set store --app "build/qa/Build/Products/Debug QA/CLIPulse QA.app"
                                                    # -> screenshots/macos-raw/<lang>/ (+ render.json)
 python3 "CLI Pulse Bar/scripts/compose_appstore_macos_screenshots.py" --all   # -> macos-composed/<lang>/
@@ -874,6 +874,39 @@ the live Claude collector chain (requires real credentials on the machine):
 ```bash
 RUN_LIVE_TESTS=1 swift test --package-path "CLI Pulse Bar/CLIPulseCore"
 ```
+
+### Swift packages for local builds
+
+About 2.4 GB of every derived data is sentry-cocoa's SourcePackages, so local,
+non-release `xcodebuild` runs share one resolved copy,
+`~/Library/Caches/CLIPulse-build/SourcePackages-<hash>`, keyed by
+`Package.resolved` and the package requirements. Build through
+`scripts/lib/build_env.sh xcodebuild …` (or source it and splice `SPM_ARGS`, as
+`capture_ios_screenshots.sh` does): it resolves once under a lock, adds
+`-clonedSourcePackagesDirPath <dir> -disableAutomaticPackageResolution` and
+`COMPILER_INDEX_STORE_ENABLE=NO`, and leaves `Package.resolved` alone (measured
+2026-10-15). Run the helper of the checkout you are building; for another
+checkout's project it warns and adds no packages. Keep one derived data per
+checkout.
+
+By default every checkout with the same packages shares that one directory,
+worktrees included, and also when they build at the same time: nothing holds a
+lock during the build, and neither `capture_ios_screenshots.sh` nor the QA build
+runs under `heavy.sh`. Each build rewrites the directory's `workspace-state.json`,
+and two worktrees building on one directory at once has not been measured (only
+one after the other, 2026-10-15). When you build in several
+worktrees concurrently, give each checkout its own root, e.g.
+`CLIPULSE_SPM_ROOT="$HOME/Library/Caches/CLIPulse-build/<worktree>"`. Never move
+or rename the directory (its `workspace-state.json` holds absolute paths), and
+delete it only when no build is using it. `CLIPULSE_SPM_DIR=off` turns it off;
+CI is unchanged.
+Signed and release builds (`build-appstore.sh`, `build_signed_app.sh`,
+`build-release.sh`, the Developer ID DMG) stay cold and do not use it.
+
+For `swift test`, agents add `--disable-index-store`. Worktrees that test one at
+a time may share one `--scratch-path`: measured 2026-10-15, a second worktree's
+run recompiled CLIPulseCore into the same scratch without error and reused its
+2.2 GB of Sentry artifacts.
 
 ### Backend SQL validation
 
