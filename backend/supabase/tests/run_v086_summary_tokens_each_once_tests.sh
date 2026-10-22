@@ -21,10 +21,12 @@
 #     p_user_today still answers, an unauthenticated one is refused;
 #   * v0.86 refuses to run without the functions it replaces (v0.44's and
 #     v0.72's, each case on its own), applies twice cleanly, and
-#     rollback_v0.86.sql puts the exact pre-v0.86 bodies back;
+#     rollback_v0.86.sql puts back v0.44's and v0.72's bodies as the files
+#     have them, which are production's but for whole-line comments;
 #   * the APPLY steps in v0.86's header hold: step 0's query runs as printed
 #     and gives the answer it says to expect, and the md5 values it and step 2
-#     list are the bodies these files install;
+#     list are the bodies these files install (step 0's as production runs
+#     them, see below);
 #   * a fresh install (schema.sql + app_rpc.sql + helper_rpc.sql) installs the
 #     same bodies and gives the same figures.
 #
@@ -32,6 +34,9 @@
 # functions are put back the way production has run them before v0.86:
 # v0.44 (dashboard_summary, provider_summary) and v0.72
 # (provider_account_summary), the newest migrations that defined them.
+# Production runs v0.44's two bodies without their whole-line `--` comments
+# (measured 2026-10-22; the logic is the file's), so v0.44 goes in that way,
+# as V044_PROD, and step 0's md5 values are those bodies.
 #
 # Every check runs even after one fails, and each prints its own label, so a
 # branch carrying several deliberate mutations shows one FAIL per mutation.
@@ -66,6 +71,13 @@ for f in "$SHIM" "$FIXTURE" "$V044" "$V072" "$V086" "$ROLLBACK" \
          "$SQL_DIR/schema.sql" "$SQL_DIR/app_rpc.sql" "$SQL_DIR/helper_rpc.sql"; do
     [[ -f "$f" ]] || { echo "missing $f" >&2; exit 2; }
 done
+
+# migrate_v0.44 as production runs it: every whole-line `--` comment left
+# out. Outside a body such a line carries nothing a function keeps, so only
+# the two bodies change.
+V044_PROD="$(mktemp)"
+trap 'rm -f "$V044_PROD"' EXIT
+sed '/^[[:space:]]*--/d' "$V044" > "$V044_PROD"
 
 DB=""   # the database the helpers below talk to
 # The replayed files say a lot of "already exists, skipping"; only warnings
@@ -112,6 +124,12 @@ CONTRACT="select string_agg(format('%s(%s) -> %s secdef=%s config=%s acl=%s',
 BODIES="select string_agg(p.proname || '=' || md5(p.prosrc), ' ' order by p.proname)
           from pg_proc p join pg_namespace n on n.oid = p.pronamespace
          where n.nspname = 'public' and p.proname in ($FUNCS);"
+# The same with each body's whole-line `--` comments left out first: how
+# production's v0.44 bodies compare with the file's.
+UNCOMMENTED="select string_agg(p.proname || '=' || md5(regexp_replace(p.prosrc, '^[[:blank:]]*--.*\n', '', 'gn')),
+                               ' ' order by p.proname)
+               from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname in ($FUNCS);"
 RULE="select coalesce(bool_and(p.prosrc like '%v0.86 each token once%'), false)
         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
        where n.nspname = 'public' and p.proname in ($FUNCS)"   # no ';': check() wraps it
@@ -279,7 +297,15 @@ echo "putting back the definitions production runs (v0.44, v0.72) ..."
 apply "$V044"
 apply "$V072"
 apply "$V072"   # twice, as its own suite does: it is written to be re-run
+file_bodies="$(psql_q -c "$BODIES")"   # as the files have them: what rollback_v0.86.sql puts back
+file_uncommented="$(psql_q -c "$UNCOMMENTED")"
+apply "$V044_PROD"   # and v0.44's two bodies as production has them
 production_bodies="$(psql_q -c "$BODIES")"
+same "[preflight] production's bodies are the files' without their whole-line comments" \
+     "$file_uncommented" "$production_bodies"
+[[ "$production_bodies" != "$file_bodies" ]] \
+    && pass "[preflight] and differ from the files' (the comments are what production lacks)" \
+    || fail "[preflight] V044_PROD left v0.44's bodies as the file has them: step 0 would not test production's"
 
 # refuse <function v0.86 replaces> <the migration that puts it back> <message>:
 # drop the function, apply v0.86, expect its precondition's error, and expect
@@ -301,7 +327,7 @@ refuse() {
 }
 echo "v0.86 without a function it replaces:"
 refuse provider_account_summary "$V072" "apply v0.72 first"
-refuse provider_summary "$V044" "apply v0.44 first"
+refuse provider_summary "$V044_PROD" "apply v0.44 first"
 same "[refusal] v0.44 and v0.72 put back give production's bodies again" \
      "$production_bodies" "$(psql_q -c "$BODIES")"
 
@@ -312,7 +338,7 @@ bodies_before="$(psql_q -c "$BODIES")"
 rest_ps_before="$(rest_of provider_summary)"
 rest_pas_before="$(rest_of provider_account_summary)"
 rest_dash_before="$(dashboard_rest)"
-same "[preflight] the md5 values APPLY step 0 lists are v0.44's and v0.72's bodies" \
+same "[preflight] the md5 values APPLY step 0 lists are v0.44's bodies as production runs them and v0.72's" \
      "$(header_md5s '44|72')" "$bodies_before"
 same "[preflight] APPLY step 0's query, as printed, gives the answer it says to expect" \
      "$(step0_expected f '44|72')" "$(step0)"
@@ -351,7 +377,9 @@ bodies_after="$(psql_q -c "$BODIES")"
 
 echo "rollback_v0.86.sql:"
 apply "$ROLLBACK"
-same "puts back the exact pre-v0.86 bodies (v0.44's and v0.72's)" "$bodies_before" "$(psql_q -c "$BODIES")"
+same "puts back v0.44's and v0.72's bodies as the files have them" "$file_bodies" "$(psql_q -c "$BODIES")"
+same "which without their whole-line comments are the bodies APPLY step 0 lists (production's)" \
+     "$(header_md5s '44|72')" "$(psql_q -c "$UNCOMMENTED")"
 same "with the same signatures and grants" "$contract_before" "$(psql_q -c "$CONTRACT")"
 check_figures "rolled back" before
 apply "$V086"
