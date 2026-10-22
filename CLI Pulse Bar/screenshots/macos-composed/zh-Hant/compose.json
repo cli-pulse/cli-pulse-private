@@ -18,7 +18,7 @@
   ],
   "04_projects": [
    "專案與工作階段",
-   "這台 Mac 上的主要專案與工作階段，依預估費用排列"
+   "每個服務商在這台 Mac 上的主要專案與工作階段，依預估費用排列"
   ],
   "05_cost": [
    "錢花在哪裡",
@@ -38,7 +38,7 @@
   "02_providers.png": "6201c55a44c83c293b7bd66f9036ea4f",
   "03_usage_history.panel.png": "9ed8a36025072d3479b0ef7518af8310",
   "03_usage_history.png": "4cc2fb370fe89161e446d3c1195216c8",
-  "04_projects.panel.png": "00bc3177e2b18ebfeaec7b74257a0856",
+  "04_projects.panel.png": "fdb155f10631bf8507446b1d618d77d3",
   "04_projects.png": "6201c55a44c83c293b7bd66f9036ea4f",
   "05_cost.png": "fe662852fc970749515bb9c275243d7b",
   "06_alerts.png": "f27f6f5e4f4d36ec72f057fb61821e0f",
@@ -48,19 +48,25 @@
   "subtitle": "PingFang TC",
   "title": "PingFang TC"
  },
+ "framed_panels": {
+  "04_projects": {
+   "ends_pt": 615.23,
+   "past_bottom_edge": true
+  }
+ },
  "lang": "zh-Hant",
  "panels": {
   "01_overview_2880x1800.png": "0c2ffc9a75f8131f59a5b2df809ffb22",
   "02_providers_2880x1800.png": "029d583e221ff1122ce22cddce7e1606",
   "03_usage_history_2880x1800.png": "c3d6affa48e20a0d5f71e46f59553f02",
-  "04_projects_2880x1800.png": "8d4e909659bb36e5379be79fd86bd274",
+  "04_projects_2880x1800.png": "938a1eac65dc303e49cda19b502cd961",
   "05_cost_2880x1800.png": "31b66a83ddd4d741f52701500c807432",
   "06_alerts_2880x1800.png": "4f1167cb0e333513e68dc9ae9f5010ee",
   "07_pulse_cat_2880x1800.png": "05e7bdcfdede174033ad94c937e31b01"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "60b441ede65103b05ffd4fe113d7f862",
+ "render": "56fb8c82e9b56de43a33e61bcdacd765",
  "subtitle_pt": 46,
  "title_pt": 100
 }

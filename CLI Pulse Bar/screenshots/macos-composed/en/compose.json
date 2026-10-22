@@ -18,7 +18,7 @@
   ],
   "04_projects": [
    "Your projects and sessions",
-   "This Mac’s top projects and sessions, by estimated cost"
+   "Each provider’s top projects and sessions on this Mac, by estimated cost"
   ],
   "05_cost": [
    "Where the money goes",
@@ -38,7 +38,7 @@
   "02_providers.png": "0f471ebde2d836503dc43e0d5f850f56",
   "03_usage_history.panel.png": "47895243e0352a2394d1a7a77db2f762",
   "03_usage_history.png": "fdea46b822d3e4639f34751a26529fdd",
-  "04_projects.panel.png": "cd8862d08c58dbd26dd3a64a310e449d",
+  "04_projects.panel.png": "0817e86617d50decc9d7a5508c3f0fff",
   "04_projects.png": "0f471ebde2d836503dc43e0d5f850f56",
   "05_cost.png": "a420b25806ef508eb07e7ab5d311e6e2",
   "06_alerts.png": "88c4bfdb432760a5140359db36c37200",
@@ -48,19 +48,25 @@
   "subtitle": "SFNS",
   "title": "SFNS"
  },
+ "framed_panels": {
+  "04_projects": {
+   "ends_pt": 615.23,
+   "past_bottom_edge": true
+  }
+ },
  "lang": "en",
  "panels": {
   "01_overview_2880x1800.png": "c7641962193ad525a50a1461a08f8255",
   "02_providers_2880x1800.png": "a20b7cc7f737f7c2b9a7bf34ed149b1e",
   "03_usage_history_2880x1800.png": "cc6c2c9a7cfebde520b697e47236da6b",
-  "04_projects_2880x1800.png": "546b426730e750bea4ab2d68283396f0",
+  "04_projects_2880x1800.png": "3ea2502d953de0b74091c8fdf3e4af6a",
   "05_cost_2880x1800.png": "371d5c35ec985cc1c9a61acb6cde9d1e",
   "06_alerts_2880x1800.png": "1f17605270d5e50fa5d88d0533e450d8",
   "07_pulse_cat_2880x1800.png": "fd8fc9ef102eae46a34b5c5a0cc7c162"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "1fb6bbf3efeea2523c7bbc30f391d4ed",
+ "render": "74ae473cb5d027c86b5c16e44e59a92c",
  "subtitle_pt": 46,
  "title_pt": 100
 }

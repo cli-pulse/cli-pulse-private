@@ -18,7 +18,7 @@
   ],
   "04_projects": [
    "プロジェクトとセッション",
-   "この Mac の主なプロジェクトとセッションを、​推定コスト順に"
+   "プロバイダーごとに、​この Mac の主なプロジェクトとセッションを推定コスト順に表示"
   ],
   "05_cost": [
    "コストの内訳がわかる",
@@ -38,7 +38,7 @@
   "02_providers.png": "ac93861aba9c6b55e519af2661befe02",
   "03_usage_history.panel.png": "d6b0684fddfd17eb23246bd1b0d68669",
   "03_usage_history.png": "f9b2eecafeca9153ba377d2b7b873e5e",
-  "04_projects.panel.png": "bcffba49a908b684987d85799975fcbd",
+  "04_projects.panel.png": "a28d7751afe585b5bda3aceb5d2257d6",
   "04_projects.png": "ac93861aba9c6b55e519af2661befe02",
   "05_cost.png": "3e96354ba779dff6ae7827e9744ad690",
   "06_alerts.png": "ff7c1c26bc25db503c78edca90c92b5e",
@@ -48,19 +48,25 @@
   "subtitle": "Hiragino Sans",
   "title": "Hiragino Sans"
  },
+ "framed_panels": {
+  "04_projects": {
+   "ends_pt": 615.23,
+   "past_bottom_edge": true
+  }
+ },
  "lang": "ja",
  "panels": {
   "01_overview_2880x1800.png": "8b5e35f60fd2e30b28096e1020d65f7d",
   "02_providers_2880x1800.png": "e39d60fa7f97ed40c5a350cc8876f4e3",
   "03_usage_history_2880x1800.png": "ee4d1988f8b352b1b383e23913025766",
-  "04_projects_2880x1800.png": "eea1741fa66b5ffc45a7f2247fb636fd",
+  "04_projects_2880x1800.png": "fb52b0c17105cdc8b094fdf1db500513",
   "05_cost_2880x1800.png": "e07ffc07c29f4b13a30439dfba137bfa",
   "06_alerts_2880x1800.png": "28b4ef087a4aa1519a9ddad598c16d23",
   "07_pulse_cat_2880x1800.png": "294280358796a6a8020b03d7026d6463"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "c8d0c69cec303b58ff715547682e09c8",
+ "render": "c84bae062f9450ffd54f1148ff83de1a",
  "subtitle_pt": 46,
  "title_pt": 100
 }

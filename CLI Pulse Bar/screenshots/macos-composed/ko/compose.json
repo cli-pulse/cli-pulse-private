@@ -18,7 +18,7 @@
   ],
   "04_projects": [
    "프로젝트와 세션",
-   "이 Mac의 주요 프로젝트와 세션을 추정 비용순으로"
+   "공급자별로 이 Mac의 주요 프로젝트와 세션을 추정 비용순으로 확인하세요"
   ],
   "05_cost": [
    "비용, 어디에 쓰이나요?",
@@ -38,7 +38,7 @@
   "02_providers.png": "34c1f260b044a784a821a8e661089ce9",
   "03_usage_history.panel.png": "15dc20ddc67119e964ccbe09b6751aba",
   "03_usage_history.png": "2b6c272e0e4a0fe17323e0cff8f84d1f",
-  "04_projects.panel.png": "01f3904d7aa48a403d8ba41ceb5eb173",
+  "04_projects.panel.png": "ee3d2489bc541aadf60e616958861a52",
   "04_projects.png": "34c1f260b044a784a821a8e661089ce9",
   "05_cost.png": "14fdd7664f72d25fe9ba7a75dc2b52f0",
   "06_alerts.png": "6bf3844a8e3807ebca89fef249593557",
@@ -48,19 +48,25 @@
   "subtitle": "Apple SD Gothic Neo",
   "title": "Apple SD Gothic Neo"
  },
+ "framed_panels": {
+  "04_projects": {
+   "ends_pt": 615.23,
+   "past_bottom_edge": true
+  }
+ },
  "lang": "ko",
  "panels": {
   "01_overview_2880x1800.png": "fbbe59ffd9fbadc83ba9b8a5bac2656d",
   "02_providers_2880x1800.png": "5c43807f6a71bc6ccd1389d79882450d",
   "03_usage_history_2880x1800.png": "163e0e5396c963e1289f53cf52589e2e",
-  "04_projects_2880x1800.png": "de2f393b54cee029fd4516d36721c49d",
+  "04_projects_2880x1800.png": "5e1a09572f4345659603f7629aeb6da0",
   "05_cost_2880x1800.png": "db05b001c380df61224f2a60833ed59f",
   "06_alerts_2880x1800.png": "192c10e215bf152bc288486f84ae480c",
   "07_pulse_cat_2880x1800.png": "1b9e9e9ddd9b2a8daf5122b0e43a51cb"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "7251997cdcbcb2d490d8478e90597930",
+ "render": "255e65e648848b0c50b9f66da42e22d3",
  "subtitle_pt": 46,
  "title_pt": 100
 }

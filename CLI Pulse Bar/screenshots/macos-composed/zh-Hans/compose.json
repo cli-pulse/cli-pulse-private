@@ -18,7 +18,7 @@
   ],
   "04_projects": [
    "项目与会话",
-   "这台 Mac 上的主要项目和会话，按估算费用排列"
+   "每个服务商在这台 Mac 上的主要项目和会话，按估算费用排列"
   ],
   "05_cost": [
    "钱都花在了哪里",
@@ -38,29 +38,35 @@
   "02_providers.png": "2276723220dc23db4ac7aa1691083ca8",
   "03_usage_history.panel.png": "0cf6189a4726720f335b5d9151bb42db",
   "03_usage_history.png": "2af262789bdc38e7822264e63eb47103",
-  "04_projects.panel.png": "3099c427aeb8ce6f22c9e51fcd31bc4a",
+  "04_projects.panel.png": "922192769539e1efc520b24dd750a36e",
   "04_projects.png": "2276723220dc23db4ac7aa1691083ca8",
   "05_cost.png": "2b3840e631c6749156f1530d8e3e623f",
-  "06_alerts.png": "a66a6a96384f0e265f7bdebf8686f008",
+  "06_alerts.png": "00d3f95058df6edd4c8aea0e8fbfe2bc",
   "07_pulse_cat.png": "67eedf9fb68a3f909dc3bbbf247dbf07"
  },
  "faces": {
   "subtitle": "PingFang SC",
   "title": "PingFang SC"
  },
+ "framed_panels": {
+  "04_projects": {
+   "ends_pt": 615.23,
+   "past_bottom_edge": true
+  }
+ },
  "lang": "zh-Hans",
  "panels": {
   "01_overview_2880x1800.png": "a228d41eea48f8f2cc3c1b2dbba75808",
   "02_providers_2880x1800.png": "41dc88a34843c163b44f72cff7f73911",
   "03_usage_history_2880x1800.png": "c072a2179f0b61ed8c95adcefde8fe58",
-  "04_projects_2880x1800.png": "fbe8a40304c2683c95d2492a903fb213",
+  "04_projects_2880x1800.png": "fd9a5ff35c9085bd1022c63b236f4bfc",
   "05_cost_2880x1800.png": "b038ad3b8a9137933bd367985b53c6a6",
-  "06_alerts_2880x1800.png": "17754e9f737d6cb57908598c0a2fb58c",
+  "06_alerts_2880x1800.png": "ed5a0d53052810c53a899bde8a3c434b",
   "07_pulse_cat_2880x1800.png": "2868b6259670d94956dbea0d40085bb2"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "150867d0d145842ce2602de85e8a6e8d",
+ "render": "db6a0868ccca8916c31f52b76883b7c2",
  "subtitle_pt": 46,
  "title_pt": 100
 }
