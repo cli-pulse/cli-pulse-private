@@ -97,10 +97,12 @@
 -- No row of any table is written.
 --
 -- ── HOW ───────────────────────────────────────────────────────
--- Each body is the one production runs (dashboard_summary and
--- provider_summary from v0.44, provider_account_summary from v0.72) with the
--- token sum computed once per row by the rule, in a `metric_rows` step, and
--- the comment `-- v0.86 each token once` inside it for the checks below.
+-- Each body starts from the logic production runs, in the files' text:
+-- v0.44's for dashboard_summary and provider_summary (comment lines
+-- included; production runs them without, see APPLY step 0) and v0.72's for
+-- provider_account_summary. Each adds the token sum computed once per row by
+-- the rule, in a `metric_rows` step, and the comment
+-- `-- v0.86 each token once` inside it for the checks below.
 -- The canonical fresh-install definitions in app_rpc.sql are the same text
 -- (ci_check_rpc_contract.py's mirror check holds them together).
 --
@@ -181,6 +183,18 @@
 --    again: it may have gone through. The ledger row is not the proof; step
 --    2's checks are. The file carries its own begin/commit, refuses to run
 --    without the three functions, and changes no row.
+--
+--    "As it stands" means byte for byte, comments included: send the whole
+--    file, never a cleaned-up copy. The marker `-- v0.86 each token once`
+--    that the file's last check and step 2 look for is a comment on its own
+--    line inside each body, and step 0's v0.44 difference came from such a
+--    copy (the ledger's v0_44 row holds no `--` at all), while
+--    apply_migration itself keeps comments (production's replace_daily_usage
+--    body is migrate_v0.85's, comment lines included). A copy without the
+--    marker fails safe, since the last check raises "v0.86 did not replace"
+--    and nothing commits, but it stops the apply. Before sending, record in
+--    the apply log the md5 of the text about to be sent next to the md5 of
+--    this file; if they differ, find out why before applying.
 --
 -- 2. Post-apply, read-only: step 0's query again gives three rows with
 --    rule = true, the same args and prosecdef, anon and authenticated exactly

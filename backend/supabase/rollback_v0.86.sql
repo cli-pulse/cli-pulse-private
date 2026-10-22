@@ -1,17 +1,22 @@
 -- ============================================================
 -- rollback for v0.86 (migrate_v0.86_summary_tokens_each_once.sql)
 --
--- Puts back the three summary functions as production ran them before
+-- Puts back the three summary functions' logic as production ran it before
 -- v0.86: dashboard_summary and provider_summary from v0.44, and
--- provider_account_summary from v0.72, byte for byte (the bodies below are
--- copied from those files; CI checks that each function's body after this
--- file equals the one those files install). Their tokens are then
--- input + cached + output again, which counts Codex's cached input twice.
+-- provider_account_summary from v0.72. The bodies below are those files'
+-- bodies byte for byte (CI checks that each function's body after this file
+-- equals the one those files install). Production ran v0.44's two bodies
+-- without their whole-line `--` comments (v0.86 APPLY step 0, measured
+-- 2026-10-22), so after this file dashboard_summary's and provider_summary's
+-- body_md5 differ from step 0's values by those comment lines only; the
+-- logic is the same, and provider_account_summary's matches. Their tokens
+-- are then input + cached + output again, which counts Codex's cached input
+-- twice.
 --
--- Use it only when v0.86's APPLY step 0 found these bodies (its body_md5
--- values were the three it lists); otherwise apply the definitions saved in
--- that step. Same signatures and
--- return type, so `create or replace` keeps every grant. Changes no row.
+-- Use it only when v0.86's APPLY step 0 found the bodies it lists (its
+-- body_md5 values were those three); otherwise apply the definitions saved
+-- in that step. Same signatures and return type, so `create or replace`
+-- keeps every grant. Changes no row.
 -- ============================================================
 
 begin;
