@@ -568,12 +568,15 @@ MAC_STEMS = shots.stems(MAC)
 
 swift = (HERE.parent / "CLI Pulse Bar" / "CLIPulseCore" / "Sources" / "CLIPulseCore"
          / "QARenderSnapshot.swift").read_text(encoding="utf-8")
-rows = re.findall(r'\("(\w+)", \.demo\(\.(\w+)\), \.(first|last|lastAligned), '
+rows = re.findall(r'\("(\w+)", \.demo\(\.(\w+)\), \.(firstClear|first|lastAligned|last), '
                   r'(nil|\.usageDashboard|\.provider\(\.\w+\))\)', swift)
 check("the Mac screens are the Swift store catalog's, in the same order",
       [r[0] for r in rows] == list(shots.MAC_SCREENS), f"{rows} vs {shots.MAC_SCREENS}")
 check("the cost screen is the only one scrolled to its end, and it opens above a card (lastAligned)",
-      [(r[0], r[2]) for r in rows if r[2] != "first"] == [("cost", "lastAligned")], str(rows))
+      [(r[0], r[2]) for r in rows if r[2] not in ("first", "firstClear")] == [("cost", "lastAligned")], str(rows))
+check("... and the Overview's first page ends clear of every line (firstClear), in both shots that show it",
+      [(r[0], r[1]) for r in rows if r[2] == "firstClear"] == [("overview", "overview"), ("usage_history", "overview")],
+      str(rows))
 check("... and the screens drawn with a usage panel are the same",
       [r[0] for r in rows if r[3] != "nil"] == list(shots.MAC_PANEL_SCREENS), str(rows))
 check("... and the framed ones are the provider panels, beside the Providers tab",
@@ -673,8 +676,13 @@ check("an RGBA Mac panel is refused", any("RGBA" in x for x in shots.panel_probl
 
 # The cost shot opens above a card in a shortened popover (QARenderSnapshot
 # alignedTrim); the fixtures give it a 551-point one, as the 1.54 renders
-# measured (1.55's measure 406).
-MAC_ALIGNED = {"05_cost": 551}
+# measured (1.55's measure 406). The Overview's first page is firstClear
+# (QARenderSnapshot.firstPageTrim): the fixtures shorten the overview shot to
+# 570 points, as 1.58's Spanish render measured, and leave the usage-history
+# shot, which shows the same page, at the pinned 580, as every other
+# language's is.
+MAC_PAGES = {"01_overview": "firstClear", "03_usage_history": "firstClear", "05_cost": "lastAligned"}
+MAC_ALIGNED = {"05_cost": 551, "01_overview": 570}
 # The projects shot's provider panel is framed in a shortened panel
 # (QARenderSnapshot.providerPanelFrame); the fixtures give it 612 points,
 # opening 528 points down its content. The dashboard's is drawn whole, 862.
@@ -690,8 +698,7 @@ def mac_render(raw: Path, lang: str, **over) -> dict:
         h = MAC_ALIGNED.get(st, 580)
         renders.append({"file": f.name, "width": 380, "height": h, "pixelWidth": 1140,
                         "pixelHeight": h * 3, "suspectBlank": False})
-        row = {"id": st, "file": f.name, "md5": shots.md5_of(f),
-               "page": "lastAligned" if st in MAC_ALIGNED else "first"}
+        row = {"id": st, "file": f.name, "md5": shots.md5_of(f), "page": MAC_PAGES.get(st, "first")}
         if st in MAC_ALIGNED:
             row["popoverHeight"] = MAC_ALIGNED[st]
         q = raw / f"{st}.panel.png"
@@ -812,12 +819,18 @@ mac_breaks("a popover drawn 700 points high", "drawn 380x700 points",
            mutate=lambda r: rewrite_render(r, lambda d: d["renders"][0].update(height=700, pixelHeight=2100)))
 mac_breaks("a popover drawn at 2x", "760x1160 px",
            mutate=lambda r: rewrite_render(r, lambda d: d["renders"][0].update(pixelWidth=760, pixelHeight=1160)))
-mac_breaks("a shortened popover on a page that is not lastAligned", "only a lastAligned page may shorten",
+mac_breaks("a shortened popover on a page that is not lastAligned", "only a lastAligned or firstClear page may shorten",
            mutate=lambda r: rewrite_render(r, lambda d: d["shots"][5].update(popoverHeight=551)))
-mac_breaks("a popover shortened under the 400 points users can set", "only a lastAligned page may shorten",
+mac_breaks("a popover shortened under the 400 points users can set", "only a lastAligned or firstClear page may shorten",
            mutate=lambda r: rewrite_render(r, lambda d: d["shots"][4].update(popoverHeight=380)))
-mac_breaks("a popover shortened by a fraction of a point", "only a lastAligned page may shorten",
+mac_breaks("a popover shortened by a fraction of a point", "only a lastAligned or firstClear page may shorten",
            mutate=lambda r: rewrite_render(r, lambda d: d["shots"][4].update(popoverHeight=551.5)))
+mac_breaks("a firstClear popover shortened under the 400 points users can set",
+           "only a lastAligned or firstClear page may shorten",
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][0].update(popoverHeight=380)))
+mac_breaks("a shortened popover on a page that says first, not firstClear",
+           "only a lastAligned or firstClear page may shorten",
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][0].update(page="first")))
 mac_breaks("the shortened popover's raw at the pinned height", "05_cost.png: drawn",
            mutate=lambda r: rewrite_render(r, lambda d: d["shots"][4].pop("popoverHeight")))
 # v1.58: the projects shot's provider panel, framed as a laptop shows it.
@@ -837,10 +850,14 @@ mac_breaks("a render.json edited after the panels were composed", "not the one c
            mutate=lambda r: rewrite_render(r, lambda d: d.update(generatedAt="later"), record=False))
 mac_breaks("a stray render.log committed beside the raws", "not part of the store set: render.log",
            mutate=lambda r: (shots.raw_dir("ko", r, MAC) / "render.log").write_text("build log"))
-check("a lastAligned shot's popover size is the one render.json records, the others the pinned one",
+check("a lastAligned or firstClear shot's popover size is the one render.json records, the others the pinned one",
       shots.mac_popover_pt(mac_render(shots.raw_dir("ko", mac_root, MAC), "ko"), "05_cost") == (380, 551)
-      and shots.mac_popover_pt(mac_render(shots.raw_dir("ko", mac_root, MAC), "ko"), "01_overview")
+      and shots.mac_popover_pt(mac_render(shots.raw_dir("ko", mac_root, MAC), "ko"), "01_overview") == (380, 570)
+      and shots.mac_popover_pt(mac_render(shots.raw_dir("ko", mac_root, MAC), "ko"), "03_usage_history")
       == shots.MAC_POPOVER_PT)
+check("only the projects shot's panel is framed, so only its edge on the canvas is kept between lines",
+      [st for st in MAC_STEMS if shots.mac_panel_framed(mac_render(shots.raw_dir("ko", mac_root, MAC), "ko"), st)]
+      == ["04_projects"])
 check("region_of reads a locale identifier's region, and nothing else",
       [shots.region_of(x) for x in ("es_MX", "zh-Hant_TW", "ja-JP@calendar=japanese", "en", None, "es_419")]
       == ["MX", "TW", "JP", None, None, None])
@@ -923,6 +940,43 @@ check("the framed provider panel sits beside the popover like the dashboard's, t
 side = [compose_mac.Placement("panel", 2000, 400, 1200, 3000, may_bleed_bottom=True)]
 check("negative control: the panel leaving the canvas at the side fails",
       compose_mac.placement_problems(side, scale) != [])
+
+# ── a framed panel's edge on the canvas (pure) ───────────────────────────────
+# 1.58's Codex panel, scrolled to Projects, in drawn rows (points down the
+# panel, read off the raws): Spanish wraps both footnotes a line more than
+# English, so its panel is 653 points to English's 629, and the canvas, which
+# has room for 615.2 points of it at 2.27 px/pt, ends through Spanish's last
+# footnote line ("El costo es una estimación ...").
+def ink_profile(height_pt: float, bands: list[tuple[float, float]]) -> list[bool]:
+    rows = [False] * round(height_pt * 3)
+    for a, b in bands:
+        for y in range(round(a * 3), min(len(rows), round(b * 3))):
+            rows[y] = True
+    return rows
+
+
+ES_158 = ink_profile(653, [(548.3, 556.0), (568.7, 577.7), (581.3, 588.0), (592.7, 600.0), (606.7, 615.7),
+                           (629.7, 631.0)])
+EN_158 = ink_profile(629, [(536.3, 544.0), (556.7, 565.7), (568.7, 577.7), (582.7, 591.7), (605.7, 607.0)])
+VISIBLE_158 = 615.23
+es_end = compose_mac.panel_edge(ES_158, VISIBLE_158, 600)
+check("a canvas edge through a line: the panel ends in the middle of the gap above it, whole on the canvas",
+      es_end is not None and abs(es_end - (600.0 + 606.7) / 2) < 0.2, str(es_end))
+check("a canvas edge in a gap: the panel runs on past it, as a laptop's screen edge cuts it",
+      compose_mac.panel_edge(EN_158, VISIBLE_158, 600) == VISIBLE_158)
+check("a panel the canvas has room for ends where it ends",
+      compose_mac.panel_edge(ink_profile(500, [(100, 120)]), VISIBLE_158, 600) == 500)
+planted = ink_profile(629, [(536.3, 544.0), (556.7, 565.7), (568.7, 577.7), (582.7, 591.7), (605.7, 607.0),
+                            (612.0, 618.0)])
+planted_end = compose_mac.panel_edge(planted, VISIBLE_158, 600)
+check("negative control: a line planted across English's edge moves the end into the gap above it",
+      planted_end is not None and abs(planted_end - (607.0 + 612.0) / 2) < 0.2, str(planted_end))
+check("negative control: a line within the margin of the edge, not across it, still moves the end",
+      compose_mac.panel_edge(ink_profile(629, [(605.7, 607.0), (616.5, 625.0)]), VISIBLE_158, 600) < VISIBLE_158)
+check("negative control: a gap narrower than two margins is no place to end; nor one that leaves a panel "
+      "under the shortest a screen gives",
+      compose_mac.panel_edge(ink_profile(653, [(590, 606), (607, 620)]), VISIBLE_158, 600) is None
+      and compose_mac.panel_edge(ES_158, VISIBLE_158, 605) is None)
 
 # ── the committed Mac sets ───────────────────────────────────────────────────
 check("on the real repo every Mac set is uploadable, recorded and drawn from the committed raws",

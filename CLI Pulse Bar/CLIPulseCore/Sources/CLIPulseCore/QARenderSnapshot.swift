@@ -658,12 +658,14 @@ public enum QARenderSnapshot {
     /// panel beside it, the panel's provider mode, where this Mac's Projects
     /// and Sessions cards are (P1-4, P1-5). That mode is about 1,200 points
     /// tall with them, so it scrolls on every laptop screen; the panel is
-    /// framed as one (`storeProviderPanel*`).
+    /// framed as one (`storeProviderPanel*`). The Overview's first page
+    /// (`overview`, `usage_history`) is `.firstClear`: it ends inside the
+    /// Cost Summary card, whose rows wrap differently in each language.
     public static var storeCatalog: [QARenderStoreShot] {
         let rows: [(String, QARenderSurface, QARenderStoreShot.Page, QARenderStoreShot.Panel?)] = [
-            ("overview", .demo(.overview), .first, nil),
+            ("overview", .demo(.overview), .firstClear, nil),
             ("providers", .demo(.providers), .first, nil),
-            ("usage_history", .demo(.overview), .first, .usageDashboard),
+            ("usage_history", .demo(.overview), .firstClear, .usageDashboard),
             ("projects", .demo(.providers), .first, .provider(.codex)),
             ("cost", .demo(.overview), .lastAligned, nil),
             ("alerts", .demo(.alerts), .first, nil),
@@ -722,7 +724,9 @@ public enum QARenderSnapshot {
 
     /// The popover's size in points: `MenuBarView` is 380 wide, and 580 high
     /// unless the user dragged it (400–900). The store set pins the default,
-    /// except for a `.lastAligned` page, which shortens it (`alignedTrim`).
+    /// except for a `.lastAligned` page, which shortens it (`alignedTrim`),
+    /// and a `.firstClear` page whose bottom edge would cut a line
+    /// (`firstPageTrim`).
     public static let storePopoverWidth = 380.0
     public static let storePopoverHeight = 580.0
     /// The shortest popover `MenuBarView` lets the user drag it to.
@@ -1011,6 +1015,47 @@ public enum QARenderSnapshot {
     /// avoid and which is not drawn as a line or a card.
     public static func coversContent(_ span: QARenderSpan, contentHeight: Double) -> Bool {
         span.top <= spanTolerance && span.bottom >= contentHeight - spanTolerance
+    }
+
+    /// v1.58: what a page's bottom edge, `bottom` points down the content,
+    /// cuts through: each drawn layer that starts above it and ends below
+    /// it, other than one that holds a whole card (the card's own backdrop,
+    /// its shadow, the page's background), which runs on below the edge as
+    /// the card does. What is left is a line of text, an icon, a bar:
+    /// something a reader sees cut in half. Cards come from the layer tree,
+    /// not pixels, for the reason `alignedTrim` gives.
+    public static func cutByBottomEdge(
+        _ bottom: Double, spans: [QARenderSpan], cards: [QARenderSpan]
+    ) -> [QARenderSpan] {
+        spans.filter { span in
+            span.top < bottom - spanTolerance && span.bottom > bottom + spanTolerance
+                && !cards.contains { span.top <= $0.top + spanTolerance && span.bottom >= $0.bottom - spanTolerance }
+        }
+    }
+
+    /// v1.58: whole points to take off the popover so a `.firstClear` page,
+    /// which shows the content from 0 down to `viewportHeight`, ends at
+    /// least `clearance` points above everything its bottom edge would cut
+    /// (`cutByBottomEdge`); 0 when it cuts nothing. Shortening the popover
+    /// moves that edge up the content point for point. Each step moves the
+    /// edge above the highest layer it cut, so this ends; the caller holds
+    /// the result to the shortest popover users can drag it to.
+    ///
+    /// The Overview's first page ends inside the Cost Summary card. In
+    /// Spanish its 30-day column takes two lines, which put the "By Model"
+    /// row half under the popover's footer (1.58, #692); every other
+    /// language ends a few points below that row.
+    public static func firstPageTrim(
+        spans: [QARenderSpan], cards: [QARenderSpan], viewportHeight: Double,
+        clearance: Double = storeAlignedClearance
+    ) -> Int {
+        var trim = 0
+        while Double(trim) < viewportHeight {
+            let edge = viewportHeight - Double(trim)
+            guard let top = cutByBottomEdge(edge, spans: spans, cards: cards).map(\.top).min() else { return trim }
+            trim = Int((viewportHeight - top + clearance).rounded(.up))
+        }
+        return trim
     }
 
     /// What a framed provider panel's page edge, `top` points down the
@@ -1347,6 +1392,13 @@ public struct QARenderStoreShot: Equatable, Sendable {
     public enum Page: String, Codable, Sendable {
         /// The view as it opens.
         case first
+        /// v1.58: the view as it opens, in a popover shortened when the
+        /// page's bottom edge, above the footer, would cut through a line of
+        /// text or an icon, so that the page ends `storeAlignedClearance`
+        /// points above it (`QARenderSnapshot.firstPageTrim`); at the pinned
+        /// height otherwise. A state the app really has, as `.lastAligned`'s
+        /// is; render.json records a shortened height.
+        case firstClear
         /// Scrolled to the end, flush with the bottom of the content.
         case last
         /// Scrolled to the end, in a popover shortened so that the top edge

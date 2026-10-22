@@ -244,7 +244,63 @@ final class QARenderSnapshotTests: XCTestCase {
         XCTAssertEqual(cost.surface, .demo(.overview))
         XCTAssertEqual(cost.page, .lastAligned,
                        "the cost shot is the Overview scrolled to its end, opening above a card")
-        XCTAssertEqual(QARenderSnapshot.storeCatalog.filter { $0.page != .first }.map(\.id), ["05_cost"])
+        XCTAssertEqual(QARenderSnapshot.storeCatalog.filter { $0.page != .first && $0.page != .firstClear }.map(\.id),
+                       ["05_cost"])
+        XCTAssertEqual(QARenderSnapshot.storeCatalog.filter { $0.page == .firstClear }.map(\.id),
+                       ["01_overview", "03_usage_history"],
+                       "the Overview's first page ends clear of every line: it ends inside the Cost Summary card")
+    }
+
+    // MARK: - Ending the Overview's first page clear of every line (v1.58)
+
+    /// Shaped like the 1.58 Demo Overview's first page in a 580-point
+    /// popover that shows 501 points of it: the page's background, the
+    /// Activity card, then the Cost Summary card (with its shadow) running on
+    /// under the footer, and the card's rows. In Spanish the 30-day column
+    /// takes two lines, so the "Por modelo" row (text and chevron) starts at
+    /// 497 and the edge at 501 cuts it; in English it ends at 498, above it.
+    private func overview158(byModel: QARenderSpan) -> (spans: [QARenderSpan], cards: [QARenderSpan]) {
+        let cards = [span(188, 361), span(373, 640)]
+        let rows = [span(400, 412), span(416, 440), span(452, 466), span(474, 488), byModel,
+                    span(byModel.top + 2, byModel.bottom - 2)]
+        return ([span(0, 900), span(186, 365), span(371, 646)] + cards + rows, cards)
+    }
+
+    func testTheOverviewsFirstPageEndsAboveTheRowItWouldCut() {
+        let es = overview158(byModel: span(497, 511))
+        XCTAssertEqual(QARenderSnapshot.cutByBottomEdge(501, spans: es.spans, cards: es.cards),
+                       [span(497, 511), span(499, 509)],
+                       "the row and its chevron are cut; the card, its shadow and the page run on under the edge")
+        // 501 - 497 + 4: the page ends 4 points above the row, which it no longer shows.
+        XCTAssertEqual(QARenderSnapshot.firstPageTrim(spans: es.spans, cards: es.cards, viewportHeight: 501), 8)
+        XCTAssertEqual(QARenderSnapshot.cutByBottomEdge(493, spans: es.spans, cards: es.cards), [])
+
+        let en = overview158(byModel: span(484, 498))
+        XCTAssertEqual(QARenderSnapshot.cutByBottomEdge(501, spans: en.spans, cards: en.cards), [])
+        XCTAssertEqual(QARenderSnapshot.firstPageTrim(spans: en.spans, cards: en.cards, viewportHeight: 501), 0,
+                       "a page that cuts nothing keeps the pinned popover")
+    }
+
+    func testTheFirstPageTrimMovesAboveEveryRowTheShorterEdgeWouldCut() {
+        // Two lines with a 1-point gap: moving the edge 4 points above the
+        // lower one lands it in the upper one, so the page ends above both.
+        let cards = [span(373, 640)]
+        let spans = [span(371, 646), span(373, 640), span(480, 494), span(495, 509)]
+        XCTAssertEqual(QARenderSnapshot.firstPageTrim(spans: spans, cards: cards, viewportHeight: 501), 25)
+        XCTAssertEqual(QARenderSnapshot.cutByBottomEdge(476, spans: spans, cards: cards), [])
+    }
+
+    func testNegativeControlTheBottomEdgeCheckSeesLinesNotCards() {
+        let es = overview158(byModel: span(497, 511))
+        // Without the cards, every layer that holds one counts as cut: the
+        // page's background, the card's shadow and the card itself.
+        XCTAssertEqual(QARenderSnapshot.cutByBottomEdge(501, spans: es.spans, cards: []).count, 5)
+        // A line planted across the edge of an otherwise clean page is reported.
+        let en = overview158(byModel: span(484, 498))
+        let line = span(495, 507)
+        XCTAssertEqual(QARenderSnapshot.cutByBottomEdge(501, spans: en.spans + [line], cards: en.cards), [line])
+        XCTAssertGreaterThan(
+            QARenderSnapshot.firstPageTrim(spans: en.spans + [line], cards: en.cards, viewportHeight: 501), 0)
     }
 
     // MARK: - Framing the provider panel (v1.58)
@@ -534,9 +590,9 @@ final class QARenderSnapshotTests: XCTestCase {
         )
         manifest.displayLocale = "ja_JP"
         manifest.shots = [.init(
-            id: "03_usage_history", surface: "demo-overview", page: .first, pageIndex: 1,
+            id: "03_usage_history", surface: "demo-overview", page: .firstClear, pageIndex: 1,
             pageCount: 3, file: "03_usage_history.png", md5: "0123",
-            panelFile: "03_usage_history.panel.png", panelMD5: "4567"
+            panelFile: "03_usage_history.panel.png", panelMD5: "4567", popoverHeight: 572
         ), .init(
             id: "04_projects", surface: "demo-providers", page: .first, pageIndex: 1,
             pageCount: 2, file: "04_projects.png", md5: "cdef",
@@ -552,6 +608,8 @@ final class QARenderSnapshotTests: XCTestCase {
         XCTAssertTrue(text.contains("\"set\" : \"store\""), text)
         XCTAssertTrue(text.contains("\"devidBuild\" : false"), text)
         XCTAssertTrue(text.contains("\"page\" : \"lastAligned\""), text)
+        XCTAssertTrue(text.contains("\"page\" : \"firstClear\""), text)
+        XCTAssertTrue(text.contains("\"popoverHeight\" : 572"), text)
         XCTAssertTrue(text.contains("\"popoverHeight\" : 551"), text)
         XCTAssertTrue(text.contains("\"panelHeight\" : 612"), text)
         XCTAssertTrue(text.contains("\"panelScrolledTo\" : 528"), text)

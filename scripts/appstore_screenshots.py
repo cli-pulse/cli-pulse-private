@@ -201,7 +201,11 @@ MAC_RENDER_SCALE = 3
 MAC_POPOVER_PT = (380, 580)
 # A shot on a "lastAligned" page (QARenderSnapshot.alignedTrim) is drawn in a
 # popover shortened so it opens just above a whole card (406 points for 1.55's
-# cost shot: QARenderSnapshot.alignedCard); users drag it from 400 to 900.
+# cost shot: QARenderSnapshot.alignedCard); users drag it from 400 to 900. A
+# "firstClear" page (v1.58, the Overview's first page) is shortened only when
+# its bottom edge would cut a line of text (QARenderSnapshot.firstPageTrim:
+# 1.58's Spanish Overview, 570 points).
+MAC_SHORTENED_PAGES = ("lastAligned", "firstClear")
 MAC_POPOVER_MIN_HEIGHT_PT = 400
 MAC_PANEL_WIDTH_PT = 520
 LOCAL_SCAN_PROVIDERS = frozenset({"Claude", "Codex"})
@@ -542,11 +546,19 @@ def region_of(locale_id: str | None) -> str | None:
 
 def mac_popover_pt(render: dict, stem_: str) -> tuple[int, int]:
     """The popover's size in points for one shot, as render.json records it:
-    the pinned 380x580, or a lastAligned shot's shortened height."""
+    the pinned 380x580, or a lastAligned or firstClear shot's shortened
+    height."""
     for s in render.get("shots") or []:
         if s.get("id") == stem_ and s.get("popoverHeight") is not None:
             return (MAC_POPOVER_PT[0], s["popoverHeight"])
     return MAC_POPOVER_PT
+
+
+def mac_panel_framed(render: dict, stem_: str) -> bool:
+    """Whether render.json frames this shot's usage panel (a provider panel,
+    QARenderStoreShot.Panel.provider), whose edge on the canvas the Mac
+    compositor then keeps between lines; the Usage Dashboard is drawn whole."""
+    return any(s.get("id") == stem_ and s.get("panelHeight") is not None for s in render.get("shots") or [])
 
 
 def render_problems(lang: str, root: Path | None = None, platform: Platform = MAC,
@@ -556,7 +568,8 @@ def render_problems(lang: str, root: Path | None = None, platform: Platform = MA
     render.json is written by the QA build's store set (QASnapshotRenderer),
     which measures the build it runs in. It must say: the store set, in this
     language, the catalogue in effect; drawn at 3x with the popover at 380x580
-    points (a lastAligned shot's shorter, down to 400) and the panel 520 wide,
+    points (a lastAligned or firstClear shot's shorter, down to 400) and the
+    panel 520 wide,
     settled and dark; overlay scroll bars; the language's own region
     (MAC_REGIONS); no DEVID_BUILD, no remote control; no warning, refused
     request or blank-looking render; a local usage history of Claude and
@@ -635,12 +648,12 @@ def render_problems(lang: str, root: Path | None = None, platform: Platform = MA
         files = [(s.get("file"), s.get("md5"), f"{sid}.png")]
         height = s.get("popoverHeight")
         if height is not None:
-            want(s.get("page") == "lastAligned"
+            want(s.get("page") in MAC_SHORTENED_PAGES
                  and isinstance(height, (int, float)) and not isinstance(height, bool)
                  and float(height).is_integer()
                  and MAC_POPOVER_MIN_HEIGHT_PT <= height < MAC_POPOVER_PT[1],
                  f"{sid}: popover {height!r} points high on a {s.get('page')!r} page; only a "
-                 f"lastAligned page may shorten it, to whole points from "
+                 f"lastAligned or firstClear page may shorten it, to whole points from "
                  f"{MAC_POPOVER_MIN_HEIGHT_PT} up to {MAC_POPOVER_PT[1]}")
         popover = (MAC_POPOVER_PT[0], int(height)) if isinstance(height, (int, float)) \
             and not isinstance(height, bool) else MAC_POPOVER_PT

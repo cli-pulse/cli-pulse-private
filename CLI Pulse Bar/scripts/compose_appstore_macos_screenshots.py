@@ -25,6 +25,11 @@ left of the popover, top-aligned, 8 points away, at the same scale; the
 projects panel (v1.58) shows the same panel in a provider's mode beside the
 Providers tab, framed as a laptop shows it (render.json records its height).
 A panel is the only thing allowed past an edge, and only past the bottom one.
+A framed panel's bottom edge on the canvas must fall between lines: where the
+canvas would cut through one (1.58's Spanish Sessions card, whose footnotes
+take a line more), the panel is drawn shorter, ending in the lowest gap
+between lines above that edge, as a smaller screen's panel scrolled to the
+same place shows it (panel_edge).
 
 Usage:
     compose_appstore_macos_screenshots.py --lang ja      # macos-raw/ja -> macos-composed/ja
@@ -95,6 +100,14 @@ POPOVER_CORNER_PT = 16
 # `leftEdge - width - 8`, 8 points left of the popover, top-aligned with it.
 PANEL_CORNER_PT = 16
 PANEL_GAP_PT = 8
+# A framed panel's edge on the canvas (panel_edge): what counts as drawn in a
+# row of the raw panel is a pixel PANEL_INK_DELTA grey levels or more from the
+# row's median, between PANEL_INK_X_PT (inside the panel's cards, which sit 26
+# points in, clear of their borders); the edge keeps PANEL_EDGE_MARGIN_PT clear
+# of drawn rows on both sides.
+PANEL_INK_X_PT = (32, 488)
+PANEL_INK_DELTA = 40
+PANEL_EDGE_MARGIN_PT = 2
 HAIRLINE = (255, 255, 255, 46)
 SHADOW_ALPHA = 120
 SHADOW_BLUR_PT = 12
@@ -116,8 +129,13 @@ SHADOW_OFFSET_PT = 6
 # "by provider" stays with today and the 30 days go with the projects. Until
 # 1.57 it opened on the Cost Summary and named its 30-day total, which this
 # page no longer shows (the iPhone's 03_cost still does, and keeps those
-# words). The projects shot's subtitle says "this Mac's", as both of its
-# cards do, and "by estimated cost", the order both list in. "The last 30
+# words). The projects shot is one provider's usage panel (Codex's, scrolled
+# past its name to Projects and Sessions), so its figures are that
+# provider's and differ from the cost shot's all-provider Top Projects: its
+# subtitle says "each provider's" (每个服务商/每個服務商/プロバイダーごと/
+# 공급자별/de cada proveedor, the cost shot's word for provider), "on this
+# Mac", as both of its cards do, and "by estimated cost", the order both
+# list in (#692 review). "The last 30
 # days", not "30 days": the figures are trailing sums, and a bare "30 days"
 # (a 30 días, 30 天, 30日間, 30일간) read as a forecast. The alerts
 # subtitle promises no kind of alert: the Demo list, like a paired account's,
@@ -133,7 +151,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "03_usage_history": ("Your usage history, one click away",
                              "Heatmap, streaks and top models from your local Claude and Codex history"),
         "04_projects": ("Your projects and sessions",
-                        "This Mac’s top projects and sessions, by estimated cost"),
+                        "Each provider’s top projects and sessions on this Mac, by estimated cost"),
         "05_cost": ("Where the money goes",
                     "Today’s estimated cost by provider, plus your top projects of the last 30 days"),
         "06_alerts": ("Never miss a limit",
@@ -146,7 +164,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "02_providers": ("实时掌握配额与费用", "离上限还有多远，一眼就知道"),
         "03_usage_history": ("用量历史，一点就展开",
                              "活动热力图、连续天数和最常用模型，来自 Claude 与 Codex 的本地历史"),
-        "04_projects": ("项目与会话", "这台 Mac 上的主要项目和会话，按估算费用排列"),
+        "04_projects": ("项目与会话", "每个服务商在这台 Mac 上的主要项目和会话，按估算费用排列"),
         "05_cost": ("钱都花在了哪里", "今日估算费用按服务商细分，另有近 30 天的主要项目"),
         "06_alerts": ("配额不再突然见底", "告警可以确认、解决或稍后提醒"),
         "07_pulse_cat": ("认识一下脉冲猫", "一只桌面猫，活力和饱食度跟着你的 AI 用量变化"),
@@ -156,7 +174,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "02_providers": ("即時查看配額與費用", "用完之前，就知道還剩多少"),
         "03_usage_history": ("用量歷史，按一下就展開",
                              "活動熱度圖、連續天數與常用模型，來自 Claude 與 Codex 的本機歷史"),
-        "04_projects": ("專案與工作階段", "這台 Mac 上的主要專案與工作階段，依預估費用排列"),
+        "04_projects": ("專案與工作階段", "每個服務商在這台 Mac 上的主要專案與工作階段，依預估費用排列"),
         "05_cost": ("錢花在哪裡", "今日預估費用依服務商細分，另有近 30 天的主要專案"),
         "06_alerts": ("配額不再突然見底", "警示可以確認、解決或稍後提醒"),
         "07_pulse_cat": ("來認識脈衝貓", "一隻桌面貓，活力與飽食度會隨你的 AI 用量變化"),
@@ -169,7 +187,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
                              "Claude と Codex のローカル履歴から、\u200bヒートマップ・連続日数・"
                              "よく使うモデルを表示"),
         "04_projects": ("プロジェクトとセッション",
-                        "この Mac の主なプロジェクトとセッションを、\u200b推定コスト順に"),
+                        "プロバイダーごとに、\u200bこの Mac の主なプロジェクトとセッションを推定コスト順に表示"),
         "05_cost": ("コストの内訳がわかる",
                     "今日の推定コストをプロバイダー別に、\u200b直近30日間の主なプロジェクトも"),
         "06_alerts": ("上限の接近を見逃さない",
@@ -182,7 +200,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "02_providers": ("실시간 할당량과 비용", "한도까지 얼마나 남았는지 바로 확인하세요"),
         "03_usage_history": ("사용 기록을 클릭 한 번으로",
                              "Claude와 Codex 로컬 기록으로 보는 활동 히트맵, 연속 사용일, 자주 쓰는 모델"),
-        "04_projects": ("프로젝트와 세션", "이 Mac의 주요 프로젝트와 세션을 추정 비용순으로"),
+        "04_projects": ("프로젝트와 세션", "공급자별로 이 Mac의 주요 프로젝트와 세션을 추정 비용순으로 확인하세요"),
         "05_cost": ("비용, 어디에 쓰이나요?", "공급자별 오늘 추정 비용과 최근 30일 주요 프로젝트"),
         "06_alerts": ("할당량이 바닥나기 전에", "경고는 그 자리에서 확인하고, 해결하거나 다시 알림으로 미루세요"),
         "07_pulse_cat": ("펄스 캣을 만나 보세요", "AI 사용량에 따라 에너지와 포만감이 달라지는 데스크톱 고양이"),
@@ -196,7 +214,8 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
                              "Mapa de calor, rachas y modelos más usados, a partir de tu historial local "
                              "de Claude y Codex"),
         "04_projects": ("Tus proyectos y sesiones",
-                        "Los principales proyectos y sesiones de este Mac, por costo estimado"),
+                        "Los proyectos y sesiones principales de cada proveedor en este Mac, "
+                        "ordenados por costo estimado"),
         "05_cost": ("En qué se va tu dinero",
                     "Costo estimado de hoy por proveedor, más tus proyectos principales de los últimos 30 días"),
         "06_alerts": ("Sin sorpresas con la cuota",
@@ -268,6 +287,56 @@ def placements(screen_has_panel: bool, shot_top: int, scale: float,
             Placement("popover", x0 + qw + gap, shot_top, pw, ph)]
 
 
+def panel_edge(ink: list[bool], visible_pt: float, min_pt: float,
+               margin_pt: float = PANEL_EDGE_MARGIN_PT, render_scale: int = RENDER_SCALE) -> float | None:
+    """Where a framed panel ends on the canvas, in points from its top. `ink`
+    says, per pixel row of the raw panel (at `render_scale`), whether
+    anything is drawn across it (panel_ink_rows); `visible_pt` is how much of
+    the panel the canvas has room for. The canvas's own edge when the panel
+    fits, or when no drawn row lies within `margin_pt` of that edge: the panel
+    runs on past it, as a laptop's screen edge cuts it. Otherwise the middle
+    of the lowest gap between drawn rows above the edge that is at least two
+    margins tall, so the panel ends between lines rather than through one:
+    the panel a smaller screen gives, scrolled to the same place. None when
+    that would make it shorter than `min_pt`, the shortest panel a screen
+    gives (MAC_PROVIDER_PANEL_HEIGHT_PT)."""
+    rows = len(ink)
+    if rows <= visible_pt * render_scale:
+        return rows / render_scale
+    edge = visible_pt * render_scale
+    margin = margin_pt * render_scale
+    near = range(max(0, int(edge - margin)), min(rows, int(edge + margin) + 1))
+    if not any(ink[y] for y in near):
+        return visible_pt
+    y = min(rows, int(edge))
+    while y > 0:
+        while y > 0 and ink[y - 1]:
+            y -= 1
+        end = y                       # rows [start, end) are blank
+        while y > 0 and not ink[y - 1]:
+            y -= 1
+        start = y
+        if end - start >= 2 * margin:
+            cut = (start + end) / 2 / render_scale
+            return cut if cut >= min_pt else None
+    return None
+
+
+def panel_ink_rows(img) -> list[bool]:
+    """Per pixel row of a raw panel: whether anything is drawn across the
+    inside of its cards (PANEL_INK_X_PT, PANEL_INK_DELTA)."""
+    gray = img.convert("L")
+    x0, x1 = (round(x * RENDER_SCALE) for x in PANEL_INK_X_PT)
+    width = gray.size[0]
+    data = gray.tobytes()
+    out = []
+    for y in range(gray.size[1]):
+        row = data[y * width + x0:y * width + x1]
+        median = sorted(row)[len(row) // 2]
+        out.append(any(abs(v - median) >= PANEL_INK_DELTA for v in row))
+    return out
+
+
 def placement_problems(items: list[Placement], scale: float) -> list[str]:
     """The popover whole on the canvas, and at a legible scale; only the
     usage panel may leave the canvas, and only through the bottom edge."""
@@ -309,10 +378,15 @@ def drop_shadow(canvas, it: Placement, radius: int, scale: float) -> None:
 
 def compose_one(src_dir: Path, stem_: str, dst: Path, lang: str, faces: dict[str, Face],
                 t_size: int, s_size: int, reserved_lines: int,
-                popover_pt: tuple[int, int] = POPOVER_PT) -> tuple[list[str], float]:
+                popover_pt: tuple[int, int] = POPOVER_PT, framed_panel: bool = False,
+                shown: dict | None = None) -> tuple[list[str], float]:
     """Write one panel; return why it is not fit to upload (empty = fine),
     and the scale it was drawn at. `popover_pt` is the popover's size as
-    render.json records it for this shot (shots.mac_popover_pt)."""
+    render.json records it for this shot (shots.mac_popover_pt);
+    `framed_panel` says render.json frames its usage panel
+    (shots.mac_panel_framed), whose edge on the canvas then falls between
+    lines (panel_edge). `shown`, when given, gets the framed panel's height
+    on the canvas in points and whether it runs past the bottom edge."""
     title, subtitle = COPY[lang][stem_]
     problems = []
 
@@ -342,6 +416,20 @@ def compose_one(src_dir: Path, stem_: str, dst: Path, lang: str, faces: dict[str
         problems.append(f"{stem_}.png is {popover.size[0]}x{popover.size[1]}, not {want[0]}x{want[1]}")
     if panel is not None and panel.size[0] != PANEL_WIDTH_PT * RENDER_SCALE:
         problems.append(f"{panel_path.name} is {panel.size[0]} px wide, not {PANEL_WIDTH_PT * RENDER_SCALE}")
+    if panel is not None and framed_panel:
+        visible_pt = (CANVAS_H - layout.shot_top) / scale
+        end_pt = panel_edge(panel_ink_rows(panel), visible_pt, shots.MAC_PROVIDER_PANEL_HEIGHT_PT[0])
+        if end_pt is None:
+            problems.append(f"{panel_path.name}: the canvas's bottom edge, {visible_pt:.1f} points down the "
+                            f"panel, cuts through a line, and no gap between lines above it leaves a panel "
+                            f"of at least {shots.MAC_PROVIDER_PANEL_HEIGHT_PT[0]} points")
+        elif end_pt < visible_pt:
+            panel = panel.crop((0, 0, panel.size[0], round(end_pt * RENDER_SCALE)))
+        if shown is not None and end_pt is not None:
+            # Where the panel ends on the canvas, in points down the panel,
+            # and whether it runs on past the canvas's bottom edge there.
+            shown[stem_] = {"ends_pt": round(end_pt, 2),
+                            "past_bottom_edge": end_pt >= visible_pt and panel.size[1] / RENDER_SCALE > visible_pt}
     items = placements(panel is not None, layout.shot_top, scale,
                        panel.size[1] / RENDER_SCALE if panel is not None else None,
                        popover_height_pt=popover_pt[1])
@@ -408,10 +496,12 @@ def compose_lang(lang: str, in_dir: Path | None, out_dir: Path | None) -> list[s
     staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.staging-", dir=out_dir.parent))
     try:
         scales = set()
+        framed_panels: dict = {}
         for st in stems_:
             probs, scale = compose_one(in_dir, st, staging / shots.composed_name(st, PLATFORM), lang,
                                        faces, t_size, s_size, reserved_lines,
-                                       popover_pt=shots.mac_popover_pt(render, st))
+                                       popover_pt=shots.mac_popover_pt(render, st),
+                                       framed_panel=shots.mac_panel_framed(render, st), shown=framed_panels)
             problems += probs
             scales.add(round(scale, 6))
         if len(scales) != 1:
@@ -428,6 +518,7 @@ def compose_lang(lang: str, in_dir: Path | None, out_dir: Path | None) -> list[s
             "faces": {r: common.face_name(f) for r, f in faces.items()},
             "title_pt": t_size, "subtitle_pt": s_size,
             "px_per_pt": round(next(iter(scales)), 4),
+            "framed_panels": framed_panels,
             "captions": {st: list(COPY[lang][st]) for st in stems_},
             "captures": {name: shots.md5_of(in_dir / name) for name in shots.raw_names(PLATFORM)},
             "render": shots.md5_of(in_dir / shots.RENDER_MANIFEST),

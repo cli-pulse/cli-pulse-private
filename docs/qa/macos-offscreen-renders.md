@@ -249,9 +249,9 @@ none of the three differences (`QARenderSnapshot.storeCatalog`, checked by
 
 | file | what |
 | --- | --- |
-| `01_overview.png` | Overview, first page |
+| `01_overview.png` | Overview, first page, ending clear of every line (`firstClear`, below) |
 | `02_providers.png` | Providers, first page |
-| `03_usage_history.png` + `03_usage_history.panel.png` | Overview, first page, and the usage panel that slides out to its left (the Usage Dashboard, drawn whole) |
+| `03_usage_history.png` + `03_usage_history.panel.png` | Overview, first page (`firstClear`), and the usage panel that slides out to its left (the Usage Dashboard, drawn whole) |
 | `04_projects.png` + `04_projects.panel.png` | Providers, first page, and the Codex card's usage panel: its provider mode, with this Mac's Projects and Sessions (v1.58), framed as a laptop shows it (below) |
 | `05_cost.png` | Overview, scrolled to its end, in a shorter popover so it opens just above a card: the first one `01_overview` did not show whole, or the one above it when that would need a popover under 400 points (`lastAligned`, below) |
 | `06_alerts.png` | Alerts |
@@ -298,6 +298,18 @@ language menu (drawn from menu items, not a screenshot).
   to 900 points, so the shorter one is a real state; `render.json` records its
   height (`shots[].popoverHeight`: 406 in 1.55, 552 in 1.54), and the
   compositor draws it at the set's scale, centred in the room a full popover fills.
+- **The Overview's first page ends clear of every line** (v1.58, `firstClear`:
+  `01_overview` and `03_usage_history`). It ends inside the Cost Summary card,
+  whose rows wrap differently per language: in Spanish the 30-day column
+  ("· 2.6 M tokens de E/S") takes two lines, which left the "Por modelo" row
+  half under the popover's footer. After the page is drawn at 580, every layer
+  its bottom edge crosses that holds no card (a line of text, an icon; a
+  card's backdrop, its shadow and the page's background run on under any edge)
+  is cut (`QARenderSnapshot.cutByBottomEdge`), and the popover is shortened by
+  `firstPageTrim` so the page ends 4 points above the highest of them, then
+  drawn again, and must then cut none. Spanish's is 570 points; every other
+  language keeps 580, byte for byte. The App Store pipeline accepts a
+  shortened popover on a `lastAligned` or `firstClear` page only.
 - **The provider panel is framed** (v1.58, `04_projects`). With its Projects
   and Sessions cards the panel's provider mode is about 1,150 points tall, and
   `DashboardPanelController` makes the panel the screen's visible height less
@@ -321,6 +333,15 @@ language menu (drawn from menu items, not a screenshot).
   `panelScrolledTo`), and the App Store pipeline refuses a framed panel
   outside 600-876 points, or one drawn at another height than recorded. The
   Usage Dashboard's panel is drawn whole and records none of them.
+  On the canvas the framed panel runs on past the bottom edge, as a laptop's
+  screen edge cuts it, only where that edge falls between lines: the
+  compositor reads the raw panel's rows (`panel_edge`, `panel_ink_rows`), and
+  where the edge would cut through one (1.58's Spanish Sessions card, whose
+  footnotes take a line more, ended on "El costo es una estimación ..." clipped
+  at the canvas) it draws the panel shorter, whole on the canvas, ending in
+  the middle of the lowest gap between lines above the edge: the panel a
+  smaller screen gives, scrolled to the same place. Never under 600 points;
+  `compose.json` records where it ends (`framed_panels`).
 - Overlay scroll bars: the script passes `-AppleShowScrollBars WhenScrolling`.
   A Mac set to show scroll bars "Always" (the render Mac of 2026-09-28 was)
   gives every scrolling tab a legacy scroller's gutter, which the offscreen

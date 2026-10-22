@@ -515,7 +515,10 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
     /// show whole, or the one above it when that needs a popover under 400
     /// points), then again in a popover shortened by
     /// `QARenderSnapshot.alignedTrim` so the page scrolled to the end opens just
-    /// above that card, and must then cut through nothing drawn.
+    /// above that card, and must then cut through nothing drawn. A
+    /// `.firstClear` page is drawn again, when its bottom edge would cut a
+    /// line of text or an icon, in a popover shortened by
+    /// `QARenderSnapshot.firstPageTrim`, and must then cut none.
     private func captureStoreShot(_ shot: QARenderStoreShot) async -> QARenderManifest.StoreShot? {
         var height = QARenderSnapshot.storePopoverHeight
         guard var drawn = await drawStorePopover(shot) else { return nil }
@@ -553,7 +556,44 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             }
             guard alignedPageIsClean(drawn, card: card, id: shot.id, height: height) else { return nil }
         }
-        let pageIndex = shot.page == .first ? 1 : drawn.pages.count
+        if shot.page == .firstClear {
+            guard let layout = drawn.layout else {
+                manifest.warnings.append("\(shot.id): the first page's content could not be measured")
+                return nil
+            }
+            let trim = QARenderSnapshot.firstPageTrim(
+                spans: layout.drawn, cards: layout.cards, viewportHeight: layout.viewportHeight)
+            if trim > 0 {
+                height -= Double(trim)
+                guard height >= QARenderSnapshot.storePopoverMinHeight else {
+                    manifest.warnings.append(
+                        "\(shot.id): ending the first page clear of every line needs a \(height)-point "
+                            + "popover, under the \(QARenderSnapshot.storePopoverMinHeight) users can set"
+                    )
+                    return nil
+                }
+                defaults.set(height, forKey: Self.menuBarHeightKey)
+                let again = await drawStorePopover(shot)
+                defaults.set(QARenderSnapshot.storePopoverHeight, forKey: Self.menuBarHeightKey)
+                guard let again else { return nil }
+                drawn = again
+            }
+            guard let final = drawn.layout else {
+                manifest.warnings.append("\(shot.id): in a \(height)-point popover the content could not be measured")
+                return nil
+            }
+            let cut = QARenderSnapshot.cutByBottomEdge(final.viewportHeight, spans: final.drawn, cards: final.cards)
+            if !cut.isEmpty {
+                let spans = cut.prefix(3).map { "\($0.top)-\($0.bottom)" }.joined(separator: ", ")
+                manifest.warnings.append(
+                    "\(shot.id): in a \(height)-point popover the first page's bottom edge, "
+                        + "\(final.viewportHeight) points down the content, cuts through \(cut.count) "
+                        + "drawn layer(s) (\(spans))"
+                )
+                return nil
+            }
+        }
+        let pageIndex = shot.page == .first || shot.page == .firstClear ? 1 : drawn.pages.count
         let page = drawn.pages[pageIndex - 1]
         let expected = NSSize(width: QARenderSnapshot.storePopoverWidth, height: height)
         if page.size != expected {
@@ -566,7 +606,13 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                                        pageCount: drawn.pages.count, kind: .popover) else {
             return nil
         }
-        if height != QARenderSnapshot.storePopoverHeight {
+        if height != QARenderSnapshot.storePopoverHeight, shot.page == .firstClear {
+            manifest.forcedSettings[Self.menuBarHeightKey + " (" + shot.id + ")"] = "\(Int(height)): "
+                + "this shot's popover, shortened from \(Int(QARenderSnapshot.storePopoverHeight)) "
+                + "so its first page ends \(Int(QARenderSnapshot.storeAlignedClearance)) points above "
+                + "the line of text its bottom edge would have cut through, rather than through it "
+                + "(QARenderSnapshot.firstPageTrim). Users can drag the popover between 400 and 900."
+        } else if height != QARenderSnapshot.storePopoverHeight {
             manifest.forcedSettings[Self.menuBarHeightKey + " (" + shot.id + ")"] = "\(Int(height)): "
                 + "this shot's popover, shortened from \(Int(QARenderSnapshot.storePopoverHeight)) "
                 + "so the page scrolled to the end opens just above a card (the first one the "
