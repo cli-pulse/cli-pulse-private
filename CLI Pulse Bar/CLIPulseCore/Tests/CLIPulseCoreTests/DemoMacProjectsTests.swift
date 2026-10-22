@@ -104,9 +104,13 @@ final class DemoMacProjectsTests: XCTestCase {
             XCTAssertTrue(line.hoverText?.hasPrefix(DemoDataProvider.macProjectsFolder + "/") == true,
                           "\(line.title): \(line.hoverText ?? "no path")")
         }
-        // Demo's sessions run in folders of its own list.
-        let sessionProjects = Set(state.sessions.map(\.project))
+        // Demo's sessions run in folders of its own list, or name none: since
+        // 1.58 lab-server-01's Gemini CLI has the desktop app's placeholder,
+        // which no list shows (`SessionRecord.displayProject`).
+        let sessionProjects = Set(state.sessions.compactMap(\.displayProject))
         XCTAssertTrue(sessionProjects.isSubset(of: Set(names)), "\(sessionProjects)")
+        XCTAssertEqual(state.sessions.filter { $0.displayProject == nil }.map(\.provider), ["Gemini"],
+                       "one Demo session shows the \"<Provider> process\" form")
 
         // With the switch on: numbered, no path.
         let masked = ProjectUsageList.overview(

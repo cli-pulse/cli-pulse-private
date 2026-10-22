@@ -263,6 +263,10 @@ case "$device_type" in
 esac
 [ "$family" = "$SET" ] || die "$UDID is an $family simulator, not an $SET one; --set $SET captures on an $SET"
 echo "set: $SET -> $OUT ($CAPTURE_SIZE, display mask $MASK)"
+if [ "$SET" = ipad ] && { [ -n "$want_screens" ] || [ -n "$want_langs" ]; }; then
+  echo "note: the iPad's status bar shows today's date ($(date '+%Y-%m-%d')); a panel recaptured on" \
+       "another day than the rest of its set shows another date (override_status_bar)"
+fi
 
 # ── the app (checked before anything boots) ─────────────────────────────────────────────────────────────────
 built_here=""
@@ -375,6 +379,16 @@ fi
 
 override_status_bar() {
   # A full battery, not charging: 'charged' draws the charging bolt on iOS 26.
+  # The time only. simctl also takes an ISO date ("2026-10-22T00:41:00.000Z",
+  # UTC with fractional seconds; "+09:00" is refused) and then pins the
+  # iPad's date too, but measured on iOS 26.5 the iPad then draws that date
+  # in English in every language ("Sun Oct 22" under a Japanese screen) and
+  # with the weekday the day had in 2000 (2026-10-22 is a Thursday), where
+  # the bare time leaves the simulator's own date in its own language
+  # (follow_language). So the iPad's date is the day of the capture: capture
+  # every iPad panel in one run, as the 1.58 reshoot did. The 1.57 set read
+  # "Wed Oct 7" on three panels and "Thu Oct 15" on the one recaptured a week
+  # later (see the note this script prints for a partial iPad run).
   with_timeout "$STEP_TIMEOUT" xcrun simctl status_bar "$UDID" override --time 9:41 --dataNetwork wifi \
     --wifiBars 3 --cellularBars 4 --batteryState discharging --batteryLevel 100
 }

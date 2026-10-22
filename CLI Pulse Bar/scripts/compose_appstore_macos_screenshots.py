@@ -21,9 +21,10 @@ its end opens just above a whole card (Cost Summary; QARenderSnapshot.
 alignedCard) rather than through a card or a line of text; it sits at the
 same scale as the others, centred in the room a full one fills. The usage-history
 panel shows the dashboard panel DashboardPanelController slides out to the
-left of the popover, top-aligned, 8 points away, at the same scale; it is
-taller than the canvas and is the only thing allowed past an edge, and only
-past the bottom one.
+left of the popover, top-aligned, 8 points away, at the same scale; the
+projects panel (v1.58) shows the same panel in a provider's mode beside the
+Providers tab, framed as a laptop shows it (render.json records its height).
+A panel is the only thing allowed past an edge, and only past the bottom one.
 
 Usage:
     compose_appstore_macos_screenshots.py --lang ja      # macos-raw/ja -> macos-composed/ja
@@ -108,14 +109,17 @@ SHADOW_OFFSET_PT = 6
 # Codex local history", 本地历史/本機歷史/ローカル履歴/로컬 기록/historial local),
 # the alert buttons in the order the cards show them (Ack/Resolve/Snooze), the
 # pet's Energy and Fullness (pet.energy, pet.hunger), and the pet's name,
-# pet.title. The cost subtitle names only what its page shows: the Cost
-# Summary's Estimated badge over Today and 30-Day Est., today's cost per
-# provider and the 30-day total (1.55's Demo has no Top Projects rows and no
-# Risk Signals). Only today is split by provider here: the rows add up to
-# Today, and the 30-day figure is one total, so "by provider" must not reach
-# the 30 days (the iPhone page splits both, so the shared words hold there
-# too). "The last 30 days", not "30 days": the figure is a trailing sum, and a
-# bare "30 days" (a 30 días, 30 天, 30日間, 30일간) read as a forecast. The alerts
+# pet.title. The cost subtitle names only what its page shows. Since 1.58 the
+# Overview scrolled to its end opens on Provider Usage, today's estimated cost
+# per provider (its rows add up to Cost Today), and ends on Top Projects, this
+# Mac's projects over the last 30 days (P1-4; the card's own scope line), so
+# "by provider" stays with today and the 30 days go with the projects. Until
+# 1.57 it opened on the Cost Summary and named its 30-day total, which this
+# page no longer shows (the iPhone's 03_cost still does, and keeps those
+# words). The projects shot's subtitle says "this Mac's", as both of its
+# cards do, and "by estimated cost", the order both list in. "The last 30
+# days", not "30 days": the figures are trailing sums, and a bare "30 days"
+# (a 30 días, 30 天, 30日間, 30일간) read as a forecast. The alerts
 # subtitle promises no kind of alert: the Demo list, like a paired account's,
 # also holds CPU and long-running-session alerts from a helper on another
 # device. Where the iPhone set says the same thing, its reviewed words are
@@ -128,11 +132,13 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
                          "See what’s left before you hit the wall"),
         "03_usage_history": ("Your usage history, one click away",
                              "Heatmap, streaks and top models from your local Claude and Codex history"),
-        "04_cost": ("Where the money goes",
-                    "Today’s estimated cost by provider, plus the total for the last 30 days"),
-        "05_alerts": ("Never miss a limit",
+        "04_projects": ("Your projects and sessions",
+                        "This Mac’s top projects and sessions, by estimated cost"),
+        "05_cost": ("Where the money goes",
+                    "Today’s estimated cost by provider, plus your top projects of the last 30 days"),
+        "06_alerts": ("Never miss a limit",
                       "Alerts you can acknowledge, resolve or snooze"),
-        "06_pulse_cat": ("Meet Pulse Cat",
+        "07_pulse_cat": ("Meet Pulse Cat",
                          "A desktop cat whose energy and fullness follow your AI usage"),
     },
     "zh-Hans": {
@@ -140,18 +146,20 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "02_providers": ("实时掌握配额与费用", "离上限还有多远，一眼就知道"),
         "03_usage_history": ("用量历史，一点就展开",
                              "活动热力图、连续天数和最常用模型，来自 Claude 与 Codex 的本地历史"),
-        "04_cost": ("钱都花在了哪里", "今日估算费用按服务商细分，另有近 30 天总额"),
-        "05_alerts": ("配额不再突然见底", "告警可以确认、解决或稍后提醒"),
-        "06_pulse_cat": ("认识一下脉冲猫", "一只桌面猫，活力和饱食度跟着你的 AI 用量变化"),
+        "04_projects": ("项目与会话", "这台 Mac 上的主要项目和会话，按估算费用排列"),
+        "05_cost": ("钱都花在了哪里", "今日估算费用按服务商细分，另有近 30 天的主要项目"),
+        "06_alerts": ("配额不再突然见底", "告警可以确认、解决或稍后提醒"),
+        "07_pulse_cat": ("认识一下脉冲猫", "一只桌面猫，活力和饱食度跟着你的 AI 用量变化"),
     },
     "zh-Hant": {
         "01_overview": ("一眼掌握全局", "用量、費用、工作階段與警示，在選單列按一下就能看到"),
         "02_providers": ("即時查看配額與費用", "用完之前，就知道還剩多少"),
         "03_usage_history": ("用量歷史，按一下就展開",
                              "活動熱度圖、連續天數與常用模型，來自 Claude 與 Codex 的本機歷史"),
-        "04_cost": ("錢花在哪裡", "今日預估費用依服務商細分，另有近 30 天總額"),
-        "05_alerts": ("配額不再突然見底", "警示可以確認、解決或稍後提醒"),
-        "06_pulse_cat": ("來認識脈衝貓", "一隻桌面貓，活力與飽食度會隨你的 AI 用量變化"),
+        "04_projects": ("專案與工作階段", "這台 Mac 上的主要專案與工作階段，依預估費用排列"),
+        "05_cost": ("錢花在哪裡", "今日預估費用依服務商細分，另有近 30 天的主要專案"),
+        "06_alerts": ("配額不再突然見底", "警示可以確認、解決或稍後提醒"),
+        "07_pulse_cat": ("來認識脈衝貓", "一隻桌面貓，活力與飽食度會隨你的 AI 用量變化"),
     },
     "ja": {
         "01_overview": ("すべてをひと目で",
@@ -160,11 +168,13 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "03_usage_history": ("使用履歴をワンクリックで",
                              "Claude と Codex のローカル履歴から、\u200bヒートマップ・連続日数・"
                              "よく使うモデルを表示"),
-        "04_cost": ("コストの内訳がわかる",
-                    "今日の推定コストをプロバイダー別に、\u200b直近30日間の推定額も"),
-        "05_alerts": ("上限の接近を見逃さない",
+        "04_projects": ("プロジェクトとセッション",
+                        "この Mac の主なプロジェクトとセッションを、\u200b推定コスト順に"),
+        "05_cost": ("コストの内訳がわかる",
+                    "今日の推定コストをプロバイダー別に、\u200b直近30日間の主なプロジェクトも"),
+        "06_alerts": ("上限の接近を見逃さない",
                       "アラートを、\u200bその場で確認・解決・スヌーズ"),
-        "06_pulse_cat": ("パルスキャットに会おう",
+        "07_pulse_cat": ("パルスキャットに会おう",
                          "エネルギーとおなかの満ち具合が AI の使い方で変わる\u200bデスクトップ猫"),
     },
     "ko": {
@@ -172,9 +182,10 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "02_providers": ("실시간 할당량과 비용", "한도까지 얼마나 남았는지 바로 확인하세요"),
         "03_usage_history": ("사용 기록을 클릭 한 번으로",
                              "Claude와 Codex 로컬 기록으로 보는 활동 히트맵, 연속 사용일, 자주 쓰는 모델"),
-        "04_cost": ("비용, 어디에 쓰이나요?", "공급자별 오늘 추정 비용과 최근 30일 합계"),
-        "05_alerts": ("할당량이 바닥나기 전에", "경고는 그 자리에서 확인하고, 해결하거나 다시 알림으로 미루세요"),
-        "06_pulse_cat": ("펄스 캣을 만나 보세요", "AI 사용량에 따라 에너지와 포만감이 달라지는 데스크톱 고양이"),
+        "04_projects": ("프로젝트와 세션", "이 Mac의 주요 프로젝트와 세션을 추정 비용순으로"),
+        "05_cost": ("비용, 어디에 쓰이나요?", "공급자별 오늘 추정 비용과 최근 30일 주요 프로젝트"),
+        "06_alerts": ("할당량이 바닥나기 전에", "경고는 그 자리에서 확인하고, 해결하거나 다시 알림으로 미루세요"),
+        "07_pulse_cat": ("펄스 캣을 만나 보세요", "AI 사용량에 따라 에너지와 포만감이 달라지는 데스크톱 고양이"),
     },
     "es": {
         "01_overview": ("Todo de un vistazo",
@@ -184,11 +195,13 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "03_usage_history": ("Tu historial de uso, a un clic",
                              "Mapa de calor, rachas y modelos más usados, a partir de tu historial local "
                              "de Claude y Codex"),
-        "04_cost": ("En qué se va tu dinero",
-                    "Costo estimado de hoy por proveedor, más el total de los últimos 30 días"),
-        "05_alerts": ("Sin sorpresas con la cuota",
+        "04_projects": ("Tus proyectos y sesiones",
+                        "Los principales proyectos y sesiones de este Mac, por costo estimado"),
+        "05_cost": ("En qué se va tu dinero",
+                    "Costo estimado de hoy por proveedor, más tus proyectos principales de los últimos 30 días"),
+        "06_alerts": ("Sin sorpresas con la cuota",
                       "Alertas que puedes confirmar, resolver o posponer"),
-        "06_pulse_cat": ("Conoce a tu Gato Pulse",
+        "07_pulse_cat": ("Conoce a tu Gato Pulse",
                          "Un gato de escritorio cuya energía y saciedad reflejan tu uso de IA"),
     },
 }

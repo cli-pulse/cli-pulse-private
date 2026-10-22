@@ -14,7 +14,7 @@
 #       [--out <dir>] [--lang ja]... [--timeout 600]
 #
 # --set store draws the Mac App Store screenshot set instead of every view:
-# six shots and the usage panel at 3x, and render.json (see "The store set"
+# seven shots and their two usage panels at 3x, and render.json (see "The store set"
 # in the doc). Its --out defaults to CLI Pulse Bar/screenshots/macos-raw, where
 # the App Store compositor reads it. Each language renders into a fresh staging
 # directory next to its folder and replaces the folder whole only when the app

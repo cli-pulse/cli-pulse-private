@@ -25,8 +25,9 @@
 
 The Mac set (scripts/appstore_screenshots.py MAC, compose_appstore_macos_screenshots.py):
 
-  * the six Mac screens are the Swift store catalog's (QARenderSnapshot), in
-    order, and the render script renders the app's six languages;
+  * the seven Mac screens are the Swift store catalog's (QARenderSnapshot), in
+    order, with the same panels, and the render script renders the app's six
+    languages;
   * every language has a caption for every Mac screen, and none names what
     only the Developer ID build has, another platform, or a retired feature
     (with a planted term for each gate as its negative control);
@@ -567,20 +568,29 @@ MAC_STEMS = shots.stems(MAC)
 
 swift = (HERE.parent / "CLI Pulse Bar" / "CLIPulseCore" / "Sources" / "CLIPulseCore"
          / "QARenderSnapshot.swift").read_text(encoding="utf-8")
-rows = re.findall(r'\("(\w+)", \.demo\(\.(\w+)\), \.(first|last|lastAligned), (true|false)\)', swift)
+rows = re.findall(r'\("(\w+)", \.demo\(\.(\w+)\), \.(first|last|lastAligned), '
+                  r'(nil|\.usageDashboard|\.provider\(\.\w+\))\)', swift)
 check("the Mac screens are the Swift store catalog's, in the same order",
       [r[0] for r in rows] == list(shots.MAC_SCREENS), f"{rows} vs {shots.MAC_SCREENS}")
 check("the cost screen is the only one scrolled to its end, and it opens above a card (lastAligned)",
       [(r[0], r[2]) for r in rows if r[2] != "first"] == [("cost", "lastAligned")], str(rows))
-check("... and the screens drawn with the usage panel are the same",
-      [r[0] for r in rows if r[3] == "true"] == list(shots.MAC_PANEL_SCREENS), str(rows))
+check("... and the screens drawn with a usage panel are the same",
+      [r[0] for r in rows if r[3] != "nil"] == list(shots.MAC_PANEL_SCREENS), str(rows))
+check("... and the framed ones are the provider panels, beside the Providers tab",
+      [r[0] for r in rows if r[3].startswith(".provider(")] == list(shots.MAC_FRAMED_PANEL_SCREENS)
+      and all(r[1] == "providers" for r in rows if r[3].startswith(".provider(")), str(rows))
+check("the framed panel's heights are the Swift renderer's (laptop panel, shortest frame)",
+      re.search(r"storeProviderPanelLaptopHeight = (\d+)\.0", swift).group(1)
+      == str(shots.MAC_PROVIDER_PANEL_HEIGHT_PT[1])
+      and re.search(r"storeProviderPanelMinHeight = (\d+)\.0", swift).group(1)
+      == str(shots.MAC_PROVIDER_PANEL_HEIGHT_PT[0]), str(shots.MAC_PROVIDER_PANEL_HEIGHT_PT))
 check("Mac stems are NN_screen in listing order",
-      MAC_STEMS == ["01_overview", "02_providers", "03_usage_history", "04_cost", "05_alerts",
-                    "06_pulse_cat"], str(MAC_STEMS))
-check("the Mac raw set is the six popovers and the usage panel beside the third",
+      MAC_STEMS == ["01_overview", "02_providers", "03_usage_history", "04_projects", "05_cost",
+                    "06_alerts", "07_pulse_cat"], str(MAC_STEMS))
+check("the Mac raw set is the seven popovers and the usage panels beside the third and the fourth",
       shots.raw_names(MAC) == ["01_overview.png", "02_providers.png", "03_usage_history.png",
-                               "03_usage_history.panel.png", "04_cost.png", "05_alerts.png",
-                               "06_pulse_cat.png"], str(shots.raw_names(MAC)))
+                               "03_usage_history.panel.png", "04_projects.png", "04_projects.panel.png",
+                               "05_cost.png", "06_alerts.png", "07_pulse_cat.png"], str(shots.raw_names(MAC)))
 render_sh = (HERE / "render_macos_qa_views.sh").read_text()
 m = re.search(r"^ALL_LANGUAGES=\(([^)]*)\)", render_sh, re.M)
 check("the render script renders the app's six languages",
@@ -643,7 +653,7 @@ for label, lang, planted in [
         ("a Taiwan-forbidden term", "zh-Hant", "會話與告警"),
         ("English left in a translation", "zh-Hans", "see what is left for your team and the rest of it"),
 ]:
-    planted_copy = {lang: {"06_pulse_cat": (compose_mac.COPY[lang]["06_pulse_cat"][0], planted)}}
+    planted_copy = {lang: {"07_pulse_cat": (compose_mac.COPY[lang]["07_pulse_cat"][0], planted)}}
     check(f"negative control: a Mac caption naming {label} is caught",
           mac_caption_problems(planted_copy) != [], planted)
 
@@ -664,7 +674,12 @@ check("an RGBA Mac panel is refused", any("RGBA" in x for x in shots.panel_probl
 # The cost shot opens above a card in a shortened popover (QARenderSnapshot
 # alignedTrim); the fixtures give it a 551-point one, as the 1.54 renders
 # measured (1.55's measure 406).
-MAC_ALIGNED = {"04_cost": 551}
+MAC_ALIGNED = {"05_cost": 551}
+# The projects shot's provider panel is framed in a shortened panel
+# (QARenderSnapshot.providerPanelFrame); the fixtures give it 612 points,
+# opening 528 points down its content. The dashboard's is drawn whole, 862.
+MAC_FRAMED = {"04_projects": (612, 528)}
+MAC_DASHBOARD_PANEL_PT = 862
 
 
 def mac_render(raw: Path, lang: str, **over) -> dict:
@@ -681,9 +696,13 @@ def mac_render(raw: Path, lang: str, **over) -> dict:
             row["popoverHeight"] = MAC_ALIGNED[st]
         q = raw / f"{st}.panel.png"
         if q.exists():
-            renders.append({"file": q.name, "width": 520, "height": 862, "pixelWidth": 1560,
-                            "pixelHeight": 2586, "suspectBlank": False})
+            ph = MAC_FRAMED[st][0] if st in MAC_FRAMED else MAC_DASHBOARD_PANEL_PT
+            renders.append({"file": q.name, "width": 520, "height": ph, "pixelWidth": 1560,
+                            "pixelHeight": ph * 3, "suspectBlank": False})
             row.update(panelFile=q.name, panelMD5=shots.md5_of(q))
+            if st in MAC_FRAMED:
+                row.update(panelProvider="Codex", panelHeight=MAC_FRAMED[st][0],
+                           panelScrolledTo=MAC_FRAMED[st][1])
         shot_rows.append(row)
     data = {"set": "store", "language": lang, "localeOverride": lang, "resolvedLocalization": lang,
             "displayLocale": f"{lang}_{shots.MAC_REGIONS[lang]}",
@@ -706,7 +725,10 @@ def mac_render(raw: Path, lang: str, **over) -> dict:
 def make_mac_set(root: Path, lang: str, **over) -> None:
     raw = shots.raw_dir(lang, root, MAC)
     for name in shots.raw_names(MAC):
-        w, h = (1560, 2586) if name.endswith(".panel.png") else (1140, 3 * MAC_ALIGNED.get(name[:-4], 580))
+        if name.endswith(".panel.png"):
+            w, h = 1560, 3 * (MAC_FRAMED.get(name[:-len(".panel.png")], (MAC_DASHBOARD_PANEL_PT,))[0])
+        else:
+            w, h = 1140, 3 * MAC_ALIGNED.get(name[:-4], 580)
         shots.write_png(raw / name, w, h)
         (raw / name).write_bytes((raw / name).read_bytes() + name.encode())   # distinct md5s
     (raw / shots.RENDER_MANIFEST).write_text(json.dumps(mac_render(raw, lang, **over)))
@@ -791,19 +813,32 @@ mac_breaks("a popover drawn 700 points high", "drawn 380x700 points",
 mac_breaks("a popover drawn at 2x", "760x1160 px",
            mutate=lambda r: rewrite_render(r, lambda d: d["renders"][0].update(pixelWidth=760, pixelHeight=1160)))
 mac_breaks("a shortened popover on a page that is not lastAligned", "only a lastAligned page may shorten",
-           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][4].update(popoverHeight=551)))
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][5].update(popoverHeight=551)))
 mac_breaks("a popover shortened under the 400 points users can set", "only a lastAligned page may shorten",
-           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][3].update(popoverHeight=380)))
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][4].update(popoverHeight=380)))
 mac_breaks("a popover shortened by a fraction of a point", "only a lastAligned page may shorten",
-           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][3].update(popoverHeight=551.5)))
-mac_breaks("the shortened popover's raw at the pinned height", "04_cost.png: drawn",
-           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][3].pop("popoverHeight")))
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][4].update(popoverHeight=551.5)))
+mac_breaks("the shortened popover's raw at the pinned height", "05_cost.png: drawn",
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][4].pop("popoverHeight")))
+# v1.58: the projects shot's provider panel, framed as a laptop shows it.
+mac_breaks("a provider panel with no frame recorded", "04_projects: a provider panel None points high",
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][3].pop("panelHeight")))
+mac_breaks("a provider panel taller than a 900-point screen gives it", "04_projects: a provider panel 900",
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][3].update(panelHeight=900)))
+mac_breaks("a provider panel shorter than the shortest frame", "04_projects: a provider panel 560",
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][3].update(panelHeight=560)))
+mac_breaks("a provider panel at the top of its content, not scrolled", "scrolled 0 points",
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][3].update(panelScrolledTo=0)))
+mac_breaks("a provider panel's raw drawn at another height than its frame", "04_projects.panel.png: drawn",
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][3].update(panelHeight=700)))
+mac_breaks("a frame recorded on the Usage Dashboard, which is drawn whole", "03_usage_history: records a framed panel",
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][2].update(panelHeight=612)))
 mac_breaks("a render.json edited after the panels were composed", "not the one compose.json records",
            mutate=lambda r: rewrite_render(r, lambda d: d.update(generatedAt="later"), record=False))
 mac_breaks("a stray render.log committed beside the raws", "not part of the store set: render.log",
            mutate=lambda r: (shots.raw_dir("ko", r, MAC) / "render.log").write_text("build log"))
 check("a lastAligned shot's popover size is the one render.json records, the others the pinned one",
-      shots.mac_popover_pt(mac_render(shots.raw_dir("ko", mac_root, MAC), "ko"), "04_cost") == (380, 551)
+      shots.mac_popover_pt(mac_render(shots.raw_dir("ko", mac_root, MAC), "ko"), "05_cost") == (380, 551)
       and shots.mac_popover_pt(mac_render(shots.raw_dir("ko", mac_root, MAC), "ko"), "01_overview")
       == shots.MAC_POPOVER_PT)
 check("region_of reads a locale identifier's region, and nothing else",
@@ -820,11 +855,11 @@ check("the render script asks for overlay scroll bars",
 def swap_raw(root: Path) -> None:
     """Replace a raw and record it in compose.json, so only render.json can tell."""
     raw = shots.raw_dir("ko", root, MAC)
-    f = raw / "05_alerts.png"
+    f = raw / "06_alerts.png"
     f.write_bytes(f.read_bytes() + b"swapped")
     m_ = shots.composed_dir("ko", root, MAC) / shots.MANIFEST
     data = json.loads(m_.read_text())
-    data["captures"]["05_alerts.png"] = shots.md5_of(f)
+    data["captures"]["06_alerts.png"] = shots.md5_of(f)
     m_.write_text(json.dumps(data))
     shots.write_manifest(shots.composed_dir("ko", root, MAC), "ko",
                          {k: v for k, v in data.items() if k not in ("lang", "panels")}, platform=MAC)
@@ -833,8 +868,10 @@ def swap_raw(root: Path) -> None:
 mac_breaks("a raw that is not the one the render wrote", "not the file the render wrote", mutate=swap_raw)
 mac_breaks("a missing usage panel", "03_usage_history.panel.png",
            mutate=lambda r: (shots.raw_dir("ko", r, MAC) / "03_usage_history.panel.png").unlink())
+mac_breaks("a missing provider panel", "04_projects.panel.png",
+           mutate=lambda r: (shots.raw_dir("ko", r, MAC) / "04_projects.panel.png").unlink())
 mac_breaks("a stray raw", "not a capture of the set",
-           mutate=lambda r: shots.write_png(shots.raw_dir("ko", r, MAC) / "07_settings.png", 1140, 1740))
+           mutate=lambda r: shots.write_png(shots.raw_dir("ko", r, MAC) / "08_settings.png", 1140, 1740))
 mac_breaks("a missing render.json", "render.json: missing",
            mutate=lambda r: (shots.raw_dir("ko", r, MAC) / shots.RENDER_MANIFEST).unlink())
 mac_breaks("a set without compose.json", "compose.json is missing",
@@ -878,6 +915,11 @@ check("negative control: a popover leaving the canvas at the side fails",
 tall = [compose_mac.Placement("popover", single[0].x, 900, single[0].w, single[0].h)]
 check("negative control: a popover leaving the canvas at the bottom fails",
       compose_mac.placement_problems(tall, scale) != [])
+framed = compose_mac.placements(True, mac_one.shot_top, scale, panel_height_pt=612)
+check("the framed provider panel sits beside the popover like the dashboard's, top-aligned, whole or "
+      "leaving only through the bottom",
+      compose_mac.placement_problems(framed, scale) == [] and framed[0].name == "panel"
+      and framed[0].y == framed[1].y and framed[0].h == round(612 * scale), str(framed))
 side = [compose_mac.Placement("panel", 2000, 400, 1200, 3000, may_bleed_bottom=True)]
 check("negative control: the panel leaving the canvas at the side fails",
       compose_mac.placement_problems(side, scale) != [])
@@ -963,12 +1005,12 @@ if fonts_here:
     with contextlib.redirect_stdout(io.StringIO()):
         odd, _ = compose_mac.compose_one(odd_raw, "01_overview", tmp / "mac-odd-out" / "p.png", "en",
                                          faces_en, 100, 46, 1)
-        aligned, _ = compose_mac.compose_one(odd_raw, "04_cost", tmp / "mac-odd-out" / "q.png", "en",
+        aligned, _ = compose_mac.compose_one(odd_raw, "05_cost", tmp / "mac-odd-out" / "q.png", "en",
                                              faces_en, 100, 46, 1)
     check("negative control: a raw popover of the wrong size is refused by the compositor itself",
           any("01_overview.png is 1140x2100, not 1140x1740" in p_ for p_ in odd), str(odd))
     check("negative control: the shortened cost popover composed as if it were the pinned 580 points "
-          "is refused", any("04_cost.png is 1140x" in p_ and "not 1140x1740" in p_ for p_ in aligned),
+          "is refused", any("05_cost.png is 1140x" in p_ and "not 1140x1740" in p_ for p_ in aligned),
           str(aligned))
 
     # A render.json from a Developer ID build: the compositor refuses and

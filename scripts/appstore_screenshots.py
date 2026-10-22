@@ -70,10 +70,13 @@ LAYOUT
     CLI Pulse Bar/screenshots/macos-raw/<lang>/NN_<screen>.png, render.json
         the QA build's offscreen renders of the real Mac views (the store set,
         docs/qa/macos-offscreen-renders.md): 380x580-point popovers at 3x
-        (04_cost's shortened so it opens above a card, render.json says how
-        much), 03_usage_history.panel.png beside the third, and the renderer's
-        render.json with each file's md5 and the facts of the build that drew
-        them (render_problems)
+        (05_cost's shortened so it opens above a card, render.json says how
+        much), the usage panels beside the third and the fourth
+        (03_usage_history.panel.png, the Usage Dashboard drawn whole;
+        04_projects.panel.png, Codex's usage history with this Mac's Projects
+        and Sessions, framed as a laptop shows it, render.json says how), and
+        the renderer's render.json with each file's md5 and the facts of the
+        build that drew them (render_problems)
     CLI Pulse Bar/screenshots/macos-composed/<lang>/NN_<screen>_2880x1800.png
         the Mac panels, in the APP_DESKTOP set, with compose.json as above
 
@@ -171,13 +174,24 @@ SUFFIX = f"_{CANVAS[0]}x{CANVAS[1]}.png"
 MANIFEST = "compose.json"
 
 # ── the Mac set ──────────────────────────────────────────────────────────────
-# The Swift store catalog (QARenderSnapshot.storeCatalog) draws the same six in
-# the same order; scripts/test_appstore_screenshots.py holds the two together.
-MAC_SCREENS: tuple[str, ...] = ("overview", "providers", "usage_history", "cost", "alerts", "pulse_cat")
+# The Swift store catalog (QARenderSnapshot.storeCatalog) draws the same seven
+# in the same order; scripts/test_appstore_screenshots.py holds the two together.
+# v1.58 added `projects`: the Providers tab with the Codex card's usage panel,
+# where this Mac's Projects and Sessions are.
+MAC_SCREENS: tuple[str, ...] = ("overview", "providers", "usage_history", "projects", "cost", "alerts",
+                                "pulse_cat")
 MAC_COMPOSITOR_REL = "CLI Pulse Bar/scripts/compose_appstore_macos_screenshots.py"
-# Screens drawn with the usage panel beside the popover: its raw file is
+# Screens drawn with a usage panel beside the popover: its raw file is
 # NN_<screen>.panel.png, next to the popover's.
-MAC_PANEL_SCREENS: tuple[str, ...] = ("usage_history",)
+MAC_PANEL_SCREENS: tuple[str, ...] = ("usage_history", "projects")
+# Of those, the ones whose panel is a provider's, framed as a laptop shows it
+# (QARenderSnapshot.providerPanelFrame): taller than a laptop screen, it
+# scrolls there, so it is drawn in a panel from MAC_PROVIDER_PANEL_HEIGHT_PT's
+# shortest to its tallest (what a 900-point screen gives), scrolled to its
+# end, and render.json records the panel's height and where the page opens.
+# The Usage Dashboard's panel is drawn whole and records neither.
+MAC_FRAMED_PANEL_SCREENS: tuple[str, ...] = ("projects",)
+MAC_PROVIDER_PANEL_HEIGHT_PT = (600, 876)
 RENDER_MANIFEST = "render.json"
 # What render.json must say (render_problems): the store set, at 3x, with the
 # popover at its default size and the panel at DashboardPanelController's
@@ -546,8 +560,11 @@ def render_problems(lang: str, root: Path | None = None, platform: Platform = MA
     settled and dark; overlay scroll bars; the language's own region
     (MAC_REGIONS); no DEVID_BUILD, no remote control; no warning, refused
     request or blank-looking render; a local usage history of Claude and
-    Codex only (what the scanner records), with days and messages in it; and
-    exactly these raw files, with these md5s."""
+    Codex only (what the scanner records), with days and messages in it; a
+    framed provider panel (MAC_FRAMED_PANEL_SCREENS) as tall as render.json
+    says, in MAC_PROVIDER_PANEL_HEIGHT_PT, scrolled into its content, and the
+    Usage Dashboard's with no frame; and exactly these raw files, with these
+    md5s."""
     raw = directory or raw_dir(lang, root, platform)
     path = raw / (platform.render_manifest or RENDER_MANIFEST)
     if not path.is_file():
@@ -629,11 +646,28 @@ def render_problems(lang: str, root: Path | None = None, platform: Platform = MA
             and not isinstance(height, bool) else MAC_POPOVER_PT
         is_panel_shot = any(sid == st for st, sc in zip(stems(platform), platform.screens)
                             if sc in platform.panel_screens)
+        is_framed = any(sid == st for st, sc in zip(stems(platform), platform.screens)
+                        if sc in MAC_FRAMED_PANEL_SCREENS)
         if is_panel_shot:
             files.append((s.get("panelFile"), s.get("panelMD5"), f"{sid}.panel.png"))
         elif s.get("panelFile"):
             out.append(f"{sid}: carries a panel ({s.get('panelFile')}); only "
                        f"{', '.join(panel_raw_names(platform))} may")
+        panel_height = s.get("panelHeight")
+        scrolled = s.get("panelScrolledTo")
+        if is_framed:
+            low, high = MAC_PROVIDER_PANEL_HEIGHT_PT
+            want(isinstance(panel_height, (int, float)) and not isinstance(panel_height, bool)
+                 and float(panel_height).is_integer() and low <= panel_height <= high
+                 and isinstance(scrolled, (int, float)) and not isinstance(scrolled, bool) and scrolled > 0
+                 and isinstance(s.get("panelProvider"), str) and s.get("panelProvider"),
+                 f"{sid}: a provider panel {panel_height!r} points high, scrolled {scrolled!r} points, of "
+                 f"{s.get('panelProvider')!r}; it is framed in a panel of whole points from {low} to "
+                 f"{high}, scrolled into its content, and names its provider")
+        elif any(s.get(k) is not None for k in ("panelHeight", "panelScrolledTo", "panelProvider")):
+            out.append(f"{sid}: records a framed panel, which only "
+                       f"{', '.join(st for st, sc in zip(stems(platform), platform.screens) if sc in MAC_FRAMED_PANEL_SCREENS)} "
+                       f"has")
         for name, md5, expected in files:
             if name != expected:
                 out.append(f"{sid}: file {name!r}, expected {expected!r}")
@@ -648,6 +682,9 @@ def render_problems(lang: str, root: Path | None = None, platform: Platform = MA
             if expected.endswith(".panel.png"):
                 size_ok = (r.get("width") == MAC_PANEL_WIDTH_PT
                            and r.get("pixelWidth") == MAC_PANEL_WIDTH_PT * MAC_RENDER_SCALE)
+                if is_framed and isinstance(panel_height, (int, float)):
+                    size_ok = size_ok and (r.get("height") == panel_height
+                                           and r.get("pixelHeight") == panel_height * MAC_RENDER_SCALE)
             else:
                 size_ok = ((r.get("width"), r.get("height")) == popover
                            and (r.get("pixelWidth"), r.get("pixelHeight"))

@@ -163,8 +163,18 @@ struct iOSProvidersTab: View {
                         }
                         .padding(.horizontal)
                     }
+                    #if DEBUG
+                    // Where the `providers` screenshot scrolls to: the end of
+                    // the list (ScreenshotLaunch.ScrollTarget.listEnd).
+                    Color.clear
+                        .frame(height: 0)
+                        .id(ScreenshotLaunch.ScrollTarget.listEnd)
+                    #endif
                 }
                 .padding(.vertical)
+                #if DEBUG
+                .modifier(ScreenshotLaunch.ScrollToTarget())
+                #endif
             }
             .navigationTitle(L10n.tab.providers)
             .toolbar {

@@ -445,7 +445,7 @@ Guideline 2.3.10 platform names in six languages, untranslated English,
 characters App Store Connect has not been seen to accept, inline
 copies in pushers) runs in `repo-hygiene.yml`, with `--require-shots` (every
 listing locale's five composed iPhone panels, four composed iPad panels, four
-Apple Watch panels and six composed Mac panels, their `compose.json`, the committed raws they were drawn
+Apple Watch panels and seven composed Mac panels, their `compose.json`, the committed raws they were drawn
 from, and for the Mac a `render.json` that says a clean store render drew them).
 
 ### iPhone screenshots (six languages)
@@ -626,7 +626,9 @@ unsandboxed and on the `qa` channel, so the store set (`-CLIPulseRenderSet
 store`, `QARenderSnapshot.storeCatalog`) draws only surfaces whose visible UI is
 the same in the Mac App Store build: Overview (first and last page), Providers,
 Alerts, the first page of Pet, and the usage panel that slides out of the
-Overview. It leaves out Sessions (sells helper control and, unsandboxed, the
+Overview (the Usage Dashboard) or, since 1.58, of the Codex card on the
+Providers tab (its provider mode, with this Mac's Projects and Sessions,
+framed as a laptop shows it: docs/qa/macos-offscreen-renders.md). It leaves out Sessions (sells helper control and, unsandboxed, the
 in-app terminal), Machine (reads a helper; differs sandboxed), Settings
 (Companion CLI is hidden in QA only), the provider editor (a QA-only banner),
 Subscription (no StoreKit products in QA), setup and signed-out pages (setup v2
