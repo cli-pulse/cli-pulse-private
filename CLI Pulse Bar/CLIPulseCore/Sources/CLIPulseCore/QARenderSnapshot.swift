@@ -1013,6 +1013,13 @@ public enum QARenderSnapshot {
         span.top <= spanTolerance && span.bottom >= contentHeight - spanTolerance
     }
 
+    /// What a framed provider panel's page edge, `top` points down the
+    /// content, cuts through (`cutByTopEdge`), leaving out the panel's own
+    /// backdrop (`coversContent`), which every edge crosses.
+    public static func panelCutByTopEdge(_ top: Double, spans: [QARenderSpan], contentHeight: Double) -> [QARenderSpan] {
+        cutByTopEdge(top, spans: spans.filter { !coversContent($0, contentHeight: contentHeight) })
+    }
+
     /// Half a pixel at the store set's scale: layout rounds frames to pixels.
     static let spanTolerance = 0.5 / 3
 

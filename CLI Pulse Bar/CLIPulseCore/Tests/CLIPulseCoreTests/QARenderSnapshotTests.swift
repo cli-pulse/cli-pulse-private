@@ -271,8 +271,18 @@ final class QARenderSnapshotTests: XCTestCase {
         XCTAssertLessThanOrEqual(frame.height, QARenderSnapshot.storeProviderPanelLaptopHeight)
         let top = QARenderSnapshot.lastPageTop(contentHeight: 1140, viewportHeight: frame.height)
         XCTAssertEqual(top, 528)
-        XCTAssertEqual(QARenderSnapshot.cutByTopEdge(
-            top, spans: codexPanel158.filter { !QARenderSnapshot.coversContent($0, contentHeight: 1140) }), [])
+        XCTAssertEqual(QARenderSnapshot.panelCutByTopEdge(top, spans: codexPanel158, contentHeight: 1140), [],
+                       "the edge falls in the gap above Projects; the panel's backdrop is crossed by every edge")
+    }
+
+    func testNegativeControlTheProviderPanelEdgeCutsThroughText() {
+        // The backdrop alone is what cutByTopEdge would report at any edge;
+        // the panel's check leaves it out, and still sees a line of text.
+        XCTAssertEqual(QARenderSnapshot.cutByTopEdge(528, spans: codexPanel158), [span(0, 1140)])
+        XCTAssertEqual(QARenderSnapshot.panelCutByTopEdge(528, spans: codexPanel158, contentHeight: 1140), [])
+        let line = span(520, 535)
+        XCTAssertEqual(QARenderSnapshot.panelCutByTopEdge(528, spans: codexPanel158 + [line], contentHeight: 1140),
+                       [line], "a line of text the edge crosses is reported")
     }
 
     func testNegativeControlTheProviderPanelIsNotFramedOnItsOwnBackdropOrWhenItFits() {

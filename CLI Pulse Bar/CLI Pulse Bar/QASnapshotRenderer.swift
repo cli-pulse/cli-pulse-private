@@ -775,8 +775,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         }
         let top = QARenderSnapshot.lastPageTop(
             contentHeight: final.contentHeight, viewportHeight: final.viewportHeight)
-        let cut = QARenderSnapshot.cutByTopEdge(
-            top, spans: final.drawn.filter { !QARenderSnapshot.coversContent($0, contentHeight: final.contentHeight) })
+        let cut = QARenderSnapshot.panelCutByTopEdge(top, spans: final.drawn, contentHeight: final.contentHeight)
         if !cut.isEmpty {
             let spans = cut.prefix(3).map { "\($0.top)-\($0.bottom)" }.joined(separator: ", ")
             manifest.warnings.append("\(prefix) the page's top edge, \(top) points down the content, cuts "
