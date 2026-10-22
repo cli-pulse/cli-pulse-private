@@ -249,12 +249,13 @@ none of the three differences (`QARenderSnapshot.storeCatalog`, checked by
 
 | file | what |
 | --- | --- |
-| `01_overview.png` | Overview, first page |
+| `01_overview.png` | Overview, first page, ending clear of every line (`firstClear`, below) |
 | `02_providers.png` | Providers, first page |
-| `03_usage_history.png` + `03_usage_history.panel.png` | Overview, first page, and the usage panel that slides out to its left |
-| `04_cost.png` | Overview, scrolled to its end, in a shorter popover so it opens just above a card: the first one `01_overview` did not show whole, or the one above it when that would need a popover under 400 points (`lastAligned`, below) |
-| `05_alerts.png` | Alerts |
-| `06_pulse_cat.png` | Pet, first page |
+| `03_usage_history.png` + `03_usage_history.panel.png` | Overview, first page (`firstClear`), and the usage panel that slides out to its left (the Usage Dashboard, drawn whole) |
+| `04_projects.png` + `04_projects.panel.png` | Providers, first page, and the Codex card's usage panel: its provider mode, with this Mac's Projects and Sessions (v1.58), framed as a laptop shows it (below) |
+| `05_cost.png` | Overview, scrolled to its end, in a shorter popover so it opens just above a card: the first one `01_overview` did not show whole, or the one above it when that would need a popover under 400 points (`lastAligned`, below) |
+| `06_alerts.png` | Alerts |
+| `07_pulse_cat.png` | Pet, first page |
 
 Left out, and why: Sessions (offers helper control of Claude sessions and,
 unsandboxed, the in-app terminal; the Mac App Store build ships neither),
@@ -274,7 +275,7 @@ language menu (drawn from menu items, not a screenshot).
   up threefold. `render.json` records `windowBackingScale`, and the App Store
   pipeline refuses anything but 3.
 - The popover height is pinned to its default, 580 points
-  (`cli_pulse_menubar_height`), except for `04_cost`. The Overview scrolled
+  (`cli_pulse_menubar_height`), except for `05_cost`. The Overview scrolled
   flush to its end opens wherever its length puts it: in 1.54 on half a line
   of the Yield Score card's text, in 1.55 (no Top Projects or Risk Signals in
   Demo) on the bottom edge of the Activity card, followed by the Hourly
@@ -297,6 +298,50 @@ language menu (drawn from menu items, not a screenshot).
   to 900 points, so the shorter one is a real state; `render.json` records its
   height (`shots[].popoverHeight`: 406 in 1.55, 552 in 1.54), and the
   compositor draws it at the set's scale, centred in the room a full popover fills.
+- **The Overview's first page ends clear of every line** (v1.58, `firstClear`:
+  `01_overview` and `03_usage_history`). It ends inside the Cost Summary card,
+  whose rows wrap differently per language: in Spanish the 30-day column
+  ("· 2.6 M tokens de E/S") takes two lines, which left the "Por modelo" row
+  half under the popover's footer. After the page is drawn at 580, every layer
+  its bottom edge crosses that holds no card (a line of text, an icon; a
+  card's backdrop, its shadow and the page's background run on under any edge)
+  is cut (`QARenderSnapshot.cutByBottomEdge`), and the popover is shortened by
+  `firstPageTrim` so the page ends 4 points above the highest of them, then
+  drawn again, and must then cut none. Spanish's is 570 points; every other
+  language keeps 580, byte for byte. The App Store pipeline accepts a
+  shortened popover on a `lastAligned` or `firstClear` page only.
+- **The provider panel is framed** (v1.58, `04_projects`). With its Projects
+  and Sessions cards the panel's provider mode is about 1,150 points tall, and
+  `DashboardPanelController` makes the panel the screen's visible height less
+  24, so it scrolls on every laptop screen; drawn whole it would leave the
+  canvas with only its chart and totals on it. The renderer draws it as the
+  app does on a laptop: its content in a scroll view, the close button over
+  the corner, outside it. First in a panel as tall as a 900-point screen gives
+  it (876 points, `storeProviderPanelLaptopHeight`, the review set's
+  `panel-provider-usage-codex-laptop`), whose page scrolled to the end opens
+  through the chart card; then, as `alignedCard` frames the cost shot's
+  popover, in a panel shortened so that page opens 4 points above a card
+  (`QARenderSnapshot.providerPanelFrame`): the first card the laptop panel's
+  last page runs past, or the lowest one above it a panel of at least 600
+  points (`storeProviderPanelMinHeight`) can open on. In 1.58 that is the
+  Projects card, in a panel of 629 points (653 in Spanish): Projects and
+  Sessions, top to bottom. A screen with less room, or the Dock along its
+  bottom, gives the panel that height, so it is a real state. The page must cut
+  through nothing drawn but the panel's own backdrop and open on that card, or
+  the run fails; `render.json` records the panel's provider, height and how
+  far down its content the page opens (`shots[].panelProvider`, `panelHeight`,
+  `panelScrolledTo`), and the App Store pipeline refuses a framed panel
+  outside 600-876 points, or one drawn at another height than recorded. The
+  Usage Dashboard's panel is drawn whole and records none of them.
+  On the canvas the framed panel runs on past the bottom edge, as a laptop's
+  screen edge cuts it, only where that edge falls between lines: the
+  compositor reads the raw panel's rows (`panel_edge`, `panel_ink_rows`), and
+  where the edge would cut through one (1.58's Spanish Sessions card, whose
+  footnotes take a line more, ended on "El costo es una estimación ..." clipped
+  at the canvas) it draws the panel shorter, whole on the canvas, ending in
+  the middle of the lowest gap between lines above the edge: the panel a
+  smaller screen gives, scrolled to the same place. Never under 600 points;
+  `compose.json` records where it ends (`framed_panels`).
 - Overlay scroll bars: the script passes `-AppleShowScrollBars WhenScrolling`.
   A Mac set to show scroll bars "Always" (the render Mac of 2026-09-28 was)
   gives every scrolling tab a legacy scroller's gutter, which the offscreen

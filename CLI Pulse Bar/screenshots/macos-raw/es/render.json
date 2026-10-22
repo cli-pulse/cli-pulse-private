@@ -1,8 +1,8 @@
 {
   "app" : {
-    "build" : "109",
+    "build" : "111",
     "bundleIdentifier" : "app.clipulse.qa.local",
-    "version" : "1.56.0"
+    "version" : "1.58.0"
   },
   "appKitLocalization" : "es",
   "appearance" : "light",
@@ -17,10 +17,13 @@
   "forcedSettings" : {
     "cli_pulse_check_provider_status" : "false: provider status badges would otherwise fetch public status pages. They draw nothing unless a provider has an incident.",
     "cli_pulse_menubar_height" : "580: the popover's default height, pinned; users can drag it between 400 and 900.",
-    "cli_pulse_menubar_height (04_cost)" : "406: this shot's popover, shortened from 580 so the page scrolled to the end opens just above a card (the first one the first page did not show whole, or the one above it when that would need a popover under 400: QARenderSnapshot.alignedCard) and cuts through nothing. Users can drag the popover between 400 and 900.",
-    "cli_pulse_notifications" : "false: the Alerts tab would otherwise ask macOS for notification permission, a prompt on the screen of whoever is using the Mac. Settings > General shows the switch off."
+    "cli_pulse_menubar_height (01_overview)" : "570: this shot's popover, shortened from 580 so its first page ends 4 points above the line of text its bottom edge would have cut through, rather than through it (QARenderSnapshot.firstPageTrim). Users can drag the popover between 400 and 900.",
+    "cli_pulse_menubar_height (03_usage_history)" : "570: this shot's popover, shortened from 580 so its first page ends 4 points above the line of text its bottom edge would have cut through, rather than through it (QARenderSnapshot.firstPageTrim). Users can drag the popover between 400 and 900.",
+    "cli_pulse_menubar_height (05_cost)" : "492: this shot's popover, shortened from 580 so the page scrolled to the end opens just above a card (the first one the first page did not show whole, or the one above it when that would need a popover under 400: QARenderSnapshot.alignedCard) and cuts through nothing. Users can drag the popover between 400 and 900.",
+    "cli_pulse_notifications" : "false: the Alerts tab would otherwise ask macOS for notification permission, a prompt on the screen of whoever is using the Mac. Settings > General shows the switch off.",
+    "usage panel height (04_projects)" : "653: the Codex panel framed as a laptop shows it, scrolled to its end, opening 4 points above the card at 561 of 1210 points of content (QARenderSnapshot.providerPanelFrame). The panel is the screen's visible height less 24 points; a 876-point one opens through the chart."
   },
-  "generatedAt" : "2026-10-07T04:12:03Z",
+  "generatedAt" : "2026-10-22T09:57:14Z",
   "language" : "es",
   "localeOverride" : "es",
   "localizationActive" : true,
@@ -54,12 +57,12 @@
   "renders" : [
     {
       "file" : "01_overview.png",
-      "height" : 580,
+      "height" : 570,
       "id" : "01_overview",
       "kind" : "popover",
       "page" : 1,
-      "pageCount" : 2,
-      "pixelHeight" : 1740,
+      "pageCount" : 3,
+      "pixelHeight" : 1710,
       "pixelWidth" : 1140,
       "suspectBlank" : false,
       "width" : 380
@@ -78,8 +81,32 @@
     },
     {
       "file" : "03_usage_history.png",
-      "height" : 580,
+      "height" : 570,
       "id" : "03_usage_history",
+      "kind" : "popover",
+      "page" : 1,
+      "pageCount" : 3,
+      "pixelHeight" : 1710,
+      "pixelWidth" : 1140,
+      "suspectBlank" : false,
+      "width" : 380
+    },
+    {
+      "file" : "03_usage_history.panel.png",
+      "height" : 910,
+      "id" : "03_usage_history-panel",
+      "kind" : "panel",
+      "page" : 1,
+      "pageCount" : 1,
+      "pixelHeight" : 2730,
+      "pixelWidth" : 1560,
+      "suspectBlank" : false,
+      "width" : 520
+    },
+    {
+      "file" : "04_projects.png",
+      "height" : 580,
+      "id" : "04_projects",
       "kind" : "popover",
       "page" : 1,
       "pageCount" : 2,
@@ -89,33 +116,33 @@
       "width" : 380
     },
     {
-      "file" : "03_usage_history.panel.png",
-      "height" : 880,
-      "id" : "03_usage_history-panel",
+      "file" : "04_projects.panel.png",
+      "height" : 653,
+      "id" : "04_projects-panel",
       "kind" : "panel",
-      "page" : 1,
-      "pageCount" : 1,
-      "pixelHeight" : 2640,
+      "page" : 2,
+      "pageCount" : 2,
+      "pixelHeight" : 1959,
       "pixelWidth" : 1560,
       "suspectBlank" : false,
       "width" : 520
     },
     {
-      "file" : "04_cost.png",
-      "height" : 406,
-      "id" : "04_cost",
+      "file" : "05_cost.png",
+      "height" : 492,
+      "id" : "05_cost",
       "kind" : "popover",
       "page" : 3,
       "pageCount" : 3,
-      "pixelHeight" : 1218,
+      "pixelHeight" : 1476,
       "pixelWidth" : 1140,
       "suspectBlank" : false,
       "width" : 380
     },
     {
-      "file" : "05_alerts.png",
+      "file" : "06_alerts.png",
       "height" : 580,
-      "id" : "05_alerts",
+      "id" : "06_alerts",
       "kind" : "popover",
       "page" : 1,
       "pageCount" : 1,
@@ -125,9 +152,9 @@
       "width" : 380
     },
     {
-      "file" : "06_pulse_cat.png",
+      "file" : "07_pulse_cat.png",
       "height" : 580,
-      "id" : "06_pulse_cat",
+      "id" : "07_pulse_cat",
       "kind" : "popover",
       "page" : 1,
       "pageCount" : 7,
@@ -145,16 +172,17 @@
     {
       "file" : "01_overview.png",
       "id" : "01_overview",
-      "md5" : "03964bfe1b56c241da92696fab847b8e",
-      "page" : "first",
-      "pageCount" : 2,
+      "md5" : "8909fee61315908360c6d62cf7ad176e",
+      "page" : "firstClear",
+      "pageCount" : 3,
       "pageIndex" : 1,
+      "popoverHeight" : 570,
       "surface" : "demo-overview"
     },
     {
       "file" : "02_providers.png",
       "id" : "02_providers",
-      "md5" : "ddfdb27156436b3d99f4aab3037be73f",
+      "md5" : "e3399d1b25a19a8f0af01cc83e45f234",
       "page" : "first",
       "pageCount" : 2,
       "pageIndex" : 1,
@@ -163,37 +191,52 @@
     {
       "file" : "03_usage_history.png",
       "id" : "03_usage_history",
-      "md5" : "03964bfe1b56c241da92696fab847b8e",
+      "md5" : "8909fee61315908360c6d62cf7ad176e",
+      "page" : "firstClear",
+      "pageCount" : 3,
+      "pageIndex" : 1,
+      "panelFile" : "03_usage_history.panel.png",
+      "panelMD5" : "cb433d0c0c3301cdb04298e156adfda6",
+      "popoverHeight" : 570,
+      "surface" : "demo-overview"
+    },
+    {
+      "file" : "04_projects.png",
+      "id" : "04_projects",
+      "md5" : "e3399d1b25a19a8f0af01cc83e45f234",
       "page" : "first",
       "pageCount" : 2,
       "pageIndex" : 1,
-      "panelFile" : "03_usage_history.panel.png",
-      "panelMD5" : "1cc02ecf4d7a2aafd5fec51b95a79c3a",
-      "surface" : "demo-overview"
+      "panelFile" : "04_projects.panel.png",
+      "panelHeight" : 653,
+      "panelMD5" : "cffef2b93fc556790c6d102440449bd5",
+      "panelProvider" : "Codex",
+      "panelScrolledTo" : 557,
+      "surface" : "demo-providers"
     },
     {
-      "file" : "04_cost.png",
-      "id" : "04_cost",
-      "md5" : "4dd1438ceb41d710d33797afd6a75b07",
+      "file" : "05_cost.png",
+      "id" : "05_cost",
+      "md5" : "34fc42b930c6c6598215e4183291e6af",
       "page" : "lastAligned",
       "pageCount" : 3,
       "pageIndex" : 3,
-      "popoverHeight" : 406,
+      "popoverHeight" : 492,
       "surface" : "demo-overview"
     },
     {
-      "file" : "05_alerts.png",
-      "id" : "05_alerts",
-      "md5" : "5f11f9641edf44dbdbe9cdc13be2a5e5",
+      "file" : "06_alerts.png",
+      "id" : "06_alerts",
+      "md5" : "3553405f99de7f6923ec3ecd8e3b46e2",
       "page" : "first",
       "pageCount" : 1,
       "pageIndex" : 1,
       "surface" : "demo-alerts"
     },
     {
-      "file" : "06_pulse_cat.png",
-      "id" : "06_pulse_cat",
-      "md5" : "81fb88e810ee9d1cb6f25d1397d1d25b",
+      "file" : "07_pulse_cat.png",
+      "id" : "07_pulse_cat",
+      "md5" : "d6ecc01c9f8899674fb68d6d8cf27826",
       "page" : "first",
       "pageCount" : 7,
       "pageIndex" : 1,
@@ -208,7 +251,7 @@
     "debugBuild" : true,
     "devidBuild" : false,
     "localScanDays" : 250,
-    "localScanMessages" : 15319,
+    "localScanMessages" : 15280,
     "localScanProviders" : [
       "Claude",
       "Codex"

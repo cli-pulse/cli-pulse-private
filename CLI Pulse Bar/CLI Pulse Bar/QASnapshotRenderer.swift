@@ -314,7 +314,8 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
 
     /// The Mac App Store screenshots (`QARenderSnapshot.storeCatalog`): one
     /// PNG per shot, the page it names, at 3x, plus the usage panel beside
-    /// the usage-history shot, and `render.json`. Stricter than the review
+    /// the usage-history shot (the Usage Dashboard) and the projects shot
+    /// (Codex's provider mode, framed), and `render.json`. Stricter than the review
     /// set: any warning, refused request, blank-looking render or local
     /// history the scanner could not have produced fails the run, because
     /// these files are what the App Store listing is composed from.
@@ -340,6 +341,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         var shots: [QARenderManifest.StoreShot] = []
         var panelSettled = false
         var panelLuminance = 1.0
+        var panelsDrawn = 0
         for (index, shot) in QARenderSnapshot.storeCatalog.enumerated() {
             if let problem = QARenderSnapshot.storeSurfaceProblem(shot) {
                 Self.log("refused: \(problem)")
@@ -356,8 +358,15 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 guard let panel = await captureStorePanel(shot) else { continue }
                 record.panelFile = panel.file
                 record.panelMD5 = panel.md5
-                panelSettled = panel.settled
-                panelLuminance = panel.backdropLuminance
+                record.panelProvider = panel.frame?.provider
+                record.panelHeight = panel.frame?.height
+                record.panelScrolledTo = panel.frame?.scrolledTo
+                // Every panel of the set settled, and the brightest backdrop
+                // is the one render.json holds to the limit.
+                panelSettled = (panelsDrawn == 0 || panelSettled) && panel.settled
+                panelLuminance = panelsDrawn == 0 ? panel.backdropLuminance
+                    : max(panelLuminance, panel.backdropLuminance)
+                panelsDrawn += 1
             }
             shots.append(record)
         }
@@ -401,7 +410,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             manifest.warnings.append("remote control is available in this build; the Mac App Store build has none")
         }
         if !panelSettled {
-            manifest.warnings.append("the usage panel was still changing when it was drawn")
+            manifest.warnings.append("a usage panel was still changing when it was drawn")
         }
         if shots.count != QARenderSnapshot.storeCatalog.count {
             manifest.warnings.append(
@@ -506,7 +515,10 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
     /// show whole, or the one above it when that needs a popover under 400
     /// points), then again in a popover shortened by
     /// `QARenderSnapshot.alignedTrim` so the page scrolled to the end opens just
-    /// above that card, and must then cut through nothing drawn.
+    /// above that card, and must then cut through nothing drawn. A
+    /// `.firstClear` page is drawn again, when its bottom edge would cut a
+    /// line of text or an icon, in a popover shortened by
+    /// `QARenderSnapshot.firstPageTrim`, and must then cut none.
     private func captureStoreShot(_ shot: QARenderStoreShot) async -> QARenderManifest.StoreShot? {
         var height = QARenderSnapshot.storePopoverHeight
         guard var drawn = await drawStorePopover(shot) else { return nil }
@@ -544,7 +556,44 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             }
             guard alignedPageIsClean(drawn, card: card, id: shot.id, height: height) else { return nil }
         }
-        let pageIndex = shot.page == .first ? 1 : drawn.pages.count
+        if shot.page == .firstClear {
+            guard let layout = drawn.layout else {
+                manifest.warnings.append("\(shot.id): the first page's content could not be measured")
+                return nil
+            }
+            let trim = QARenderSnapshot.firstPageTrim(
+                spans: layout.drawn, cards: layout.cards, viewportHeight: layout.viewportHeight)
+            if trim > 0 {
+                height -= Double(trim)
+                guard height >= QARenderSnapshot.storePopoverMinHeight else {
+                    manifest.warnings.append(
+                        "\(shot.id): ending the first page clear of every line needs a \(height)-point "
+                            + "popover, under the \(QARenderSnapshot.storePopoverMinHeight) users can set"
+                    )
+                    return nil
+                }
+                defaults.set(height, forKey: Self.menuBarHeightKey)
+                let again = await drawStorePopover(shot)
+                defaults.set(QARenderSnapshot.storePopoverHeight, forKey: Self.menuBarHeightKey)
+                guard let again else { return nil }
+                drawn = again
+            }
+            guard let final = drawn.layout else {
+                manifest.warnings.append("\(shot.id): in a \(height)-point popover the content could not be measured")
+                return nil
+            }
+            let cut = QARenderSnapshot.cutByBottomEdge(final.viewportHeight, spans: final.drawn, cards: final.cards)
+            if !cut.isEmpty {
+                let spans = cut.prefix(3).map { "\($0.top)-\($0.bottom)" }.joined(separator: ", ")
+                manifest.warnings.append(
+                    "\(shot.id): in a \(height)-point popover the first page's bottom edge, "
+                        + "\(final.viewportHeight) points down the content, cuts through \(cut.count) "
+                        + "drawn layer(s) (\(spans))"
+                )
+                return nil
+            }
+        }
+        let pageIndex = shot.page == .first || shot.page == .firstClear ? 1 : drawn.pages.count
         let page = drawn.pages[pageIndex - 1]
         let expected = NSSize(width: QARenderSnapshot.storePopoverWidth, height: height)
         if page.size != expected {
@@ -557,7 +606,13 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                                        pageCount: drawn.pages.count, kind: .popover) else {
             return nil
         }
-        if height != QARenderSnapshot.storePopoverHeight {
+        if height != QARenderSnapshot.storePopoverHeight, shot.page == .firstClear {
+            manifest.forcedSettings[Self.menuBarHeightKey + " (" + shot.id + ")"] = "\(Int(height)): "
+                + "this shot's popover, shortened from \(Int(QARenderSnapshot.storePopoverHeight)) "
+                + "so its first page ends \(Int(QARenderSnapshot.storeAlignedClearance)) points above "
+                + "the line of text its bottom edge would have cut through, rather than through it "
+                + "(QARenderSnapshot.firstPageTrim). Users can drag the popover between 400 and 900."
+        } else if height != QARenderSnapshot.storePopoverHeight {
             manifest.forcedSettings[Self.menuBarHeightKey + " (" + shot.id + ")"] = "\(Int(height)): "
                 + "this shot's popover, shortened from \(Int(QARenderSnapshot.storePopoverHeight)) "
                 + "so the page scrolled to the end opens just above a card (the first one the "
@@ -664,9 +719,27 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
     /// HUD backdrop is blended within the window over an opaque dark fill
     /// (`blendHUDWithinWindow`), and it is drawn only once two drawings half a
     /// second apart agree. Its headline does not count up here (`drawPages`).
-    private func captureStorePanel(
-        _ shot: QARenderStoreShot
-    ) async -> (file: String, md5: String, settled: Bool, backdropLuminance: Double)? {
+    private struct StorePanel {
+        let file: String
+        let md5: String
+        let settled: Bool
+        let backdropLuminance: Double
+        /// A framed provider panel's frame; nil for the dashboard, drawn whole.
+        let frame: (provider: String, height: Double, scrolledTo: Double)?
+    }
+
+    private func captureStorePanel(_ shot: QARenderStoreShot) async -> StorePanel? {
+        switch shot.panel {
+        case .usageDashboard?:
+            return await captureStoreDashboardPanel(shot)
+        case .provider(let kind)?:
+            return await captureStoreProviderPanel(shot, kind: kind)
+        case nil:
+            return nil
+        }
+    }
+
+    private func captureStoreDashboardPanel(_ shot: QARenderStoreShot) async -> StorePanel? {
         guard let name = shot.panelFileName else { return nil }
         let archive = await DailyUsageArchiveManager.shared.snapshot()
         let panel = UsageDashboardView(archive: archive, scrollable: false)
@@ -698,7 +771,108 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             return nil
         }
         // The backdrop between the panel's corner and its title.
-        return (name, md5, settled, luminance(page, x: 4, y: 4, side: 6))
+        return StorePanel(file: name, md5: md5, settled: settled,
+                          backdropLuminance: luminance(page, x: 4, y: 4, side: 6), frame: nil)
+    }
+
+    /// v1.58: one provider's usage panel as clicking its card on the
+    /// Providers tab opens it (`providerCardPanelContent`: Demo's synced rows
+    /// and this Mac's scan, with the Projects and Sessions cards), 520 points
+    /// wide like the dashboard's, framed as a laptop shows it. The panel
+    /// scrolls there (`UsagePanelRootView`: its content in a scroll view, the
+    /// close button over the panel's corner, outside it). It is drawn once
+    /// as tall as a 900-point screen gives it, to measure its content, then
+    /// in a panel shortened so its page scrolled to the end opens just above
+    /// a card (`QARenderSnapshot.providerPanelFrame`), and that page is the
+    /// picture. It must cut through nothing drawn but the panel's own
+    /// backdrop, and be the same half a second later.
+    private func captureStoreProviderPanel(_ shot: QARenderStoreShot, kind: ProviderKind) async -> StorePanel? {
+        guard let name = shot.panelFileName else { return nil }
+        let laptop = QARenderSnapshot.storeProviderPanelLaptopHeight
+        guard let measured = await drawStoreProviderPanel(kind, height: laptop, id: name) else { return nil }
+        measured.window.contentView = nil
+        guard let layout = measured.layout else {
+            manifest.warnings.append("\(name): the \(kind.rawValue) panel does not scroll in a \(Int(laptop))-point "
+                                        + "panel, or its content could not be measured")
+            return nil
+        }
+        guard let frame = QARenderSnapshot.providerPanelFrame(cards: layout.cards, contentHeight: layout.contentHeight)
+        else {
+            manifest.warnings.append("\(name): no card of the \(kind.rawValue) panel (\(layout.cards.count) measured, "
+                                        + "\(Int(layout.contentHeight)) points of content) to open on in a panel "
+                                        + "\(Int(QARenderSnapshot.storeProviderPanelMinHeight))-\(Int(laptop)) points tall")
+            return nil
+        }
+        guard let drawn = await drawStoreProviderPanel(kind, height: frame.height, id: name),
+              let page = drawn.pages.last
+        else {
+            manifest.warnings.append("\(name): nothing was drawn")
+            return nil
+        }
+        await settle(drawn.hosting, seconds: 0.5)
+        let again = snapshot(drawn.hosting)
+        drawn.window.contentView = nil
+        let settled = again.map { Self.sameBitmap($0, page) } ?? false
+
+        let prefix = "\(name): in a \(Int(frame.height))-point panel"
+        guard let final = drawn.layout else {
+            manifest.warnings.append("\(prefix) the content could not be measured")
+            return nil
+        }
+        let top = QARenderSnapshot.lastPageTop(
+            contentHeight: final.contentHeight, viewportHeight: final.viewportHeight)
+        let cut = QARenderSnapshot.panelCutByTopEdge(top, spans: final.drawn, contentHeight: final.contentHeight)
+        if !cut.isEmpty {
+            let spans = cut.prefix(3).map { "\($0.top)-\($0.bottom)" }.joined(separator: ", ")
+            manifest.warnings.append("\(prefix) the page's top edge, \(top) points down the content, cuts "
+                                        + "through \(cut.count) drawn layer(s) (\(spans))")
+            return nil
+        }
+        if abs(final.contentHeight - layout.contentHeight) > 0.5 || abs(final.viewportHeight - frame.height) > 0.5
+            || abs(frame.card.top - top - QARenderSnapshot.storeAlignedClearance) > 1 {
+            manifest.warnings.append("\(prefix) the page opens \(top) points down \(final.contentHeight) of content, "
+                                        + "not just above the card at \(frame.card.top) it was framed on")
+            return nil
+        }
+        if page.size.width != CGFloat(QARenderSnapshot.storePanelWidth) || abs(page.size.height - frame.height) > 0.5 {
+            manifest.warnings.append("\(name): the panel is \(page.size.width)x\(page.size.height) points")
+        }
+        guard let md5 = writeStoreFile(page, name: name, id: shot.id + "-panel", pageIndex: drawn.pages.count,
+                                       pageCount: drawn.pages.count, kind: .panel) else {
+            return nil
+        }
+        manifest.forcedSettings["usage panel height (" + shot.id + ")"] = "\(Int(frame.height)): the "
+            + "\(kind.rawValue) panel framed as a laptop shows it, scrolled to its end, opening "
+            + "\(Int(QARenderSnapshot.storeAlignedClearance)) points above the card at \(Int(frame.card.top)) "
+            + "of \(Int(final.contentHeight)) points of content (QARenderSnapshot.providerPanelFrame). The "
+            + "panel is the screen's visible height less 24 points; a \(Int(laptop))-point one opens through "
+            + "the chart."
+        return StorePanel(file: name, md5: md5, settled: settled,
+                          backdropLuminance: luminance(page, x: 4, y: 4, side: 6),
+                          frame: (kind.rawValue, frame.height, top))
+    }
+
+    /// The provider panel of `captureStoreProviderPanel` in a panel `height`
+    /// points tall, drawn page by page down its scroll view.
+    private func drawStoreProviderPanel(_ kind: ProviderKind, height: Double, id: String) async -> DrawnPages? {
+        let width = CGFloat(QARenderSnapshot.storePanelWidth)
+        let panel = ScrollView(.vertical) {
+            providerCardPanelContent(kind, width: width).panel
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .scrollIndicators(.automatic)
+        .frame(width: width, height: CGFloat(height))
+        .overlay(alignment: .topTrailing) {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 17))
+                .foregroundStyle(.secondary)
+                .padding(8)
+        }
+        .environment(\.colorScheme, .dark)
+        .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        return await drawPages(
+            panel, id: id, settle: QARenderSnapshot.storePanelSettleSeconds, scrolls: true,
+            prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: id) })
     }
 
     /// `HUDWindowBackground` blends behind the window: over a desktop it is
@@ -1663,6 +1837,23 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
 
     /// The panel `captureProviderCardPanel` draws, and its note.
     private func providerCardPanel(_ kind: ProviderKind) -> (some View, String) {
+        let (content, note) = providerCardPanelContent(kind, width: 480)
+        let panel = content
+            .overlay(alignment: .topTrailing) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+            }
+            .environment(\.colorScheme, .dark)
+            .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        return (panel, note)
+    }
+
+    /// The panel's content as clicking the Demo `kind` card opens it,
+    /// `width` points wide, without the close button and the dark fill the
+    /// panel lays around it, and the review set's note on it.
+    private func providerCardPanelContent(_ kind: ProviderKind, width: CGFloat) -> (panel: some View, note: String) {
         let provider = kind.rawValue
         // As `EnhancedProviderCard.cardUsage` builds it.
         let usage = state.providers.first { $0.provider == provider }
@@ -1690,16 +1881,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             availableScopes: model.availableScopes(for: provider),
             scope: .constant(scope),
             needsFolderAccess: model.needsFolderAccess, onShowAllProviders: {})
-            .frame(width: 480)
-            .overlay(alignment: .topTrailing) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 17))
-                    .foregroundStyle(.secondary)
-                    .padding(8)
-            }
+            .frame(width: width)
             .environment(\.colorScheme, .dark)
-            .background(Color(red: 0.11, green: 0.11, blue: 0.12))
-        return (panel, "The usage panel as clicking the Demo \(provider) card's small chart opens it, 480 points"
+        return (panel, "The usage panel as clicking the Demo \(provider) card's small chart opens it, \(Int(width)) points"
                 + " wide: Demo's synced rows, opened on the card's scope (\(card.scope.rawValue), shown:"
                 + " \(scope.rawValue)), chart in \(metric.rawValue) as the card's is, tokens counted as the"
                 + " card counts them (I/O, as the panel says under its total): its days and total are the"

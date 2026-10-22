@@ -653,14 +653,23 @@ public enum QARenderSnapshot {
     /// between the QA render (Debug, unsandboxed, channel `qa`) and the Mac App
     /// Store build (Release, sandboxed, production): `storeSurfaceProblem`
     /// says which, and why the others are left out.
+    ///
+    /// v1.58: `projects` is the Providers tab with the Codex card's usage
+    /// panel beside it, the panel's provider mode, where this Mac's Projects
+    /// and Sessions cards are (P1-4, P1-5). That mode is about 1,200 points
+    /// tall with them, so it scrolls on every laptop screen; the panel is
+    /// framed as one (`storeProviderPanel*`). The Overview's first page
+    /// (`overview`, `usage_history`) is `.firstClear`: it ends inside the
+    /// Cost Summary card, whose rows wrap differently in each language.
     public static var storeCatalog: [QARenderStoreShot] {
-        let rows: [(String, QARenderSurface, QARenderStoreShot.Page, Bool)] = [
-            ("overview", .demo(.overview), .first, false),
-            ("providers", .demo(.providers), .first, false),
-            ("usage_history", .demo(.overview), .first, true),
-            ("cost", .demo(.overview), .lastAligned, false),
-            ("alerts", .demo(.alerts), .first, false),
-            ("pulse_cat", .demo(.pet), .first, false),
+        let rows: [(String, QARenderSurface, QARenderStoreShot.Page, QARenderStoreShot.Panel?)] = [
+            ("overview", .demo(.overview), .firstClear, nil),
+            ("providers", .demo(.providers), .first, nil),
+            ("usage_history", .demo(.overview), .firstClear, .usageDashboard),
+            ("projects", .demo(.providers), .first, .provider(.codex)),
+            ("cost", .demo(.overview), .lastAligned, nil),
+            ("alerts", .demo(.alerts), .first, nil),
+            ("pulse_cat", .demo(.pet), .first, nil),
         ]
         return rows.enumerated().map { offset, row in
             let number = offset + 1
@@ -669,7 +678,7 @@ public enum QARenderSnapshot {
                 screen: row.0,
                 surface: row.1,
                 page: row.2,
-                companionPanel: row.3
+                panel: row.3
             )
         }
     }
@@ -698,15 +707,26 @@ public enum QARenderSnapshot {
         if tab == .pet, shot.page != .first {
             return "\(shot.id): only the Pet tab's first page is free of the Debug build's test buttons at the bottom of the tab"
         }
-        if shot.companionPanel, tab != .overview {
-            return "\(shot.id): the usage panel slides out of the Overview's Activity card"
+        switch shot.panel {
+        case .usageDashboard?:
+            if tab != .overview {
+                return "\(shot.id): the Usage Dashboard slides out of the Overview's Activity card"
+            }
+        case .provider?:
+            if tab != .providers {
+                return "\(shot.id): a provider's usage panel slides out of its card on the Providers tab"
+            }
+        case nil:
+            break
         }
         return nil
     }
 
     /// The popover's size in points: `MenuBarView` is 380 wide, and 580 high
     /// unless the user dragged it (400–900). The store set pins the default,
-    /// except for a `.lastAligned` page, which shortens it (`alignedTrim`).
+    /// except for a `.lastAligned` page, which shortens it (`alignedTrim`),
+    /// and a `.firstClear` page whose bottom edge would cut a line
+    /// (`firstPageTrim`).
     public static let storePopoverWidth = 380.0
     public static let storePopoverHeight = 580.0
     /// The shortest popover `MenuBarView` lets the user drag it to.
@@ -725,6 +745,23 @@ public enum QARenderSnapshot {
     /// `min(520, max(440, room to the left of the popover))`, which is 520
     /// whenever the popover sits at the right of an ordinary screen.
     public static let storePanelWidth = 520.0
+    /// v1.58: a provider's usage panel (`QARenderStoreShot.Panel.provider`)
+    /// is about 1,200 points tall with its Projects and Sessions cards, and
+    /// `DashboardPanelController` caps the panel at the screen's visible
+    /// height less 24, so it scrolls on every laptop screen. The store shot
+    /// frames it as one: drawn first in a panel as tall as a 900-point
+    /// screen gives it (`storeProviderPanelLaptopHeight`, the review set's
+    /// `panel-provider-usage-codex-laptop`), whose page scrolled to the end
+    /// opens through the chart; then, as for the cost shot's popover
+    /// (`alignedCard`), in a panel shortened so that page opens just above
+    /// a card and cuts through nothing. A shorter screen, or the Dock along
+    /// its bottom, gives the panel that height, down to
+    /// `storeProviderPanelMinHeight`; render.json records it.
+    public static let storeProviderPanelLaptopHeight = 876.0
+    /// The shortest panel the provider shot may frame: what a screen with
+    /// 624 points of visible height gives, as a laptop screen does at a
+    /// larger-text resolution or with a large Dock along its bottom.
+    public static let storeProviderPanelMinHeight = 600.0
     /// The panel is drawn no sooner than this after it appears. Its headline
     /// does not count up in a render (the renderer draws every view with
     /// `EnvironmentValues.countsUp` off); the wait is kept for everything
@@ -946,6 +983,86 @@ public enum QARenderSnapshot {
     /// cuts through: each starts above it and ends below it.
     public static func cutByTopEdge(_ top: Double, spans: [QARenderSpan]) -> [QARenderSpan] {
         spans.filter { $0.top < top - spanTolerance && $0.bottom > top + spanTolerance }
+    }
+
+    /// v1.58: how the store shot frames a provider's usage panel
+    /// (`storeProviderPanelLaptopHeight`): the card its page scrolled to the
+    /// end opens on, and the panel's height for that, from the panel's
+    /// content measured in a laptop-height panel. As `alignedCard` picks it
+    /// for the cost shot's popover, with the panel shortening as far as
+    /// `storeProviderPanelMinHeight`: the first card a laptop panel's last
+    /// page reaches that runs past its first page, or the lowest one above it
+    /// that a panel no shorter than the minimum can open on. The panel's own
+    /// backdrop, which spans its whole content, is not a card
+    /// (`coversContent`). Nil when the content fits a laptop panel, or no
+    /// card can be framed.
+    public static func providerPanelFrame(
+        cards: [QARenderSpan], contentHeight: Double
+    ) -> (card: QARenderSpan, height: Double)? {
+        let laptop = storeProviderPanelLaptopHeight
+        let ownCards = cards.filter { !coversContent($0, contentHeight: contentHeight) }
+        guard let card = alignedCard(
+            ownCards, contentHeight: contentHeight, viewportHeight: laptop,
+            clearance: storeAlignedClearance, maxTrim: laptop - storeProviderPanelMinHeight)
+        else { return nil }
+        let cut = trim(toOpenAbove: card, contentHeight: contentHeight, viewportHeight: laptop,
+                       clearance: storeAlignedClearance)
+        return (card, laptop - Double(cut))
+    }
+
+    /// Whether `span` runs from the top of the content to its end: the
+    /// panel's frosted backdrop, behind everything, which no page edge can
+    /// avoid and which is not drawn as a line or a card.
+    public static func coversContent(_ span: QARenderSpan, contentHeight: Double) -> Bool {
+        span.top <= spanTolerance && span.bottom >= contentHeight - spanTolerance
+    }
+
+    /// v1.58: what a page's bottom edge, `bottom` points down the content,
+    /// cuts through: each drawn layer that starts above it and ends below
+    /// it, other than one that holds a whole card (the card's own backdrop,
+    /// its shadow, the page's background), which runs on below the edge as
+    /// the card does. What is left is a line of text, an icon, a bar:
+    /// something a reader sees cut in half. Cards come from the layer tree,
+    /// not pixels, for the reason `alignedTrim` gives.
+    public static func cutByBottomEdge(
+        _ bottom: Double, spans: [QARenderSpan], cards: [QARenderSpan]
+    ) -> [QARenderSpan] {
+        spans.filter { span in
+            span.top < bottom - spanTolerance && span.bottom > bottom + spanTolerance
+                && !cards.contains { span.top <= $0.top + spanTolerance && span.bottom >= $0.bottom - spanTolerance }
+        }
+    }
+
+    /// v1.58: whole points to take off the popover so a `.firstClear` page,
+    /// which shows the content from 0 down to `viewportHeight`, ends at
+    /// least `clearance` points above everything its bottom edge would cut
+    /// (`cutByBottomEdge`); 0 when it cuts nothing. Shortening the popover
+    /// moves that edge up the content point for point. Each step moves the
+    /// edge above the highest layer it cut, so this ends; the caller holds
+    /// the result to the shortest popover users can drag it to.
+    ///
+    /// The Overview's first page ends inside the Cost Summary card. In
+    /// Spanish its 30-day column takes two lines, which put the "By Model"
+    /// row half under the popover's footer (1.58, #692); every other
+    /// language ends a few points below that row.
+    public static func firstPageTrim(
+        spans: [QARenderSpan], cards: [QARenderSpan], viewportHeight: Double,
+        clearance: Double = storeAlignedClearance
+    ) -> Int {
+        var trim = 0
+        while Double(trim) < viewportHeight {
+            let edge = viewportHeight - Double(trim)
+            guard let top = cutByBottomEdge(edge, spans: spans, cards: cards).map(\.top).min() else { return trim }
+            trim = Int((viewportHeight - top + clearance).rounded(.up))
+        }
+        return trim
+    }
+
+    /// What a framed provider panel's page edge, `top` points down the
+    /// content, cuts through (`cutByTopEdge`), leaving out the panel's own
+    /// backdrop (`coversContent`), which every edge crosses.
+    public static func panelCutByTopEdge(_ top: Double, spans: [QARenderSpan], contentHeight: Double) -> [QARenderSpan] {
+        cutByTopEdge(top, spans: spans.filter { !coversContent($0, contentHeight: contentHeight) })
     }
 
     /// Half a pixel at the store set's scale: layout rounds frames to pixels.
@@ -1275,6 +1392,13 @@ public struct QARenderStoreShot: Equatable, Sendable {
     public enum Page: String, Codable, Sendable {
         /// The view as it opens.
         case first
+        /// v1.58: the view as it opens, in a popover shortened when the
+        /// page's bottom edge, above the footer, would cut through a line of
+        /// text or an icon, so that the page ends `storeAlignedClearance`
+        /// points above it (`QARenderSnapshot.firstPageTrim`); at the pinned
+        /// height otherwise. A state the app really has, as `.lastAligned`'s
+        /// is; render.json records a shortened height.
+        case firstClear
         /// Scrolled to the end, flush with the bottom of the content.
         case last
         /// Scrolled to the end, in a popover shortened so that the top edge
@@ -1294,21 +1418,35 @@ public struct QARenderStoreShot: Equatable, Sendable {
     public let screen: String
     public let surface: QARenderSurface
     public let page: Page
-    /// Also draw the usage panel `DashboardPanelController` slides out to the
-    /// left of the popover, the one surface only the Mac has.
-    public let companionPanel: Bool
+    /// Which usage panel `DashboardPanelController` slides out to the left
+    /// of the popover, the one surface only the Mac has, the shot also draws.
+    public enum Panel: Equatable, Sendable {
+        /// The Usage Dashboard, as the Overview's Activity card opens it,
+        /// drawn whole: it is shorter than a laptop screen.
+        case usageDashboard
+        /// One provider's usage history with this Mac's Projects and
+        /// Sessions (v1.58), as clicking the provider's card on the Providers
+        /// tab opens it, framed as a laptop shows it, scrolled
+        /// (`QARenderSnapshot.storeProviderPanelLaptopHeight`).
+        case provider(ProviderKind)
+    }
+
+    /// The usage panel beside the popover, or nil for the popover alone.
+    public let panel: Panel?
 
     public init(
         id: String, screen: String, surface: QARenderSurface,
-        page: Page, companionPanel: Bool
+        page: Page, panel: Panel?
     ) {
         self.id = id
         self.screen = screen
         self.surface = surface
         self.page = page
-        self.companionPanel = companionPanel
+        self.panel = panel
     }
 
+    /// Whether the shot draws a usage panel beside the popover.
+    public var companionPanel: Bool { panel != nil }
     public var fileName: String { id + ".png" }
     public var panelFileName: String? { companionPanel ? id + ".panel.png" : nil }
 }
@@ -1504,11 +1642,19 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
         /// The popover's height in points when it is not the pinned default:
         /// a `.lastAligned` page's shortened popover.
         public var popoverHeight: Double?
+        /// v1.58: a framed provider panel (`QARenderStoreShot.Panel.provider`)
+        /// only: which provider, the panel's height in points, and how far
+        /// down its content the page drawn (scrolled to the end) opens. Nil
+        /// for the Usage Dashboard, drawn whole.
+        public var panelProvider: String?
+        public var panelHeight: Double?
+        public var panelScrolledTo: Double?
 
         public init(
             id: String, surface: String, page: QARenderStoreShot.Page,
             pageIndex: Int, pageCount: Int, file: String, md5: String,
-            panelFile: String? = nil, panelMD5: String? = nil, popoverHeight: Double? = nil
+            panelFile: String? = nil, panelMD5: String? = nil, popoverHeight: Double? = nil,
+            panelProvider: String? = nil, panelHeight: Double? = nil, panelScrolledTo: Double? = nil
         ) {
             self.id = id
             self.surface = surface
@@ -1520,6 +1666,9 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
             self.panelFile = panelFile
             self.panelMD5 = panelMD5
             self.popoverHeight = popoverHeight
+            self.panelProvider = panelProvider
+            self.panelHeight = panelHeight
+            self.panelScrolledTo = panelScrolledTo
         }
     }
 

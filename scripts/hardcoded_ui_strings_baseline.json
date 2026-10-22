@@ -1491,7 +1491,13 @@
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/QARenderSnapshot.swift",
-   "literal": "\"\\(shot.id): the usage panel slides out of the Overview's Activity card\"",
+   "literal": "\"\\(shot.id): the Usage Dashboard slides out of the Overview's Activity card\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: QARenderSnapshot.storeSurfaceProblem explains why a surface may not be one of the Mac App Store screenshots. Only the QA build's offscreen renderer (#if CLIPULSE_QA_RENDER, Debug QA only) logs it before refusing, and QARenderSnapshotTests assert it; no view of the app ever shows it."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/QARenderSnapshot.swift",
+   "literal": "\"\\(shot.id): a provider's usage panel slides out of its card on the Providers tab\"",
    "count": 1,
    "reason": "KEEP_NOT_USER_VISIBLE: QARenderSnapshot.storeSurfaceProblem explains why a surface may not be one of the Mac App Store screenshots. Only the QA build's offscreen renderer (#if CLIPULSE_QA_RENDER, Debug QA only) logs it before refusing, and QARenderSnapshotTests assert it; no view of the app ever shows it."
   },

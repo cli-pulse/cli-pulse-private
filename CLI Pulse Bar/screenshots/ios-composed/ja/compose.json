@@ -22,11 +22,11 @@
   ]
  },
  "captures": {
-  "01_overview.png": "c66518ae762b290bc64a550d10f7142b",
-  "02_providers.png": "55ffa9c1207a79df6c83b70da4c8fb44",
-  "03_cost.png": "a821edfcedd8b0c241a8a69db99be68e",
-  "04_sessions.png": "ac9513efebbf1183337125dfa4d6053e",
-  "05_alerts.png": "a1bd7af178ef18b30f5748ba9eb37dda"
+  "01_overview.png": "ac775363b95a681a3535048df39218da",
+  "02_providers.png": "a0ea63ffbb662cd01ce8b22275fb549c",
+  "03_cost.png": "ffe513e7f58dcaee682021181f792761",
+  "04_sessions.png": "b75994b2682c7b426ada2b187e2150fa",
+  "05_alerts.png": "2ad8d0fae0251f195f4189a98b8f88b0"
  },
  "faces": {
   "subtitle": "Hiragino Sans",
@@ -34,11 +34,11 @@
  },
  "lang": "ja",
  "panels": {
-  "01_overview_1290x2796.png": "63dd4f38d9958bd6f08a9290b5816fe2",
-  "02_providers_1290x2796.png": "5e99572fdb6318a9929033803675ef0e",
-  "03_cost_1290x2796.png": "8e8387e0ca2839858a0d5c8d03fb3512",
-  "04_sessions_1290x2796.png": "f9639ad6a446533e3c1781d8ea93d193",
-  "05_alerts_1290x2796.png": "ff1d2a1a0cceb5c84efef02f9ce8aa46"
+  "01_overview_1290x2796.png": "bb267691b35aeceadc4bce36f06d3d93",
+  "02_providers_1290x2796.png": "efcff26d832592ff2bcf5fe39413e576",
+  "03_cost_1290x2796.png": "0862b82395889db6a7409b965aa727a0",
+  "04_sessions_1290x2796.png": "7bac251c8f47c495ae8a0d9d7a9cd0d7",
+  "05_alerts_1290x2796.png": "e2211c071597c39eb3688e1b4560a3c1"
  },
  "subtitle_pt": 46,
  "title_pt": 100

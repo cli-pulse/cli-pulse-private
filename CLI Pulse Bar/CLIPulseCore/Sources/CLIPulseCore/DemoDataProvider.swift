@@ -148,11 +148,31 @@ internal enum DemoDataProvider {
                           metadata: macCollectorMetadata("Claude")),
         ]
 
-        // Session names are identifiers, the way a real one reads (a command or
-        // a project), not English sentences: they are data, shown as-is in
-        // every language, and they reappear inside the alert titles below.
+        // Session names are what each row's producer writes, not English
+        // sentences: they are data, shown as-is in every language, and the
+        // session-CPU alert below repeats one inside its title. The LoginItem
+        // helper's LocalScanner names a session by its executable
+        // (`prettyName`: the first argument's last path component, so
+        // "codex" and "claude"), and the desktop app's process scan, like the
+        // Python helper's (`_pretty_name`), by its whole command line, up to
+        // 48 characters: "gemini" for the Gemini CLI started as `gemini`.
+        // (A command line starting "node " is one the app hides as noise,
+        // `SessionFreshnessFilter.isProcessPathArtifact`, so the row would
+        // leave the list.) Until 1.58 Demo named them "ios-dashboard",
+        // "provider-adapters" and "helper-heartbeat", names no producer
+        // writes for these processes, and the first was in the alert every
+        // store screenshot of the Alerts tab shows.
+        // `testDemoSessionNamesAreWhatTheirProducersWrite`.
         //
-        // helper-heartbeat has run on lab-server-01, a Linux server, for
+        // The Gemini CLI on lab-server-01 has no project: the desktop app
+        // finds no path in its command line and no project marker in its
+        // working directory (`guess_project`), so it writes its placeholder,
+        // "local-workspace", which the row shows as "Gemini
+        // process" (`SessionRecord.displayName`). Every Demo row used to have
+        // a project, the best case, which made "by provider and project" the
+        // only form the store screenshots showed.
+        //
+        // The Gemini CLI has run on lab-server-01, a Linux server, for
         // seven hours. It used to carry a long-running alert, which no
         // producer raises for it (see the alerts below). Off a Mac a session
         // comes from the desktop app's process scan (ported verbatim from the
@@ -170,7 +190,7 @@ internal enum DemoDataProvider {
         // least 1.5 usage per second. On a Mac the cost is the LoginItem
         // helper's flat rate (usage/1000 x ProviderKind.defaultCostRate;
         // HelperDaemon scans with no rate lookup), or none from the Companion
-        // CLI. Demo had about six times that rate (ios-dashboard: $0.29 for
+        // CLI. Demo had about six times that rate (Codex on the MacBook Pro: $0.29 for
         // 24.5K Codex, where the helper writes $0.05) and fewer requests than
         // the runtime gives (142 over two hours, where a scan counts 160).
         // `testASessionOnAMacCostsTheHelpersFlatRateOrNothing` holds the cost.
@@ -180,6 +200,7 @@ internal enum DemoDataProvider {
         // the LoginItem helper (`local-<pid>`, the flat-rate cost above),
         // lab-server-01's from the desktop app (`proc-<pid>`).
         // So each reads Running, with its provider and project for a title
+        // (or "Gemini process", above)
         // and none of the figures above, which the Sessions tab hides for a
         // scan row (`SessionRecord.hasProcessHeuristicMetrics`); they are
         // still the ones a scan writes, because the Overview's tiles and the
@@ -208,21 +229,21 @@ internal enum DemoDataProvider {
         // time the app's freshness filter (five minutes) no longer lists it.
         // Demo had "running", "syncing" and "idle", and the iPad's session list
         // drew Syncing and Idle badges no account can get.
-        let busyStarted: TimeInterval = -7200  // ios-dashboard, which the CPU alert names
+        let busyStarted: TimeInterval = -7200  // Codex on the MacBook Pro, which the CPU alert names
         let sessions = [
-            SessionRecord(id: "local-48213", name: "ios-dashboard", provider: "Codex",
+            SessionRecord(id: "local-48213", name: "codex", provider: "Codex",
                           project: "cli-pulse-ios", device_name: "MacBook Pro",
                           started_at: timestamp(busyStarted), last_active_at: timestamp(),
                           status: "Running", total_usage: 24500, estimated_cost: 0.049,
                           cost_status: "Estimated", requests: 160, error_count: 0,
                           collection_confidence: "high"),
-            SessionRecord(id: "proc-3120", name: "helper-heartbeat", provider: "Gemini",
-                          project: "cli-pulse-helper", device_name: "lab-server-01",
+            SessionRecord(id: "proc-3120", name: "gemini", provider: "Gemini",
+                          project: "local-workspace", device_name: "lab-server-01",
                           started_at: timestamp(-7 * 3600), last_active_at: timestamp(),
                           status: "Running", total_usage: 37800, estimated_cost: 0,
                           cost_status: "Estimated", requests: 560, error_count: 0,
                           collection_confidence: "medium"),
-            SessionRecord(id: "local-48977", name: "provider-adapters", provider: "Claude",
+            SessionRecord(id: "local-48977", name: "claude", provider: "Claude",
                           project: "provider-layer", device_name: "MacBook Pro",
                           started_at: timestamp(-3600), last_active_at: timestamp(),
                           status: "Running", total_usage: 6200, estimated_cost: 0.0186,
@@ -291,7 +312,7 @@ internal enum DemoDataProvider {
         // hours of any open process trips it. v1.16.1 made the rule skip
         // those rows (helper/system_collector.py, AlertGenerator), and the
         // desktop app, which writes every session off a Mac, has no such
-        // rule. Demo had one on helper-heartbeat, on lab-server-01.
+        // rule. Demo had one on the Gemini CLI, on lab-server-01.
         //
         // On a Mac the LoginItem helper's skip used to test for `proc-`
         // alone, which its LocalScanner rows (`local-`) never carry, so it
@@ -335,7 +356,7 @@ internal enum DemoDataProvider {
             // at 46% of ten cores T seconds into its life had burned 4.6 x T
             // CPU-seconds by then, and shows at least 460 x T usage on top of
             // its runtime. Raised 30 minutes ago, 90 minutes in, that is 2.5M;
-            // ios-dashboard shows 24.5K. Raised at the helper's first scan, 30
+            // the Codex session shows 24.5K. Raised at the helper's first scan, 30
             // seconds in (a burst at launch, quiet since), 24.5K holds it.
             // `testTheSessionCPUAlertComesFromASessionThatCouldRaiseIt`.
             // Its id and suppression key carry the session's id and a digest

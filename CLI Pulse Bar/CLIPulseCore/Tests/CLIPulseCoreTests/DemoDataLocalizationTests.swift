@@ -97,16 +97,39 @@ final class DemoDataLocalizationTests: XCTestCase {
     // Demo's risk signals: OverviewOptionalCardsTests. It raises only what
     // the local refresh would for its state, which is none.
 
-    /// Session names are data, shown as-is in every language, so they read as
-    /// identifiers rather than English sentences — and every name an alert or a
-    /// provider card refers to is a session that exists.
-    func testDemoSessionNamesAreIdentifiersThatAlertsReferToConsistently() {
+    /// Session names are data, shown as-is in every language, and each is
+    /// what its row's producer writes (v1.58): the LoginItem helper's
+    /// LocalScanner (`local-` rows) names a session by its executable, the
+    /// last path component of its first argument, at most 30 characters; the
+    /// desktop app's process scan (`proc-` rows), like the Python helper's
+    /// `_pretty_name`, by its command line with runs of white space made one
+    /// space, at most 48. Demo's "ios-dashboard", "provider-adapters" and
+    /// "helper-heartbeat" were neither, and the first was in the alert every
+    /// Alerts screenshot shows. Every name an alert or a provider card refers
+    /// to is a session that exists.
+    func testDemoSessionNamesAreWhatTheirProducersWrite() {
         let demo = DemoDataProvider.generate()
         let names = Set(demo.sessions.map(\.name))
-        let identifier = try! NSRegularExpression(pattern: "^[a-z0-9]+(-[a-z0-9]+)*$")
-        for name in names {
-            XCTAssertNotNil(identifier.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)),
-                            "demo session name reads as prose, not data: \(name)")
+        XCTAssertFalse(demo.sessions.isEmpty, "Demo has no sessions; this test checks nothing")
+        for session in demo.sessions {
+            let name = session.name
+            XCTAssertFalse(name.isEmpty, "\(session.id) has no name")
+            if session.id.hasPrefix(SessionRecord.localScanIDPrefix) {
+                XCTAssertFalse(name.contains("/") || name.contains(where: \.isWhitespace) || name.count > 30,
+                               "\(session.id): LocalScanner names a session by its executable, not '\(name)'")
+            } else if session.id.hasPrefix(SessionRecord.companionScanIDPrefix) {
+                let compact = name.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+                XCTAssertTrue(name == compact && name.count <= 48,
+                              "\(session.id): a process scan off a Mac names a session by its command line"
+                                  + " (white space made single, at most 48 characters), not '\(name)'")
+            } else {
+                XCTFail("\(session.id) is not a process-scan row, which every cloud session is")
+            }
+            XCTAssertFalse(SessionFreshnessFilter.isProcessPathArtifact(session),
+                           "\(session.id) '\(name)' is a name the Sessions list hides as noise")
+        }
+        for old in ["ios-dashboard", "provider-adapters", "helper-heartbeat"] {
+            XCTAssertFalse(names.contains(old), "\(old) is a name no producer writes for Demo's sessions")
         }
         for alert in demo.alerts {
             if let session = alert.related_session_name {

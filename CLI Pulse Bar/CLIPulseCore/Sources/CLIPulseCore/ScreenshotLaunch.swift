@@ -30,6 +30,11 @@ import SwiftUI
 ///   stopped drawing for accounts with no rows (#614), and Gemini had no cost
 ///   rows, that left more than half of the screen blank. Scrolled to the very
 ///   end instead, it repeated nearly all of the `overview` shot.
+///   `providers` is the Providers tab scrolled to the end of its list (v1.58):
+///   since Try Demo draws the Codex and Claude cards' usage charts (#674),
+///   the three cards are taller than the screen, and at the top of the list
+///   the Claude card ran on under the tab bar, its name cut by it. At the end
+///   the list stops above the tab bar, with both charts on screen.
 /// - **No network, structurally.** The app runs under
 ///   `CLIPulseRuntimeEnvironment.restrictedForScreenshotCapture()`: every
 ///   capability off, no session restore, and an API client pointed at
@@ -80,7 +85,11 @@ public enum ScreenshotLaunch {
 
         /// Where the tab is scrolled to, if anywhere.
         public var scrollTarget: ScrollTarget? {
-            self == .cost ? .activity : nil
+            switch self {
+            case .cost: return .activity
+            case .providers: return .listEnd
+            case .overview, .sessions, .alerts: return nil
+            }
         }
 
         /// Whether the screen opens a session beside the list, where the layout
@@ -114,6 +123,22 @@ public enum ScreenshotLaunch {
         /// room for the Cost Summary and Provider Usage below it and repeats
         /// none of the metric tiles the `overview` shot opens with.
         case activity
+        /// The end of the Providers tab's list (v1.58): scrolled to it, the
+        /// last card ends above the tab bar, and no card runs on under it.
+        case listEnd
+
+        /// Where the target lands: the Activity card at the top of the
+        /// screen; the list's end at the bottom, above the tab bar.
+        public var anchor: UnitPoint {
+            self == .listEnd ? .bottom : .top
+        }
+
+        /// Whether blank room goes below the content so the target can reach
+        /// the top of the screen (`ScrollToTarget.tailRoom`). Not for the
+        /// list's end, which is already at the bottom.
+        public var needsTailRoom: Bool {
+            self == .activity
+        }
     }
 
     public struct Request: Equatable, Sendable {
@@ -356,13 +381,13 @@ extension ScreenshotLaunch {
             let target = ScreenshotLaunch.activeRequest?.screen.scrollTarget
             ScrollViewReader { proxy in
                 content
-                    .padding(.bottom, target == nil ? 0 : Self.tailRoom)
+                    .padding(.bottom, target?.needsTailRoom == true ? Self.tailRoom : 0)
                     .task {
                         guard let target else { return }
                         // One layout pass first: scrolling to a view that has
                         // not been measured yet does nothing.
                         try? await Task.sleep(nanoseconds: 300_000_000)
-                        proxy.scrollTo(target, anchor: .top)
+                        proxy.scrollTo(target, anchor: target.anchor)
                     }
             }
         }

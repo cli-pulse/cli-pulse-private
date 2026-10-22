@@ -368,7 +368,7 @@ run_check() {
     python3 "$PREFLIGHT" --texts-only --root "$CASE" $EXTRA >"$TMP/out" 2>&1
 }
 panels() {   # panels <lang...>: the valid panels of a clean compose run, per language:
-             # five iPhone ones, four iPad ones, four Apple Watch ones and six Mac ones
+             # five iPhone ones, four iPad ones, four Apple Watch ones and seven Mac ones
     python3 - "$ROOT" "$CASE" "$@" <<'PY'
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(sys.argv[1]) / "scripts"))
@@ -514,9 +514,9 @@ python3 - "$ROOT" "$CASE" <<'PY'
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(sys.argv[1]) / "scripts"))
 import appstore_screenshots as s
-s.write_png(s.expected_composed("es", pathlib.Path(sys.argv[2]), s.MAC)[4], 1290, 2796)
+s.write_png(s.expected_composed("es", pathlib.Path(sys.argv[2]), s.MAC)[5], 1290, 2796)
 PY
-expect_fail "--require-shots with an iPhone-sized panel in a Mac set" "[es-ES] es: 05_alerts_2880x1800.png: 1290x2796, expected 2880x1800"
+expect_fail "--require-shots with an iPhone-sized panel in a Mac set" "[es-ES] es: 06_alerts_2880x1800.png: 1290x2796, expected 2880x1800"
 
 build_fixture; panels en zh-Hans zh-Hant ja ko es
 rm "$CASE/CLI Pulse Bar/screenshots/macos-composed/zh-Hant/compose.json"
@@ -591,6 +591,17 @@ expect_fail "--require-shots with another language's Mac render in place of a ra
 real_shots; rm "$MRAW/ko/03_usage_history.panel.png"
 expect_fail "--require-shots with the usage panel's raw missing" "[ko] ko: screenshots/macos-raw/ko/03_usage_history.panel.png: missing"
 
+real_shots; rm "$MRAW/ko/04_projects.panel.png"
+expect_fail "--require-shots with the provider panel's raw missing" "[ko] ko: screenshots/macos-raw/ko/04_projects.panel.png: missing"
+
+real_shots; python3 - "$MRAW/zh-Hans/render.json" <<'PY'
+import json, sys
+p = sys.argv[1]; d = json.load(open(p))
+next(s for s in d["shots"] if s["id"] == "04_projects")["panelHeight"] = 900
+json.dump(d, open(p, "w"))
+PY
+expect_fail "--require-shots with a provider panel taller than a laptop gives it" "[zh-Hans] zh-Hans: screenshots/macos-raw/zh-Hans/render.json: 04_projects: a provider panel 900 points high"
+
 real_shots; python3 - "$MRAW/ja/render.json" <<'PY'
 import json, sys
 p = sys.argv[1]; d = json.load(open(p)); d["variant"]["devidBuild"] = True
@@ -612,11 +623,11 @@ real_shots; python3 - "$CASE/CLI Pulse Bar/scripts/compose_appstore_macos_screen
 import sys, pathlib
 p = pathlib.Path(sys.argv[1])
 s = p.read_text(encoding="utf-8")
-old = '"06_pulse_cat": ("Meet Pulse Cat",'
+old = '"07_pulse_cat": ("Meet Pulse Cat",'
 assert s.count(old) == 1, "the mutation target moved; update this case"
-p.write_text(s.replace(old, '"06_pulse_cat": ("Say hello to Pulse Cat",'), encoding="utf-8")
+p.write_text(s.replace(old, '"07_pulse_cat": ("Say hello to Pulse Cat",'), encoding="utf-8")
 PY
-expect_fail "--require-shots with a Mac caption edited after the compose run" "[en-US] en: 06_pulse_cat: the caption drawn is not the compositor's COPY (edited without recomposing; run compose_appstore_macos_screenshots.py"
+expect_fail "--require-shots with a Mac caption edited after the compose run" "[en-US] en: 07_pulse_cat: the caption drawn is not the compositor's COPY (edited without recomposing; run compose_appstore_macos_screenshots.py"
 
 # And the tree CI actually checks: this checkout, where a compose.json that
 # records no captures would fail rather than skip (test_appstore_screenshots.py).

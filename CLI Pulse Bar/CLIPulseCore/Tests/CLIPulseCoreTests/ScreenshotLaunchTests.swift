@@ -80,7 +80,7 @@ final class ScreenshotLaunchTests: XCTestCase {
 
     // MARK: - Screens
 
-    func test_eachScreenOpensItsTab_andOnlyCostScrolls() {
+    func test_eachScreenOpensItsTab_andOnlyCostAndProvidersScroll() {
         XCTAssertEqual(Launch.Screen.overview.tab, .overview)
         XCTAssertEqual(Launch.Screen.cost.tab, .overview, "cost is the Overview scrolled to its Activity card, Cost Summary below")
         XCTAssertEqual(Launch.Screen.providers.tab, .providers)
@@ -88,7 +88,29 @@ final class ScreenshotLaunchTests: XCTestCase {
         XCTAssertEqual(Launch.Screen.alerts.tab, .alerts)
         for screen in Launch.Screen.allCases {
             XCTAssertTrue(screen.tab.isVisible, "\(screen) opens a tab the iPhone does not offer")
-            XCTAssertEqual(screen.scrollTarget, screen == .cost ? .activity : nil, screen.rawValue)
+            let expected: Launch.ScrollTarget? = screen == .cost ? .activity : screen == .providers ? .listEnd : nil
+            XCTAssertEqual(screen.scrollTarget, expected, screen.rawValue)
+        }
+        // The Activity card goes to the top, with room below it to get there;
+        // the Providers list's end to the bottom, above the tab bar, with none.
+        XCTAssertEqual(Launch.ScrollTarget.activity.anchor, .top)
+        XCTAssertTrue(Launch.ScrollTarget.activity.needsTailRoom)
+        XCTAssertEqual(Launch.ScrollTarget.listEnd.anchor, .bottom)
+        XCTAssertFalse(Launch.ScrollTarget.listEnd.needsTailRoom,
+                       "blank room under the list would let its end scroll up off the tab bar")
+    }
+
+    /// Each scroll target is tagged in exactly one iPhone screen, on a view
+    /// inside the scroll view that `ScrollToTarget` is attached to.
+    func test_eachScrollTargetIsTaggedInItsScreen() throws {
+        let ios = Self.appSourceRoot.appendingPathComponent("CLI Pulse Bar iOS")
+        for (target, file) in [(Launch.ScrollTarget.activity, "iOSOverviewTab.swift"),
+                               (.listEnd, "iOSProvidersTab.swift")] {
+            let source = try String(contentsOf: ios.appendingPathComponent(file), encoding: .utf8)
+            XCTAssertTrue(source.contains(".id(ScreenshotLaunch.ScrollTarget.\(target.rawValue))"),
+                          "\(file) does not tag \(target)")
+            XCTAssertTrue(source.contains(".modifier(ScreenshotLaunch.ScrollToTarget())"),
+                          "\(file) never scrolls to its target")
         }
     }
 
@@ -111,8 +133,8 @@ final class ScreenshotLaunchTests: XCTestCase {
         let active = SessionFreshnessTierClassifier.partition(demo.sessions, now: now).active
         XCTAssertTrue(active.contains { $0.id == opened.id }, "one of the Active section")
         XCTAssertEqual(opened.last_active_at, active.map(\.last_active_at).max(), "the most recently active")
-        XCTAssertEqual(opened.name, "ios-dashboard", "of Demo's three newest, the first listed, in every run")
-        XCTAssertEqual(Launch.sessionToOpen(in: Array(demo.sessions.reversed()), now: now)?.name, "provider-adapters",
+        XCTAssertEqual(opened.id, "local-48213", "of Demo's three newest, the first listed, in every run")
+        XCTAssertEqual(Launch.sessionToOpen(in: Array(demo.sessions.reversed()), now: now)?.id, "local-48977",
                        "the tie is broken by list order, not by whatever order a sort leaves equals in")
         XCTAssertTrue(opened.hasProcessHeuristicMetrics, "a process-scan row, whose figures the pane hides")
         XCTAssertEqual(opened.error_count, 0, "no production session writes errors")

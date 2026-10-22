@@ -713,8 +713,8 @@ try:
           and "01_overview_2880x1800.png" in out and out.count("(replace)") == len(ALL)
           and "(drawn by 1.54.0)" in out
           and out.count("no APP_DESKTOP set yet: --apply creates one") == 5
-          and "8 live + 6 new would exceed 10: --apply deletes 4 of the live ones first" in out
-          and "9 live + 6 new would exceed 10: --apply deletes 5 of the live ones first" in out, out)
+          and "8 live + 7 new would exceed 10: --apply deletes 5 of the live ones first" in out
+          and "9 live + 7 new would exceed 10: --apply deletes 6 of the live ones first" in out, out)
 
     # M2. the real apply
     fresh_mac_repo()
@@ -723,7 +723,7 @@ try:
     code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0")
     check("Mac apply exits 0 and verifies", code == 0 and "APPLY OK" in out and "APPLY MAC_OS 1.54.0" in out, out)
     bad = [loc for loc in ALL if mac_files(loc) != mac_want(shots.SHOT_SOURCES[loc])]
-    check("every locale's APP_DESKTOP set holds exactly the six new Mac panels, in order, with their md5",
+    check("every locale's APP_DESKTOP set holds exactly the seven new Mac panels, in order, with their md5",
           not bad, str({loc: mac_files(loc) for loc in bad})[:1500])
     check("es-ES and es-MX got the same Spanish Mac files", mac_files("es-ES") == mac_files("es-MX"))
     created = [p for m, p in FakeASC.log if (m, p) == ("POST", "/appScreenshotSets")]
@@ -734,30 +734,30 @@ try:
           ios_snapshot() == ios_before
           and not any("iset" in p or "il-" in p for _, p in FakeASC.log), str(FakeASC.log)[:800])
 
-    # M3. make room: 8 live + 6 new deletes exactly 4 first; 9 + 6 deletes 5
-    for loc, n_old, n_first in (("en-US", 8, 4), ("zh-Hans", 9, 5)):
+    # M3. make room: 8 live + 7 new deletes exactly 5 first; 9 + 7 deletes 6
+    for loc, n_old, n_first in (("en-US", 8, 5), ("zh-Hans", 9, 6)):
         fresh_mac(old={loc: n_old})
         code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0", "--locale", loc)
         first_post = next((i for i, (m, p) in enumerate(FakeASC.log) if m == "POST" and p == "/appScreenshots"),
                           10**6)
         dels = [i for i, (m, p) in enumerate(FakeASC.log) if m == "DELETE"]
-        check(f"{loc}: {n_old} live + 6 new deletes exactly {n_first} first and {n_old - n_first} after",
+        check(f"{loc}: {n_old} live + 7 new deletes exactly {n_first} first and {n_old - n_first} after",
               code == 0 and len([i for i in dels if i < first_post]) == n_first
               and len([i for i in dels if i > first_post]) == n_old - n_first
               and mac_files(loc) == mac_want(shots.SHOT_SOURCES[loc]), out)
 
     # M4. a panel the store fails, after making room: only the new ones are removed
     fresh_mac(old={"en-US": 8})
-    FakeASC.fail_processing = {"05_alerts_2880x1800.png"}
+    FakeASC.fail_processing = {"06_alerts_2880x1800.png"}
     code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0", "--locale", "en-US")
     left = mac_files("en-US")
-    check("a failure after making room removes only the new panels, and says 4 of the 8 were already gone",
-          code == 1 and len(left) == 4 and all(n.startswith("MAC_OS_APP_DESKTOP_") for n, _ in left)
-          and "4 of the live set's 8 were already deleted to make room" in out, out)
-    check("... and the room was made from the carousel's end: its first four are the ones left",
-          [n for n, _ in left] == [f"MAC_OS_APP_DESKTOP_{n:02d}.png" for n in range(4)], str(left))
+    check("a failure after making room removes only the new panels, and says 5 of the 8 were already gone",
+          code == 1 and len(left) == 3 and all(n.startswith("MAC_OS_APP_DESKTOP_") for n, _ in left)
+          and "5 of the live set's 8 were already deleted to make room" in out, out)
+    check("... and the room was made from the carousel's end: its first three are the ones left",
+          [n for n, _ in left] == [f"MAC_OS_APP_DESKTOP_{n:02d}.png" for n in range(3)], str(left))
     fresh_mac(old={"ja": 3})
-    FakeASC.fail_processing = {"05_alerts_2880x1800.png"}
+    FakeASC.fail_processing = {"06_alerts_2880x1800.png"}
     code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0", "--locale", "ja")
     check("a failure with room to spare leaves the old Mac set exactly as it was",
           code == 1 and mac_files("ja") == [(f"MAC_OS_APP_DESKTOP_{n:02d}.png", "0" * 32) for n in range(3)]
@@ -801,23 +801,32 @@ try:
     # still be the one compose.json records, and a clean store render
     def with_raws(lang: str, **over) -> None:
         raw = shots.raw_dir(lang, TMP, platform=MAC)
+        # The dashboard's panel is drawn whole (862 points here); the
+        # projects shot's provider panel is framed (612 points, scrolled 528).
+        framed = {"04_projects": (612, 528)}
         for name in shots.raw_names(MAC):
-            h = 2586 if name.endswith(".panel.png") else 3 * (551 if name == "04_cost.png" else 580)
+            if name.endswith(".panel.png"):
+                h = 3 * framed.get(name[:-len(".panel.png")], (862,))[0]
+            else:
+                h = 3 * (551 if name == "05_cost.png" else 580)
             shots.write_png(raw / name, 1560 if name.endswith(".panel.png") else 1140, h)
             (raw / name).write_bytes((raw / name).read_bytes() + name.encode())
         renders, rows = [], []
         for st in shots.stems(MAC):
-            h = 551 if st == "04_cost" else 580
+            h = 551 if st == "05_cost" else 580
             renders.append({"file": f"{st}.png", "width": 380, "height": h, "pixelWidth": 1140,
                             "pixelHeight": 3 * h, "suspectBlank": False})
             row = {"id": st, "file": f"{st}.png", "md5": shots.md5_of(raw / f"{st}.png"),
-                   "page": "lastAligned" if st == "04_cost" else "first"}
-            if st == "04_cost":
+                   "page": "lastAligned" if st == "05_cost" else "first"}
+            if st == "05_cost":
                 row["popoverHeight"] = 551
             if (raw / f"{st}.panel.png").exists():
-                renders.append({"file": f"{st}.panel.png", "width": 520, "height": 862,
-                                "pixelWidth": 1560, "pixelHeight": 2586, "suspectBlank": False})
+                ph = framed.get(st, (862,))[0]
+                renders.append({"file": f"{st}.panel.png", "width": 520, "height": ph,
+                                "pixelWidth": 1560, "pixelHeight": 3 * ph, "suspectBlank": False})
                 row.update(panelFile=f"{st}.panel.png", panelMD5=shots.md5_of(raw / f"{st}.panel.png"))
+                if st in framed:
+                    row.update(panelProvider="Codex", panelHeight=framed[st][0], panelScrolledTo=framed[st][1])
             rows.append(row)
         variant = {"devidBuild": False, "debugBuild": True, "sandboxed": False, "channel": "qa",
                    "remoteControlAvailable": False, "popoverWidth": 380, "popoverHeight": 580,

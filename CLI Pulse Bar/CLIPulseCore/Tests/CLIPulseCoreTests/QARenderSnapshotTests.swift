@@ -219,12 +219,12 @@ final class QARenderSnapshotTests: XCTestCase {
 
     // MARK: - The store set
 
-    func testTheStoreSetIsTheSixAppStoreScreensInListingOrder() {
-        // scripts/appstore_screenshots.py MAC_SCREENS names the same six, and
+    func testTheStoreSetIsTheSevenAppStoreScreensInListingOrder() {
+        // scripts/appstore_screenshots.py MAC_SCREENS names the same seven, and
         // scripts/test_appstore_screenshots.py holds the two lists together.
         XCTAssertEqual(QARenderSnapshot.storeCatalog.map(\.id), [
-            "01_overview", "02_providers", "03_usage_history",
-            "04_cost", "05_alerts", "06_pulse_cat",
+            "01_overview", "02_providers", "03_usage_history", "04_projects",
+            "05_cost", "06_alerts", "07_pulse_cat",
         ])
         XCTAssertEqual(
             QARenderSnapshot.storeCatalog.map(\.fileName),
@@ -232,14 +232,132 @@ final class QARenderSnapshotTests: XCTestCase {
         )
         XCTAssertEqual(
             QARenderSnapshot.storeCatalog.compactMap(\.panelFileName),
-            ["03_usage_history.panel.png"],
-            "only the usage-history shot carries the panel"
+            ["03_usage_history.panel.png", "04_projects.panel.png"],
+            "the usage-history and projects shots carry a panel, no other"
         )
-        let cost = QARenderSnapshot.storeCatalog[3]
+        XCTAssertEqual(QARenderSnapshot.storeCatalog.map(\.panel),
+                       [nil, nil, .usageDashboard, .provider(.codex), nil, nil, nil])
+        let projects = QARenderSnapshot.storeCatalog[3]
+        XCTAssertEqual(projects.surface, .demo(.providers),
+                       "the provider panel beside the Providers tab, whose card opens it")
+        let cost = QARenderSnapshot.storeCatalog[4]
         XCTAssertEqual(cost.surface, .demo(.overview))
         XCTAssertEqual(cost.page, .lastAligned,
                        "the cost shot is the Overview scrolled to its end, opening above a card")
-        XCTAssertEqual(QARenderSnapshot.storeCatalog.filter { $0.page != .first }.map(\.id), ["04_cost"])
+        XCTAssertEqual(QARenderSnapshot.storeCatalog.filter { $0.page != .first && $0.page != .firstClear }.map(\.id),
+                       ["05_cost"])
+        XCTAssertEqual(QARenderSnapshot.storeCatalog.filter { $0.page == .firstClear }.map(\.id),
+                       ["01_overview", "03_usage_history"],
+                       "the Overview's first page ends clear of every line: it ends inside the Cost Summary card")
+    }
+
+    // MARK: - Ending the Overview's first page clear of every line (v1.58)
+
+    /// Shaped like the 1.58 Demo Overview's first page in a 580-point
+    /// popover that shows 501 points of it: the page's background, the
+    /// Activity card, then the Cost Summary card (with its shadow) running on
+    /// under the footer, and the card's rows. In Spanish the 30-day column
+    /// takes two lines, so the "Por modelo" row (text and chevron) starts at
+    /// 497 and the edge at 501 cuts it; in English it ends at 498, above it.
+    private func overview158(byModel: QARenderSpan) -> (spans: [QARenderSpan], cards: [QARenderSpan]) {
+        let cards = [span(188, 361), span(373, 640)]
+        let rows = [span(400, 412), span(416, 440), span(452, 466), span(474, 488), byModel,
+                    span(byModel.top + 2, byModel.bottom - 2)]
+        return ([span(0, 900), span(186, 365), span(371, 646)] + cards + rows, cards)
+    }
+
+    func testTheOverviewsFirstPageEndsAboveTheRowItWouldCut() {
+        let es = overview158(byModel: span(497, 511))
+        XCTAssertEqual(QARenderSnapshot.cutByBottomEdge(501, spans: es.spans, cards: es.cards),
+                       [span(497, 511), span(499, 509)],
+                       "the row and its chevron are cut; the card, its shadow and the page run on under the edge")
+        // 501 - 497 + 4: the page ends 4 points above the row, which it no longer shows.
+        XCTAssertEqual(QARenderSnapshot.firstPageTrim(spans: es.spans, cards: es.cards, viewportHeight: 501), 8)
+        XCTAssertEqual(QARenderSnapshot.cutByBottomEdge(493, spans: es.spans, cards: es.cards), [])
+
+        let en = overview158(byModel: span(484, 498))
+        XCTAssertEqual(QARenderSnapshot.cutByBottomEdge(501, spans: en.spans, cards: en.cards), [])
+        XCTAssertEqual(QARenderSnapshot.firstPageTrim(spans: en.spans, cards: en.cards, viewportHeight: 501), 0,
+                       "a page that cuts nothing keeps the pinned popover")
+    }
+
+    func testTheFirstPageTrimMovesAboveEveryRowTheShorterEdgeWouldCut() {
+        // Two lines with a 1-point gap: moving the edge 4 points above the
+        // lower one lands it in the upper one, so the page ends above both.
+        let cards = [span(373, 640)]
+        let spans = [span(371, 646), span(373, 640), span(480, 494), span(495, 509)]
+        XCTAssertEqual(QARenderSnapshot.firstPageTrim(spans: spans, cards: cards, viewportHeight: 501), 25)
+        XCTAssertEqual(QARenderSnapshot.cutByBottomEdge(476, spans: spans, cards: cards), [])
+    }
+
+    func testNegativeControlTheBottomEdgeCheckSeesLinesNotCards() {
+        let es = overview158(byModel: span(497, 511))
+        // Without the cards, every layer that holds one counts as cut: the
+        // page's background, the card's shadow and the card itself.
+        XCTAssertEqual(QARenderSnapshot.cutByBottomEdge(501, spans: es.spans, cards: []).count, 5)
+        // A line planted across the edge of an otherwise clean page is reported.
+        let en = overview158(byModel: span(484, 498))
+        let line = span(495, 507)
+        XCTAssertEqual(QARenderSnapshot.cutByBottomEdge(501, spans: en.spans + [line], cards: en.cards), [line])
+        XCTAssertGreaterThan(
+            QARenderSnapshot.firstPageTrim(spans: en.spans + [line], cards: en.cards, viewportHeight: 501), 0)
+    }
+
+    // MARK: - Framing the provider panel (v1.58)
+
+    /// Shaped like the Codex panel opened from its Demo card at 520 points:
+    /// the panel's own backdrop over the whole content, then the chart,
+    /// totals, Projects and Sessions cards, 16 points apart, 1,140 points in
+    /// all, and the Sessions card's sort control inside it.
+    private var codexPanel158: [QARenderSpan] {
+        [span(0, 1140), span(96, 355), span(371, 516), span(532, 727), span(743, 1118), span(770, 790)]
+    }
+
+    func testTheProviderPanelOpensOnProjectsInAPanelALaptopCanHave() throws {
+        // A 876-point panel scrolled to the end opens at 264, through the chart
+        // card. Sessions, the first card it runs past, would need a 405-point
+        // panel; the lowest card above it a panel of at least 600 can open on
+        // is Projects: 532 - 4 = 528 down, 1140 - 528 = 612 tall.
+        XCTAssertEqual(QARenderSnapshot.lastPageTop(contentHeight: 1140, viewportHeight: 876), 264)
+        XCTAssertEqual(QARenderSnapshot.cutByTopEdge(264, spans: [span(96, 355)]), [span(96, 355)])
+        let frame = try XCTUnwrap(QARenderSnapshot.providerPanelFrame(cards: codexPanel158, contentHeight: 1140))
+        XCTAssertEqual(frame.card, span(532, 727))
+        XCTAssertEqual(frame.height, 612)
+        XCTAssertGreaterThanOrEqual(frame.height, QARenderSnapshot.storeProviderPanelMinHeight)
+        XCTAssertLessThanOrEqual(frame.height, QARenderSnapshot.storeProviderPanelLaptopHeight)
+        let top = QARenderSnapshot.lastPageTop(contentHeight: 1140, viewportHeight: frame.height)
+        XCTAssertEqual(top, 528)
+        XCTAssertEqual(QARenderSnapshot.panelCutByTopEdge(top, spans: codexPanel158, contentHeight: 1140), [],
+                       "the edge falls in the gap above Projects; the panel's backdrop is crossed by every edge")
+    }
+
+    func testNegativeControlTheProviderPanelEdgeCutsThroughText() {
+        // The backdrop alone is what cutByTopEdge would report at any edge;
+        // the panel's check leaves it out, and still sees a line of text.
+        XCTAssertEqual(QARenderSnapshot.cutByTopEdge(528, spans: codexPanel158), [span(0, 1140)])
+        XCTAssertEqual(QARenderSnapshot.panelCutByTopEdge(528, spans: codexPanel158, contentHeight: 1140), [])
+        let line = span(520, 535)
+        XCTAssertEqual(QARenderSnapshot.panelCutByTopEdge(528, spans: codexPanel158 + [line], contentHeight: 1140),
+                       [line], "a line of text the edge crosses is reported")
+    }
+
+    func testNegativeControlTheProviderPanelIsNotFramedOnItsOwnBackdropOrWhenItFits() {
+        // Without the backdrop filter, the backdrop (0-1140) would be the first
+        // card a laptop panel runs past; the frame must not come from it.
+        XCTAssertTrue(QARenderSnapshot.coversContent(span(0, 1140), contentHeight: 1140))
+        XCTAssertFalse(QARenderSnapshot.coversContent(span(96, 355), contentHeight: 1140))
+        XCTAssertNil(QARenderSnapshot.providerPanelFrame(cards: [span(0, 1140)], contentHeight: 1140),
+                     "the backdrop alone is no card to open on")
+        XCTAssertNil(QARenderSnapshot.providerPanelFrame(cards: [span(0, 800), span(96, 355), span(371, 780)],
+                                                         contentHeight: 800),
+                     "a panel shorter than a laptop's does not scroll, so there is nothing to frame")
+        // A panel whose Projects card would need a panel under 600 points
+        // (560 - 264 - 4 = 292 off 876) opens one card higher: on the totals
+        // card, 371 - 4 = 367 down, 1140 - 367 = 773 tall.
+        let tall = [span(96, 355), span(371, 516), span(560, 700), span(716, 1118)]
+        let frame = QARenderSnapshot.providerPanelFrame(cards: tall, contentHeight: 1140)
+        XCTAssertEqual(frame?.card, span(371, 516))
+        XCTAssertEqual(frame?.height, 773)
     }
 
     // MARK: - Framing the page scrolled to the end
@@ -341,10 +459,10 @@ final class QARenderSnapshotTests: XCTestCase {
 
     func testOnlyTheLastPetPageIsRefusedNotAnAlignedOverview() {
         let aligned = QARenderStoreShot(id: "09_x", screen: "x", surface: .demo(.overview),
-                                        page: .lastAligned, companionPanel: false)
+                                        page: .lastAligned, panel: nil)
         XCTAssertNil(QARenderSnapshot.storeSurfaceProblem(aligned))
         let pet = QARenderStoreShot(id: "09_x", screen: "x", surface: .demo(.pet),
-                                    page: .lastAligned, companionPanel: false)
+                                    page: .lastAligned, panel: nil)
         XCTAssertNotNil(QARenderSnapshot.storeSurfaceProblem(pet))
     }
 
@@ -356,8 +474,8 @@ final class QARenderSnapshotTests: XCTestCase {
 
     func testTheStoreRuleRefusesEverySurfaceThatDiffers() {
         func shot(_ surface: QARenderSurface, page: QARenderStoreShot.Page = .first,
-                  panel: Bool = false) -> QARenderStoreShot {
-            QARenderStoreShot(id: "09_x", screen: "x", surface: surface, page: page, companionPanel: panel)
+                  panel: QARenderStoreShot.Panel? = nil) -> QARenderStoreShot {
+            QARenderStoreShot(id: "09_x", screen: "x", surface: surface, page: page, panel: panel)
         }
         let refused: [QARenderStoreShot] = [
             shot(.demo(.sessions)),          // sells helper control and the terminal
@@ -373,12 +491,15 @@ final class QARenderSnapshotTests: XCTestCase {
             shot(.providerEditor(.codex)),   // QA-only banner
             shot(.usageDashboardPanel),
             shot(.demo(.pet), page: .last),  // the Debug build's test buttons
-            shot(.demo(.alerts), panel: true),
+            shot(.demo(.alerts), panel: .usageDashboard),
+            shot(.demo(.providers), panel: .usageDashboard),  // the dashboard opens from the Overview
+            shot(.demo(.overview), panel: .provider(.codex)),  // a provider's from its card
+            shot(.demo(.alerts), panel: .provider(.codex)),
         ]
         for candidate in refused {
             XCTAssertNotNil(
                 QARenderSnapshot.storeSurfaceProblem(candidate),
-                "\(candidate.surface.id) page \(candidate.page) panel \(candidate.companionPanel)"
+                "\(candidate.surface.id) page \(candidate.page) panel \(String(describing: candidate.panel))"
             )
         }
     }
@@ -469,12 +590,17 @@ final class QARenderSnapshotTests: XCTestCase {
         )
         manifest.displayLocale = "ja_JP"
         manifest.shots = [.init(
-            id: "03_usage_history", surface: "demo-overview", page: .first, pageIndex: 1,
+            id: "03_usage_history", surface: "demo-overview", page: .firstClear, pageIndex: 1,
             pageCount: 3, file: "03_usage_history.png", md5: "0123",
-            panelFile: "03_usage_history.panel.png", panelMD5: "4567"
+            panelFile: "03_usage_history.panel.png", panelMD5: "4567", popoverHeight: 572
         ), .init(
-            id: "04_cost", surface: "demo-overview", page: .lastAligned, pageIndex: 3,
-            pageCount: 3, file: "04_cost.png", md5: "89ab", popoverHeight: 551
+            id: "04_projects", surface: "demo-providers", page: .first, pageIndex: 1,
+            pageCount: 2, file: "04_projects.png", md5: "cdef",
+            panelFile: "04_projects.panel.png", panelMD5: "fedc",
+            panelProvider: "Codex", panelHeight: 612, panelScrolledTo: 528
+        ), .init(
+            id: "05_cost", surface: "demo-overview", page: .lastAligned, pageIndex: 3,
+            pageCount: 3, file: "05_cost.png", md5: "89ab", popoverHeight: 551
         )]
         let data = try manifest.encoded()
         XCTAssertEqual(try JSONDecoder().decode(QARenderManifest.self, from: data), manifest)
@@ -482,7 +608,12 @@ final class QARenderSnapshotTests: XCTestCase {
         XCTAssertTrue(text.contains("\"set\" : \"store\""), text)
         XCTAssertTrue(text.contains("\"devidBuild\" : false"), text)
         XCTAssertTrue(text.contains("\"page\" : \"lastAligned\""), text)
+        XCTAssertTrue(text.contains("\"page\" : \"firstClear\""), text)
+        XCTAssertTrue(text.contains("\"popoverHeight\" : 572"), text)
         XCTAssertTrue(text.contains("\"popoverHeight\" : 551"), text)
+        XCTAssertTrue(text.contains("\"panelHeight\" : 612"), text)
+        XCTAssertTrue(text.contains("\"panelScrolledTo\" : 528"), text)
+        XCTAssertTrue(text.contains("\"panelProvider\" : \"Codex\""), text)
         XCTAssertTrue(text.contains("\"scrollerStyle\" : \"overlay\""), text)
     }
 
@@ -842,11 +973,11 @@ final class QARenderSnapshotTests: XCTestCase {
         let strings = QARenderSnapshot.personalStrings(
             sessions: sessions, alerts: QARenderSnapshot.privacyAlertsSample(now: now), projects: projects)
         for expected in ["/Users/", "/Users/demo/Developer/cli-pulse-ios", "cli-pulse-ios", "provider-layer",
-                         "ios-dashboard", "Claude · demo-app", "sample-service", QARenderSnapshot.privacyCommandLine,
+                         "Claude · demo-app", "sample-service", QARenderSnapshot.privacyCommandLine,
                          "codex exec --cd /Users/sample/Projects/demo-app", "codex-demo-app", "demo-app"] {
             XCTAssertTrue(strings.contains(expected), expected)
         }
-        for left in ["Claude session", "claude", "unknown", "MacBook Pro", "build-box"] {
+        for left in ["Claude session", "claude", "codex", "gemini", "unknown", "local-workspace", "MacBook Pro", "build-box"] {
             XCTAssertFalse(strings.contains(left), left)
         }
         XCTAssertEqual(strings, strings.sorted())
