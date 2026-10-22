@@ -18,10 +18,10 @@
   ]
  },
  "captures": {
-  "01_overview.png": "ff046900cc105f64b480c0ef19029d12",
-  "02_providers.png": "2b64a2411f3c6b68ec2675ad8948054a",
-  "04_sessions.png": "7eb44179f59924fac4f20c8d3657bd4f",
-  "05_alerts.png": "b64a255014f15b4195960519498032d5"
+  "01_overview.png": "3d07cdbc4f4481c623bb5df11592113d",
+  "02_providers.png": "169eac05fee4a9b4e3bb3195ecd2cefd",
+  "04_sessions.png": "58e54e1c74f9490451d99de0e6758a04",
+  "05_alerts.png": "a7189454fe9be6ea2c54626a4de368c5"
  },
  "faces": {
   "subtitle": "Apple SD Gothic Neo",
@@ -29,10 +29,10 @@
  },
  "lang": "ko",
  "panels": {
-  "01_overview_2064x2752.png": "7a7108bcc4df55d0fbd5792652d06a9b",
-  "02_providers_2064x2752.png": "875d29183a84199d47543cbf1e6c98a0",
-  "04_sessions_2064x2752.png": "a8e0df8bb63ff070e4cee9f4188664ce",
-  "05_alerts_2064x2752.png": "f44ebb952623c83ff14ab3220089d632"
+  "01_overview_2064x2752.png": "4eb6ceae8919b3ca8b57da55d001ee2d",
+  "02_providers_2064x2752.png": "7dad85cb537e07313b77ce06e5af79ba",
+  "04_sessions_2064x2752.png": "3d80fb6884d0ef0985d40fb0541d4de3",
+  "05_alerts_2064x2752.png": "6d33162966d18131c5eecd444d7d756f"
  },
  "pillow": "10.4.0",
  "subtitle_pt": 70,

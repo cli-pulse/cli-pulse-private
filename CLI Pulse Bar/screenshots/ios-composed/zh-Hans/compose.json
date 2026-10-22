@@ -22,11 +22,11 @@
   ]
  },
  "captures": {
-  "01_overview.png": "ea8166ff7daf97e7834f21c4c798fa3d",
-  "02_providers.png": "5d6151ede1df99dd066610dced0ce609",
-  "03_cost.png": "bebac70e0b920270fcfa63ab1e6a9ed7",
-  "04_sessions.png": "99a3543784369999b4f53504c50dd844",
-  "05_alerts.png": "9c822d809b63e612264ba5b198f98fc0"
+  "01_overview.png": "c8cd174f38557cf6c852eab306f80681",
+  "02_providers.png": "9869cd6918ea997fb0a3fd78fbe0f63c",
+  "03_cost.png": "aeaa3f4048ca68be01758d948d391109",
+  "04_sessions.png": "a61fc3e10664b0774ecd42b0d169016f",
+  "05_alerts.png": "4131220e81483cb47250035a680af25e"
  },
  "faces": {
   "subtitle": "PingFang SC",
@@ -34,11 +34,11 @@
  },
  "lang": "zh-Hans",
  "panels": {
-  "01_overview_1290x2796.png": "8b0b47034fcd005161ec47a3ee6b321a",
-  "02_providers_1290x2796.png": "dd8480b3df24cd55f79e73aa9a3766d1",
-  "03_cost_1290x2796.png": "a2bf4eadb86059e55d489e8fe4a67e9c",
-  "04_sessions_1290x2796.png": "97b07ca8e21756adbf3aee7e5a081f0e",
-  "05_alerts_1290x2796.png": "d183b2f091bfe3802d6ea0c5f6996991"
+  "01_overview_1290x2796.png": "c5fba32abe1322c04250ad3112a9cf33",
+  "02_providers_1290x2796.png": "e3b5043033ff03f350ff51915b6f5adc",
+  "03_cost_1290x2796.png": "74c28da7bdfe6f23b5356c9b05031812",
+  "04_sessions_1290x2796.png": "08a4c72dba23041d16a357157e299273",
+  "05_alerts_1290x2796.png": "75dbe2eadb50cff79f29aacdc94f1eaf"
  },
  "subtitle_pt": 46,
  "title_pt": 100

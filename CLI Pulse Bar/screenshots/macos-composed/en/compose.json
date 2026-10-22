@@ -1,7 +1,7 @@
 {
  "app": {
-  "build": "109",
-  "version": "1.56.0"
+  "build": "111",
+  "version": "1.58.0"
  },
  "captions": {
   "01_overview": [
@@ -16,27 +16,33 @@
    "Your usage history, one click away",
    "Heatmap, streaks and top models from your local Claude and Codex history"
   ],
-  "04_cost": [
-   "Where the money goes",
-   "Today’s estimated cost by provider, plus the total for the last 30 days"
+  "04_projects": [
+   "Your projects and sessions",
+   "This Mac’s top projects and sessions, by estimated cost"
   ],
-  "05_alerts": [
+  "05_cost": [
+   "Where the money goes",
+   "Today’s estimated cost by provider, plus your top projects of the last 30 days"
+  ],
+  "06_alerts": [
    "Never miss a limit",
    "Alerts you can acknowledge, resolve or snooze"
   ],
-  "06_pulse_cat": [
+  "07_pulse_cat": [
    "Meet Pulse Cat",
    "A desktop cat whose energy and fullness follow your AI usage"
   ]
  },
  "captures": {
-  "01_overview.png": "0f8c11f892949db8f701215623764584",
-  "02_providers.png": "e88f42e72aab32d28fdb9967dbd1e891",
-  "03_usage_history.panel.png": "fa6c70e3db5784368fffc40870f08604",
-  "03_usage_history.png": "0f8c11f892949db8f701215623764584",
-  "04_cost.png": "2399e4256b9e1cae7fc573090fd4742a",
-  "05_alerts.png": "505561305e4d740b23b64c590f60f636",
-  "06_pulse_cat.png": "fdfc5094fe71502cf0c8977cc4d2a4dc"
+  "01_overview.png": "fdea46b822d3e4639f34751a26529fdd",
+  "02_providers.png": "0f471ebde2d836503dc43e0d5f850f56",
+  "03_usage_history.panel.png": "47895243e0352a2394d1a7a77db2f762",
+  "03_usage_history.png": "fdea46b822d3e4639f34751a26529fdd",
+  "04_projects.panel.png": "cd8862d08c58dbd26dd3a64a310e449d",
+  "04_projects.png": "0f471ebde2d836503dc43e0d5f850f56",
+  "05_cost.png": "a420b25806ef508eb07e7ab5d311e6e2",
+  "06_alerts.png": "88c4bfdb432760a5140359db36c37200",
+  "07_pulse_cat.png": "57c44b87f71dfb01d8ec836db2fedcfc"
  },
  "faces": {
   "subtitle": "SFNS",
@@ -44,16 +50,17 @@
  },
  "lang": "en",
  "panels": {
-  "01_overview_2880x1800.png": "68476544b0f89b3f297d10d8e1b205d7",
-  "02_providers_2880x1800.png": "070047b86b5a63b8f3b4bc38c8cc9450",
-  "03_usage_history_2880x1800.png": "a2c44ee4804130489ba1a009d83c674c",
-  "04_cost_2880x1800.png": "943e5d596d8bbc29486bc840fab507ba",
-  "05_alerts_2880x1800.png": "189245a612558057bec6c36cc3c053b7",
-  "06_pulse_cat_2880x1800.png": "2685f61b368246e57014f70a0221ce6b"
+  "01_overview_2880x1800.png": "c7641962193ad525a50a1461a08f8255",
+  "02_providers_2880x1800.png": "a20b7cc7f737f7c2b9a7bf34ed149b1e",
+  "03_usage_history_2880x1800.png": "cc6c2c9a7cfebde520b697e47236da6b",
+  "04_projects_2880x1800.png": "546b426730e750bea4ab2d68283396f0",
+  "05_cost_2880x1800.png": "371d5c35ec985cc1c9a61acb6cde9d1e",
+  "06_alerts_2880x1800.png": "1f17605270d5e50fa5d88d0533e450d8",
+  "07_pulse_cat_2880x1800.png": "fd8fc9ef102eae46a34b5c5a0cc7c162"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "432c8426a58564c4a645c73dc17ec7f3",
+ "render": "1fb6bbf3efeea2523c7bbc30f391d4ed",
  "subtitle_pt": 46,
  "title_pt": 100
 }
