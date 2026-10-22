@@ -1318,6 +1318,9 @@ public enum L10n {
         public static var manageProviders: String { tr("settings.manage_providers") }
         public static var advanced: String { tr("settings.advanced") }
         public static var hidePersonalInfo: String { tr("settings.hide_personal_info") }
+        /// The line under the switch on iPhone and iPad: what it hides there,
+        /// and what it does not (the Mac's own line is `advanced.hidePersonalInfoHelp`).
+        public static var hidePersonalInfoIPhoneHint: String { tr("settings.hide_personal_info_iphone_hint") }
         public static var forceRefresh: String { tr("settings.force_refresh") }
         public static var about: String { tr("settings.about") }
         public static var version: String { tr("settings.version") }

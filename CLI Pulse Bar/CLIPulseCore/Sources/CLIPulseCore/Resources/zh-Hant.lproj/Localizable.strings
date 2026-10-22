@@ -158,6 +158,7 @@
 "settings.manage_providers" = "管理服務商";
 "settings.advanced" = "進階";
 "settings.hide_personal_info" = "隱藏個人資訊";
+"settings.hide_personal_info_iphone_hint" = "隱藏電子郵件地址；在概覽、工作階段、警示與匯出的檔案中，也會隱藏專案資料夾的名稱與工作階段名稱。Apple Watch 也會遵循此開關。裝置名稱，以及遠端控制中的工作目錄與終端機輸出，不會隱藏。";
 "settings.force_refresh" = "強制重新整理所有資料";
 "settings.about" = "關於";
 "settings.version" = "版本";
@@ -1154,7 +1155,7 @@
 "local_scan_consent.files_title" = "工作階段日誌：最近 30 天，經你允許還可讀取最多一年份";
 "local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/ 和 ~/.config/claude/projects/。每次重新整理會讀取最近 30 天。只有在你允許時，CLI Pulse 才會另外讀取最多一年份的舊日誌，用來補齊用量歷史：先讀取一次；之後每當 CLI Pulse 的更新改變 Codex 用量的計算方式，或你登入的帳號裡有這台 Mac 先前同步、需要更正的 Codex 數字時，會再讀取一次 Codex 的日誌。它會解析其中的用量紀錄，並把結果快取在這台 Mac 上。";
 "local_scan_consent.derived_title" = "會得出什麼，以及正在執行的程式";
-"local_scan_consent.derived_detail" = "token 數、費用預估、模型名稱和日期，以及每段對話的檔案路徑、專案資料夾和工作階段 ID——「工作階段」清單就是靠這些來命名的。它也會查看正在執行的程式，以找出 AI CLI 工作階段；登入且開啟背景同步時，每個工作階段的程式名稱與專案資料夾名稱會同步到你的帳號。";
+"local_scan_consent.derived_detail" = "token 數、費用預估、模型名稱和日期，以及每段對話的檔案路徑、專案資料夾和工作階段 ID；Codex 對話還有其儲存庫位址的單向雜湊（從不保留位址本身）。「工作階段」清單靠這些來命名你的對話，「專案」靠它們依專案資料夾彙總用量（Codex 的 worktree 或臨時 clone 計入它所來自的那份儲存庫副本），「用量歷史」中的「工作階段」清單靠它們依工作階段彙總最近 30 天。它也會查看正在執行的程式，以找出 AI CLI 工作階段；登入且開啟背景同步時，每個工作階段的程式名稱與專案資料夾名稱會同步到你的帳號。";
 "local_scan_consent.network_title" = "用這台 Mac 上既有的憑證存取服務商網站";
 "local_scan_consent.network_detail" = "為了顯示即時配額，CLI Pulse 會用各家 CLI 自己存在本機的權杖去呼叫它們。更新過期的權杖會重寫那個 CLI 的憑證檔。";
 "local_scan_consent.keychain_title" = "鑰匙圈裡 Claude Code 的權杖等項目";
