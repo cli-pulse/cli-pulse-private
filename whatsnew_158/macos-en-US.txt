@@ -6,13 +6,13 @@ Usage history now lists this Mac's projects and sessions for Codex and Claude, a
 
 • Projects and sessions are worked out from this Mac's session logs, which CLI Pulse can read once you allow it in Settings › Advanced › CLI Tool Access. If it cannot read a provider's folder, Projects says so. Neither list is synced to your account.
 
-• Hide personal information (Settings › Advanced) now also hides project folder names and paths and session names: in Projects and Sessions, the Sessions tab, Alerts and their notifications, and exported CSV and PDF files. Projects read "Project 1", "Project 2" and so on, with the same number in every list. Device names are not hidden.
+• Hide personal information (Settings › Advanced) now also hides project folder names and paths and session names: in Projects and Sessions, the Sessions tab, Alerts and their notifications, and exported CSV and PDF files. Projects read "Project 1", "Project 2" and so on, with the same number in every list. Your account name, device names and the live output of managed sessions are not hidden.
 
 • In Cost, the charts on cards, in usage history and in the Usage Dashboard's Trends now draw a day with usage but no known cost as a short gray bar, and a selected day's line says "cost unknown". A model that CLI Pulse prices at $0 now reads $0.00 in All devices and in Trends, as it already did in This Mac.
 
 • Trends now covers every calendar day: a day without usage is an empty slot instead of being left out.
 
-• Where a provider card shows a quota, its source line now reads "Quota source: This Mac", "Quota source: API" or "Quota source: Cloud + this Mac", so it is no longer confused with the This Mac or All devices of the usage figures.
+• Where a provider card shows a quota, its source line now reads, for example, "Quota source: This Mac", "Quota source: API" or "Quota source: Cloud + this Mac", so it is no longer confused with the This Mac or All devices of the usage figures.
 
 • The Sessions legend now explains only the labels the list shows.
 

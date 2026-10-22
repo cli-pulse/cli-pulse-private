@@ -4,8 +4,8 @@
 
 • El Resumen, el Apple Watch y los widgets ahora cuentan una sola vez la entrada en caché de Codex, como la tarjeta de Codex. Antes la contaban dos veces, así que sus cifras de tokens de Codex eran más altas que las de la tarjeta. Las cifras de Claude ahí todavía suman sus tokens en caché, así que pueden ser más altas que las de la tarjeta de Claude.
 
-• El mosaico Sesiones del Resumen y Sesiones activas, en la barra lateral del iPad, ahora cuentan las sesiones que la pestaña Sesiones muestra en Activas. Antes contaban todas las sesiones aún marcadas como en ejecución, así que una herramienta de IA abierta en un Mac que entró en reposo se seguía contando. En «Probar demo», las sesiones ya no desaparecen al cabo de unos minutos.
+• El recuadro Sesiones del Resumen y Sesiones activas, en la barra lateral del iPad, ahora cuentan las sesiones que la pestaña Sesiones muestra en Activas. Antes contaban todas las sesiones aún marcadas como en ejecución, así que una herramienta de IA abierta en un Mac que entró en reposo se seguía contando. En «Probar demo», las sesiones ya no desaparecen al cabo de unos minutos.
 
 • La leyenda de Sesiones ahora explica solo los estados que aparecen en la lista, y el de actividad reciente ahora dice «Actividad reciente» en lugar de «Activa».
 
-• Tarjetas de proveedor: con el gráfico en Costo, un día con uso pero sin costo conocido es una barra gris corta, y al tocarlo se lee «costo desconocido». Un modelo al que CLI Pulse asigna un precio de $0 ahora muestra $0.00 en lugar de «—».
+• Tarjetas de proveedor: con el gráfico en Costo, un día con uso pero sin costo conocido se muestra como una barra gris corta, y al tocarla se lee «costo desconocido». Un modelo al que CLI Pulse asigna un precio de $0 ahora muestra $0.00 en lugar de «—».
