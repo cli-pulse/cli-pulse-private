@@ -29,7 +29,7 @@ final class HidePersonalInfoIPhoneLineTests: XCTestCase {
         XCTAssertEqual(
             L10n.settings.hidePersonalInfoIPhoneHint,
             "隐藏邮箱地址；在概览、会话、告警和导出的文件中，还会隐藏项目文件夹的名称和会话名称。"
-                + "Apple Watch 也遵循此开关。设备名称，以及远程控制中的工作目录和终端输出，不会被隐藏。")
+                + "Apple\u{00A0}Watch 也遵循此开关。设备名称，以及远程控制中的工作目录和终端输出，不会被隐藏。")
     }
 
     /// What each language says stays visible: device names and terminal
@@ -65,7 +65,10 @@ final class HidePersonalInfoIPhoneLineTests: XCTestCase {
             for place in [L10n.tab.overview, L10n.tab.sessions, L10n.tab.alerts, L10n.remote.title] {
                 XCTAssertTrue(line.contains(place), "\(language): \"\(place)\" is not named in: \(line)")
             }
-            XCTAssertTrue(line.contains("Apple Watch"), "\(language): \(line)")
+            // CJK and Korean keep the name whole with a no-break space
+            // (`MacSettingsCopyTests.test_appleWatch_isNeverSplitInCJKOrKorean`).
+            XCTAssertTrue(line.contains(["en", "es"].contains(language) ? "Apple Watch" : "Apple\u{00A0}Watch"),
+                          "\(language): \(line)")
             for phrase in Self.notHidden[language]! {
                 XCTAssertTrue(line.contains(phrase), "\(language): lost \"\(phrase)\": \(line)")
             }

@@ -158,7 +158,7 @@
 "settings.manage_providers" = "공급자 관리";
 "settings.advanced" = "고급";
 "settings.hide_personal_info" = "개인정보 숨기기";
-"settings.hide_personal_info_iphone_hint" = "이메일 주소를 숨기고, 개요·세션·알림과 내보낸 파일에서는 프로젝트 폴더의 이름과 세션 이름도 숨깁니다. Apple Watch도 이 설정을 따릅니다. 기기 이름과 원격 제어의 작업 디렉터리·터미널 출력은 숨기지 않습니다.";
+"settings.hide_personal_info_iphone_hint" = "이메일 주소를 숨기고, 개요·세션·알림과 내보낸 파일에서는 프로젝트 폴더의 이름과 세션 이름도 숨깁니다. Apple Watch도 이 설정을 따릅니다. 기기 이름과 원격 제어의 작업 디렉터리·터미널 출력은 숨기지 않습니다.";
 "settings.force_refresh" = "모든 데이터 강제 새로고침";
 "settings.about" = "정보";
 "settings.version" = "버전";
