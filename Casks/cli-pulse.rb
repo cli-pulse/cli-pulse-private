@@ -52,15 +52,26 @@ cask "cli-pulse" do
   #     container, not inside it. Unsandboxed (which is what brew installs) that
   #     is ~/Library/Preferences/group.yyh.CLI-Pulse.plist, holding provider
   #     configs, helper status and cached collector results.
+  #
+  # The LoginItem helper (yyh.CLI-Pulse.helper) is not sandboxed in this build,
+  # so its web cache, cookie file and preferences sit in the real home, beside
+  # the app's (HelperCachePurge.swift names the same places). Up to 1.56 its
+  # cache and both apps' cookie files could hold credentialed requests, which is
+  # why they are listed here and not left behind.
   zap trash: [
     "~/Library/Application Scripts/yyh.CLI-Pulse",
     "~/Library/Application Support/CLIPulse",
     "~/Library/Caches/yyh.CLI-Pulse",
+    "~/Library/Caches/yyh.CLI-Pulse.helper",
     "~/Library/Containers/yyh.CLI-Pulse",
     "~/Library/Group Containers/group.yyh.CLI-Pulse",
     "~/Library/HTTPStorages/yyh.CLI-Pulse",
+    "~/Library/HTTPStorages/yyh.CLI-Pulse.binarycookies",
+    "~/Library/HTTPStorages/yyh.CLI-Pulse.helper",
+    "~/Library/HTTPStorages/yyh.CLI-Pulse.helper.binarycookies",
     "~/Library/LaunchAgents/yyh.CLI-Pulse.helper.agent.plist",
     "~/Library/Preferences/group.yyh.CLI-Pulse.plist",
+    "~/Library/Preferences/yyh.CLI-Pulse.helper.plist",
     "~/Library/Preferences/yyh.CLI-Pulse.plist",
   ]
 end
