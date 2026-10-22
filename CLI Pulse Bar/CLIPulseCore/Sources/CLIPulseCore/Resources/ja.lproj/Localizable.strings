@@ -158,7 +158,7 @@
 "settings.manage_providers" = "プロバイダー管理";
 "settings.advanced" = "詳細";
 "settings.hide_personal_info" = "個人情報を非表示";
-"settings.hide_personal_info_iphone_hint" = "メールアドレスを表示しません。概要、セッション、アラート、書き出したファイルでは、プロジェクトフォルダの名前とセッション名も表示しません。Apple Watch もこの設定に従います。デバイス名と、リモート操作の作業ディレクトリやターミナル出力は表示されたままです。";
+"settings.hide_personal_info_iphone_hint" = "メールアドレスを表示しません。「概要」「セッション」「アラート」と書き出したファイルでは、プロジェクトフォルダの名前とセッション名も表示しません。Apple Watch はペアリングした iPhone のこの設定に従います。アカウント名、デバイス名、「リモート操作」の内容は表示されたままです。";
 "settings.force_refresh" = "すべてのデータを強制更新";
 "settings.about" = "情報";
 "settings.version" = "バージョン";

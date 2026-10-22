@@ -447,7 +447,9 @@ struct iOSSettingsTab: View {
                         // "on screen", which is not true on this device: Remote
                         // Control's New session sheet lists working directories,
                         // its terminal shows the session's output, and device
-                        // names are never masked.
+                        // names are never masked. iPad shows the same line and
+                        // cannot pair with a Watch, so it says the Watch follows
+                        // the switch on its paired iPhone.
                         Toggle(isOn: $state.hidePersonalInfo) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(L10n.settings.hidePersonalInfo)

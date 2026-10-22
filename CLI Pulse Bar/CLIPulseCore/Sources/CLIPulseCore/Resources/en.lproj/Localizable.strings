@@ -158,7 +158,7 @@
 "settings.manage_providers" = "Manage Providers";
 "settings.advanced" = "Advanced";
 "settings.hide_personal_info" = "Hide personal information";
-"settings.hide_personal_info_iphone_hint" = "Hides email addresses and, in Overview, Sessions, Alerts and exports, project folder names and session names. Apple Watch follows this switch. Not hidden: device names, and Remote Control's working directories and terminal output.";
+"settings.hide_personal_info_iphone_hint" = "Hides email addresses, plus project folder names and session names in Overview, Sessions, Alerts and exports. Apple Watch follows the switch on the iPhone it is paired with. Not hidden: your account name, device names, and anything in Remote Control.";
 "settings.force_refresh" = "Force Refresh All Data";
 "settings.about" = "About";
 "settings.version" = "Version";
@@ -1164,7 +1164,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "local_scan_consent.files_title" = "Session logs: the last 30 days, and up to a year if you allow it";
 "local_scan_consent.files_detail" = "~/.codex/sessions/, ~/.codex/archived_sessions/, ~/.claude/projects/, and ~/.config/claude/projects/. Each refresh reads the last 30 days. Only if you allow it, CLI Pulse also reads up to a year of older logs to fill in your usage history: once, and the Codex logs again whenever a CLI Pulse update changes how it counts Codex usage, or when the account you're signed in to has older Codex figures from this Mac to correct. It parses them for usage records and caches the results on this Mac.";
 "local_scan_consent.derived_title" = "What it calculates, and which programs are running";
-"local_scan_consent.derived_detail" = "Token counts, cost estimates, model names, and dates — plus each conversation's file path, project folder, and session ID, and for a Codex conversation a one-way hash of its repository's address (never the address itself). That is how the Sessions list can name your conversations, how Projects adds up usage by project folder (a Codex worktree or temporary clone counts toward the checkout it came from), and how the Sessions list in Usage history adds up the last 30 days by session. It also checks which programs are running, to spot AI CLI sessions; while you are signed in and background sync is on, each one's program name and project folder name sync to your account.";
+"local_scan_consent.derived_detail" = "Token counts, cost estimates, model names, and dates — plus each conversation's file path, project folder, and session ID, and for a Codex conversation a one-way hash of its repository's address (the address itself is never kept). That is how the Sessions list can name your conversations, how Projects adds up usage by project folder (a Codex worktree or temporary clone counts toward the checkout it came from), and how the Sessions list in Usage history adds up the last 30 days by session. It also checks which programs are running, to spot AI CLI sessions; while you are signed in and background sync is on, each one's program name and project folder name sync to your account.";
 "local_scan_consent.network_title" = "Provider websites, using credentials already on this Mac";
 "local_scan_consent.network_detail" = "For live quota, CLI Pulse calls the providers you use with the tokens their own CLIs stored here. Renewing an expired token rewrites that CLI's credential file.";
 "local_scan_consent.keychain_title" = "Your keychain, for Claude Code's token and a few others";
