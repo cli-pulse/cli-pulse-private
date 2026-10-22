@@ -123,12 +123,17 @@
 --    Expect three rows, each args `p_user_today date`, prosecdef = true,
 --    rule = false (v0.44 / v0.72 in place, this not yet), anon = false and
 --    authenticated = true (v0.44's and v0.72's grants), and body_md5 exactly
---    this repo's v0.44 and v0.72 bodies (CI computes these from the files and
---    fails when they go stale):
+--    the bodies production runs, as measured there on 2026-10-22 (CI computes
+--    these from the files and fails when they go stale):
 --
---      v0.44  dashboard_summary         4a58c930294e5e315e1ac36be859d670
+--      v0.44  dashboard_summary         afd6f78d41dc740cda0880183324447f
 --      v0.72  provider_account_summary  9ee3b5ed4ea4d9471fec611686d4020e
---      v0.44  provider_summary          9399a6a7d63d86b2b96d8255b61403ef
+--      v0.44  provider_summary          6854ffde714ea2709e855463b6190bdf
+--
+--    The two v0.44 values are not the file's own: production runs
+--    migrate_v0.44's bodies without their whole-line `--` comments (3 lines
+--    in dashboard_summary, 15 in provider_summary) and otherwise byte for
+--    byte the same, so the logic is identical.
 --
 --    If any body_md5 differs, STOP. Production runs a body this repo does not
 --    have, and v0.86 replaces whole bodies, so that difference would be lost
@@ -193,9 +198,12 @@
 --    Overview's Codex row equals the Codex card's Today (I/O).
 --
 -- ROLLBACK: apply the definitions saved in step 0. When step 0's body_md5
--- values were the three listed there (this repo's v0.44 and v0.72 bodies),
--- applying `rollback_v0.86.sql` does the same; CI applies it after this file
--- and checks the three bodies are v0.44's and v0.72's again. Otherwise use
+-- values were the three listed there, applying `rollback_v0.86.sql` gives
+-- the same logic: it puts back v0.44's and v0.72's bodies as the files have
+-- them, whole-line comments included, so dashboard_summary's and
+-- provider_summary's md5 then differ from step 0's by those lines only. CI
+-- applies it after this file and checks both: the bodies are the files',
+-- and without their whole-line comments they are step 0's. Otherwise use
 -- only the saved definitions. Nothing to restore in any table.
 -- ============================================================
 
