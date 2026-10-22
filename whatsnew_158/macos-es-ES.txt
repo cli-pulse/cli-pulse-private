@@ -1,0 +1,21 @@
+El historial de uso ahora muestra los proyectos y las sesiones de Codex y Claude en este Mac, y Proyectos principales, en el Resumen, muestra los proyectos principales de este Mac.
+
+• Proyectos: haz clic en el gráfico de la tarjeta de Codex o de Claude para abrir su historial de uso, que ahora muestra los cinco proyectos principales de este Mac en los últimos 30 días, ordenados por costo estimado y con sus tokens. Proyectos principales, en el Resumen, muestra los cinco principales de Codex y Claude juntos. Un proyecto es la carpeta en la que se ejecutaron sus sesiones; pasa el puntero sobre un nombre para ver su ruta.
+
+• Sesiones: debajo de Proyectos, el historial de uso muestra las sesiones de este Mac de los últimos 30 días, una fila por sesión con sus subagentes incluidos: su proyecto, su modelo, sus tokens, su costo estimado y su última actividad. Ordénalas por Costo o por «Más recientes». La lista muestra primero cinco, y puedes mostrar hasta 20 más cada vez.
+
+• Los proyectos y las sesiones se calculan a partir de los registros de sesión de este Mac, que CLI Pulse puede leer en cuanto lo permitas en Ajustes › Avanzado › Acceso a herramientas CLI. Si no puede leer la carpeta de un proveedor, Proyectos lo indica. Ninguna de las dos listas se sincroniza con tu cuenta.
+
+• «Ocultar información personal» (Ajustes › Avanzado) ahora también oculta los nombres y las rutas de las carpetas de proyecto y los nombres de las sesiones: en Proyectos y Sesiones, la pestaña Sesiones, Alertas y sus notificaciones, y los archivos CSV y PDF exportados. Los proyectos aparecen como «Proyecto 1», «Proyecto 2», etc., con el mismo número en todas las listas. Siguen visibles el nombre de tu cuenta, los nombres de los dispositivos y la salida en vivo de las sesiones gestionadas.
+
+• En Costo, los gráficos de las tarjetas, del historial de uso y de Tendencias en el Panel de uso ahora muestran un día con uso pero sin costo conocido como una barra gris corta, y al seleccionar ese día se lee «costo desconocido». Un modelo al que CLI Pulse asigna un precio de $0 ahora muestra $0.00 también en «Todos los dispositivos» y en Tendencias, como ya hacía en «Este Mac».
+
+• Tendencias ahora abarca todos los días del calendario: un día sin uso queda como un hueco vacío en lugar de omitirse.
+
+• En una tarjeta de proveedor que muestra una cuota, la línea de origen ahora dice, por ejemplo, «Fuente de la cuota: Este Mac», «Fuente de la cuota: API» o «Fuente de la cuota: Nube + este Mac», para que no se confunda con «Este Mac» o «Todos los dispositivos» de las cifras de uso.
+
+• La tarjeta de Claude con los mensajes de este Mac ahora mantiene su gráfico junto a las cifras siempre que cabe: cuando hace falta, la unidad va debajo de cada número para dejarle sitio.
+
+• La leyenda de Sesiones ahora explica solo los estados que aparecen en la lista, y el de actividad reciente ahora dice «Actividad reciente» en lugar de «Activa».
+
+• Integraciones: el «Filtro de eventos» del webhook ahora muestra el filtro guardado en tu cuenta, y puedes vaciarlo para que se envíen todas las alertas. Se puede cambiar una vez cargado el filtro guardado. Un filtro guardado con «Sesión larga», que ya no se genera, muestra ese tipo hasta que lo desmarques.

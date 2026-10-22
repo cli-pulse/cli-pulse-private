@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **CLI Pulse**
-**Last Updated: October 15, 2026**
+**Last Updated: October 22, 2026**
 
 CLI Pulse is a developer tool for monitoring usage, quotas, and cost across AI
 coding providers (Claude, Codex, Gemini, OpenRouter, and others). Our privacy
@@ -17,7 +17,7 @@ This document is the single source of truth for what we collect. If you find
 anything in the app, App Store listing, or GitHub README that contradicts this
 file, **the file wins** — please open an issue.
 
-It describes CLI Pulse 1.57.
+It describes CLI Pulse 1.58.
 
 ---
 
@@ -70,7 +70,7 @@ pass through our servers.
 | **Daily usage** (per day, provider and model: input, cached and output token counts and a cost estimate; which of your Macs it came from, once that Mac is paired) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So iPhone and Apple Watch show the same history as your Mac |
 | **Provider quota state** (remaining, limit, plan, reset times; the label you gave the account, if any; which Mac reported it) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So mobile clients display current quotas without running the scanner themselves |
 | **AI CLI sessions running on your Mac** (the program's name; the name of its project folder, never the full path; a keyed hash of that folder's path; when it started and was last active; an activity estimate based on how long it has run and its CPU use) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in and this Mac is paired | So iPhone and Apple Watch can show what is running on your Mac. The App Store build's sandbox usually hides other programs from it, and then it has none to send. The Companion CLI sends more; see its section |
-| **Alerts**: your Mac or a program using a lot of CPU, or a session running a long time (with that program's name, provider and folder name), budget alerts our server works out from your daily usage, and whether you resolved or snoozed each one | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So your other devices can show them |
+| **Alerts**: your Mac or a program using a lot of CPU (with that program's name, provider and folder name; CLI Pulse 1.56 and earlier also raised one for a session running a long time), budget alerts our server works out from your daily usage, and whether you resolved or snoozed each one | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So your other devices can show them |
 | **Your alert webhook**, if you add one: the address, and which alerts go to it | Supabase, linked to your CLI Pulse account | ✅ Yes | Our server posts each matching alert (its title, message, type, severity and provider) to that address |
 | **Settings kept with your account** (such as alert thresholds and budget, and whether Yield Score and remote control are on) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So every device uses the same settings |
 | **This Mac's helper readings**: CPU and memory load, how many AI CLI sessions are running, whether each installed AI CLI is signed in with a subscription or an API key (where the built-in agent or the Companion CLI can tell), and whether each provider's check worked (ok / no data / error) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in and this Mac is paired | Load and session count show on your other devices. The rest are diagnostics for us, such as why a provider shows nothing |
