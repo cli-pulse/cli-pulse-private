@@ -158,6 +158,7 @@
 "settings.manage_providers" = "공급자 관리";
 "settings.advanced" = "고급";
 "settings.hide_personal_info" = "개인정보 숨기기";
+"settings.hide_personal_info_iphone_hint" = "이메일 주소를 숨기고, '개요'·'세션'·'알림'과 내보낸 파일에서는 프로젝트 폴더의 이름과 세션 이름도 숨깁니다. Apple Watch는 페어링된 iPhone의 이 설정을 따릅니다. 계정 이름, 기기 이름, '원격 제어'의 내용은 숨기지 않습니다.";
 "settings.force_refresh" = "모든 데이터 강제 새로고침";
 "settings.about" = "정보";
 "settings.version" = "버전";
@@ -1083,7 +1084,7 @@
 "local_scan_consent.files_title" = "세션 로그: 최근 30일, 그리고 허용하면 최대 1년 치";
 "local_scan_consent.files_detail" = "~/.codex/sessions/, ~/.codex/archived_sessions/, ~/.claude/projects/, ~/.config/claude/projects/. 새로고침할 때마다 최근 30일 치를 읽습니다. 허용한 경우에만, 사용 기록을 채우기 위해 최대 1년 치의 이전 로그도 읽습니다. 한 번만 읽지만, CLI Pulse 업데이트로 Codex 사용량을 세는 방식이 바뀌거나 로그인한 계정에서 이 Mac이 전에 동기화한 Codex 수치를 바로잡아야 할 때는 Codex 로그를 다시 읽습니다. CLI Pulse는 여기서 사용량 기록을 읽고 결과를 이 Mac에 캐시합니다.";
 "local_scan_consent.derived_title" = "알아내는 정보와 실행 중인 프로그램";
-"local_scan_consent.derived_detail" = "토큰 수, 비용 추정치, 모델 이름, 날짜. 그리고 각 대화의 파일 경로, 프로젝트 폴더, 세션 ID — 세션 목록에 이름이 붙는 건 이것 덕분입니다. 또한 AI CLI 세션을 찾기 위해 실행 중인 프로그램을 확인하며, 로그인되어 있고 백그라운드 동기화가 켜져 있으면 각 세션의 프로그램 이름과 프로젝트 폴더 이름이 계정에 동기화됩니다.";
+"local_scan_consent.derived_detail" = "토큰 수, 비용 추정치, 모델 이름, 날짜. 그리고 각 대화의 파일 경로, 프로젝트 폴더, 세션 ID와, Codex 대화라면 저장소 주소의 단방향 해시(주소 자체는 보관하지 않음). 이 정보로 세션 목록이 대화에 이름을 붙이고, '프로젝트'가 프로젝트 폴더별로 사용량을 합산하며(Codex 워크트리나 임시 클론은 원래 체크아웃으로 셉니다), '사용 기록'의 세션 목록이 최근 30일을 세션별로 합산합니다. 또한 AI CLI 세션을 찾기 위해 실행 중인 프로그램을 확인하며, 로그인되어 있고 백그라운드 동기화가 켜져 있으면 각 세션의 프로그램 이름과 프로젝트 폴더 이름이 계정에 동기화됩니다.";
 "local_scan_consent.network_title" = "이 Mac에 이미 있는 자격 증명으로 공급자에 연결";
 "local_scan_consent.network_detail" = "실시간 할당량을 보여주기 위해 각 CLI가 이 Mac에 저장해 둔 토큰으로 해당 공급자를 호출합니다. 만료된 토큰을 갱신하면 그 CLI의 자격 증명 파일이 다시 쓰입니다.";
 "local_scan_consent.keychain_title" = "키체인에 있는 Claude Code 토큰 등";

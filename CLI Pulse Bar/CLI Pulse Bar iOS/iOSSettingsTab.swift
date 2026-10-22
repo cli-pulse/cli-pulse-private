@@ -442,7 +442,22 @@ struct iOSSettingsTab: View {
 
                     // Advanced
                     Section(L10n.settings.advanced) {
-                        Toggle(L10n.settings.hidePersonalInfo, isOn: $state.hidePersonalInfo)
+                        // v1.58: the line says what the switch hides HERE. The
+                        // Mac's line (`advanced.hide_personal_info_help`) says
+                        // "on screen", which is not true on this device: Remote
+                        // Control's New session sheet lists working directories,
+                        // its terminal shows the session's output, and device
+                        // names are never masked. iPad shows the same line and
+                        // cannot pair with a Watch, so it says the Watch follows
+                        // the switch on its paired iPhone.
+                        Toggle(isOn: $state.hidePersonalInfo) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L10n.settings.hidePersonalInfo)
+                                Text(L10n.settings.hidePersonalInfoIPhoneHint)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
 
                         Button {
                             state.requestRefresh()

@@ -158,6 +158,7 @@
 "settings.manage_providers" = "プロバイダー管理";
 "settings.advanced" = "詳細";
 "settings.hide_personal_info" = "個人情報を非表示";
+"settings.hide_personal_info_iphone_hint" = "メールアドレスを表示しません。「概要」「セッション」「アラート」と書き出したファイルでは、プロジェクトフォルダの名前とセッション名も表示しません。Apple Watch はペアリングした iPhone のこの設定に従います。アカウント名、デバイス名、「リモート操作」の内容は表示されたままです。";
 "settings.force_refresh" = "すべてのデータを強制更新";
 "settings.about" = "情報";
 "settings.version" = "バージョン";
@@ -1167,7 +1168,7 @@
 "local_scan_consent.files_title" = "セッションログ：直近 30 日分と、許可した場合は最大 1 年分";
 "local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/、~/.config/claude/projects/。更新のたびに直近 30 日分を読み取ります。許可した場合に限り、使用履歴を補完するため、最大 1 年分の古いログも読み取ります。読み取りは一度だけですが、CLI Pulse のアップデートで Codex の使用量の数え方が変わったときや、サインイン中のアカウントで、この Mac が以前同期した Codex の数値を修正する必要があるときは、Codex のログをもう一度読み取ります。CLI Pulse はこれらから使用量の記録を読み取り、結果をこの Mac にキャッシュします。";
 "local_scan_consent.derived_title" = "割り出すものと、実行中のプログラム";
-"local_scan_consent.derived_detail" = "トークン数、推定コスト、モデル名、日付。さらに、セッション一覧に名前を表示するため、各会話のファイルパス、プロジェクトフォルダ、セッション ID も使います。また、AI CLI セッションを見つけるために実行中のプログラムを確認します。サインイン中でバックグラウンド同期がオンのときは、各セッションのプログラム名とプロジェクトフォルダ名がアカウントに同期されます。";
+"local_scan_consent.derived_detail" = "トークン数、推定コスト、モデル名、日付。さらに、各会話のファイルパス、プロジェクトフォルダ、セッション ID と、Codex の会話ではリポジトリのアドレスの一方向ハッシュ（アドレスそのものは保持しません）も使います。これらで、セッション一覧に会話の名前を表示し、「プロジェクト」でプロジェクトフォルダごとに使用量を集計し（Codex のワークツリーや一時的なクローンは元のチェックアウトに数えます）、「使用履歴」の「セッション」で過去 30 日をセッションごとに集計します。また、AI CLI セッションを見つけるために実行中のプログラムを確認します。サインイン中でバックグラウンド同期がオンのときは、各セッションのプログラム名とプロジェクトフォルダ名がアカウントに同期されます。";
 "local_scan_consent.network_title" = "この Mac にすでにある認証情報でのプロバイダーへの接続";
 "local_scan_consent.network_detail" = "リアルタイムの残量を表示するため、各 CLI がこの Mac に保存したトークンを使ってプロバイダーに問い合わせます。期限が切れたトークンを CLI Pulse が更新すると、その CLI の認証ファイルが書き換わります。";
 "local_scan_consent.keychain_title" = "キーチェーン内の Claude Code のトークンなど";

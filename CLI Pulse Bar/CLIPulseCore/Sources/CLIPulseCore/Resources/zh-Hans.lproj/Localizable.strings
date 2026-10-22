@@ -158,6 +158,7 @@
 "settings.manage_providers" = "管理服务商";
 "settings.advanced" = "高级";
 "settings.hide_personal_info" = "隐藏个人信息";
+"settings.hide_personal_info_iphone_hint" = "隐藏邮箱地址；在「概览」「会话」「告警」和导出的文件中，还会隐藏项目文件夹的名称和会话名称。Apple Watch 遵循与其配对的 iPhone 上的此开关。账户名称、设备名称，以及「远程控制」中的任何内容，都不会被隐藏。";
 "settings.force_refresh" = "强制刷新所有数据";
 "settings.about" = "关于";
 "settings.version" = "版本";
@@ -1154,7 +1155,7 @@
 "local_scan_consent.files_title" = "会话日志：最近 30 天，经你允许还可读取最多一年";
 "local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/ 和 ~/.config/claude/projects/。每次刷新都会读取最近 30 天的日志。只有在你允许时，CLI Pulse 才会额外读取最多一年的旧日志，用来补全用量历史：先读取一次；之后每当 CLI Pulse 的更新改变 Codex 用量的计算方式，或你登录的账户里有这台 Mac 以前同步、需要更正的 Codex 数字时，会再读取一次 Codex 的日志。它会解析其中的用量记录，并把结果缓存在这台 Mac 上。";
 "local_scan_consent.derived_title" = "会提取哪些信息，以及哪些程序正在运行";
-"local_scan_consent.derived_detail" = "token 数、费用预估、模型名称和日期，以及每次会话的文件路径、项目文件夹和会话 ID——「会话」列表就是靠这些来命名的。它还会查看正在运行的程序，以发现 AI CLI 会话；登录且开启后台同步时，每个会话的程序名和项目文件夹名会同步到你的账户。";
+"local_scan_consent.derived_detail" = "token 数、费用预估、模型名称和日期，以及每次会话的文件路径、项目文件夹和会话 ID；Codex 会话还有其仓库地址的单向哈希（从不保留地址本身）。「会话」列表靠这些来命名你的会话，「项目」靠它们按项目文件夹汇总用量（Codex 的 worktree 或临时 clone 计入它所来自的那份仓库副本），「用量历史」中的「会话」列表靠它们按会话汇总最近 30 天。它还会查看正在运行的程序，以发现 AI CLI 会话；登录且开启后台同步时，每个会话的程序名和项目文件夹名会同步到你的账户。";
 "local_scan_consent.network_title" = "用这台 Mac 上已有的凭据访问服务商";
 "local_scan_consent.network_detail" = "为显示实时配额，CLI Pulse 会用各 CLI 存在本机的令牌访问对应服务商；令牌过期时，续期会改写该 CLI 的凭据文件。";
 "local_scan_consent.keychain_title" = "钥匙串里 Claude Code 的令牌等";
