@@ -50,8 +50,14 @@ jobs:
   ruff:
     name: ruff (repo-wide)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 55
     steps:
+      # POSITIVE CONTROL (throwaway, never merge): Python Lint passes only
+      # after the old 40-min CI Gate cap; the gate must wait and go green.
+      - name: "NC: wait 45 min, then carry on"
+        run: |
+          echo "Control for CI Gate: Python Lint finishes at ~45 min, past the old 40-min cap."
+          sleep 2700
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
 
       - name: Set up Python
