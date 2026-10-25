@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **CLI Pulse**
-**Last Updated: October 22, 2026**
+**Last Updated: October 26, 2026**
 
 CLI Pulse is a developer tool for monitoring usage, quotas, and cost across AI
 coding providers (Claude, Codex, Gemini, OpenRouter, and others). Our privacy
@@ -659,11 +659,12 @@ exchange for anything — the App Store forbids it and so do we.
   `daily_usage_metrics`, `yield_score_daily`). 18 months is long enough to
   support year-over-year cost comparisons with one month of buffer; beyond that
   the historical detail adds no product value and we'd rather delete it.
-- **Ended AI CLI sessions, alerts, and device snapshots** are deleted by a
-  nightly job once they are older than your account's retention setting: 7
-  days, unless an earlier version of the app changed it. The current apps offer
-  no way to change it. (Earlier versions of this document pointed to a setting
-  in Settings → Privacy that does not exist.)
+- **Ended AI CLI sessions and alerts** are deleted by a nightly job once they
+  are older than your account's retention setting: 7 days, unless an earlier
+  version of the app changed it. A session still marked as running is deleted
+  too once nothing has updated it for that long. The current apps offer no way
+  to change the setting. (Earlier versions of this document pointed to a
+  setting in Settings → Privacy that does not exist.)
 - **Account deletion** removes all associated rows within 30 days
   (cascading deletes handled at the database level).
 - **Anonymous install rows** are deleted 400 days after they were last

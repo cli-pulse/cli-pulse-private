@@ -14,6 +14,9 @@
 -- See migrate_v0.42_user_tz_today.sql for the bug write-up.
 -- v0.86: today_usage counts each token once (migrate_v0.86 header): Codex's
 -- input already includes its cached input.
+-- v0.87: active_sessions counts 'Running' rows active in the last 300 s and
+-- online_devices 'Online' devices seen in the last 1800 s (migrate_v0.87
+-- header, THE TWO WINDOWS): rows nothing has rewritten no longer count.
 create or replace function public.dashboard_summary(
   p_user_today date default null
 )
@@ -56,10 +59,12 @@ begin
     'active_sessions', (
       select count(*) from public.sessions
       where user_id = v_user_id and status = 'Running'
+        and last_active_at >= now() - interval '300 seconds' -- v0.87 fresh rows only
     ),
     'online_devices', (
       select count(*) from public.devices
       where user_id = v_user_id and status = 'Online'
+        and last_seen_at >= now() - interval '1800 seconds' -- v0.87 fresh rows only
     ),
     'unresolved_alerts', (
       select count(*) from public.alerts
@@ -1306,69 +1311,100 @@ begin
 end;
 $$ language plpgsql security definer set search_path = pg_catalog, public, extensions;
 
--- cleanup_expired_data: delete sessions/alerts/snapshots older than retention period
--- Restricted to service_role only (pg_cron or admin). Not callable by regular users.
-create or replace function public.cleanup_expired_data()
+-- _cleanup_expired_data_internal: the nightly retention cleanup that pg_cron
+-- job `cleanup_expired_data_nightly` runs (migrate_v0.21 schedules it at
+-- 03:07 UTC). Deletes, per account, sessions and alerts older than
+-- user_settings.data_retention_days, and pairing attempts older than an hour;
+-- one DELETE per table on its own savepoint (migrate_v0.87 header). No JWT
+-- gate: only postgres (pg_cron) and service_role can execute it.
+create or replace function public._cleanup_expired_data_internal()
 returns jsonb as $$
 declare
-  v_user record;
-  v_total_sessions integer := 0;
-  v_total_alerts integer := 0;
-  v_total_snapshots integer := 0;
-  v_deleted integer;
+  v_sessions integer := 0;
+  v_running integer := 0;
+  v_alerts integer := 0;
+  v_pairing integer := 0;
+  v_failed text[] := '{}';
 begin
-  -- Only allow service_role (pg_cron, admin dashboard) — block regular users
-  if current_setting('request.jwt.claims', true)::jsonb ->> 'role' != 'service_role' then
-    raise exception 'Forbidden: service_role required';
+  -- v0.87 one delete per table, each on its own savepoint (BEGIN ... EXCEPTION).
+
+  -- Sessions whose last activity is older than the account's retention,
+  -- whatever their status: a live producer rewrites its rows on every sync.
+  begin
+    with gone as (
+      delete from public.sessions s
+       using public.user_settings us
+       where us.user_id = s.user_id
+         and us.data_retention_days > 0
+         and s.last_active_at < now() - make_interval(days => us.data_retention_days)
+      returning s.status
+    )
+    select count(*), count(*) filter (where status = 'Running')
+      into v_sessions, v_running
+      from gone;
+  exception when others then
+    v_failed := v_failed || 'sessions'::text;
+    raise warning '_cleanup_expired_data_internal: sessions not cleaned: % (SQLSTATE %)', sqlerrm, sqlstate;
+  end;
+
+  -- Alerts older than the account's retention, resolved or not.
+  begin
+    delete from public.alerts a
+     using public.user_settings us
+     where us.user_id = a.user_id
+       and us.data_retention_days > 0
+       and a.created_at < now() - make_interval(days => us.data_retention_days);
+    get diagnostics v_alerts = row_count;
+  exception when others then
+    v_failed := v_failed || 'alerts'::text;
+    raise warning '_cleanup_expired_data_internal: alerts not cleaned: % (SQLSTATE %)', sqlerrm, sqlstate;
+  end;
+
+  -- Pairing attempts older than register_helper's one-hour window.
+  begin
+    delete from public.pairing_attempt_log
+     where attempted_at < now() - interval '1 hour';
+    get diagnostics v_pairing = row_count;
+  exception when others then
+    v_failed := v_failed || 'pairing_attempt_log'::text;
+    raise warning '_cleanup_expired_data_internal: pairing_attempt_log not cleaned: % (SQLSTATE %)', sqlerrm, sqlstate;
+  end;
+
+  if cardinality(v_failed) > 0 then
+    raise warning '_cleanup_expired_data_internal: % of 3 tables failed: %',
+      cardinality(v_failed), array_to_string(v_failed, ', ');
   end if;
 
-  for v_user in
-    select us.user_id, us.data_retention_days
-    from public.user_settings us
-    where us.data_retention_days > 0
-  loop
-    -- Wrap per-user cleanup in a savepoint so one user's failure
-    -- does not abort cleanup for all remaining users.
-    begin
-      -- Clean sessions
-      delete from public.sessions
-      where user_id = v_user.user_id
-        and status = 'Ended'
-        and last_active_at < now() - (v_user.data_retention_days || ' days')::interval;
-      get diagnostics v_deleted = row_count;
-      v_total_sessions := v_total_sessions + v_deleted;
-
-      -- Clean resolved alerts
-      delete from public.alerts
-      where user_id = v_user.user_id
-        and is_resolved = true
-        and created_at < now() - (v_user.data_retention_days || ' days')::interval;
-      get diagnostics v_deleted = row_count;
-      v_total_alerts := v_total_alerts + v_deleted;
-
-      -- Clean usage snapshots
-      delete from public.usage_snapshots
-      where user_id = v_user.user_id
-        and recorded_at < now() - (v_user.data_retention_days || ' days')::interval;
-      get diagnostics v_deleted = row_count;
-      v_total_snapshots := v_total_snapshots + v_deleted;
-
-      -- Clean stale provider quotas (not updated in retention period)
-      delete from public.provider_quotas
-      where user_id = v_user.user_id
-        and updated_at < now() - (v_user.data_retention_days || ' days')::interval;
-    exception when others then
-      raise notice 'cleanup_expired_data: failed for user %, skipping: %', v_user.user_id, sqlerrm;
-    end;
-  end loop;
-
   return jsonb_build_object(
-    'sessions_deleted', v_total_sessions,
-    'alerts_deleted', v_total_alerts,
-    'snapshots_deleted', v_total_snapshots
+    'sessions_deleted', v_sessions,
+    'running_sessions_deleted', v_running,
+    'alerts_deleted', v_alerts,
+    'pairing_attempt_log_deleted', v_pairing,
+    'errors', cardinality(v_failed),
+    'failed', to_jsonb(v_failed)
   );
 end;
 $$ language plpgsql security definer set search_path = pg_catalog, public, extensions;
+
+revoke all on function public._cleanup_expired_data_internal() from public, anon, authenticated;
+
+-- cleanup_expired_data: the same cleanup for an operator's call over HTTP,
+-- service_role only. The body is the one production runs (migrate_v0.22),
+-- byte for byte; v0.87's suite checks its md5 against production's.
+create or replace function public.cleanup_expired_data()
+returns jsonb as $$
+BEGIN
+  IF coalesce(
+       current_setting('request.jwt.claims', true)::jsonb ->> 'role',
+       ''
+     ) != 'service_role' THEN
+    RAISE EXCEPTION 'Forbidden: service_role required';
+  END IF;
+  RETURN public._cleanup_expired_data_internal();
+END;
+$$ language plpgsql security definer set search_path = pg_catalog, public, extensions;
+
+revoke all on function public.cleanup_expired_data() from public, anon, authenticated;
 
 -- evaluate_budget_alerts: check project costs against budget thresholds
 -- Creates alerts for projects exceeding budget, with suppression to prevent spam.
