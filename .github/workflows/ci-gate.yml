@@ -34,13 +34,34 @@ permissions:
 jobs:
   gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Must stay above WAIT_MINUTES below plus the 90 s settle and one poll, so
+    # that a slow day ends in the script's own message (which names the
+    # workflows still unfinished), not in a bare job kill.
+    timeout-minutes: 160
     steps:
       - name: Wait for + require the real gate workflows
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # How long to wait for the gate workflows before giving up.
+          #
+          # Swift CI sets this, and its time is almost all macOS *queue*, not
+          # work: its jobs run 1–12 min each, but every open PR shares the
+          # account's 5 concurrent macOS runners, and on busy days a job waits
+          # 50–90 min for one. Of the 84 Swift CI pull_request runs that
+          # completed between 2026-10-06 and 2026-10-22, 22 took longer than
+          # the old 40-min cap, 5 longer than 80 min, and the longest 101 min;
+          # 17 of the 100 CI Gate runs in that window timed out on runs that
+          # later passed, and each had to be re-run by hand. 150 min clears the
+          # longest by about half again.
+          #
+          # Waiting longer never lets a failure through. The gate still goes
+          # red the moment any gate workflow concludes anything other than
+          # success/skipped/neutral, a failed API call is retried rather than
+          # read as a pass, and a workflow that is still unfinished at the
+          # deadline still fails the gate.
+          WAIT_MINUTES: "150"
         run: |
           set -euo pipefail
 
@@ -56,19 +77,45 @@ jobs:
           # of the path-filtered workflows below.
           GATES=("Repo Hygiene" "Swift CI" "Android CI" "Helper CI" "Supabase CI" "Python Lint")
 
+          START=$(date +%s)
+          DEADLINE=$(( START + WAIT_MINUTES * 60 ))
+
+          # Fail if the deadline has passed, naming what is still unfinished;
+          # otherwise sleep until the next poll. Most PRs are decided in the
+          # first 10 minutes, so poll briskly there and slowly after: at the
+          # old 20 s a 150-min wait would make ~450 API calls per PR, and every
+          # workflow in this repository shares the GITHUB_TOKEN's documented
+          # 1,000 requests/hour.
+          give_up_or_sleep() {
+            if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+              list=$(printf '%s, ' "$@")
+              echo "::error::Timed out after ${WAIT_MINUTES}m; still unfinished: ${list%, }. Re-run this job once they complete."
+              exit 1
+            fi
+            if [ $(( $(date +%s) - START )) -lt 600 ]; then sleep 30; else sleep 60; fi
+          }
+
           # Give GitHub time to create the path-triggered runs for this SHA so
           # we don't race and call a still-uncreated run "N/A".
           echo "Settling 90s to let triggered workflow runs register for $HEAD_SHA ..."
           sleep 90
 
-          DEADLINE=$(( $(date +%s) + 2400 ))   # 40 min hard cap
-
           while :; do
-            RUNS=$(gh api --paginate \
+            echo "── $(( ($(date +%s) - START) / 60 ))m elapsed (gives up at ${WAIT_MINUTES}m) ──"
+            # A failed listing is retried, never read as a pass. Under `set -e`
+            # a bare failing `gh api` would end a two-hour wait on one transient
+            # 5xx. And it must not fall through to the loop below with an empty
+            # RUNS: every workflow would then look "N/A" and the gate would go
+            # green.
+            if ! RUNS=$(gh api --paginate \
               "repos/$REPO/actions/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=100" \
-              --jq '.workflow_runs[] | {name, status, conclusion, id}')
+              --jq '.workflow_runs[] | {name, status, conclusion, id}'); then
+              echo "::warning::Could not list workflow runs for $HEAD_SHA; trying again on the next poll."
+              give_up_or_sleep "(workflow runs could not be listed)"
+              continue
+            fi
 
-            pending=0
+            unfinished=()
             for wf in "${GATES[@]}"; do
               # latest run for this workflow name on this SHA (highest id)
               latest=$(echo "$RUNS" | jq -s --arg n "$wf" \
@@ -81,7 +128,7 @@ jobs:
               concl=$(echo "$latest" | jq -r '.conclusion')
               if [ "$status" != "completed" ]; then
                 echo "• $wf: $status … (waiting)"
-                pending=$((pending+1))
+                unfinished+=("$wf ($status)")
                 continue
               fi
               case "$concl" in
@@ -93,14 +140,10 @@ jobs:
               esac
             done
 
-            if [ "$pending" -eq 0 ]; then
+            if [ "${#unfinished[@]}" -eq 0 ]; then
               echo "All applicable gate workflows passed (or N/A). CI Gate green."
               exit 0
             fi
 
-            if [ "$(date +%s)" -gt "$DEADLINE" ]; then
-              echo "::error::Timed out after 40m waiting for gate workflows to complete."
-              exit 1
-            fi
-            sleep 20
+            give_up_or_sleep "${unfinished[@]}"
           done
