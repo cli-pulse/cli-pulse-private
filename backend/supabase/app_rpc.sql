@@ -1314,7 +1314,8 @@ $$ language plpgsql security definer set search_path = pg_catalog, public, exten
 -- _cleanup_expired_data_internal: the nightly retention cleanup that pg_cron
 -- job `cleanup_expired_data_nightly` runs (migrate_v0.21 schedules it at
 -- 03:07 UTC). Deletes, per account, sessions and alerts older than
--- user_settings.data_retention_days, and pairing attempts older than an hour;
+-- user_settings.data_retention_days (capped at 36500 days), and pairing
+-- attempts older than an hour;
 -- one DELETE per table on its own savepoint (migrate_v0.87 header). No JWT
 -- gate: only postgres (pg_cron) and service_role can execute it.
 create or replace function public._cleanup_expired_data_internal()
@@ -1330,13 +1331,15 @@ begin
 
   -- Sessions whose last activity is older than the account's retention,
   -- whatever their status: a live producer rewrites its rows on every sync.
+  -- Retention is capped at 36500 days: one account's larger value would
+  -- otherwise overflow the timestamp and fail this DELETE for every account.
   begin
     with gone as (
       delete from public.sessions s
        using public.user_settings us
        where us.user_id = s.user_id
          and us.data_retention_days > 0
-         and s.last_active_at < now() - make_interval(days => us.data_retention_days)
+         and s.last_active_at < now() - make_interval(days => least(us.data_retention_days, 36500))
       returning s.status
     )
     select count(*), count(*) filter (where status = 'Running')
@@ -1347,13 +1350,13 @@ begin
     raise warning '_cleanup_expired_data_internal: sessions not cleaned: % (SQLSTATE %)', sqlerrm, sqlstate;
   end;
 
-  -- Alerts older than the account's retention, resolved or not.
+  -- Alerts older than the account's retention, resolved or not (the same cap).
   begin
     delete from public.alerts a
      using public.user_settings us
      where us.user_id = a.user_id
        and us.data_retention_days > 0
-       and a.created_at < now() - make_interval(days => us.data_retention_days);
+       and a.created_at < now() - make_interval(days => least(us.data_retention_days, 36500));
     get diagnostics v_alerts = row_count;
   exception when others then
     v_failed := v_failed || 'alerts'::text;

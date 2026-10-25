@@ -19,6 +19,10 @@
 #   * after v0.87 the cleanup deletes exactly the rows past each account's
 #     retention (7 days, 30 days, and 0 = keep), of every status, and nothing
 #     else; a second run deletes nothing; its answer gives each table's count;
+#   * one account's retention of 2147483647 days (any signed-in user can set
+#     it; `now()` minus that many days is out of range) is capped at 36500
+#     days: its rows are kept, the first run reports no error, and every other
+#     account is still cleaned;
 #   * the dry-run query APPLY step 0 prints predicts the first run's answer
 #     exactly (the counts the owner approves are the counts that go);
 #   * the negative control: one table's DELETE forced to fail (each of the
@@ -116,6 +120,7 @@ same() { # same <label> <want> <got>
 UA='87000000-8700-4870-8870-00000000000a'   # retention 7 days (the default)
 UB='87000000-8700-4870-8870-00000000000b'   # retention 30 days
 UC='87000000-8700-4870-8870-00000000000c'   # retention 0: keeps everything
+UD='87000000-8700-4870-8870-00000000000d'   # retention 2147483647: capped at 36500 days
 
 # as_user <uuid|-> <sql>: run <sql> the way PostgREST runs a call, as
 # `authenticated` with the JWT's sub, and roll it back. `-` sends no sub.
@@ -199,9 +204,11 @@ load_fixture() {
     psql_q >/dev/null <<SQL
 create schema if not exists v087_test;
 insert into auth.users (id, email) values
-  ('$UA', 'a@test.local'), ('$UB', 'b@test.local'), ('$UC', 'c@test.local');
+  ('$UA', 'a@test.local'), ('$UB', 'b@test.local'), ('$UC', 'c@test.local'),
+  ('$UD', 'd@test.local');
 update public.user_settings set data_retention_days = 30 where user_id = '$UB';
 update public.user_settings set data_retention_days = 0 where user_id = '$UC';
+update public.user_settings set data_retention_days = 2147483647 where user_id = '$UD';
 
 insert into public.sessions (id, user_id, provider, status, started_at, last_active_at) values
   ('del-a-ended-10d',        '$UA', 'Codex',  'Ended',   now() - interval '10 days 1 hour', now() - interval '10 days'),
@@ -216,7 +223,8 @@ insert into public.sessions (id, user_id, provider, status, started_at, last_act
   ('del-b-running-40d',      '$UB', 'Codex',  'Running', now() - interval '40 days 1 hour', now() - interval '40 days'),
   ('keep-b-ended-10d',       '$UB', 'Codex',  'Ended',   now() - interval '10 days 1 hour', now() - interval '10 days'),
   ('keep-c-ended-400d',      '$UC', 'Codex',  'Ended',   now() - interval '400 days',       now() - interval '400 days'),
-  ('keep-c-running-400d',    '$UC', 'Codex',  'Running', now() - interval '400 days',       now() - interval '400 days');
+  ('keep-c-running-400d',    '$UC', 'Codex',  'Running', now() - interval '400 days',       now() - interval '400 days'),
+  ('keep-d-ended-400d',      '$UD', 'Codex',  'Ended',   now() - interval '400 days',       now() - interval '400 days');
 
 insert into public.alerts (id, user_id, type, title, is_resolved, created_at) values
   ('del-a-resolved-10d',  '$UA', 'Usage Spike', 'old, resolved',   true,  now() - interval '10 days'),
@@ -224,7 +232,8 @@ insert into public.alerts (id, user_id, type, title, is_resolved, created_at) va
   ('keep-a-open-1d',      '$UA', 'Usage Spike', 'recent',          false, now() - interval '1 day'),
   ('del-b-open-40d',      '$UB', 'Usage Spike', 'past 30 days',    false, now() - interval '40 days'),
   ('keep-b-open-10d',     '$UB', 'Usage Spike', 'within 30 days',  false, now() - interval '10 days'),
-  ('keep-c-open-400d',    '$UC', 'Usage Spike', 'kept for good',   false, now() - interval '400 days');
+  ('keep-c-open-400d',    '$UC', 'Usage Spike', 'kept for good',   false, now() - interval '400 days'),
+  ('keep-d-open-400d',    '$UD', 'Usage Spike', 'capped, kept',    false, now() - interval '400 days');
 
 insert into public.pairing_attempt_log (ip_addr, attempted_at) values
   ('192.0.2.1', now() - interval '2 hours'),
@@ -250,16 +259,18 @@ SQL
 LEFT="select (select string_agg(id, ',' order by id collate \"C\") from public.sessions) || ' | '
           || (select string_agg(id, ',' order by id collate \"C\") from public.alerts) || ' | '
           || (select count(*) from public.pairing_attempt_log)::text;"
-KEPT_SESSIONS="keep-a-ended-1d,keep-a-running-1h,keep-a-running-240s,keep-a-running-360s,keep-a-running-60s,keep-b-ended-10d,keep-c-ended-400d,keep-c-running-400d"
-KEPT_ALERTS="keep-a-open-1d,keep-b-open-10d,keep-c-open-400d"
+KEPT_SESSIONS="keep-a-ended-1d,keep-a-running-1h,keep-a-running-240s,keep-a-running-360s,keep-a-running-60s,keep-b-ended-10d,keep-c-ended-400d,keep-c-running-400d,keep-d-ended-400d"
+KEPT_ALERTS="keep-a-open-1d,keep-b-open-10d,keep-c-open-400d,keep-d-open-400d"
 EXPECTED_LEFT="$KEPT_SESSIONS | $KEPT_ALERTS | 1"
 FULL_FIXTURE="del-a-ended-10d,del-a-idle-8d,del-a-running-10d,del-b-ended-40d,del-b-running-40d,$KEPT_SESSIONS | del-a-open-10d,del-a-resolved-10d,del-b-open-40d,$KEPT_ALERTS | 2"
 
 # The cleanup's answer as "table|deleted|running" lines, the dry run's shape.
-ANSWER_AS_DRYRUN="select format('alerts|%s| pairing_attempt_log|%s| sessions|%s|%s',
-                          r->>'alerts_deleted', r->>'pairing_attempt_log_deleted',
-                          r->>'sessions_deleted', r->>'running_sessions_deleted')
-                    from (select public._cleanup_expired_data_internal() as r) s;"
+as_dry_run() { # as_dry_run <answer jsonb text>
+    psql_q -c "select format('alerts|%s| pairing_attempt_log|%s| sessions|%s|%s',
+                     r->>'alerts_deleted', r->>'pairing_attempt_log_deleted',
+                     r->>'sessions_deleted', r->>'running_sessions_deleted')
+                 from (select '$1'::jsonb as r) s;"
+}
 summary_of() { # summary_of <answer jsonb text>: the counts and the errors
     psql_q -c "select format('sessions=%s running=%s alerts=%s pairing=%s errors=%s failed=%s',
                      r->>'sessions_deleted', r->>'running_sessions_deleted', r->>'alerts_deleted',
@@ -349,17 +360,30 @@ SQL
 }
 
 check_cleanup() { # check_cleanup <label>: the dry run, then the real first run
-    local label="$1" dry answer
+    local label="$1" dry first out
     same "[$label] before the first run every fixture row is there" "$FULL_FIXTURE" "$(psql_q -c "$LEFT")"
+    # The premise of account D: its retention, uncapped, cannot be taken from now().
+    if out="$(psql_q -c "select now() - make_interval(days => data_retention_days)
+                           from public.user_settings where user_id = '$UD';" 2>&1)"; then
+        fail "[$label] account D's retention, uncapped, should overflow a timestamp: this fixture would prove nothing ($out)"
+    else
+        [[ "$out" == *"out of range"* ]] \
+            && pass "[$label] account D's retention (2147483647 days), uncapped, overflows a timestamp" \
+            || fail "[$label] account D's uncapped retention failed for another reason: $out"
+    fi
     same "[$label] APPLY step 4's query sees the rows a day past retention before the first run" \
          "5|3" "$(psql_q -c "$STEP4_SQL")"
     for t in sessions alerts pairing_attempt_log; do nc_one_table "$label" "$t"; done
     same "[$label NC] the negative controls rolled back: every fixture row is there" "$FULL_FIXTURE" "$(psql_q -c "$LEFT")"
-    dry="$(dry_run)"
+    dry="$(dry_run)" || dry='the dry run failed'   # the checks below fail, the suite goes on
     same "[$label] the dry run (APPLY step 0, as printed) counts what is past retention" \
          "alerts|3| pairing_attempt_log|1| sessions|5|2" "$dry"
-    same "[$label] the first run's answer is exactly the dry run's counts" "$dry" "$(psql_q -c "$ANSWER_AS_DRYRUN")"
-    same "[$label] what is left: every keep- row, no del- row (7 days, 30 days, and 0 = keep all)" \
+    first="$(psql_q -c "select public._cleanup_expired_data_internal()::text;")" \
+        || first='{}'   # a cleanup that raised: the checks below fail, the suite goes on
+    same "[$label] the first run's answer is exactly the dry run's counts" "$dry" "$(as_dry_run "$first")"
+    same "[$label] the first run reports no error, account D's retention capped" \
+         'errors=0 failed=[]' "$(summary_of "$first" | sed 's/^.* errors=/errors=/')"
+    same "[$label] what is left: every keep- row, no del- row (7 days, 30 days, 0 = keep all, 2147483647 = 36500)" \
          "$EXPECTED_LEFT" "$(psql_q -c "$LEFT")"
     same "[$label] a second run deletes nothing and reports no error" \
          'sessions=0 running=0 alerts=0 pairing=0 errors=0 failed=[]' \

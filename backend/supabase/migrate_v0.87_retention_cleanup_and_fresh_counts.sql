@@ -48,21 +48,44 @@
 --      account's `user_settings.data_retention_days`, whatever its status.
 --      For 'Ended' rows this is what v0.21 meant to do. A 'Running' row
 --      that old belongs to a producer that stopped: a live one rewrites its
---      rows on every sync, and no producer syncs less often than every 15
---      minutes (THE TWO WINDOWS, below), so the zombie rows go now and any
---      later ones go once they are a retention period old. ('Idle',
---      'Failed' and 'Syncing' rows, which the apps' model allows and
---      production has none of, go the same way.)
+--      rows on every sync (true of scan rows, which are every row uploaded
+--      today), and no producer syncs less often than every 15 minutes (THE
+--      TWO WINDOWS, below), so the zombie rows go now and any later ones go
+--      once they are a retention period old. ('Idle', 'Failed' and
+--      'Syncing' rows, which the apps' model allows and production has none
+--      of, go the same way.)
 --    * alerts: every row whose `created_at` is older than its account's
 --      retention, resolved or not, as v0.21 wrote it. (app_rpc.sql's
 --      resolved-only variant never ran in production; it is replaced below.)
+--      Consequence, for the owner to weigh before applying: a resolved CPU
+--      alert comes back. The Mac's device-CPU alert keeps one row per
+--      device (id `cpu-spike-<device>`, AlertGenerator) so that, once the
+--      user resolves it, helper_sync's ON CONFLICT keeps `is_resolved`
+--      and later spikes stay quiet. helper_sync refreshes neither
+--      `created_at` nor `is_resolved` on that conflict, so the resolved row
+--      is deleted a retention period (7 days) after it was first created,
+--      and the next spike above 85 % inserts it again, unresolved, and
+--      alerts_enqueue_webhook queues a webhook for it (it deduplicates only
+--      jobs still pending). Keeping
+--      these rows out of the cleanup would make PRIVACY.md's alerts line
+--      untrue, so they are not kept; the fix belongs to 1.60 (the helper
+--      stops sending ids the user resolved, or the suppression moves to a
+--      small table of its own that retention does not prune). The dry-run
+--      note counts the rows concerned.
 --    * pairing_attempt_log: rows older than an hour, as v0.21 did.
 --    * Not deleted: `device_snapshots` (no such table); `usage_snapshots`
 --      (production's function never deleted it, nothing writes it, it has
 --      no rows); `provider_quotas` (the latest quota per provider, current
 --      state rather than history; PRIVACY.md promises nothing for it).
 --    * Accounts with `data_retention_days <= 0` keep their sessions and
---      alerts, as before.
+--      alerts, as before. A retention above 36500 days (100 years) counts as
+--      36500: the column has no CHECK, the account's owner can set it
+--      through PostgREST (policy "Users can manage own settings"), and
+--      `now() - make_interval(days => 2147483647)` raises 22008 "timestamp
+--      out of range". Each DELETE covers every account in one statement, so
+--      without the cap one such value would stop that table's cleanup for
+--      every account, every night (v0.21's per-account loop confined it to
+--      that account). The dry run and step 4 below cap it the same way.
 --    * It returns
 --        { "sessions_deleted": n, "running_sessions_deleted": n,
 --          "alerts_deleted": n, "pairing_attempt_log_deleted": n,
@@ -121,6 +144,16 @@
 -- not used: nothing decides with it (the Android app only shows and edits
 -- it), and 5 minutes would drop a desktop on battery between syncs.
 --
+-- Whose clock: `devices.last_seen_at` is the server's now() (helper_sync and
+-- helper_heartbeat set it), but `sessions.last_active_at` is the time the
+-- producer sends; helper_sync caps it at 10 minutes ahead of the server and
+-- puts no floor under it. So the 300 s window, and the cleanup's retention for sessions, compare
+-- against the producer's clock. A Mac whose clock is more than 5 minutes
+-- slow never shows in active_sessions (the apps' SessionFreshnessFilter
+-- drops its rows the same way); one more than a retention period slow has
+-- its live rows deleted each night and written again by its next sync,
+-- which is churn, not loss.
+--
 -- ── WHAT DOES NOT CHANGE ──────────────────────────────────────
 --   * dashboard_summary's signature (one overload, `(p_user_today date
 --     default null)`, jsonb), every key of its answer and the other four
@@ -131,8 +164,19 @@
 --     v0.21's and changes nothing in production, where only postgres and
 --     service_role can execute it;
 --   * the `cleanup_expired_data()` wrapper in production, the cron jobs and
---     every table's structure. No row of any table is written by applying
---     this file; the rows go when the function first runs (APPLY step 3).
+--     every table's structure (`user_settings.data_retention_days` gains no
+--     CHECK here; a later migration can add `CHECK (data_retention_days
+--     between 0 and 36500)` as NOT VALID, then VALIDATE). No row of any
+--     table is written by applying this file; the rows go when the function
+--     first runs (APPLY step 3);
+--   * the server-side Yield pipeline, which today has nothing to work on
+--     (commits, session_commit_links and yield_score_daily are empty). Note
+--     for whoever brings it back: `_recompute_yield_scores_for_user_internal`
+--     (called by recompute_yield_scores_for_user and ingest_commits) deletes
+--     an account's yield_score_daily rows and rebuilds them from `sessions`,
+--     which this cleanup now keeps for the retention period only (7 days),
+--     while PRIVACY.md lists yield_score_daily as kept for 18 months: a
+--     rebuild would silently cut Yield history to 7 days.
 -- What the first run deletes cannot be brought back except from a backup.
 --
 -- ── APPLY (owner) ─────────────────────────────────────────────
@@ -178,7 +222,7 @@
 --    since rows keep crossing their retention:
 --
 --      with keep as (
---        select user_id, make_interval(days => data_retention_days) as keep
+--        select user_id, make_interval(days => least(data_retention_days, 36500)) as keep
 --          from public.user_settings
 --         where data_retention_days > 0
 --      )
@@ -201,8 +245,11 @@
 --    function it calls, names must exist. Before v0.87 it returns one row:
 --      cleanup_expired_data_nightly | _cleanup_expired_data_internal | public.device_snapshots
 --
--- 1. Apply this file as it stands, byte for byte, comments included, with
---    the Supabase MCP's `apply_migration` under the name
+-- 1. Apply on the day the PR that adds this file merges: PRIVACY.md's Data
+--    retention section, published with it, describes what this file makes
+--    production do (merged first, so that what runs is on main). Apply this
+--    file as it stands, byte for byte, comments included, with the Supabase
+--    MCP's `apply_migration` under the name
 --    `v0_87_retention_cleanup_and_fresh_counts` (that also writes its row in
 --    `supabase_migrations.schema_migrations`; any other route runs the SQL
 --    without the row, so record it by hand then). Record in the apply log
@@ -219,7 +266,7 @@
 --      wrapper, whose body is unchanged), and body_md5 exactly (CI checks
 --      these too):
 --
---      v0.87  _cleanup_expired_data_internal  c3e80a002cedd6d4068f3c57d90fe5cc
+--      v0.87  _cleanup_expired_data_internal  119e431b2b0f5c95f52a611e6dd14ac6
 --      v0.22  cleanup_expired_data            de73a4e04618edd359ddeead7354cfa5
 --      v0.87  dashboard_summary               2dad9b1af717d9921a75d4dc95a26b1f
 --
@@ -240,11 +287,11 @@
 --      select (select count(*) from public.sessions s
 --                join public.user_settings us on us.user_id = s.user_id
 --               where us.data_retention_days > 0
---                 and s.last_active_at < now() - make_interval(days => us.data_retention_days + 1)),
+--                 and s.last_active_at < now() - make_interval(days => least(us.data_retention_days, 36500) + 1)),
 --             (select count(*) from public.alerts a
 --                join public.user_settings us on us.user_id = a.user_id
 --               where us.data_retention_days > 0
---                 and a.created_at < now() - make_interval(days => us.data_retention_days + 1));
+--                 and a.created_at < now() - make_interval(days => least(us.data_retention_days, 36500) + 1));
 --    cron.job_run_details shows the run succeeded, and the Postgres log has
 --    no WARNING from _cleanup_expired_data_internal.
 --
@@ -293,13 +340,15 @@ begin
 
   -- Sessions whose last activity is older than the account's retention,
   -- whatever their status: a live producer rewrites its rows on every sync.
+  -- Retention is capped at 36500 days: one account's larger value would
+  -- otherwise overflow the timestamp and fail this DELETE for every account.
   begin
     with gone as (
       delete from public.sessions s
        using public.user_settings us
        where us.user_id = s.user_id
          and us.data_retention_days > 0
-         and s.last_active_at < now() - make_interval(days => us.data_retention_days)
+         and s.last_active_at < now() - make_interval(days => least(us.data_retention_days, 36500))
       returning s.status
     )
     select count(*), count(*) filter (where status = 'Running')
@@ -310,13 +359,13 @@ begin
     raise warning '_cleanup_expired_data_internal: sessions not cleaned: % (SQLSTATE %)', sqlerrm, sqlstate;
   end;
 
-  -- Alerts older than the account's retention, resolved or not.
+  -- Alerts older than the account's retention, resolved or not (the same cap).
   begin
     delete from public.alerts a
      using public.user_settings us
      where us.user_id = a.user_id
        and us.data_retention_days > 0
-       and a.created_at < now() - make_interval(days => us.data_retention_days);
+       and a.created_at < now() - make_interval(days => least(us.data_retention_days, 36500));
     get diagnostics v_alerts = row_count;
   exception when others then
     v_failed := v_failed || 'alerts'::text;
