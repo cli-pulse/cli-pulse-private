@@ -179,6 +179,22 @@ alter table public.pairing_codes enable row level security;
 create policy "Users can manage own pairing codes"
   on public.pairing_codes for all using (auth.uid() = user_id);
 
+-- ── Pairing Attempt Log ──
+-- migrate_v0.16's table, as production has it: register_helper's per-IP
+-- rate-limit window (helper_rpc.sql) and the nightly retention cleanup
+-- (app_rpc.sql, _cleanup_expired_data_internal) read and prune it. RLS on and
+-- no policy: only SECURITY DEFINER functions reach it.
+create table if not exists public.pairing_attempt_log (
+  id bigserial primary key,
+  ip_addr text,
+  attempted_at timestamptz not null default now()
+);
+create index if not exists pairing_attempt_log_ip_time_idx
+  on public.pairing_attempt_log (ip_addr, attempted_at desc);
+create index if not exists pairing_attempt_log_time_idx
+  on public.pairing_attempt_log (attempted_at);
+alter table public.pairing_attempt_log enable row level security;
+
 -- ── Sessions ──
 create table public.sessions (
   id text not null check (length(id) <= 128),

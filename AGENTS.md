@@ -884,6 +884,14 @@ There is no automated SQL test runner yet. When touching files in
 - RPC contracts match app/helper call sites
 - Migration ordering is consistent with `schema.sql`
 
+After applying any migration to production, and in each release's
+verification, run the read-only ops check
+`backend/supabase/ops/check_cron_references.sql` (one SELECT, e.g. with the
+Supabase MCP's `execute_sql`). It must return no rows: every table that a
+pg_cron job's functions name exists. From v0.21 until v0.87 the nightly
+retention cleanup named a table that never existed, rolled back its other
+deletes with it, and cron recorded every run as succeeded.
+
 ### Migration numbering — one number, one migration, forever
 
 **Before you name a new `backend/supabase/migrate_vX.YY_*.sql`, run:**

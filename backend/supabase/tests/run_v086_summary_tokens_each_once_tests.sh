@@ -28,7 +28,10 @@
 #     list are the bodies these files install (step 0's as production runs
 #     them, see below);
 #   * a fresh install (schema.sql + app_rpc.sql + helper_rpc.sql) installs the
-#     same bodies and gives the same figures.
+#     same bodies and gives the same figures. (Since v0.87 the fresh
+#     dashboard_summary is v0.87's: v0.86's body plus two lines marked
+#     `-- v0.87 fresh rows only`, which this suite takes out before comparing;
+#     run_v087_retention_cleanup_tests.sh checks those two lines.)
 #
 # The upgrade database is built from the canonical files, then the summary
 # functions are put back the way production has run them before v0.86:
@@ -56,6 +59,7 @@ V044="$SQL_DIR/migrate_v0.44_user_tz_today.sql"
 V072="$SQL_DIR/migrate_v0.72_provider_accounts.sql"
 V086="$SQL_DIR/migrate_v0.86_summary_tokens_each_once.sql"
 ROLLBACK="$SQL_DIR/rollback_v0.86.sql"
+V087="$SQL_DIR/migrate_v0.87_retention_cleanup_and_fresh_counts.sql"
 
 for v in UPGRADE_DATABASE_URL FRESH_DATABASE_URL; do
     if [[ -z "${!v:-}" ]]; then
@@ -67,7 +71,7 @@ if [[ "$UPGRADE_DATABASE_URL" == "$FRESH_DATABASE_URL" ]]; then
     echo "the upgrade and fresh paths need two different databases" >&2
     exit 2
 fi
-for f in "$SHIM" "$FIXTURE" "$V044" "$V072" "$V086" "$ROLLBACK" \
+for f in "$SHIM" "$FIXTURE" "$V044" "$V072" "$V086" "$ROLLBACK" "$V087" \
          "$SQL_DIR/schema.sql" "$SQL_DIR/app_rpc.sql" "$SQL_DIR/helper_rpc.sql"; do
     [[ -f "$f" ]] || { echo "missing $f" >&2; exit 2; }
 done
@@ -394,12 +398,24 @@ apply "$SQL_DIR/schema.sql"
 apply "$SQL_DIR/app_rpc.sql"
 apply "$SQL_DIR/helper_rpc.sql"
 load_fixture
-same "the fresh install has the upgraded bodies, byte for byte" "$bodies_after" "$(psql_q -c "$BODIES")"
+# The fresh install is v0.87's: its dashboard_summary is v0.86's plus the two
+# lines v0.87 adds, each ending in this marker. Without them it must be v0.86's.
+WITHOUT_V087="select string_agg(p.proname || '=' || md5(regexp_replace(p.prosrc, '^[^\n]*-- v0\.87 fresh rows only\n', '', 'gn')),
+                                ' ' order by p.proname)
+                from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+               where n.nspname = 'public' and p.proname in ($FUNCS);"
+fresh_bodies="$(psql_q -c "$BODIES")"
+same "the fresh install has the upgraded bodies, byte for byte, but for v0.87's two lines" \
+     "$bodies_after" "$(psql_q -c "$WITHOUT_V087")"
+[[ "$fresh_bodies" != "$bodies_after" ]] \
+    && pass "[fresh] and dashboard_summary has v0.87's lines (taking them out is what made it match)" \
+    || fail "[fresh] dashboard_summary lacks v0.87's lines: the comparison above proved nothing about them"
 check "[fresh] the rule query reads true" "($RULE)"
 check_figures "fresh" after
 check_contract_calls "fresh"
 apply "$V086"
-same "v0.86 on a fresh install changes nothing" "$bodies_after" "$(psql_q -c "$BODIES")"
+apply "$V087"
+same "v0.86 and then v0.87 on a fresh install change nothing" "$fresh_bodies" "$(psql_q -c "$BODIES")"
 
 echo
 if (( fails > 0 )); then

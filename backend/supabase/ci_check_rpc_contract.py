@@ -16,9 +16,10 @@ What it catches (hard failures, exit 1)
 3. An edge function URL (`/functions/v1/<name>`) is referenced from the
    client but the corresponding directory under `backend/supabase/functions/`
    is missing.
-4. A mirrored function (the v0.72 provider-account functions, and the three
-   summary RPCs v0.86 replaced) differs between its upgrade path, the newest
-   migration that defines it, and its canonical fresh-install definition.
+4. A mirrored function (the v0.72 provider-account functions, the summary
+   RPCs v0.86 replaced, and v0.87's retention cleanup) differs between its
+   upgrade path, the newest migration that defines it, and its canonical
+   fresh-install definition.
 
 Soft signals (info/warn only, never fail)
 -----------------------------------------
@@ -279,9 +280,12 @@ MIRRORED_FUNCTIONS = {
     "provider_account_summary": "app_rpc.sql",
     "helper_sync_provider_account_quotas": "helper_rpc.sql",
     # v0.86: the summary RPCs count each token once. Their token rule must be
-    # the same on an upgraded database and a fresh one.
+    # the same on an upgraded database and a fresh one. (v0.87 replaced
+    # dashboard_summary again: its fresh-rows-only counts.)
     "dashboard_summary": "app_rpc.sql",
     "provider_summary": "app_rpc.sql",
+    # v0.87: the nightly retention cleanup pg_cron runs.
+    "_cleanup_expired_data_internal": "app_rpc.sql",
 }
 
 
