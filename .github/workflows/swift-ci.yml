@@ -66,11 +66,19 @@ jobs:
   decide:
     name: Decide matrix (smoke vs full)
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 55
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
       run_full: ${{ steps.set.outputs.run_full }}
     steps:
+      # NEGATIVE CONTROL (throwaway, never merge): Swift CI must conclude
+      # 'failure' only after the old 40-min CI Gate cap. Every macOS job needs
+      # `decide`, so they are all skipped and no macOS runner is used.
+      - name: "NC: wait 45 min, then fail"
+        run: |
+          echo "NC for CI Gate: Swift CI fails at ~45 min, past the old 40-min cap."
+          sleep 2700
+          exit 1
       - id: set
         env:
           EVENT_NAME: ${{ github.event_name }}
