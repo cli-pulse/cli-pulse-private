@@ -95,6 +95,8 @@
 		B18429BE19305EFBF4EA2BE9 /* PrivacySettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D7578D231149D6491E5BCD7 /* PrivacySettingsSection.swift */; };
 		CE9C5A560EFC6CC22716D4CD /* AppUpdaterSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C420EAEAF8AC7DB112700AF8 /* AppUpdaterSection.swift */; };
 		E63FBDBE21C6066701023522 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A87404BA11DA4150BF4E2CFC /* PrivacyInfo.xcprivacy */; };
+		575D2BF2C29402C80B27C72A /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 5B7D33A2D9D06F8943862ADC /* ThirdPartyNotices.txt */; };
+		6EC2300029DF1AD7442C74F2 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 5B7D33A2D9D06F8943862ADC /* ThirdPartyNotices.txt */; };
 		PKG00004 /* CLIPulseCore in Frameworks */ = {isa = PBXBuildFile; productRef = PKG00002 /* CLIPulseCore */; };
 		PKG00005 /* CLIPulseCore in Frameworks */ = {isa = PBXBuildFile; productRef = PKG00003 /* CLIPulseCore */; };
 		PKG00007 /* CLIPulseCore in Frameworks */ = {isa = PBXBuildFile; productRef = PKG00006 /* CLIPulseCore */; };
@@ -196,6 +198,7 @@
 		B10010 /* AlertsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsTab.swift; sourceTree = "<group>"; };
 		B10011 /* SettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTab.swift; sourceTree = "<group>"; };
 		B10012 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		5B7D33A2D9D06F8943862ADC /* ThirdPartyNotices.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ThirdPartyNotices.txt; sourceTree = "<group>"; };
 		B10013 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B10014 /* CLI_Pulse_Bar.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CLI_Pulse_Bar.entitlements; sourceTree = "<group>"; };
 		B10020 /* ProviderConfigEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderConfigEditor.swift; sourceTree = "<group>"; };
@@ -350,6 +353,7 @@
 				E30001 /* CLI Pulse Bar Watch */,
 				E40001 /* CLI Pulse Widgets */,
 				E60001 /* CLIPulseHelper */,
+				5B7D33A2D9D06F8943862ADC /* ThirdPartyNotices.txt */,
 				E10003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -663,6 +667,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10012 /* Assets.xcassets in Resources */,
+				575D2BF2C29402C80B27C72A /* ThirdPartyNotices.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -675,6 +680,7 @@
 				A20091 /* Localizable.strings in Resources */,
 				A20092 /* AppShortcuts.strings in Resources */,
 				E63FBDBE21C6066701023522 /* PrivacyInfo.xcprivacy in Resources */,
+				6EC2300029DF1AD7442C74F2 /* ThirdPartyNotices.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
