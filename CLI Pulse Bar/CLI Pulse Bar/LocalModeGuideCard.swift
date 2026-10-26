@@ -110,6 +110,9 @@ struct LocalModeGuideCard: View {
 /// opens a home-folder picker (a single home grant transitively covers every
 /// CLI-tool log dir) and force-rescans so the real numbers appear immediately.
 ///
+/// v1.59: the Providers tab draws this banner too, so both tabs that read
+/// `needsScannerFolderAccess` offer the same one-tap grant.
+///
 /// Defined here (rather than its own file) so it compiles without a new
 /// .xcodeproj source-membership entry.
 struct ScannerFolderAccessBanner: View {

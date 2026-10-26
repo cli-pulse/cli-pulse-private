@@ -33,10 +33,23 @@ public extension DashboardSummary {
 /// are resolved here in the active language.
 public enum DashboardRiskSignals {
     /// The local refresh's only signal: "No AI tools detected", when neither
-    /// the session scan nor any provider collector found anything. The cloud
-    /// dashboard sends none. Demo calls this with its own sessions and
-    /// providers, so it raises exactly what an account in its state would.
-    public static func local(foundSessions: Bool, foundProviderData: Bool) -> [String] {
-        foundSessions || foundProviderData ? [] : [L10n.dashboard.noAiToolsDetected]
+    /// the session scan nor any provider found anything. The cloud dashboard
+    /// sends none. Demo calls this with its own sessions and providers, so it
+    /// raises exactly what an account in its state would.
+    ///
+    /// v1.59 (59-15 F4): not while this Mac's log scan read rows, and not
+    /// while the App Store build cannot read the log folders at all
+    /// (`needsFolderAccess`, the folder-access banner). Both used to raise it:
+    /// under the banner it told the user to start a coding session when what
+    /// was missing was the grant, and beside a cost read from the logs it
+    /// contradicted the figure above it.
+    public static func local(
+        foundSessions: Bool,
+        foundProviderData: Bool,
+        foundScanRows: Bool,
+        needsFolderAccess: Bool
+    ) -> [String] {
+        foundSessions || foundProviderData || foundScanRows || needsFolderAccess
+            ? [] : [L10n.dashboard.noAiToolsDetected]
     }
 }

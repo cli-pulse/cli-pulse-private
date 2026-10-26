@@ -1068,17 +1068,16 @@ internal final class DataRefreshManager {
             return
         }
 
-        var mergedProviders: [String: ProviderUsage] = [:]
-        for provider in scanResult.providers {
-            mergedProviders[provider.provider] = provider
-        }
-        for result in collectorResults {
-            mergedProviders[result.usage.provider] = result.usage
-        }
-
-        let providersRaw = mergedProviders.values.sorted { $0.today_usage > $1.today_usage }
-        // v1.9.3: bridge JSONL scan → per-provider cost/token fields.
-        let providers = Self.applyCostScan(to: providersRaw, scan: costScanResult)
+        // The process scan's rows, then the collectors' over them, then a row
+        // from this Mac's log scan for an enabled provider that has neither
+        // (v1.59, 59-15 F1), priced from the scan (v1.9.3). Display only:
+        // the uploads below read the collector results and the scan itself.
+        let providers = Self.localDisplayProviders(
+            processRows: scanResult.providers,
+            collectorRows: collectorResults.map(\.usage),
+            scan: costScanResult,
+            enabledKinds: Set(context.providerConfigs.filter(\.isEnabled).map(\.kind))
+        )
         let devices = [DeviceRecord(
             id: "local",
             name: ProcessInfo.processInfo.hostName,
@@ -1125,11 +1124,15 @@ internal final class DataRefreshManager {
             recent_activity: [],
             // Suppress the "No AI tools detected" hint when either the live
             // process scanner OR the JSONL synthesis surfaced any sessions,
-            // and when at least one provider collector returned data. Demo
-            // takes its signals from the same producer (OverviewOptionalCards).
+            // when there is a provider row to show, when the log scan read
+            // anything, and while the folder-access banner is up (v1.59,
+            // 59-15 F4). Demo takes its signals from the same producer
+            // (OverviewOptionalCards).
             risk_signals: DashboardRiskSignals.local(
                 foundSessions: !synthesizedSessions.isEmpty,
-                foundProviderData: !collectorResults.isEmpty),
+                foundProviderData: !providers.isEmpty,
+                foundScanRows: costScanResult != nil,
+                needsFolderAccess: needsAccess),
             alert_summary: AlertSummaryDTO(critical: 0, warning: 0, info: 0)
         )
 
@@ -1963,6 +1966,101 @@ internal final class DataRefreshManager {
             },
             supplemented
         )
+    }
+
+    /// The providers a local refresh shows, from its three sources: the
+    /// process scan's rows (`LocalScanner`: a running `claude` or `codex`,
+    /// Developer ID only, as the App Store sandbox denies the process list),
+    /// the collectors that returned, which win over those, and this Mac's
+    /// session-log scan. Sorted and priced from the scan (`applyCostScan`).
+    ///
+    /// v1.59 (59-15 F1): the log scan used to price only rows that already
+    /// existed, so a Mac whose logs were read but whose collector was not
+    /// ready (no Claude.ai login in the keychain, a Codex API key, a declined
+    /// keychain prompt) showed its cost in the Cost Summary and "No
+    /// providers" right under it. The collector's not-ready reason was drawn
+    /// nowhere, because only a provider card draws it, and on the App Store
+    /// build an install that detected nothing in its first session never did.
+    /// Now an enabled provider with scan rows in the rolling week and no row
+    /// of its own gets one from the scan (`scanBackedProviders`).
+    ///
+    /// Display only. The uploads read the collector results and the scan
+    /// itself, never this list.
+    nonisolated static func localDisplayProviders(
+        processRows: [ProviderUsage],
+        collectorRows: [ProviderUsage],
+        scan: CostUsageScanResult?,
+        enabledKinds: Set<ProviderKind>,
+        now: Date = Date()
+    ) -> [ProviderUsage] {
+        var merged: [String: ProviderUsage] = [:]
+        for row in processRows { merged[row.provider] = row }
+        for row in collectorRows { merged[row.provider] = row }
+        let scanRows = scanBackedProviders(
+            scan: scan, excluding: Set(merged.keys), enabledKinds: enabledKinds, now: now)
+        for row in scanRows { merged[row.provider] = row }
+        let sorted = merged.values.sorted {
+            if $0.today_usage != $1.today_usage { return $0.today_usage > $1.today_usage }
+            return $0.provider < $1.provider
+        }
+        return applyCostScan(to: sorted, scan: scan, now: now)
+    }
+
+    /// v1.59 (59-15 F1): one row per enabled provider that this Mac's
+    /// session-log scan has rows for in the rolling week and that is not in
+    /// `present`. The scan reads Claude Code's and Codex's logs, so these are
+    /// at most a Claude and a Codex row.
+    ///
+    /// `today_usage` / `week_usage` are the scan's I/O tokens (input +
+    /// output, as `applyCostScan` and the Cost Summary count them), not a
+    /// quota percentage: there is no quota, so the card says its quota is
+    /// unavailable and shows the collector's reason (`collectorOutcomes`)
+    /// above it. The cost is left to `applyCostScan`. A provider switched off,
+    /// by the user or the free plan's limit, gets no row.
+    nonisolated static func scanBackedProviders(
+        scan: CostUsageScanResult?,
+        excluding present: Set<String>,
+        enabledKinds: Set<ProviderKind>,
+        now: Date
+    ) -> [ProviderUsage] {
+        guard let scan, !scan.entries.isEmpty else { return [] }
+        let todayKey = DateRange.ymd(now)
+        let weekCutoff = DateRange.rollingWeekStartYMD(from: now)
+        var tokens: [String: (today: Int, week: Int)] = [:]
+        for entry in scan.entries where entry.date >= weekCutoff {
+            guard !present.contains(entry.provider),
+                  let kind = ProviderKind(rawValue: entry.provider),
+                  enabledKinds.contains(kind) else { continue }
+            let io = entry.inputTokens + entry.outputTokens
+            var sums = tokens[entry.provider, default: (today: 0, week: 0)]
+            if entry.date == todayKey { sums.today += io }
+            sums.week += io
+            tokens[entry.provider] = sums
+        }
+        return tokens.keys.sorted().map { name in
+            let sums = tokens[name] ?? (today: 0, week: 0)
+            return ProviderUsage(
+                provider: name,
+                today_usage: sums.today,
+                week_usage: sums.week,
+                estimated_cost_today: 0,
+                estimated_cost_week: 0,
+                cost_status_today: "Unavailable",
+                cost_status_week: "Unavailable",
+                quota: nil,
+                remaining: nil,
+                status_text: "",
+                trend: [],
+                recent_sessions: [],
+                recent_errors: [],
+                metadata: ProviderMetadata(
+                    display_name: name,
+                    category: "cloud",
+                    supports_exact_cost: false,
+                    supports_quota: true
+                )
+            )
+        }
     }
 
     /// v1.9.3: project per-provider token / cost from the JSONL scanner back

@@ -39,7 +39,13 @@ final class OverviewOptionalCardsTests: XCTestCase {
         var all = Set<String>()
         for sessions in [false, true] {
             for providerData in [false, true] {
-                all.formUnion(DashboardRiskSignals.local(foundSessions: sessions, foundProviderData: providerData))
+                for scanRows in [false, true] {
+                    for needsAccess in [false, true] {
+                        all.formUnion(DashboardRiskSignals.local(
+                            foundSessions: sessions, foundProviderData: providerData,
+                            foundScanRows: scanRows, needsFolderAccess: needsAccess))
+                    }
+                }
             }
         }
         return all
@@ -77,17 +83,26 @@ final class OverviewOptionalCardsTests: XCTestCase {
     }
 
     /// The local refresh raises one signal, only when it found nothing at all,
-    /// and raises it in the user's language.
+    /// and raises it in the user's language. v1.59 (59-15 F4): log rows, or
+    /// a folder grant still missing, count as something found.
     func testTheLocalRefreshRaisesOnlyNoAIToolsDetectedInTheUsersLanguage() throws {
-        XCTAssertEqual(DashboardRiskSignals.local(foundSessions: false, foundProviderData: false),
-                       [L10n.dashboard.noAiToolsDetected])
-        XCTAssertEqual(DashboardRiskSignals.local(foundSessions: true, foundProviderData: false), [])
-        XCTAssertEqual(DashboardRiskSignals.local(foundSessions: false, foundProviderData: true), [])
-        XCTAssertEqual(DashboardRiskSignals.local(foundSessions: true, foundProviderData: true), [])
+        func signals(sessions: Bool = false, providers: Bool = false,
+                     scanRows: Bool = false, needsAccess: Bool = false) -> [String] {
+            DashboardRiskSignals.local(foundSessions: sessions, foundProviderData: providers,
+                                       foundScanRows: scanRows, needsFolderAccess: needsAccess)
+        }
+        XCTAssertEqual(signals(), [L10n.dashboard.noAiToolsDetected])
+        XCTAssertEqual(signals(sessions: true), [])
+        XCTAssertEqual(signals(providers: true), [])
+        XCTAssertEqual(signals(sessions: true, providers: true), [])
+        XCTAssertEqual(signals(scanRows: true), [], "log rows were read, and the hint says no AI tools")
+        XCTAssertEqual(signals(needsAccess: true), [], """
+            the hint tells the user to start a coding session under the banner that asks for the folder grant
+            """)
 
-        let chinese = try XCTUnwrap(DashboardRiskSignals.local(foundSessions: false, foundProviderData: false).first)
+        let chinese = try XCTUnwrap(signals().first)
         LocaleOverrideStore.shared.set("en")
-        let english = try XCTUnwrap(DashboardRiskSignals.local(foundSessions: false, foundProviderData: false).first)
+        let english = try XCTUnwrap(signals().first)
         LocaleOverrideStore.shared.set("zh-Hans")
         XCTAssertNotEqual(chinese, english, "the risk signal is not localized: \(chinese)")
         XCTAssertNil(chinese.range(of: "[A-Za-z]{3,}", options: .regularExpression),
