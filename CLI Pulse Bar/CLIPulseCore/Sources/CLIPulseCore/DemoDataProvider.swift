@@ -388,9 +388,14 @@ internal enum DemoDataProvider {
         // card hides, as it would for a real account in this state. It used to
         // hold a low-quota and a device-offline signal, kinds only the retired
         // backend wrote. enterDemoMode runs this in the active language.
+        // Demo reads no folder, so no grant is missing, and its Mac scan is
+        // made afterwards from the synced rows (`enterDemoMode`); with
+        // sessions and providers, neither fact changes the answer.
         let riskSignals = DashboardRiskSignals.local(
             foundSessions: !sessions.isEmpty,
-            foundProviderData: !providers.isEmpty)
+            foundProviderData: !providers.isEmpty,
+            foundScanRows: false,
+            needsFolderAccess: false)
 
         let breakdowns = providers.map { provider in
             ProviderBreakdown(provider: provider.provider, usage: provider.today_usage,

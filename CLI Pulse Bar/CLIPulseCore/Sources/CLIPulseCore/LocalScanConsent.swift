@@ -333,6 +333,22 @@ public enum LocalCollectionPolicy {
         return consent == .undecided
     }
 
+    /// Does the Overview show the local-mode card (`LocalModeGuideCard`)?
+    ///
+    /// For the signed-out local-mode user, and only while this gate lets the
+    /// refresh collect: the card's first line says this Mac's usage is being
+    /// collected locally. v1.59 (59-15 F5): after "Not now" it still did, right
+    /// above the card saying the local scan is off (`LocalScanDeclinedCard`),
+    /// which is the one that tells the truth and offers the way back.
+    public static func showsLocalModeGuide(
+        isAuthenticated: Bool,
+        isLocalMode: Bool,
+        consent: LocalScanConsent
+    ) -> Bool {
+        guard !isAuthenticated, isLocalMode else { return false }
+        return allowsCollection(isAuthenticated: isAuthenticated, consent: consent)
+    }
+
     // MARK: - v1.55: disclosure v2
 
     /// May CLI Pulse read session logs older than the routine window — the

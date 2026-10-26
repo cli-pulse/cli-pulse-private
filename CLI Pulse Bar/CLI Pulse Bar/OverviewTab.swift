@@ -41,7 +41,15 @@ struct OverviewTab: View {
                 // they could sign in to sync to iPhone). The card is
                 // compact (~80–100pt) and slots above the metrics grid
                 // without crowding it.
-                if state.isLocalMode && !state.isAuthenticated {
+                //
+                // v1.59 (59-15 F5): not after "Not now". The card says usage
+                // is being collected, and the declined card below says the
+                // scan is off.
+                if LocalCollectionPolicy.showsLocalModeGuide(
+                    isAuthenticated: state.isAuthenticated,
+                    isLocalMode: state.isLocalMode,
+                    consent: state.localScanConsent
+                ) {
                     LocalModeGuideCard()
                         .environmentObject(state)
                 }

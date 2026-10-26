@@ -81,10 +81,16 @@ struct ProvidersTab: View {
 
                 // v1.9.4: first-run nudge when the cost scanner came back
                 // empty because the App Sandbox hasn't been granted access to
-                // `~/.codex/sessions/` / `~/.claude/projects/`. Opens the
-                // Settings tab's Folder Access section on click.
+                // `~/.codex/sessions/` / `~/.claude/projects/`.
+                //
+                // v1.59 (59-15 F3): the Overview's banner, with its one-tap
+                // home-folder grant and rescan. This tab's own banner sent the
+                // user to Settings instead, where the folders are eleven rows
+                // near the bottom of the Advanced section: a longer path to
+                // the same grant, from the tab where it matters most.
                 if state.needsScannerFolderAccess {
-                    folderAccessBanner
+                    ScannerFolderAccessBanner()
+                        .environmentObject(state)
                 }
 
                 // Cost summary bar
@@ -137,35 +143,6 @@ struct ProvidersTab: View {
             }
             .padding(12)
         }
-    }
-
-    private var folderAccessBanner: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "folder.badge.questionmark")
-                .foregroundStyle(.orange)
-                .font(.system(size: 14))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(L10n.providers.grantAccessTitle)
-                    .font(.system(size: 11, weight: .semibold))
-                Text(L10n.providers.grantAccessBody)
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            Spacer()
-            Button(L10n.providers.openSettings) {
-                state.selectedTab = .settings
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-        }
-        .padding(10)
-        .background(Color.orange.opacity(0.12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var costSummaryBar: some View {
