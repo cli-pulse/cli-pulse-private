@@ -94,7 +94,25 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
         // suppressing OAuth until the natural 15-min expiry.
         await backoff.reset(forFingerprint: fingerprint)
 
-        return ClaudeSnapshot(
+        return Self.snapshot(
+            from: usage,
+            rateLimitTier: tier
+                ?? ClaudeCredentials.readCredentialsFile()?.rateLimitTier
+                ?? ClaudeCredentials.readKeychainCredentialsIfAllowed()?.rateLimitTier,
+            sourceLabel: sourceLabel
+        )
+    }
+
+    /// The parsed usage response as the snapshot `fetch` returns. Its own
+    /// function so `ClaudeLaneKeysTests` checks the lanes through the same
+    /// mapping; the tier is passed in because `fetch` reads it from the
+    /// credentials file and the keychain, which tests must not touch.
+    static func snapshot(
+        from usage: OAuthUsageResponse,
+        rateLimitTier: String?,
+        sourceLabel: String
+    ) -> ClaudeSnapshot {
+        ClaudeSnapshot(
             sessionUsed: usage.fiveHour?.utilization,
             weeklyUsed: usage.sevenDay?.utilization,
             opusUsed: usage.sevenDayOpus?.utilization,
@@ -111,9 +129,7 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
                     currency: e.currency
                 ) : nil
             },
-            rateLimitTier: tier
-                ?? ClaudeCredentials.readCredentialsFile()?.rateLimitTier
-                ?? ClaudeCredentials.readKeychainCredentialsIfAllowed()?.rateLimitTier,
+            rateLimitTier: rateLimitTier,
             sourceLabel: sourceLabel
         )
     }

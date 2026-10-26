@@ -71,18 +71,24 @@ enum ClaudeRoutinesWindow {
     ]
 
     struct Window: Equatable, Sendable {
-        /// Percent used, rounded, clamped at 0.
+        /// Percent used, rounded, clamped to `0...maxUtilization`.
         let utilization: Int
         let resetsAt: String?
         /// Which of `keys` it came from.
         let sourceKey: String
     }
 
+    /// Upper bound for `Window.utilization`. `Int(Double)` traps on a value
+    /// outside `Int`'s range (`1e19`, say), so a server number is clamped
+    /// before it is converted. Values between 100 and the bound pass through
+    /// unchanged, as before; a non-finite number is no row.
+    static let maxUtilization: Double = 1_000
+
     static func parse(_ json: [String: Any]) -> Window? {
         guard let (object, key) = firstObject(in: json) else { return nil }
-        guard let used = percent(object["utilization"]) else { return nil }
+        guard let used = percent(object["utilization"]), used.isFinite else { return nil }
         return Window(
-            utilization: max(0, Int(used.rounded())),
+            utilization: Int(min(max(used, 0), maxUtilization).rounded()),
             resetsAt: object["resets_at"] as? String,
             sourceKey: key
         )

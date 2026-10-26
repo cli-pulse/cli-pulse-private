@@ -25,15 +25,10 @@ final class ClaudeLaneKeysTests: XCTestCase {
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
+    /// Tier names through the same response-to-snapshot mapping `fetch` uses.
     private func oauthTierNames(_ body: String) throws -> [String] {
         let usage = try ClaudeOAuthStrategy.parseUsage(XCTUnwrap(body.data(using: .utf8)))
-        let snapshot = ClaudeSnapshot(
-            sessionUsed: usage.fiveHour?.utilization,
-            weeklyUsed: usage.sevenDay?.utilization,
-            dailyRoutinesUsed: usage.routines?.utilization,
-            dailyRoutinesReset: usage.routines?.resetsAt,
-            sourceLabel: "oauth"
-        )
+        let snapshot = ClaudeOAuthStrategy.snapshot(from: usage, rateLimitTier: nil, sourceLabel: "oauth")
         return ClaudeResultBuilder.build(from: snapshot).usage.tiers.map(\.name)
     }
 
@@ -116,6 +111,21 @@ final class ClaudeLaneKeysTests: XCTestCase {
             XCTAssertNil(ClaudeWebStrategy.parseUsage(try json(body)).dailyRoutinesPercent, body)
             XCTAssertNil(try ClaudeOAuthStrategy.parseUsage(XCTUnwrap(body.data(using: .utf8))).routines, body)
         }
+    }
+
+    /// `Int(Double)` traps outside `Int`'s range, so a huge server number is
+    /// clamped before it is converted rather than crashing the refresh.
+    func testHugeUtilizationIsClampedNotATrap() throws {
+        let body = #"{ "seven_day_routines": { "utilization": 1e19, "resets_at": null } }"#
+        XCTAssertEqual(ClaudeRoutinesWindow.parse(try json(body))?.utilization, 1_000)
+        XCTAssertEqual(ClaudeWebStrategy.parseUsage(try json(body)).dailyRoutinesPercent, 1_000)
+        XCTAssertEqual(
+            try ClaudeOAuthStrategy.parseUsage(XCTUnwrap(body.data(using: .utf8))).routines?.utilization, 1_000)
+        // Below zero is still 0, and values over 100 pass through unchanged.
+        XCTAssertEqual(ClaudeRoutinesWindow.parse(try json(
+            #"{ "seven_day_routines": { "utilization": -4 } }"#))?.utilization, 0)
+        XCTAssertEqual(ClaudeRoutinesWindow.parse(try json(
+            #"{ "seven_day_routines": { "utilization": 104.4 } }"#))?.utilization, 104)
     }
 
     // MARK: - Web strategy recognition
