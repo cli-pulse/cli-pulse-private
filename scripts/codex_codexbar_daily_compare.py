@@ -36,12 +36,14 @@ day in input, cached and output for the day to pass):
       as an aborted turn's), the app counts the growth and CodexBar counts
       last_token_usage. The amount is the growth beyond last_token_usage.
 
-  older-file (a negative amount: CodexBar counts it, the app does not)
-      The app reads the `sessions/YYYY/MM/DD` directories from the day before
-      its window to the day after, so a rollout file in an older directory (a
-      thread started earlier and still written to inside the window) is not
-      read at all. CodexBar reads it. The amount is what the app's rules
-      would count from those files.
+  (older-file, until 1.59: a rollout in a date directory older than the
+      app's window, from a thread still written to inside it, was read by
+      CodexBar and not by the app. Since 1.59 the app reads such a file too,
+      when it was last written inside the window, from a directory of any
+      age. CodexBar's refresh looks 30 directories before its window, and
+      only a cold scan looks further, so a thread resumed from an older one
+      can make a day where the app counts more; that day is reported as
+      unexplained.)
 
 A difference `explain()` does not compute, flagged on the days it touches:
 
@@ -154,37 +156,10 @@ def load_codexbar(days: int, saved: str | None) -> list[dict]:
     return rows
 
 
-def unlisted_files(codex_home: str, res: replica.ScanResult) -> list[str]:
-    """Rollout files under the Codex roots that the app's listing for this
-    window does not reach (older date directories)."""
-    listed = {f.path for f in res.files}
-    listed.update(p for root in replica.roots_for(codex_home)
-                  for p in replica.list_files(root, res.window.scan_since, res.window.scan_until))
-    out = []
-    for root in replica.roots_for(codex_home):
-        for dirpath, _dirs, names in os.walk(root):
-            for name in names:
-                p = os.path.join(dirpath, name)
-                if name.lower().endswith(".jsonl") and not name.startswith(".") and p not in listed:
-                    out.append(p)
-    return sorted(out)
-
-
-def explain(res: replica.ScanResult, codex_home: str | None = None) -> dict:
+def explain(res: replica.ScanResult) -> dict:
     """Per day, the [input, cached, output] the app counts that CodexBar does
-    not (negative where CodexBar counts more), by reason (see KNOWN
-    DIFFERENCES)."""
+    not, by reason (see KNOWN DIFFERENCES)."""
     out: dict = {}
-    if codex_home:
-        for path in unlisted_files(codex_home, res):
-            f = replica.parse_file(path, res.window.scan_since, res.window.scan_until, "overlap")
-            for day, models in f.days.items():
-                if not (res.window.since <= day <= res.window.until):
-                    continue
-                dst = out.setdefault(day, {}).setdefault("older-file", [0, 0, 0])
-                for row in models.values():
-                    for i in range(3):
-                        dst[i] -= row[i]
     for f in res.files:
         if f.path not in res.counted:
             continue
@@ -224,7 +199,7 @@ def main(argv=None) -> int:
     # The app's window for `days` covers first_day - 1 .. today: every CodexBar day.
     res = replica.scan(args.codex_home, today, args.days, "overlap")
     mine = res.day_totals()
-    reasons = explain(res, args.codex_home)
+    reasons = explain(res)
     fell = fall_days(res)
 
     print(f"CodexBar window {first_day}..{today}; app window {res.window.since}..{res.window.until}")

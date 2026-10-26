@@ -163,11 +163,11 @@ public enum LocalScanDisclosure {
     public static let currentVersion = 2
     /// How far back an ordinary refresh uses (`CostUsageScanner.Options`).
     ///
-    /// "Uses", precisely: Codex logs are listed only from the date folders
-    /// inside the window, and a Claude log last written before it is not
-    /// opened. A Claude log still being written to is parsed from its start,
-    /// and its lines older than the window are dropped, not kept. The policy
-    /// words it the same way.
+    /// "Uses", precisely: Codex logs are listed from the date folders inside
+    /// the window, and a log last written before it is not opened (a Claude
+    /// log, and since 1.59 a Codex log in an older date folder). A log still
+    /// being written to is parsed from its start, and its lines older than the
+    /// window are dropped, not kept. The policy words it the same way.
     public static let routineWindowDays = 30
     /// How far back the one-time history read goes
     /// (`DailyUsageArchiveManager.backfillDays`).
