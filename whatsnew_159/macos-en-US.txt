@@ -1,0 +1,13 @@
+In local mode, a provider whose usage is in this Mac's logs now gets its own card, the Claude card says why Claude is not ready, and a hang on slow networks is fixed.
+
+• Local mode: when this Mac's session logs show Claude Code or Codex usage in the last 7 days, that provider now has a card on the Providers tab and a row under Provider Usage, with its tokens and estimated cost, even when the provider is not set up. If it is not ready, its card says why. A provider you turned off gets no card from its logs.
+
+• Local mode: "No AI tools detected" no longer appears while CLI Pulse is waiting for access to your logs, or when the logs show usage. After you choose "Not now" at the local scan question, the Overview no longer shows the Local Mode card saying that this Mac is collecting usage.
+
+• When CLI Pulse cannot read your AI tools' logs, the Providers tab now shows the same banner as the Overview: click Grant, allow access to your home folder, and CLI Pulse reads the logs again right away. The tab used to send you to Settings.
+
+• The Claude card now says why Claude is not ready, for example "Not signed in", "Not read in Strict privacy mode" or "Keychain access declined", where it used to say "Not set up".
+
+• If you decline macOS's request to let CLI Pulse read your Claude Code login from the keychain, CLI Pulse now waits 30 minutes before trying again, instead of making macOS ask at every refresh. To stop the requests, turn on "Skip Claude Code keychain access" in Settings › Privacy.
+
+• Fixed a hang: on a slow network, CLI Pulse could stop responding while it looked up this Mac's host name. It now does that in the background.
