@@ -1,10 +1,10 @@
 En modo local, un proveedor con uso en los registros de este Mac ahora tiene su propia tarjeta, la tarjeta de Claude dice por qué Claude no está listo y se corrigió un bloqueo con redes lentas.
 
-• Modo local: cuando los registros de sesión de este Mac muestran uso de Claude Code o Codex en los últimos 7 días, ese proveedor ahora tiene una tarjeta en la pestaña Proveedores y una fila en Uso por proveedor, con sus tokens y su costo estimado, aunque el proveedor no esté configurado. Si no está listo, su tarjeta dice por qué. Un proveedor que desactivaste no recibe tarjeta por sus registros.
+• Modo local: cuando los registros de sesión de este Mac muestran uso de Claude Code o Codex en los últimos 7 días, ese proveedor ahora tiene una tarjeta en la pestaña Proveedores con sus tokens y su costo estimado, aunque el proveedor no esté configurado, y una fila en Uso por proveedor los días en que lo usas. Si no está listo, su tarjeta dice por qué. Un proveedor que hayas desactivado no tiene tarjeta, aunque sus registros muestren uso.
 
-• Modo local: «No se detectaron herramientas de IA» ya no aparece mientras CLI Pulse espera acceso a tus registros, ni cuando los registros muestran uso. Si eliges «Ahora no» en la pregunta del análisis local, el Resumen ya no muestra la tarjeta Modo local que decía que este Mac está recopilando el uso.
+• Modo local: «No se detectaron herramientas de IA» ya no aparece mientras CLI Pulse espera acceso a tus registros, ni cuando los registros muestran uso. Si eliges «Ahora no» en la pregunta del análisis local, el Resumen ya no muestra la tarjeta Modo local que dice que este Mac está recopilando el uso.
 
-• Cuando CLI Pulse no puede leer los registros de tus herramientas de IA, la pestaña Proveedores ahora muestra el mismo aviso que el Resumen: haz clic en Permitir, da acceso a tu carpeta de inicio y CLI Pulse vuelve a leer los registros al momento. Antes, la pestaña te enviaba a Ajustes.
+• Cuando CLI Pulse no puede leer los registros de tus herramientas de IA, la pestaña Proveedores ahora muestra el mismo aviso que el Resumen: haz clic en Permitir, da acceso a tu carpeta de inicio y CLI Pulse vuelve a leer los registros de inmediato. Antes, la pestaña te enviaba a Ajustes.
 
 • La tarjeta de Claude ahora dice por qué Claude no está listo, por ejemplo «Sin iniciar sesión», «No se lee en modo de privacidad estricta» o «Acceso al Llavero denegado», donde antes decía «Sin configurar».
 

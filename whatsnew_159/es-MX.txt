@@ -1,3 +1,3 @@
 Cuando tu cuenta aún no tiene uso sincronizado, el Resumen ahora explica por qué está vacío y qué hacer en tu Mac.
 
-• Si iniciabas sesión con una cuenta que aún no tenía uso sincronizado, el Resumen del iPhone y del iPad solo mostraba ceros, sin explicar por qué. Ahora muestra encima la tarjeta «Esperando datos», con los pasos que debes seguir en tu Mac. La tarjeta desaparece en cuanto tu cuenta tiene uso sincronizado.
+• Si iniciabas sesión con una cuenta que aún no tenía uso sincronizado, el Resumen del iPhone y del iPad solo mostraba ceros, sin explicar por qué. Ahora muestra encima de ellos la tarjeta «Esperando datos», con los pasos que debes seguir en tu Mac. La tarjeta desaparece en cuanto tu cuenta tiene uso sincronizado.

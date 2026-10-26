@@ -1,8 +1,8 @@
 In local mode, a provider whose usage is in this Mac's logs now gets its own card, the Claude card says why Claude is not ready, and a hang on slow networks is fixed.
 
-• Local mode: when this Mac's session logs show Claude Code or Codex usage in the last 7 days, that provider now has a card on the Providers tab and a row under Provider Usage, with its tokens and estimated cost, even when the provider is not set up. If it is not ready, its card says why. A provider you turned off gets no card from its logs.
+• Local mode: when this Mac's session logs show Claude Code or Codex usage in the last 7 days, that provider now has a card on the Providers tab with its tokens and estimated cost, even when the provider is not set up, and a row under Provider Usage on days you use it. If it is not ready, its card says why. A provider you turned off gets no card from its logs.
 
-• Local mode: "No AI tools detected" no longer appears while CLI Pulse is waiting for access to your logs, or when the logs show usage. After you choose "Not now" at the local scan question, the Overview no longer shows the Local Mode card saying that this Mac is collecting usage.
+• Local mode: "No AI tools detected" no longer appears while CLI Pulse is waiting for access to your logs, or when the logs show usage. After you choose "Not now" when CLI Pulse asks whether to scan this Mac, the Overview no longer shows the Local Mode card saying that this Mac is collecting usage.
 
 • When CLI Pulse cannot read your AI tools' logs, the Providers tab now shows the same banner as the Overview: click Grant, allow access to your home folder, and CLI Pulse reads the logs again right away. The tab used to send you to Settings.
 
