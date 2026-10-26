@@ -81,12 +81,8 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
         // "Quota data unavailable" while masking real failures.
         // Record the response's top-level keys (names only, no values) so we can
         // detect schema drift from resolver logs without leaking tokens.
-        // Sonnet / Designs / Daily Routines are included in the recognition set
-        // so a launch-window-only response (e.g. an account whose only signal
-        // is `seven_day_omelette`) is treated as success, not schema failure.
-        if usage.sessionPercent == nil && usage.weeklyPercent == nil &&
-           usage.opusPercent == nil && usage.sonnetPercent == nil &&
-           usage.designsPercent == nil && usage.dailyRoutinesPercent == nil {
+        // See `UsageData.hasRecognizedQuota` for what counts.
+        if !usage.hasRecognizedQuota {
             // Persist any account metadata we DID manage to collect before
             // throwing — the "Signed in as X" diagnostic copy in
             // ClaudeResultBuilder relies on this file existing even when the
@@ -115,11 +111,9 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
             weeklyUsed: usage.weeklyPercent,
             opusUsed: usage.opusPercent,
             sonnetUsed: usage.sonnetPercent,
-            designsUsed: usage.designsPercent,
             dailyRoutinesUsed: usage.dailyRoutinesPercent,
             sessionReset: usage.sessionResetISO,
             weeklyReset: usage.weeklyResetISO,
-            designsReset: usage.designsResetISO,
             dailyRoutinesReset: usage.dailyRoutinesResetISO,
             extraUsage: extra,
             rateLimitTier: account?.rateLimitTier ?? usage.planType,
@@ -251,32 +245,49 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
         return OrgInfo(id: id, email: email)
     }
 
-    private struct UsageData {
+    /// Internal for tests.
+    struct UsageData {
         let sessionPercent: Int?
         let weeklyPercent: Int?
         let opusPercent: Int?
         let sonnetPercent: Int?
-        let designsPercent: Int?
         let dailyRoutinesPercent: Int?
         let sessionResetISO: String?
         let weeklyResetISO: String?
-        let designsResetISO: String?
         let dailyRoutinesResetISO: String?
         let planType: String?
         /// Sorted, comma-separated list of top-level JSON keys from the response
         /// used for schema-drift diagnostics only. Values are NEVER included to
         /// avoid leaking tokens / PII.
         let topLevelKeysForDiagnostics: String?
+
+        /// True when the response carried at least one quota window this app
+        /// shows. False makes `fetch` fail over to the next strategy instead
+        /// of returning a snapshot with only metadata.
+        ///
+        /// Daily Routines counts, so a routines-only account is a success.
+        /// 1.59: `iguana_necktie` no longer counts. It was read as "Designs";
+        /// it is now a cloud-credits object in dollars, and a response with
+        /// nothing else is not a quota reading.
+        var hasRecognizedQuota: Bool {
+            sessionPercent != nil || weeklyPercent != nil
+                || opusPercent != nil || sonnetPercent != nil
+                || dailyRoutinesPercent != nil
+        }
     }
 
     /// `GET /api/organizations/{orgId}/usage` — session/weekly/opus/sonnet/
-    /// designs/daily-routines utilization.
+    /// daily-routines utilization.
     private func fetchUsage(orgId: String, sessionKey: String) async throws -> UsageData {
         let data = try await apiRequest(path: "/organizations/\(orgId)/usage", sessionKey: sessionKey)
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw ClaudeStrategyError.parseFailed("usage response not a dictionary")
         }
+        return Self.parseUsage(json)
+    }
 
+    /// The `/usage` body, parsed. Pure, so tests can pin it without a network.
+    static func parseUsage(_ json: [String: Any]) -> UsageData {
         let isoFormatter = sharedISO8601Formatter
 
         func parsePercent(_ key: String) -> Int? {
@@ -311,30 +322,11 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
             return (util, w["resets_at"] as? String)
         }
 
-        // Launch-window variant: distinguishes "key absent" (nil) from
-        // "key present-but-null" (utilization=0, no reset). Mirrors the
-        // helper's `_add_launch_window` and OAuth's `parseLaunchWindow`.
-        func parseNestedLaunchWindow(_ key: String) -> (utilization: Int, resetsAt: String?)? {
-            guard let value = json[key] else { return nil }
-            if value is NSNull { return (0, nil) }
-            if let w = value as? [String: Any] {
-                let util: Int
-                if let n = w["utilization"] as? NSNumber {
-                    util = max(0, Int(n.doubleValue.rounded()))
-                } else {
-                    util = 0
-                }
-                return (util, w["resets_at"] as? String)
-            }
-            return nil
-        }
-
         let fiveHour = parseNestedWindow("five_hour")
         let sevenDay = parseNestedWindow("seven_day")
         let sevenDayOpus = parseNestedWindow("seven_day_opus")
         let sevenDaySonnet = parseNestedWindow("seven_day_sonnet")
-        let iguanaNecktie = parseNestedLaunchWindow("iguana_necktie")
-        let sevenDayOmelette = parseNestedLaunchWindow("seven_day_omelette")
+        let routines = ClaudeRoutinesWindow.parse(json)
 
         let sessionPct = fiveHour?.utilization
             ?? parsePercent("session_percent_used")
@@ -352,8 +344,7 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
             ?? parsePercent("sonnet_percent_used")
             ?? parsePercent("sonnetPercentUsed")
             ?? parsePercent("seven_day_sonnet_utilization")
-        let designsPct = iguanaNecktie?.utilization
-        let dailyRoutinesPct = sevenDayOmelette?.utilization
+        let dailyRoutinesPct = routines?.utilization
 
         let sessionReset = fiveHour?.resetsAt
             ?? parseReset("session_resets_at")
@@ -361,8 +352,7 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
         let weeklyReset = sevenDay?.resetsAt
             ?? parseReset("weekly_resets_at")
             ?? parseReset("weeklyResetsAt")
-        let designsReset = iguanaNecktie?.resetsAt
-        let dailyRoutinesReset = sevenDayOmelette?.resetsAt
+        let dailyRoutinesReset = routines?.resetsAt
         let plan = json["plan_type"] as? String ?? json["planType"] as? String
 
         // Key names only (not values) for schema-drift diagnostics.
@@ -373,11 +363,9 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
             weeklyPercent: weeklyPct,
             opusPercent: opusPct,
             sonnetPercent: sonnetPct,
-            designsPercent: designsPct,
             dailyRoutinesPercent: dailyRoutinesPct,
             sessionResetISO: sessionReset,
             weeklyResetISO: weeklyReset,
-            designsResetISO: designsReset,
             dailyRoutinesResetISO: dailyRoutinesReset,
             planType: plan,
             topLevelKeysForDiagnostics: keysHint

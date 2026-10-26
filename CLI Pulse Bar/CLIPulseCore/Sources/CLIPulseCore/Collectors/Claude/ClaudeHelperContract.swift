@@ -28,8 +28,8 @@ import Foundation
 /// | `~/Library/Group Containers/group.yyh.CLI-Pulse/claude_session.json` | Helper | App (WebStrategy) | Session key for app-side API calls |
 /// | `~/.clipulse/claude_snapshot.json` | Helper | Legacy fallback | Pre-app-group compatibility |
 /// | `~/.clipulse/claude_session.json` | Helper | Legacy fallback | Pre-app-group compatibility |
-/// | `$TMPDIR/clipulse_claude_resolver.log` | App | Debug | Strategy chain execution log |
-/// | `$TMPDIR/clipulse_claude_fallback.log` | App | Debug | Fallback chain failure log |
+/// | `$TMPDIR/clipulse_claude_resolver.log` | App, DEBUG builds only | Debug | Strategy chain execution log |
+/// | `$TMPDIR/clipulse_claude_fallback.log` | App, DEBUG builds only | Debug | Fallback chain failure log |
 /// | `$TMPDIR/clipulse_merge_diagnostic.json` | App | Debug | Cloud/local merge verification |
 ///
 /// ## Snapshot JSON Schema
@@ -51,9 +51,9 @@ import Foundation
 ///     "currency": "USD"
 ///   },
 ///   "extra_tiers": [
-///     { "name": "Designs",        "used": 25, "reset": "2026-05-05T12:00:00Z" },
-///     { "name": "Daily Routines", "used": 5,  "reset": null }
+///     { "name": "Daily Routines", "used": 5, "reset": null }
 ///   ],
+///   "extra_tiers_schema": 2,
 ///   "fetched_at": "2026-04-02T14:30:00Z",
 ///   "source": "web"
 /// }
@@ -61,9 +61,23 @@ import Foundation
 ///
 /// `extra_tiers` is additive: older app builds that don't know the key
 /// continue to parse the legacy `*_used` / `*_reset` fields unchanged.
-/// Helper writers should only include known launch-window names there
-/// (currently `Designs` and `Daily Routines`); `Extra Usage` keeps its
-/// dedicated `extra_usage` field above and is never duplicated here.
+/// `Extra Usage` keeps its dedicated `extra_usage` field above and is never
+/// duplicated here.
+///
+/// ### `extra_tiers_schema` (1.59)
+///
+/// Writers up to app 1.58 and Companion 1.33 filled `extra_tiers` from the
+/// wrong response keys: "Designs" from `iguana_necktie` (cloud credits in
+/// dollars since 10-01) and "Daily Routines" from `seven_day_omelette` (the
+/// retired Design window). Those files carry no `extra_tiers_schema`, and the
+/// resolver serves its own cache for up to 24 hours, so a reader that trusted
+/// the names would bring both wrong lanes back. So:
+///   * "Designs" is never read, whatever the schema;
+///   * "Daily Routines" is read only from a file with
+///     `"extra_tiers_schema": 2`, which says it came from the routines keys
+///     (`ClaudeRoutinesWindow`). `writeSnapshot` writes it on every file; a
+///     Companion release that maps the same keys must write it too.
+/// Any other value, or none, means the file's lanes are not trusted.
 ///
 /// ## Freshness
 ///
@@ -206,6 +220,10 @@ public enum ClaudeHelperContract {
     /// Maximum age (seconds) before a snapshot is considered stale.
     public static let maxSnapshotAge: TimeInterval = 600 // 10 minutes
 
+    /// `extra_tiers_schema`: see "`extra_tiers_schema` (1.59)" above.
+    public static let extraTiersSchemaKey = "extra_tiers_schema"
+    public static let extraTiersSchema = 2
+
     /// Extended age for last-known-good cache fallback.
     /// This is intentionally much longer than `maxSnapshotAge` so the app can
     /// keep showing the last successful bars during transient OAuth 429 windows.
@@ -221,8 +239,17 @@ public enum ClaudeHelperContract {
     /// Called by helper/CLI tools running outside the sandbox.
     public static func writeSnapshot(_ snapshot: ClaudeSnapshot) throws {
         ensureHelperDir()
+        let dict = snapshotDictionary(snapshot, fetchedAt: Date())
+        let data = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: URL(fileURLWithPath: snapshotPath), options: .atomic)
+    }
+
+    /// The file `writeSnapshot` writes, as a dictionary. Pure, so tests can
+    /// read it back through `readSnapshot(candidatePaths:)` from a temporary
+    /// file instead of the user's real snapshot.
+    static func snapshotDictionary(_ snapshot: ClaudeSnapshot, fetchedAt: Date) -> [String: Any] {
         var dict: [String: Any] = [
-            "fetched_at": sharedISO8601Formatter.string(from: Date()),
+            "fetched_at": sharedISO8601Formatter.string(from: fetchedAt),
             "source": snapshot.sourceLabel,
         ]
         if let v = snapshot.sessionUsed { dict["session_used"] = v }
@@ -254,18 +281,16 @@ public enum ClaudeHelperContract {
             ]
         }
         var extraTiers: [[String: Any]] = []
-        if let used = snapshot.designsUsed {
-            extraTiers.append(makeExtraTier(name: "Designs", used: used, reset: snapshot.designsReset))
-        }
         if let used = snapshot.dailyRoutinesUsed {
             extraTiers.append(makeExtraTier(name: "Daily Routines", used: used, reset: snapshot.dailyRoutinesReset))
         }
         if !extraTiers.isEmpty {
             dict["extra_tiers"] = extraTiers
         }
-
-        let data = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
-        try data.write(to: URL(fileURLWithPath: snapshotPath), options: .atomic)
+        // On every file, with or without `extra_tiers`: it says this writer
+        // maps the lanes from the 1.59 keys.
+        dict[extraTiersSchemaKey] = extraTiersSchema
+        return dict
     }
 
     /// Write account-level metadata to its dedicated sibling file.
@@ -390,43 +415,17 @@ public enum ClaudeHelperContract {
             // snapshot fields. Old snapshots (no key, or empty array) leave
             // the new fields nil — callers see exactly the same shape as
             // before this contract was extended.
-            var designsUsed: Int? = nil
-            var designsReset: String? = nil
-            var dailyRoutinesUsed: Int? = nil
-            var dailyRoutinesReset: String? = nil
-            if let extraTiers = json["extra_tiers"] as? [[String: Any]] {
-                for entry in extraTiers {
-                    guard let name = entry["name"] as? String,
-                          let used = entry["used"] as? Int else { continue }
-                    let reset = entry["reset"] as? String
-                    switch name {
-                    case "Designs":
-                        designsUsed = used
-                        designsReset = reset
-                    case "Daily Routines":
-                        dailyRoutinesUsed = used
-                        dailyRoutinesReset = reset
-                    default:
-                        // Unknown launch-window names are intentionally
-                        // discarded — adding new ones is a coordinated
-                        // helper+app change so a stray name from an older
-                        // helper shouldn't surface a phantom row.
-                        continue
-                    }
-                }
-            }
+            let lanes = Self.decodeExtraTiers(json)
 
             return ClaudeSnapshot(
                 sessionUsed: json["session_used"] as? Int,
                 weeklyUsed: json["weekly_used"] as? Int,
                 opusUsed: json["opus_used"] as? Int,
                 sonnetUsed: json["sonnet_used"] as? Int,
-                designsUsed: designsUsed,
-                dailyRoutinesUsed: dailyRoutinesUsed,
+                dailyRoutinesUsed: lanes.dailyRoutinesUsed,
                 sessionReset: normalizedSessionReset,
                 weeklyReset: normalizedWeeklyReset,
-                designsReset: designsReset,
-                dailyRoutinesReset: dailyRoutinesReset,
+                dailyRoutinesReset: lanes.dailyRoutinesReset,
                 extraUsage: extra,
                 rateLimitTier: json["rate_limit_tier"] as? String,
                 accountEmail: json["account_email"] as? String,
@@ -434,6 +433,38 @@ public enum ClaudeHelperContract {
             )
         }
         return nil
+    }
+
+    /// The `extra_tiers` lanes this reader trusts in one snapshot file (see
+    /// "`extra_tiers_schema` (1.59)" above). Internal for tests.
+    static func decodeExtraTiers(
+        _ json: [String: Any]
+    ) -> (dailyRoutinesUsed: Int?, dailyRoutinesReset: String?) {
+        // The exact marker, as a JSON integer: a string "2", a boolean or a
+        // later schema whose meaning this build does not know all fail it.
+        let schema = json[extraTiersSchemaKey] as? NSNumber
+        let trustsRoutines = schema.map {
+            CFGetTypeID($0) != CFBooleanGetTypeID() && $0.doubleValue == Double(extraTiersSchema)
+        } ?? false
+        guard trustsRoutines,
+              let extraTiers = json["extra_tiers"] as? [[String: Any]] else {
+            return (nil, nil)
+        }
+        for entry in extraTiers {
+            guard let name = entry["name"] as? String,
+                  let used = entry["used"] as? Int else { continue }
+            switch name {
+            case "Daily Routines":
+                return (used, entry["reset"] as? String)
+            default:
+                // "Designs" (retired in 1.59) and any name this build does
+                // not know are dropped: adding one is a coordinated
+                // helper+app change, so a stray name from an older helper
+                // must not surface a phantom row.
+                continue
+            }
+        }
+        return (nil, nil)
     }
 
     /// Claude's weekly usage page currently resets on Friday 11:00 PM local time.

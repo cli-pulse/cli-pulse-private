@@ -104,20 +104,18 @@ final class ProviderFixtureRegressionTests: XCTestCase {
         assertTierNames(result.usage, ["5h Window", "Weekly", "Sonnet only"])
     }
 
-    // P3 launch fixture: when Designs and Daily Routines are both present,
-    // the Claude provider card surfaces five quota bars in the prescribed
-    // order. Same Sonnet/Opus coalesce as the legacy case.
-    func testClaudeFixtureProducesFiveQuotaBarsWithDesignsAndDailyRoutines() {
+    // Launch fixture: with Daily Routines present the Claude provider card
+    // surfaces four quota bars in the prescribed order (1.59 dropped the
+    // Designs bar). Same Sonnet/Opus coalesce as the legacy case.
+    func testClaudeFixtureProducesFourQuotaBarsWithDailyRoutines() {
         let snapshot = ClaudeSnapshot(
             sessionUsed: 22,
             weeklyUsed: 18,
             opusUsed: nil,
             sonnetUsed: 2,
-            designsUsed: 25,
             dailyRoutinesUsed: 5,
             sessionReset: "2026-05-05T08:00:00Z",
             weeklyReset: "2026-05-05T12:00:01Z",
-            designsReset: "2026-05-05T12:00:01Z",
             dailyRoutinesReset: nil,
             rateLimitTier: "default_claude_max_20x",
             accountEmail: "fixture@example.com",
@@ -130,11 +128,9 @@ final class ProviderFixtureRegressionTests: XCTestCase {
         XCTAssertEqual(result.usage.plan_type, "Max 20x")
         assertTierNames(
             result.usage,
-            ["5h Window", "Weekly", "Sonnet only", "Designs", "Daily Routines"]
+            ["5h Window", "Weekly", "Sonnet only", "Daily Routines"]
         )
         let byName = Dictionary(uniqueKeysWithValues: result.usage.tiers.map { ($0.name, $0) })
-        XCTAssertEqual(byName["Designs"]?.remaining, 75)
-        XCTAssertEqual(byName["Designs"]?.reset_time, "2026-05-05T12:00:01Z")
         XCTAssertEqual(byName["Daily Routines"]?.remaining, 95)
         XCTAssertNil(byName["Daily Routines"]?.reset_time)
     }

@@ -99,12 +99,10 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
             weeklyUsed: usage.sevenDay?.utilization,
             opusUsed: usage.sevenDayOpus?.utilization,
             sonnetUsed: usage.sevenDaySonnet?.utilization,
-            designsUsed: usage.iguanaNecktie?.utilization,
-            dailyRoutinesUsed: usage.sevenDayOmelette?.utilization,
+            dailyRoutinesUsed: usage.routines?.utilization,
             sessionReset: usage.fiveHour?.resetsAt,
             weeklyReset: usage.sevenDay?.resetsAt,
-            designsReset: usage.iguanaNecktie?.resetsAt,
-            dailyRoutinesReset: usage.sevenDayOmelette?.resetsAt,
+            dailyRoutinesReset: usage.routines?.resetsAt,
             extraUsage: usage.extraUsage.flatMap { e in
                 e.isEnabled ? ClaudeExtraUsage(
                     isEnabled: true,
@@ -170,15 +168,12 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
         let sevenDayOpus: UsageWindow?
         let sevenDaySonnet: UsageWindow?
         let sevenDayOAuthApps: UsageWindow?
-        /// Designs (raw key `iguana_necktie`). Launch-window null semantics:
-        /// a present-but-null value parses as `UsageWindow(utilization: 0,
-        /// resetsAt: nil)` (enabled-but-unused bucket). An absent key still
-        /// yields `nil` so accounts where the rollout hasn't reached them
-        /// don't see a phantom row.
-        let iguanaNecktie: UsageWindow?
-        /// Daily Routines (raw key `seven_day_omelette`). Same launch-window
-        /// null semantics as `iguanaNecktie`.
-        let sevenDayOmelette: UsageWindow?
+        /// Daily Routines, from the first of `ClaudeRoutinesWindow.keys`
+        /// that holds an object with a numeric utilization; nil otherwise,
+        /// so a null window is no row rather than "100% left".
+        /// `iguana_necktie` (cloud credits in dollars since 10-01) and
+        /// `seven_day_omelette` (the retired Design window) are not read.
+        let routines: ClaudeRoutinesWindow.Window?
         let extraUsage: ExtraUsage?
     }
 
@@ -206,24 +201,6 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
                 resetsAt: w["resets_at"] as? String
             )
         }
-        // Launch-window probe: distinguishes "key absent" (skip) from
-        // "key present-but-null" (emit a 0/nil bucket). Mirrors the
-        // helper's `_add_launch_window` semantics. Existing optional
-        // model windows (Opus, OAuth Apps) keep `parseWindow`'s
-        // present-but-null → nil behavior.
-        func parseLaunchWindow(_ key: String) -> UsageWindow? {
-            guard let value = json[key] else { return nil }            // absent
-            if value is NSNull {
-                return UsageWindow(utilization: 0, resetsAt: nil)      // present-but-null
-            }
-            if let w = value as? [String: Any] {
-                return UsageWindow(
-                    utilization: intFromJSON(w["utilization"]) ?? 0,
-                    resetsAt: w["resets_at"] as? String
-                )
-            }
-            return nil
-        }
         var extra: ExtraUsage? = nil
         if let e = json["extra_usage"] as? [String: Any] {
             // v1.24 Phase 1 Item #7 (CodexBar 11f92065): Anthropic's
@@ -248,8 +225,7 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
             sevenDayOpus: parseWindow("seven_day_opus"),
             sevenDaySonnet: parseWindow("seven_day_sonnet"),
             sevenDayOAuthApps: parseWindow("seven_day_oauth_apps"),
-            iguanaNecktie: parseLaunchWindow("iguana_necktie"),
-            sevenDayOmelette: parseLaunchWindow("seven_day_omelette"),
+            routines: ClaudeRoutinesWindow.parse(json),
             extraUsage: extra
         )
     }

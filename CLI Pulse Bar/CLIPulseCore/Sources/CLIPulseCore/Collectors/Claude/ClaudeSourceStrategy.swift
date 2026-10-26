@@ -30,11 +30,11 @@ public struct ClaudeSnapshot: Sendable {
     public let weeklyUsed: Int?
     public let opusUsed: Int?
     public let sonnetUsed: Int?
-    public let designsUsed: Int?
+    /// The Daily Routines window (`ClaudeRoutinesWindow`). 1.59 dropped the
+    /// "Designs" lane: its key, `iguana_necktie`, now carries cloud credits.
     public let dailyRoutinesUsed: Int?
     public let sessionReset: String?    // ISO8601 or human-readable
     public let weeklyReset: String?
-    public let designsReset: String?
     public let dailyRoutinesReset: String?
     public let extraUsage: ClaudeExtraUsage?
     public let rateLimitTier: String?
@@ -44,9 +44,9 @@ public struct ClaudeSnapshot: Sendable {
     public init(
         sessionUsed: Int? = nil, weeklyUsed: Int? = nil,
         opusUsed: Int? = nil, sonnetUsed: Int? = nil,
-        designsUsed: Int? = nil, dailyRoutinesUsed: Int? = nil,
+        dailyRoutinesUsed: Int? = nil,
         sessionReset: String? = nil, weeklyReset: String? = nil,
-        designsReset: String? = nil, dailyRoutinesReset: String? = nil,
+        dailyRoutinesReset: String? = nil,
         extraUsage: ClaudeExtraUsage? = nil,
         rateLimitTier: String? = nil,
         accountEmail: String? = nil,
@@ -56,11 +56,9 @@ public struct ClaudeSnapshot: Sendable {
         self.weeklyUsed = weeklyUsed
         self.opusUsed = opusUsed
         self.sonnetUsed = sonnetUsed
-        self.designsUsed = designsUsed
         self.dailyRoutinesUsed = dailyRoutinesUsed
         self.sessionReset = sessionReset
         self.weeklyReset = weeklyReset
-        self.designsReset = designsReset
         self.dailyRoutinesReset = dailyRoutinesReset
         self.extraUsage = extraUsage
         self.rateLimitTier = rateLimitTier
@@ -76,7 +74,6 @@ public struct ClaudeSnapshot: Sendable {
             || weeklyUsed != nil
             || sonnetUsed != nil
             || opusUsed != nil
-            || designsUsed != nil
             || dailyRoutinesUsed != nil
     }
 
@@ -92,11 +89,9 @@ public struct ClaudeSnapshot: Sendable {
             weeklyUsed: weeklyUsed,
             opusUsed: opusUsed,
             sonnetUsed: sonnetUsed,
-            designsUsed: designsUsed,
             dailyRoutinesUsed: dailyRoutinesUsed,
             sessionReset: sessionReset,
             weeklyReset: weeklyReset ?? info.weeklyReset,
-            designsReset: designsReset,
             dailyRoutinesReset: dailyRoutinesReset,
             extraUsage: extraUsage,
             rateLimitTier: rateLimitTier ?? info.rateLimitTier,
@@ -155,9 +150,6 @@ public enum ClaudeResultBuilder {
         }
         if let u = snapshot.sonnetUsed ?? snapshot.opusUsed {
             tiers.append(TierDTO(name: "Sonnet only", quota: 100, remaining: max(0, 100 - u), reset_time: snapshot.weeklyReset))
-        }
-        if let u = snapshot.designsUsed {
-            tiers.append(TierDTO(name: "Designs", quota: 100, remaining: max(0, 100 - u), reset_time: snapshot.designsReset))
         }
         if let u = snapshot.dailyRoutinesUsed {
             tiers.append(TierDTO(name: "Daily Routines", quota: 100, remaining: max(0, 100 - u), reset_time: snapshot.dailyRoutinesReset))
