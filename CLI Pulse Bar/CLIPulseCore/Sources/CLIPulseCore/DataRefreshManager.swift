@@ -104,6 +104,27 @@ internal final class DataRefreshManager {
         /// ready). Before this the UI could only see results, so those three
         /// were indistinguishable from a collector that ran and failed.
         let setCollectorOutcomes: ([ProviderKind: CollectorOutcome]) -> Void
+
+        /// These callbacks, with `observe` told every `setLoading` first.
+        func observingLoading(_ observe: @escaping (Bool) -> Void) -> Callbacks {
+            let setLoading = self.setLoading
+            return Callbacks(
+                isAuthenticated: isAuthenticated,
+                setLoading: { isLoading in
+                    observe(isLoading)
+                    setLoading(isLoading)
+                },
+                setLastError: setLastError,
+                setServerOnline: setServerOnline,
+                applyPayload: applyPayload,
+                sendNotification: sendNotification,
+                afterRefresh: afterRefresh,
+                handleTokenExpired: handleTokenExpired,
+                activeSuppressedAlertIDs: activeSuppressedAlertIDs,
+                setNeedsFolderAccess: setNeedsFolderAccess,
+                setCollectorOutcomes: setCollectorOutcomes
+            )
+        }
     }
 
     #if os(macOS)
@@ -127,11 +148,13 @@ internal final class DataRefreshManager {
                 _ results: [CollectorResult],
                 _ authorizationLease: APIAuthorizationLease
             ) async -> Void
+        /// v1.59 (59-01): returns what happened to the upload, which the
+        /// refresh logs (`UploadOutcome`).
         let syncDailyUsage:
             @Sendable (
                 _ scanResult: CostUsageScanResult,
                 _ authorizationLease: APIAuthorizationLease
-            ) async -> Void
+            ) async -> UploadOutcome
         let syncAccountQuotas:
             @Sendable (
                 _ accounts: [ProviderAccountUsage],
@@ -258,7 +281,23 @@ internal final class DataRefreshManager {
     private let api: APIClient
     #if os(macOS)
     private let localRuntime: LocalRefreshRuntime
+    /// v1.59 (59-04): this Mac's host name, read off the main thread.
+    private let hostIdentity: HostIdentity
+    /// v1.59 (59-01): logs each refresh's upload outcome, reports repeated
+    /// failures.
+    private let uploadOutcomes: UploadOutcomeTracker
     #endif
+    /// When the refresh now in flight set `isLoading`, on `uptime`, so a
+    /// refresh skipped behind it can say for how long
+    /// (`UploadOutcome.refreshInFlight`).
+    private var loadingSince: TimeInterval?
+    /// The clock `loadingSince` is on: seconds the system has been awake
+    /// (`systemUptime`), not wall time. A refresh a lid close catches in
+    /// flight is still `isLoading` on wake; on wall time the first tick
+    /// after it would count the whole sleep as the refresh's age, and any
+    /// sleep of ten minutes or more would read as `refresh_stuck`.
+    private let uptime: () -> TimeInterval
+    nonisolated static func systemUptime() -> TimeInterval { ProcessInfo.processInfo.systemUptime }
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
 
@@ -314,18 +353,36 @@ internal final class DataRefreshManager {
     #if os(macOS)
     init(
         api: APIClient,
-        localRuntime: LocalRefreshRuntime? = nil
+        localRuntime: LocalRefreshRuntime? = nil,
+        hostIdentity: HostIdentity = .shared,
+        uploadOutcomes: UploadOutcomeTracker? = nil,
+        uptime: @escaping () -> TimeInterval = { DataRefreshManager.systemUptime() }
     ) {
         self.api = api
         self.localRuntime = localRuntime ?? .live(api: api)
+        self.hostIdentity = hostIdentity
+        self.uploadOutcomes = uploadOutcomes ?? UploadOutcomeTracker()
+        self.uptime = uptime
     }
     #else
     init(api: APIClient) {
         self.api = api
+        self.uptime = { DataRefreshManager.systemUptime() }
     }
     #endif
 
+    /// v1.59 (59-01): every refresh on a Mac ends in exactly one
+    /// `UploadOutcome`, logged here. The route bodies return it, so a new
+    /// early return cannot leave a refresh unexplained: it does not compile.
     func refreshAll(context: Context, callbacks: Callbacks) async {
+        let callbacks = callbacks.observingLoading { [weak self] isLoading in
+            guard let self else { return }
+            if isLoading {
+                if self.loadingSince == nil { self.loadingSince = self.uptime() }
+            } else {
+                self.loadingSince = nil
+            }
+        }
         // iter17 (2026-04-29): routing is now centralised in
         // `RefreshRouter.decide`, which adds the unauthenticated
         // local-mode branch (Mac-only) needed by the "Use local mode"
@@ -343,17 +400,83 @@ internal final class DataRefreshManager {
             isLocalMode: context.isLocalMode,
             isMacOS: onMacOS
         )
+        let outcome: UploadOutcome
         switch route {
         case .noOp:
-            return
+            outcome = context.isDemoMode ? .demo : .signedOut
         case .localOnly:
             #if os(macOS)
-            await refreshLocal(context: context, callbacks: callbacks)
+            outcome = await refreshLocal(context: context, callbacks: callbacks)
+            #else
+            outcome = .notAMac
             #endif
-            return
         case .cloud:
-            break  // fall through to existing cloud refresh body below
+            outcome = await refreshCloud(context: context, callbacks: callbacks)
         }
+        #if os(macOS)
+        uploadOutcomes.record(outcome, route: UploadRoute(route))
+        #endif
+    }
+
+    /// The skip when a refresh is still in flight, with how long it has been.
+    private func refreshInFlight() -> UploadOutcome {
+        .refreshInFlight(
+            seconds: loadingSince.map { max(0, Int(uptime() - $0)) }
+        )
+    }
+
+    /// What a refresh that ran but had no scan to send reports: the reason
+    /// nothing was read, or why the scan came back empty.
+    private static func noScanOutcome(
+        mayReadThisMac: Bool,
+        consent: LocalScanConsent,
+        needsFolderAccess: Bool
+    ) -> UploadOutcome {
+        guard mayReadThisMac else {
+            return consent == .declined ? .consentDeclined : .consentUnanswered
+        }
+        return needsFolderAccess ? .folderAccessMissing : .scanEmpty
+    }
+
+    /// A read failure on the cloud route, as an outcome.
+    private static func cloudReadOutcome(_ error: Error) -> UploadOutcome {
+        if error is CancellationError { return .cancelled }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return .cancelled }
+        if let network = UploadOutcome.networkOutcome(error) { return network }
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .httpError(let status, _): return .cloudReadFailed(status: status)
+            case .notAuthenticated: return .authorizationChanged
+            case .tokenExpired: return .sessionExpired
+            case .invalidResponse: return .cloudReadFailed(status: nil)
+            }
+        }
+        return .cloudReadFailed(status: nil)
+    }
+
+    #if os(macOS)
+    /// v1.59 (59-01a): the upload refreshes the token on a 401 now, and a
+    /// refresh token the server rejects ends the session the same way a read
+    /// that finds it does: through `consumeTokenExpiry`, once, and only for
+    /// the session that made the request. Without this the rejected refresh
+    /// would leave the app signed in with no token, and every later refresh
+    /// would stop at the lease, silently.
+    private func signOutIfTheUploadFoundTheSessionExpired(
+        _ outcome: UploadOutcome,
+        authorizationLease: APIAuthorizationLease,
+        callbacks: Callbacks
+    ) async {
+        guard
+            outcome == .sessionExpired,
+            !Task.isCancelled,
+            callbacks.isAuthenticated(),
+            await api.consumeTokenExpiry(for: authorizationLease)
+        else { return }
+        callbacks.handleTokenExpired(APIError.tokenExpired.localizedDescription)
+    }
+    #endif
+
+    private func refreshCloud(context: Context, callbacks: Callbacks) async -> UploadOutcome {
         // iter9 hotfix (2026-04-29): previously gated all iOS cloud
         // fetches on `context.isPaired`. That flag is set ONLY by the
         // external helper-daemon pairing handshake; the Mac menu-bar app
@@ -370,10 +493,12 @@ internal final class DataRefreshManager {
         // helper-daemon flow used by Remote Approvals; we just no longer
         // hide the dashboard behind it on iOS.
 
-        guard !context.isLoading else { return }
+        guard !context.isLoading else { return refreshInFlight() }
         callbacks.setLoading(true)
         callbacks.setLastError(nil)
         var didFinishLoading = false
+        // Set by the two `catch`es below; every other path returns its own.
+        let outcome: UploadOutcome
 
         do {
             callbacks.setServerOnline(try await api.health())
@@ -381,12 +506,13 @@ internal final class DataRefreshManager {
             callbacks.setServerOnline(false)
             callbacks.setLastError(L10n.dashboard.serverOffline)
             callbacks.setLoading(false)
-            return
+            if Task.isCancelled { return .cancelled }
+            return UploadOutcome.networkOutcome(error) ?? .serverUnreachable
         }
 
         guard !Task.isCancelled else {
             callbacks.setLoading(false)
-            return
+            return .cancelled
         }
 
         guard
@@ -395,7 +521,7 @@ internal final class DataRefreshManager {
             )
         else {
             callbacks.setLoading(false)
-            return
+            return .authorizationChanged
         }
 
         do {
@@ -452,7 +578,7 @@ internal final class DataRefreshManager {
             // failures. Never publish those outcomes or any stale payload.
             guard !Task.isCancelled else {
                 callbacks.setLoading(false)
-                return
+                return .cancelled
             }
             let helperSnapshot = mayReadThisMac
                 ? localRuntime.readHelperSnapshot(
@@ -559,7 +685,7 @@ internal final class DataRefreshManager {
 
             guard callbacks.isAuthenticated() else {
                 callbacks.setLoading(false)
-                return
+                return .authorizationChanged
             }
 
             let warning = Self.tierLimitWarning(
@@ -626,12 +752,17 @@ internal final class DataRefreshManager {
             // a fresh Codex JSONL whose token data hasn't been
             // parsed into the daily cache yet). That race
             // silently swallowed every legitimate fresh candidate.
+            #if os(macOS)
+            // v1.59 (59-04): off the main thread. Read before `now`: the
+            // first read of a launch waits for it.
+            let deviceName = await hostIdentity.hostName()
+            #endif
             let now = Date()
             #if os(macOS)
             let resolution = SessionFreshnessFilter.resolveCloudSessions(
                 cloudSessions: sessionData,
                 candidates: costScanData.activeSessionCandidates,
-                deviceName: ProcessInfo.processInfo.hostName,
+                deviceName: deviceName,
                 now: now
             )
             let mergedSessions = resolution.merged
@@ -701,7 +832,7 @@ internal final class DataRefreshManager {
                 await api.isAuthorizationLeaseCurrent(authorizationLease)
             else {
                 callbacks.setLoading(false)
-                return
+                return Task.isCancelled ? .cancelled : .authorizationChanged
             }
 
             #if os(macOS)
@@ -762,9 +893,14 @@ internal final class DataRefreshManager {
                     authorizationLease
                 )
             }()
-            async let dailyUsageSync: Void = {
-                guard let scanResult else { return }
-                await localRuntime.syncDailyUsage(
+            let noScan = Self.noScanOutcome(
+                mayReadThisMac: mayReadThisMac,
+                consent: context.localScanConsent,
+                needsFolderAccess: needsAccess
+            )
+            async let dailyUsageSync: UploadOutcome = {
+                guard let scanResult else { return noScan }
+                return await localRuntime.syncDailyUsage(
                     scanResult,
                     authorizationLease
                 )
@@ -791,13 +927,20 @@ internal final class DataRefreshManager {
             didFinishLoading = true
 
             #if os(macOS)
-            _ = await (
+            let (_, uploadOutcome, _) = await (
                 providerQuotaSync,
                 dailyUsageSync,
                 budgetAlertEvaluation
             )
+            await signOutIfTheUploadFoundTheSessionExpired(
+                uploadOutcome,
+                authorizationLease: authorizationLease,
+                callbacks: callbacks
+            )
+            return uploadOutcome
             #else
             _ = await budgetAlertEvaluation
+            return .notAMac
             #endif
         } catch let error as APIError where error == .tokenExpired {
             guard
@@ -809,16 +952,19 @@ internal final class DataRefreshManager {
                     callbacks.setLoading(false)
                     didFinishLoading = true
                 }
-                return
+                return Task.isCancelled ? .cancelled : .authorizationChanged
             }
             callbacks.handleTokenExpired(error.localizedDescription)
+            outcome = .sessionExpired
         } catch {
             callbacks.setLastError(error.localizedDescription)
+            outcome = Self.cloudReadOutcome(error)
         }
 
         if !didFinishLoading {
             callbacks.setLoading(false)
         }
+        return outcome
     }
 
     func startRefreshLoop(interval: Int, onRefreshRequested: @escaping @MainActor () async -> Void) {
@@ -920,8 +1066,8 @@ internal final class DataRefreshManager {
     }
 
     #if os(macOS)
-    private func refreshLocal(context: Context, callbacks: Callbacks) async {
-        guard !context.isLoading else { return }
+    private func refreshLocal(context: Context, callbacks: Callbacks) async -> UploadOutcome {
+        guard !context.isLoading else { return refreshInFlight() }
         // v1.50 W-C — the consent gate, and it has to be HERE.
         //
         // Everything below this line touches the user's machine: the collector
@@ -948,7 +1094,11 @@ internal final class DataRefreshManager {
             consent: context.localScanConsent
         ) else {
             callbacks.setLoading(false)
-            return
+            return Self.noScanOutcome(
+                mayReadThisMac: false,
+                consent: context.localScanConsent,
+                needsFolderAccess: false
+            )
         }
         callbacks.setLoading(true)
         callbacks.setLastError(nil)
@@ -960,7 +1110,7 @@ internal final class DataRefreshManager {
             : nil
         if context.isAuthenticated, authorizationLease == nil {
             callbacks.setLoading(false)
-            return
+            return .authorizationChanged
         }
 
         let mainPass = await localRuntime.collectAccountPass(
@@ -970,7 +1120,7 @@ internal final class DataRefreshManager {
         // Never publish those outcomes or any stale local payload.
         guard !Task.isCancelled else {
             callbacks.setLoading(false)
-            return
+            return .cancelled
         }
         let helperSnapshot = localRuntime.readHelperSnapshot(
             context.providerConfigs
@@ -1036,10 +1186,13 @@ internal final class DataRefreshManager {
         // an empty session list. Synthesize one session per fresh JSONL
         // candidate so the Sessions tab + dashboard "active session" count
         // reflect actual recent activity instead of always reading zero.
+        // v1.59 (59-04): off the main thread; the first read of a launch
+        // waits for it.
+        let hostName = await hostIdentity.hostName()
         let resolvedSessions = Self.resolveLocalSessions(
             scannerSessions: scanResult.sessions,
             scanResult: costScanData,
-            deviceName: ProcessInfo.processInfo.hostName,
+            deviceName: hostName,
             now: Date()
         )
         // iter22: defensively run the same freshness/artifact filter
@@ -1065,7 +1218,7 @@ internal final class DataRefreshManager {
         // landing after the user signed out.
         guard callbacks.isAuthenticated() || context.isLocalMode else {
             callbacks.setLoading(false)
-            return
+            return .authorizationChanged
         }
 
         // The process scan's rows, then the collectors' over them, then a row
@@ -1080,7 +1233,7 @@ internal final class DataRefreshManager {
         )
         let devices = [DeviceRecord(
             id: "local",
-            name: ProcessInfo.processInfo.hostName,
+            name: hostName,
             type: "macOS",
             system: "macOS \(ProcessInfo.processInfo.operatingSystemVersionString)",
             status: "online",
@@ -1138,7 +1291,7 @@ internal final class DataRefreshManager {
 
         guard !Task.isCancelled else {
             callbacks.setLoading(false)
-            return
+            return .cancelled
         }
         if context.isAuthenticated {
             guard
@@ -1147,12 +1300,12 @@ internal final class DataRefreshManager {
                 await api.isAuthorizationLeaseCurrent(authorizationLease)
             else {
                 callbacks.setLoading(false)
-                return
+                return .authorizationChanged
             }
         } else {
             guard context.isLocalMode else {
                 callbacks.setLoading(false)
-                return
+                return .authorizationChanged
             }
         }
 
@@ -1179,7 +1332,10 @@ internal final class DataRefreshManager {
         // wipe UserDefaults and make the NEXT cloud refresh re-fire every
         // unresolved alert on cold launch or mode switch.
         let runtime = localRuntime
-        await withTaskGroup(of: Void.self) { group in
+        let uploaded = await withTaskGroup(
+            of: UploadOutcome?.self,
+            returning: UploadOutcome?.self
+        ) { group in
             if let authorizationLease {
                 // Authenticated local-mode refreshes may upload, but payload
                 // visibility and loading completion stay independent of those
@@ -1203,6 +1359,7 @@ internal final class DataRefreshManager {
                         cloudOwnedProviderAccounts,
                         authorizationLease
                     )
+                    return nil
                 }
             }
 
@@ -1212,7 +1369,29 @@ internal final class DataRefreshManager {
             callbacks.setLoading(false)
             // Leaving the structured group waits for optional writes only
             // after every user-visible refresh side effect has completed.
+            var upload: UploadOutcome?
+            for await result in group {
+                if let result { upload = result }
+            }
+            return upload
         }
+        if let uploaded {
+            if let authorizationLease {
+                await signOutIfTheUploadFoundTheSessionExpired(
+                    uploaded,
+                    authorizationLease: authorizationLease,
+                    callbacks: callbacks
+                )
+            }
+            return uploaded
+        }
+        // Signed out (local mode): nothing to upload to. Signed in: no scan.
+        guard authorizationLease != nil else { return .signedOut }
+        return Self.noScanOutcome(
+            mayReadThisMac: true,
+            consent: context.localScanConsent,
+            needsFolderAccess: needsAccess
+        )
     }
 
     /// Testable account-aware scheduler seam. `CollectorRun` remains the

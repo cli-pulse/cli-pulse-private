@@ -2800,11 +2800,16 @@ public actor APIClient {
     ///
     /// `now` places Claude Code's cleanup (`dailyUsageRowsToUpload`) and that
     /// retry; it is a seam for tests.
+    ///
+    /// v1.59 (59-01): returns what happened, which `DataRefreshManager` logs
+    /// once per refresh (`UploadOutcome`). A 401 gets one token refresh and
+    /// one retry (59-01a), as every read does (`rpc`, `restGet`).
+    @discardableResult
     public func syncDailyUsage(
         _ scanResult: CostUsageScanResult,
         authorizationLease: APIAuthorizationLease,
         now: Date = Date()
-    ) async {
+    ) async -> UploadOutcome {
         await syncDailyUsage(
             scanResult,
             authorizationLease: authorizationLease,
@@ -2816,25 +2821,26 @@ public actor APIClient {
     /// `syncDailyUsage(_:authorizationLease:now:)` with the device decided by
     /// `device` (given the signed-in user's id): a seam for tests, which
     /// cannot pair a helper.
+    @discardableResult
     func syncDailyUsage(
         _ scanResult: CostUsageScanResult,
         authorizationLease: APIAuthorizationLease,
         now: Date,
         device resolveDevice: (String) -> DailyUsageDevice
-    ) async {
+    ) async -> UploadOutcome {
         do {
             try ensureAuthorizationLeaseIsCurrent(authorizationLease)
         } catch {
             apiLogger.info(
                 "[syncDailyUsage] cancelled after authorization changed"
             )
-            return
+            return .authorizationChanged
         }
-        guard let userId else { return }
-        guard !scanResult.entries.isEmpty else { return }
+        guard let userId else { return .authorizationChanged }
+        guard !scanResult.entries.isEmpty else { return .scanEmpty }
 
         let completedEntries = Self.dailyUsageRowsToUpload(scanResult.entries, now: now)
-        guard !completedEntries.isEmpty else { return }
+        guard !completedEntries.isEmpty else { return .nothingToUpload }
 
         let metrics: [[String: Any]] = completedEntries.map { entry in
             [
@@ -2893,20 +2899,24 @@ public actor APIClient {
         // device's rows are replaced whole (migrate_v0.84).
         let httpBody = try? JSONSerialization.data(withJSONObject: body)
 
+        var refreshedToken = false
         if replaceDailyUsageUnavailableUntil.map({ now >= $0 }) ?? true {
-            let status = await postDailyUsage(
+            let post = await postDailyUsage(
                 rpc: "\(supabaseURL)/rest/v1/rpc/replace_daily_usage",
                 body: httpBody,
                 authorizationLease: authorizationLease
             )
-            guard status == 404 else {
-                if let status, (200...299).contains(status) {
-                    replaceDailyUsageUnavailableUntil = nil
-                } else if let status {
-                    apiLogger.warning("[syncDailyUsage] failed: HTTP \(status) from replace_daily_usage")
+            guard case .answered(404, let refreshed) = post else {
+                if case .answered(let status, _) = post {
+                    if (200...299).contains(status) {
+                        replaceDailyUsageUnavailableUntil = nil
+                    } else {
+                        apiLogger.warning("[syncDailyUsage] failed: HTTP \(status) from replace_daily_usage")
+                    }
                 }
-                return
+                return post.outcome(rows: completedEntries.count)
             }
+            refreshedToken = refreshed
             replaceDailyUsageUnavailableUntil = now.addingTimeInterval(
                 Self.replaceDailyUsageRetryInterval
             )
@@ -2914,46 +2924,118 @@ public actor APIClient {
                 "[syncDailyUsage] replace_daily_usage unavailable (HTTP 404); sending to upsert_daily_usage"
             )
         }
-        if let status = await postDailyUsage(
+        let post = await postDailyUsage(
             rpc: "\(supabaseURL)/rest/v1/rpc/upsert_daily_usage",
             body: httpBody,
             authorizationLease: authorizationLease
-        ), !(200...299).contains(status) {
+        )
+        if case .answered(let status, _) = post, !(200...299).contains(status) {
             apiLogger.warning("[syncDailyUsage] failed: HTTP \(status) from upsert_daily_usage")
         }
+        return post.outcome(rows: completedEntries.count, refreshedEarlier: refreshedToken)
     }
 
     /// How long `syncDailyUsage` sends to `upsert_daily_usage` after
     /// `replace_daily_usage` answered 404, before it asks again.
     static let replaceDailyUsageRetryInterval: TimeInterval = 60 * 60
 
-    /// One daily-usage POST. Returns the HTTP status (the caller logs a
-    /// failure), or nil when no response came back: a network failure, or the
-    /// authorization changed first.
+    /// What one daily-usage POST came back with.
+    private enum DailyUsagePost {
+        /// The server answered `status`; `afterTokenRefresh` when that is the
+        /// retry after a 401.
+        case answered(status: Int, afterTokenRefresh: Bool)
+        /// No answer to report as a status: the outcome says why.
+        case notAnswered(UploadOutcome)
+
+        /// `refreshedEarlier`: the token was refreshed by the POST before this
+        /// one (the 404 fallback follows a `replace_daily_usage` retry).
+        func outcome(rows: Int, refreshedEarlier: Bool = false) -> UploadOutcome {
+            switch self {
+            case .answered(let status, let afterTokenRefresh):
+                if (200...299).contains(status) {
+                    return .uploaded(
+                        rows: rows,
+                        status: status,
+                        afterTokenRefresh: afterTokenRefresh || refreshedEarlier
+                    )
+                }
+                if status == 401 { return .unauthorized(afterRetry: afterTokenRefresh) }
+                return .rejected(status: status)
+            case .notAnswered(let outcome):
+                return outcome
+            }
+        }
+    }
+
+    /// One daily-usage POST.
+    ///
+    /// v1.59 (59-01a): a 401 refreshes the token and sends once more, the way
+    /// `rpc` does. Up to 1.58 this POST was the one request of a refresh that
+    /// did not, so a token that expired between the reads and the upload lost
+    /// that refresh's rows (the next refresh's reads renewed it). A refresh
+    /// token the server rejects is `.sessionExpired`: the caller signs out, as
+    /// a read that finds it does.
     private func postDailyUsage(
         rpc: String,
         body: Data?,
         authorizationLease: APIAuthorizationLease
-    ) async -> Int? {
-        guard let url = URL(string: rpc) else { return nil }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    ) async -> DailyUsagePost {
+        guard let url = URL(string: rpc) else { return .notAnswered(.networkFailed) }
+        // Built per attempt: the retry must carry the refreshed token.
+        func request() -> URLRequest {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+            if let token = accessToken {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+            request.httpBody = body
+            return request
         }
-        request.httpBody = body
 
         do {
             let (_, response) = try await dataWithRetry(
-                for: request,
+                for: request(),
                 authorizationLease: authorizationLease
             )
-            return (response as? HTTPURLResponse)?.statusCode ?? 0
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard status == 401 else {
+                return .answered(status: status, afterTokenRefresh: false)
+            }
+
+            try ensureAuthorizationLeaseIsCurrent(authorizationLease)
+            do {
+                _ = try await refreshAccessToken()
+            } catch let error as APIError where error == .tokenExpired {
+                return .notAnswered(.sessionExpired)
+            } catch is CancellationError {
+                return .notAnswered(.cancelled)
+            } catch {
+                // No usable answer from the auth server (network, decoding):
+                // there is no new token to retry with.
+                apiLogger.warning("[syncDailyUsage] token refresh after a 401 failed: \(error.localizedDescription)")
+                return .answered(status: 401, afterTokenRefresh: false)
+            }
+            try ensureAuthorizationLeaseIsCurrent(authorizationLease)
+
+            let (_, retried) = try await dataWithRetry(
+                for: request(),
+                authorizationLease: authorizationLease
+            )
+            return .answered(
+                status: (retried as? HTTPURLResponse)?.statusCode ?? 0,
+                afterTokenRefresh: true
+            )
+        } catch is AuthorizationLeaseError {
+            return .notAnswered(.authorizationChanged)
+        } catch is CancellationError {
+            return .notAnswered(.cancelled)
+        } catch let error as URLError where error.code == .cancelled {
+            return .notAnswered(.cancelled)
         } catch {
             apiLogger.warning("[syncDailyUsage] error: \(error.localizedDescription)")
-            return nil
+            return .notAnswered(UploadOutcome.networkOutcome(error) ?? .networkFailed)
         }
     }
     #endif

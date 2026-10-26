@@ -2535,6 +2535,7 @@ private extension DataRefreshManager.LocalRefreshRuntime {
             },
             syncDailyUsage: { _, _ in
                 if let syncGate { await syncGate.wait() }
+                return .uploaded(rows: 1, status: 200, afterTokenRefresh: false)
             },
             syncAccountQuotas: { _, _ in
                 if let syncGate { await syncGate.wait() }

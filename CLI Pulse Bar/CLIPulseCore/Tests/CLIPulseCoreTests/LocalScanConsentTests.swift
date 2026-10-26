@@ -402,7 +402,10 @@ extension DataRefreshManager.LocalRefreshRuntime {
             },
             needsFolderAccessNudge: { _ in false },
             syncLegacyQuotas: { _, _ in await recorder.record("syncLegacyQuotas") },
-            syncDailyUsage: { _, _ in await recorder.record("syncDailyUsage") },
+            syncDailyUsage: { _, _ in
+                await recorder.record("syncDailyUsage")
+                return .uploaded(rows: 1, status: 200, afterTokenRefresh: false)
+            },
             syncAccountQuotas: { _, _ in await recorder.record("syncAccountQuotas") },
             recordLocalHistory: { _, historyReadAllowed, authorizationLease in
                 historyLog.append(historyReadAllowed, withLease: authorizationLease != nil)
