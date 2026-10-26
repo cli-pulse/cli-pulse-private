@@ -6,7 +6,8 @@
 // event, which may fire only on the third failure in a row and only once a
 // day. Both are pinned here for every reason, so a reason added without
 // deciding how it counts does not compile (`sample(for:)` is an exhaustive
-// switch), and a reason whose kind changes fails `expectedKinds`.
+// switch), and a reason whose kind changes fails `decidedKinds`.
+// `SentryUploadReporterScopeTests` pins what the event itself carries.
 
 import Foundation
 import XCTest
@@ -25,6 +26,7 @@ final class UploadOutcomeTests: XCTestCase {
         case .networkFailed: return .networkFailed
         case .serverUnreachable: return .serverUnreachable
         case .offline: return .offline
+        case .noAnswer: return .noAnswer
         case .cloudReadFailed: return .cloudReadFailed(status: 500)
         case .refreshStuck: return .refreshInFlight(seconds: UploadOutcome.stuckRefreshSeconds)
         case .refreshInFlight: return .refreshInFlight(seconds: 42)
@@ -44,30 +46,33 @@ final class UploadOutcomeTests: XCTestCase {
 
     /// Written out rather than read back from `kind`: this is the decision.
     /// Failures are what should not happen to a running, signed-in Mac that
-    /// has something to send; everything else is by design or a change of
-    /// state, and must never page anyone.
-    static let expectedKinds: [UploadOutcome.Reason: UploadOutcome.Kind] = [
+    /// has something to send, and only they may page anyone. A refresh that
+    /// ran to its end with nothing to send by design is `finished` and ends a
+    /// row of failures; one that did not run to its end, or whose state
+    /// changed under it, is `inconclusive` and leaves the row as it is.
+    static let decidedKinds: [UploadOutcome.Reason: UploadOutcome.Kind] = [
         .uploaded: .success,
         .rejected: .failure,
         .unauthorized: .failure,
         .unauthorizedAfterRetry: .failure,
         .networkFailed: .failure,
         .serverUnreachable: .failure,
-        .offline: .expected,
+        .offline: .inconclusive,
+        .noAnswer: .inconclusive,
         .cloudReadFailed: .failure,
         .refreshStuck: .failure,
-        .refreshInFlight: .expected,
-        .sessionExpired: .expected,
-        .consentDeclined: .expected,
-        .consentUnanswered: .expected,
-        .folderAccessMissing: .expected,
-        .scanEmpty: .expected,
-        .nothingToUpload: .expected,
-        .authorizationChanged: .expected,
-        .cancelled: .expected,
-        .signedOut: .expected,
-        .demo: .expected,
-        .notAMac: .expected,
+        .refreshInFlight: .inconclusive,
+        .sessionExpired: .inconclusive,
+        .consentDeclined: .finished,
+        .consentUnanswered: .finished,
+        .folderAccessMissing: .finished,
+        .scanEmpty: .finished,
+        .nothingToUpload: .finished,
+        .authorizationChanged: .inconclusive,
+        .cancelled: .inconclusive,
+        .signedOut: .finished,
+        .demo: .finished,
+        .notAMac: .inconclusive,
     ]
 
     /// The whole line: tokens, `key=value` pairs whose values are integers or
@@ -84,12 +89,12 @@ final class UploadOutcomeTests: XCTestCase {
     // MARK: - The set
 
     func testEveryReasonRoundTripsAndHasItsDecidedKind() {
-        XCTAssertEqual(Set(Self.expectedKinds.keys), Set(UploadOutcome.Reason.allCases),
+        XCTAssertEqual(Set(Self.decidedKinds.keys), Set(UploadOutcome.Reason.allCases),
                        "every reason needs a decided kind")
         for reason in UploadOutcome.Reason.allCases {
             let outcome = Self.sample(for: reason)
             XCTAssertEqual(outcome.reason, reason)
-            XCTAssertEqual(outcome.kind, Self.expectedKinds[reason], "\(reason)")
+            XCTAssertEqual(outcome.kind, Self.decidedKinds[reason], "\(reason)")
             XCTAssertNotNil(reason.rawValue.range(of: #"^[a-z_]+$"#, options: .regularExpression),
                             "\(reason.rawValue) is not a plain token")
         }
@@ -103,17 +108,25 @@ final class UploadOutcomeTests: XCTestCase {
                        "an unknown age is not evidence of a stuck refresh")
     }
 
-    /// A Mac with no network is not a fault to report; a server this Mac
-    /// cannot reach while it has a network is.
-    func testOfflineIsToldApartFromUnreachable() {
-        for code in [URLError.Code.notConnectedToInternet, .networkConnectionLost, .timedOut, .dataNotAllowed] {
-            XCTAssertTrue(UploadOutcome.isOffline(URLError(code)), "\(code)")
+    /// Only the codes with which the system says there is no network are
+    /// `offline`. A timeout or a dropped connection is what a Mac with no
+    /// network and a server that never answers both end in, so it claims
+    /// neither (`no_answer`). Everything else leaves the caller's reason.
+    func testWhatAnErrorSaysAboutTheNetwork() {
+        for code in [URLError.Code.notConnectedToInternet, .dataNotAllowed,
+                     .internationalRoamingOff, .callIsActive] {
+            XCTAssertEqual(UploadOutcome.networkOutcome(URLError(code)), .offline, "\(code)")
+        }
+        for code in [URLError.Code.timedOut, .networkConnectionLost] {
+            XCTAssertEqual(UploadOutcome.networkOutcome(URLError(code)), .noAnswer,
+                           "\(code) cannot tell this Mac's network from our server")
         }
         for code in [URLError.Code.cannotFindHost, .cannotConnectToHost, .secureConnectionFailed,
                      .serverCertificateUntrusted, .badServerResponse] {
-            XCTAssertFalse(UploadOutcome.isOffline(URLError(code)), "\(code)")
+            XCTAssertNil(UploadOutcome.networkOutcome(URLError(code)), "\(code)")
         }
-        XCTAssertFalse(UploadOutcome.isOffline(APIError.httpError(status: 503, body: "")))
+        XCTAssertNil(UploadOutcome.networkOutcome(APIError.httpError(status: 503, body: "")))
+        XCTAssertNil(UploadOutcome.networkOutcome(CancellationError()))
     }
 
     // MARK: - The log line, for every reason
@@ -173,7 +186,7 @@ final class UploadOutcomeTests: XCTestCase {
             XCTAssertEqual(reporter.reports, [], "\(reason) reported before the third time")
             tracker.record(outcome, route: .local)
 
-            if Self.expectedKinds[reason] == .failure {
+            if Self.decidedKinds[reason] == .failure {
                 XCTAssertEqual(reporter.reports, [
                     UploadFailureReport(reason: reason, status: outcome.status, route: .local, failuresInARow: 3),
                 ], "\(reason)")
@@ -183,7 +196,7 @@ final class UploadOutcomeTests: XCTestCase {
         }
     }
 
-    func testASuccessResetsTheCountAndExpectedOutcomesLeaveIt() {
+    func testASuccessResetsTheCountAndInconclusiveOutcomesLeaveIt() {
         let reporter = RecordingUploadReporter()
         let tracker = UploadOutcomeTracker(reporter: reporter, defaults: Self.freshDefaults(), log: { _ in })
 
@@ -195,15 +208,43 @@ final class UploadOutcomeTests: XCTestCase {
         XCTAssertEqual(tracker.failuresInARow, 2)
         XCTAssertEqual(reporter.reports, [], "a success in between must reset the count")
 
-        // A newer refresh replacing this one, or "Not now", says nothing about
-        // whether uploads work: the count stays where it was.
-        tracker.record(.cancelled, route: .cloud)
-        tracker.record(.consentDeclined, route: .cloud)
-        XCTAssertEqual(tracker.failuresInARow, 2)
+        // A refresh that did not run to its end says nothing about whether
+        // uploads work: the count stays where it was.
+        for reason in UploadOutcome.Reason.allCases where Self.decidedKinds[reason] == .inconclusive {
+            tracker.record(Self.sample(for: reason), route: .cloud)
+            XCTAssertEqual(tracker.failuresInARow, 2, "\(reason) moved the count")
+        }
         tracker.record(.rejected(status: 500), route: .cloud)
         XCTAssertEqual(reporter.reports.map(\.reason), [.rejected])
         XCTAssertEqual(reporter.reports.first?.status, 500)
         XCTAssertEqual(reporter.reports.first?.failuresInARow, 3)
+    }
+
+    /// A Mac that never uploads (no provider found, "Not now") never gets a
+    /// success. Its clean refreshes still end a row of failures, or three
+    /// blips over weeks of menu-bar uptime would be reported as three in a
+    /// row.
+    func testAFinishedRefreshEndsTheRowOfFailures() {
+        let reporter = RecordingUploadReporter()
+        let tracker = UploadOutcomeTracker(reporter: reporter, defaults: Self.freshDefaults(), log: { _ in })
+        for outcome: UploadOutcome in [.cloudReadFailed(status: 503), .scanEmpty,
+                                       .serverUnreachable, .scanEmpty,
+                                       .refreshInFlight(seconds: 900)] {
+            tracker.record(outcome, route: .cloud)
+        }
+        XCTAssertEqual(tracker.failuresInARow, 1)
+        XCTAssertEqual(reporter.reports, [], "three failures with clean refreshes between are not in a row")
+
+        for reason in UploadOutcome.Reason.allCases where Self.decidedKinds[reason] == .finished {
+            let tracker = UploadOutcomeTracker(reporter: reporter, defaults: Self.freshDefaults(), log: { _ in })
+            tracker.record(.networkFailed, route: .local)
+            tracker.record(.networkFailed, route: .local)
+            tracker.record(Self.sample(for: reason), route: .local)
+            XCTAssertEqual(tracker.failuresInARow, 0, "\(reason) did not end the row")
+            tracker.record(.networkFailed, route: .local)
+            tracker.record(.networkFailed, route: .local)
+            XCTAssertEqual(reporter.reports, [], "\(reason): the two failures before it were counted again")
+        }
     }
 
     func testAtMostOneReportAnInstallADay() throws {
@@ -266,5 +307,57 @@ final class RecordingUploadReporter: UploadReporter, @unchecked Sendable {
     func reportRepeatedFailure(_ report: UploadFailureReport) {
         lock.lock(); defer { lock.unlock() }
         stored.append(report)
+    }
+}
+
+/// What the Sentry event carries beyond the SDK's standard envelope, which
+/// PRIVACY.md lists: four tags, the fingerprint, the level, the message, and
+/// no breadcrumbs. A tag added here or a `clearBreadcrumbs()` dropped turns
+/// PRIVACY.md untrue; this is what catches it.
+final class SentryUploadReporterScopeTests: XCTestCase {
+
+    static let report = UploadFailureReport(
+        reason: .cloudReadFailed, status: 503, route: .cloud, failuresInARow: 3)
+
+    func testTheEventAddsOnlyTheReasonAndNoBreadcrumbs() throws {
+        // `capture(message:block:)` hands the block a copy of the current
+        // scope, which has the breadcrumbs of the last refreshes.
+        let current = Scope()
+        current.addBreadcrumb(Breadcrumb(level: .info, category: "http"))
+        current.addBreadcrumb(Breadcrumb(level: .info, category: "app.lifecycle"))
+        let event = Scope(scope: current)
+        let before = event.serialize()
+        XCTAssertEqual((before["breadcrumbs"] as? [Any])?.count, 2,
+                       "control: the copy did not carry the breadcrumbs, so their removal proves nothing")
+
+        SentryUploadReporter.configure(event, for: Self.report)
+        let after = event.serialize()
+
+        XCTAssertNil(after["breadcrumbs"], "the upload event must carry no breadcrumbs (PRIVACY.md)")
+        XCTAssertEqual(after["tags"] as? [String: String], [
+            "upload_reason": "cloud_read_failed",
+            "upload_status": "503",
+            "upload_route": "cloud",
+            "upload_failures_in_a_row": "3",
+        ])
+        XCTAssertEqual(after["fingerprint"] as? [String], ["daily-usage-upload", "cloud_read_failed"])
+        XCTAssertEqual(after["level"] as? String, "warning")
+        // Nothing else of ours: no user, no extras, no contexts.
+        let added = Set(after.keys).subtracting(before.keys)
+        XCTAssertEqual(added, ["tags", "fingerprint", "level"])
+        for key in ["user", "extra", "context", "attributes"] {
+            XCTAssertNil(after[key], "\(key) was set on the upload event")
+        }
+
+        // Only the event's copy loses them: a crash report keeps its own.
+        XCTAssertEqual((current.serialize()["breadcrumbs"] as? [Any])?.count, 2)
+    }
+
+    func testAMissingStatusIsAWordAndTheMessageIsTheReason() {
+        let scope = Scope()
+        let report = UploadFailureReport(reason: .serverUnreachable, status: nil, route: .local, failuresInARow: 4)
+        SentryUploadReporter.configure(scope, for: report)
+        XCTAssertEqual((scope.serialize()["tags"] as? [String: String])?["upload_status"], "none")
+        XCTAssertEqual(SentryUploadReporter.message(for: report), "daily-usage-upload server_unreachable")
     }
 }

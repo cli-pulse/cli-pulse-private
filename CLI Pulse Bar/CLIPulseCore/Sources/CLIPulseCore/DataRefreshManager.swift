@@ -287,9 +287,17 @@ internal final class DataRefreshManager {
     /// failures.
     private let uploadOutcomes: UploadOutcomeTracker
     #endif
-    /// When the refresh now in flight set `isLoading`, so a refresh skipped
-    /// behind it can say for how long (`UploadOutcome.refreshInFlight`).
-    private var loadingSince: Date?
+    /// When the refresh now in flight set `isLoading`, on `uptime`, so a
+    /// refresh skipped behind it can say for how long
+    /// (`UploadOutcome.refreshInFlight`).
+    private var loadingSince: TimeInterval?
+    /// The clock `loadingSince` is on: seconds the system has been awake
+    /// (`systemUptime`), not wall time. A refresh a lid close catches in
+    /// flight is still `isLoading` on wake; on wall time the first tick
+    /// after it would count the whole sleep as the refresh's age, and any
+    /// sleep of ten minutes or more would read as `refresh_stuck`.
+    private let uptime: () -> TimeInterval
+    nonisolated static func systemUptime() -> TimeInterval { ProcessInfo.processInfo.systemUptime }
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
 
@@ -347,16 +355,19 @@ internal final class DataRefreshManager {
         api: APIClient,
         localRuntime: LocalRefreshRuntime? = nil,
         hostIdentity: HostIdentity = .shared,
-        uploadOutcomes: UploadOutcomeTracker? = nil
+        uploadOutcomes: UploadOutcomeTracker? = nil,
+        uptime: @escaping () -> TimeInterval = { DataRefreshManager.systemUptime() }
     ) {
         self.api = api
         self.localRuntime = localRuntime ?? .live(api: api)
         self.hostIdentity = hostIdentity
         self.uploadOutcomes = uploadOutcomes ?? UploadOutcomeTracker()
+        self.uptime = uptime
     }
     #else
     init(api: APIClient) {
         self.api = api
+        self.uptime = { DataRefreshManager.systemUptime() }
     }
     #endif
 
@@ -367,7 +378,7 @@ internal final class DataRefreshManager {
         let callbacks = callbacks.observingLoading { [weak self] isLoading in
             guard let self else { return }
             if isLoading {
-                if self.loadingSince == nil { self.loadingSince = Date() }
+                if self.loadingSince == nil { self.loadingSince = self.uptime() }
             } else {
                 self.loadingSince = nil
             }
@@ -410,7 +421,7 @@ internal final class DataRefreshManager {
     /// The skip when a refresh is still in flight, with how long it has been.
     private func refreshInFlight() -> UploadOutcome {
         .refreshInFlight(
-            seconds: loadingSince.map { max(0, Int(Date().timeIntervalSince($0))) }
+            seconds: loadingSince.map { max(0, Int(uptime() - $0)) }
         )
     }
 
@@ -431,7 +442,7 @@ internal final class DataRefreshManager {
     private static func cloudReadOutcome(_ error: Error) -> UploadOutcome {
         if error is CancellationError { return .cancelled }
         if let urlError = error as? URLError, urlError.code == .cancelled { return .cancelled }
-        if UploadOutcome.isOffline(error) { return .offline }
+        if let network = UploadOutcome.networkOutcome(error) { return network }
         if let apiError = error as? APIError {
             switch apiError {
             case .httpError(let status, _): return .cloudReadFailed(status: status)
@@ -496,7 +507,7 @@ internal final class DataRefreshManager {
             callbacks.setLastError(L10n.dashboard.serverOffline)
             callbacks.setLoading(false)
             if Task.isCancelled { return .cancelled }
-            return UploadOutcome.isOffline(error) ? .offline : .serverUnreachable
+            return UploadOutcome.networkOutcome(error) ?? .serverUnreachable
         }
 
         guard !Task.isCancelled else {

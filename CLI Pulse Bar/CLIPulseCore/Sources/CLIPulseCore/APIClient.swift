@@ -3035,7 +3035,7 @@ public actor APIClient {
             return .notAnswered(.cancelled)
         } catch {
             apiLogger.warning("[syncDailyUsage] error: \(error.localizedDescription)")
-            return .notAnswered(UploadOutcome.isOffline(error) ? .offline : .networkFailed)
+            return .notAnswered(UploadOutcome.networkOutcome(error) ?? .networkFailed)
         }
     }
     #endif

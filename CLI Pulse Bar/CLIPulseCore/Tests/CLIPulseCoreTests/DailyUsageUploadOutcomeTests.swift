@@ -188,7 +188,7 @@ final class DailyUsageUploadOutcomeTests: XCTestCase {
         XCTAssertEqual(outcome, .rejected(status: 500))
     }
 
-    func test_no_answer_is_network_failed() async throws {
+    func test_a_host_it_cannot_connect_to_is_network_failed() async throws {
         UploadOutcomeStubProtocol.respond { _ in .fail(URLError(.cannotConnectToHost)) }
         let (api, lease) = try await signedInAPI()
 

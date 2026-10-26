@@ -258,6 +258,11 @@ final class HostNameSourceScanTests: XCTestCase {
 
     /// The code lines in `source` that make one of the calls, comments
     /// removed and whitespace trimmed.
+    ///
+    /// Known gap: a line is cut at its first `//`, even inside a string
+    /// literal, so a call after a URL on the same line
+    /// (`let u = "https://…"; let h = ProcessInfo.processInfo.hostName`) is
+    /// missed. No such line exists; keep calls on lines of their own.
     static func hostNameCalls(in source: String) -> [String] {
         source.split(separator: "\n", omittingEmptySubsequences: false).compactMap { raw in
             var line = Substring(raw)
@@ -340,9 +345,12 @@ final class HostNameSourceScanTests: XCTestCase {
     /// `names`, `address`, `addresses`; `ProcessInfo.hostName` is `name`),
     /// on whatever macOS the tests run on, CI's included. The control,
     /// `Host.current().name`, must be counted, or the count proves nothing.
+    /// The swizzle is process-wide, so only this test's own thread is
+    /// counted: a call another thread makes meanwhile (a `HostIdentity`
+    /// renewal, a scan in `Task.detached`) is not `localizedName`'s.
     func testLocalizedNameMakesNoResolvingCall() throws {
         let host: AnyClass = try XCTUnwrap(NSClassFromString("NSHost"))
-        let counter = ResolveCounter()
+        let counter = ResolveCounter(countingOnly: Thread.current)
         var restore: [(Method, IMP)] = []
         defer { for (method, original) in restore { method_setImplementation(method, original) } }
 
@@ -362,6 +370,11 @@ final class HostNameSourceScanTests: XCTestCase {
             restore.append((method, original))
         }
         XCTAssertFalse(restore.isEmpty, "no resolving NSHost method found to count")
+
+        let elsewhere = DispatchSemaphore(value: 0)
+        Thread { counter.record("name"); elsewhere.signal() }.start()
+        elsewhere.wait()
+        XCTAssertEqual(counter.calls, [], "control: a call from another thread was counted")
 
         let localized = Host.current().localizedName
         XCTAssertEqual(counter.calls, [], "Host.current().localizedName resolved: \(counter.calls)")
@@ -423,7 +436,13 @@ final class TestClock: @unchecked Sendable {
 final class ResolveCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var stored: [String] = []
+    private let thread: Thread
+    init(countingOnly thread: Thread) { self.thread = thread }
     var calls: [String] { lock.lock(); defer { lock.unlock() }; return stored }
-    func record(_ name: String) { lock.lock(); stored.append(name); lock.unlock() }
+    /// Ignored unless it comes from the thread being counted.
+    func record(_ name: String) {
+        guard Thread.current === thread else { return }
+        lock.lock(); stored.append(name); lock.unlock()
+    }
 }
 #endif

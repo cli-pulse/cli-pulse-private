@@ -569,11 +569,15 @@ with CLI Pulse 1.55, and later releases follow them:
   no such word is kept. (Before v1.55 the query string was sent too, and a
   request to our server named your account's internal ID in it.) The Android app records no web requests. The SDK also reports, for each app session, that it started
   and whether it ended in a crash, with a random installation identifier the SDK
-  generates. Since v1.59 the Mac app also sends an error report when this Mac's
-  daily usage has failed to upload three refreshes in a row, at most one a
-  day: it carries only a fixed word for the reason (such as `rejected` or
-  `network_failed`), the HTTP status and which of the app's two refresh paths
-  it was, and no breadcrumbs. Performance tracing is disabled
+  generates. Since v1.59 the Mac app also sends an error report when three
+  refreshes in a row have failed (a request to our server failed, or a
+  refresh had not finished after ten minutes), at most one a day. Besides
+  what every report carries (the stack trace, the app and OS version, the
+  device details and the SDK's random installation identifier), it holds
+  only a fixed word for the reason (such as `rejected` or `network_failed`),
+  the HTTP status, which of the app's two refresh paths it was and how many
+  refreshes in a row had failed. It has no breadcrumbs. Performance tracing
+  is disabled
   (`tracesSampleRate = 0`). There is no switch to turn crash reporting off.
 
 ---

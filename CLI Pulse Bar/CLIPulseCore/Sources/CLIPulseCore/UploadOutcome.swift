@@ -10,11 +10,16 @@
 //   * one `.notice` line (`DataRefresh` category) made only of the reason's
 //     token and integers, so it is `privacy: .public` and readable in a
 //     `log stream` or a sysdiagnose without the user's data;
-//   * after `failuresBeforeReport` failures in a row, one Sentry event with
-//     the reason, the HTTP status and the route, and nothing else: no
-//     breadcrumbs, no user, no message text of ours. At most one a day per
-//     install (the daily mark is in UserDefaults), because the project shares
-//     a monthly quota with another app.
+//   * after `failuresBeforeReport` failures in a row, one Sentry event. The
+//     SDK gives it the envelope every event of ours has (the stack trace of
+//     the calling thread, debug images, device, OS and app context, and its
+//     random installation ID as `user.id`). What this code adds is only the
+//     reason, the HTTP status, the route and the failure count as tags, the
+//     reason as the fingerprint and in the message, and no breadcrumbs: no
+//     user of ours and no text of ours. `SentryUploadReporter.configure` is
+//     the whole of it, pinned by `SentryUploadReporterScopeTests`. At most
+//     one a day per install (the daily mark is in UserDefaults), to keep
+//     Sentry quota use bounded.
 //
 // The reasons are a closed set (`Reason`). `UploadOutcomeTests` walks every
 // one of them through the log and the reporter.
@@ -38,15 +43,20 @@ public enum UploadOutcome: Equatable, Sendable {
     /// answer from the auth server), so there was nothing to retry with.
     /// `true`: the retry with a refreshed token was rejected again.
     case unauthorized(afterRetry: Bool)
-    /// The upload got no answer (after `dataWithRetry`'s own retries), and
-    /// not because this Mac is offline.
+    /// The upload failed without an answer (after `dataWithRetry`'s own
+    /// retries), for a reason other than the two below.
     case networkFailed
-    /// The cloud route's health check failed, and not because this Mac is
-    /// offline: nothing was read or sent.
+    /// The cloud route's health check failed, for a reason other than the
+    /// two below: nothing was read or sent.
     case serverUnreachable
-    /// This Mac has no network (`isOffline`): a laptop on a train, not a
-    /// fault, so it is logged and never reported.
+    /// The system says this Mac has no network (`networkOutcome`): a laptop
+    /// on a train, not a fault, so it is logged and never reported.
     case offline
+    /// A request timed out or lost its connection (`networkOutcome`). That
+    /// is a Mac without a network as often as a server that did not answer,
+    /// and the error cannot tell which, so the reason claims neither and is
+    /// never reported.
+    case noAnswer
     /// The cloud route reads five things before it uploads, and one of them
     /// failed (`status` when it was an HTTP error): the upload is skipped.
     case cloudReadFailed(status: Int?)
@@ -88,6 +98,7 @@ public enum UploadOutcome: Equatable, Sendable {
         case networkFailed = "network_failed"
         case serverUnreachable = "server_unreachable"
         case offline
+        case noAnswer = "no_answer"
         case cloudReadFailed = "cloud_read_failed"
         case refreshStuck = "refresh_stuck"
         case refreshInFlight = "refresh_in_flight"
@@ -106,12 +117,21 @@ public enum UploadOutcome: Equatable, Sendable {
 
     /// How an outcome counts towards "failures in a row".
     public enum Kind: Equatable, Sendable {
-        /// Resets the count.
+        /// The rows reached the server. Resets the count.
         case success
+        /// The refresh ran to its end and had nothing to send, by design (no
+        /// scan, "Not now", signed out, Demo). It did not fail, so the row of
+        /// failures ends here: resets the count. Without this, a Mac that
+        /// never uploads (no provider found) would collect three failures
+        /// over weeks of clean refreshes and report them as "in a row".
+        case finished
         /// Adds one.
         case failure
-        /// By design or a change of state: leaves the count as it is.
-        case expected
+        /// The refresh did not run to its end, or the state changed under it
+        /// (no network, another refresh in flight, replaced, signed out or
+        /// expired mid-refresh): it says nothing either way, so the count
+        /// stays as it is.
+        case inconclusive
     }
 
     /// A refresh in flight this long is not slow, it is stuck.
@@ -125,6 +145,7 @@ public enum UploadOutcome: Equatable, Sendable {
         case .networkFailed: return .networkFailed
         case .serverUnreachable: return .serverUnreachable
         case .offline: return .offline
+        case .noAnswer: return .noAnswer
         case .cloudReadFailed: return .cloudReadFailed
         case .refreshInFlight(let seconds):
             guard let seconds, seconds >= Self.stuckRefreshSeconds else { return .refreshInFlight }
@@ -155,18 +176,27 @@ public enum UploadOutcome: Equatable, Sendable {
         }
     }
 
-    /// Whether `error` means this Mac has no network rather than that our
-    /// server could not be reached. The app's session waits for connectivity
-    /// (`waitsForConnectivity`), so a Mac that is offline usually ends in
-    /// `timedOut`, not `notConnectedToInternet`.
-    public static func isOffline(_ error: Error) -> Bool {
-        guard let urlError = error as? URLError else { return false }
+    /// What `error` says about the network, when it says anything: nil
+    /// leaves the caller's own reason (`networkFailed`, `serverUnreachable`,
+    /// `cloudReadFailed`).
+    ///
+    /// Only the codes with which the system says there is no network are
+    /// `offline`. `timedOut` and `networkConnectionLost` are `noAnswer`: the
+    /// app's session waits for connectivity (`waitsForConnectivity`, 15 s a
+    /// request, 30 s a resource), so a Mac with no network ends in
+    /// `timedOut`, and so does a server that accepts the connection and never
+    /// answers. A pooler or load balancer that drops the connection ends in
+    /// `networkConnectionLost`, like a Wi-Fi that drops. Calling either
+    /// "offline" would claim a cause the error cannot tell apart.
+    public static func networkOutcome(_ error: Error) -> UploadOutcome? {
+        guard let urlError = error as? URLError else { return nil }
         switch urlError.code {
-        case .notConnectedToInternet, .networkConnectionLost, .timedOut,
-             .dataNotAllowed, .internationalRoamingOff, .callIsActive:
-            return true
+        case .notConnectedToInternet, .dataNotAllowed, .internationalRoamingOff, .callIsActive:
+            return .offline
+        case .timedOut, .networkConnectionLost:
+            return .noAnswer
         default:
-            return false
+            return nil
         }
     }
 
@@ -191,13 +221,16 @@ extension UploadOutcome.Reason {
         switch self {
         case .uploaded:
             return .success
+        case .consentDeclined, .consentUnanswered, .folderAccessMissing, .scanEmpty,
+             .nothingToUpload, .signedOut, .demo:
+            return .finished
         case .rejected, .unauthorized, .unauthorizedAfterRetry, .networkFailed,
              .serverUnreachable, .cloudReadFailed, .refreshStuck:
             return .failure
-        case .offline, .refreshInFlight, .sessionExpired, .consentDeclined, .consentUnanswered,
-             .folderAccessMissing, .scanEmpty, .nothingToUpload, .authorizationChanged,
-             .cancelled, .signedOut, .demo, .notAMac:
-            return .expected
+        // `notAMac` is never recorded (iPhone, iPad and Watch upload nothing).
+        case .offline, .noAnswer, .refreshInFlight, .sessionExpired, .authorizationChanged,
+             .cancelled, .notAMac:
+            return .inconclusive
         }
     }
 }
@@ -237,18 +270,31 @@ struct SentryUploadReporter: UploadReporter {
     static let eventName = "daily-usage-upload"
 
     func reportRepeatedFailure(_ report: UploadFailureReport) {
-        SentrySDK.capture(message: "\(Self.eventName) \(report.reason.rawValue)") { scope in
-            scope.setLevel(.warning)
-            // Grouped by reason, a closed set, never by stack or text.
-            scope.setFingerprint([Self.eventName, report.reason.rawValue])
-            scope.setTag(value: report.reason.rawValue, key: "upload_reason")
-            scope.setTag(value: report.status.map(String.init) ?? "none", key: "upload_status")
-            scope.setTag(value: report.route.rawValue, key: "upload_route")
-            scope.setTag(value: String(report.failuresInARow), key: "upload_failures_in_a_row")
-            // The reason is the whole report: the network breadcrumbs of the
-            // last refreshes add nothing to it.
-            scope.clearBreadcrumbs()
+        SentrySDK.capture(message: Self.message(for: report)) { scope in
+            Self.configure(scope, for: report)
         }
+    }
+
+    static func message(for report: UploadFailureReport) -> String {
+        "\(eventName) \(report.reason.rawValue)"
+    }
+
+    /// Everything this event adds to the SDK's standard envelope. sentry-cocoa
+    /// hands `capture(message:block:)` a copy of the current scope, so this
+    /// changes the one event only (crash reports keep their breadcrumbs).
+    /// PRIVACY.md describes exactly this; `SentryUploadReporterScopeTests`
+    /// pins it.
+    static func configure(_ scope: Scope, for report: UploadFailureReport) {
+        scope.setLevel(.warning)
+        // Grouped by reason, a closed set, never by stack or text.
+        scope.setFingerprint([eventName, report.reason.rawValue])
+        scope.setTag(value: report.reason.rawValue, key: "upload_reason")
+        scope.setTag(value: report.status.map(String.init) ?? "none", key: "upload_status")
+        scope.setTag(value: report.route.rawValue, key: "upload_route")
+        scope.setTag(value: String(report.failuresInARow), key: "upload_failures_in_a_row")
+        // The reason is the whole report: the network breadcrumbs of the
+        // last refreshes add nothing to it.
+        scope.clearBreadcrumbs()
     }
 }
 
@@ -282,9 +328,9 @@ final class UploadOutcomeTracker {
 
     func record(_ outcome: UploadOutcome, route: UploadRoute) {
         switch outcome.kind {
-        case .success: failuresInARow = 0
+        case .success, .finished: failuresInARow = 0
         case .failure: failuresInARow += 1
-        case .expected: break
+        case .inconclusive: break
         }
         log(outcome.logLine(route: route, failuresInARow: failuresInARow))
 

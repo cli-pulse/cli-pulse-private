@@ -116,7 +116,12 @@ final class RefreshUploadOutcomeTests: XCTestCase {
 
         UploadOutcomeStubProtocol.respond { _ in .fail(URLError(.notConnectedToInternet)) }
         await harness.refresh(Self.context(isAuthenticated: true, isPaired: true))
-        XCTAssertEqual(harness.reasons, [.serverUnreachable, .offline])
+
+        // A health check that times out is a Mac with no network as often as
+        // a server that never answered: the line claims neither.
+        UploadOutcomeStubProtocol.respond { _ in .fail(URLError(.timedOut)) }
+        await harness.refresh(Self.context(isAuthenticated: true, isPaired: true))
+        XCTAssertEqual(harness.reasons, [.serverUnreachable, .offline, .noAnswer])
     }
 
     // MARK: - A refresh behind one that has not finished
@@ -146,6 +151,44 @@ final class RefreshUploadOutcomeTests: XCTestCase {
         let other = await Harness()
         await other.refresh(Self.context(isAuthenticated: true, isPaired: true, isLoading: true))
         XCTAssertEqual(other.outcomes, [.refreshInFlight(seconds: nil)])
+    }
+
+    /// The age is time the Mac was awake. A lid close catches a refresh in
+    /// flight; on wake it is still loading and the next tick is skipped
+    /// behind it. On wall time that tick would count the whole night and
+    /// call it `refresh_stuck`. Here the night passes (wall time moves on, as
+    /// it does while this test runs) and the awake clock moves only by what
+    /// the test gives it, which is all the age may say.
+    func testTheInFlightAgeLeavesOutTimeTheMacSlept() async {
+        let gate = RefreshOutcomeGate()
+        let clock = AwakeClock(start: 86_400)
+        let harness = await Harness(collectorGate: gate, uptime: { clock.now })
+        let first = Task { @MainActor in
+            await harness.refresh(Self.context(isAuthenticated: true, isPaired: false))
+        }
+        await gate.waitUntilEntered()
+
+        // Asleep overnight, then 42 s awake.
+        clock.advance(42)
+        await harness.refresh(Self.context(isAuthenticated: true, isPaired: false, isLoading: true))
+        // Then ten minutes awake, still not back: that is stuck.
+        clock.advance(Double(UploadOutcome.stuckRefreshSeconds))
+        await harness.refresh(Self.context(isAuthenticated: true, isPaired: false, isLoading: true))
+        XCTAssertEqual(Array(harness.outcomes.prefix(2)), [
+            .refreshInFlight(seconds: 42),
+            .refreshInFlight(seconds: 42 + UploadOutcome.stuckRefreshSeconds),
+        ])
+        XCTAssertEqual(Array(harness.reasons.prefix(2)), [.refreshInFlight, .refreshStuck])
+
+        await gate.open()
+        await first.value
+    }
+
+    /// The clock the manager uses unless a test gives it one.
+    func testTheDefaultClockIsTheAwakeClock() {
+        XCTAssertEqual(DataRefreshManager.systemUptime(), ProcessInfo.processInfo.systemUptime, accuracy: 1)
+        XCTAssertLessThan(DataRefreshManager.systemUptime(), Date().timeIntervalSince1970 / 2,
+                          "that is wall time, which counts sleep")
     }
 
     // MARK: - 59-01a: a rejected refresh token found by the upload
@@ -225,7 +268,8 @@ final class RefreshUploadOutcomeTests: XCTestCase {
             costEntries: [CostUsageScanResult.DailyEntry] = [],
             needsFolderAccess: Bool = false,
             upload: UploadOutcome = .uploaded(rows: 1, status: 200, afterTokenRefresh: false),
-            collectorGate: RefreshOutcomeGate? = nil
+            collectorGate: RefreshOutcomeGate? = nil,
+            uptime: (() -> TimeInterval)? = nil
         ) async {
             let config = URLSessionConfiguration.ephemeral
             config.protocolClasses = [UploadOutcomeStubProtocol.self]
@@ -258,7 +302,8 @@ final class RefreshUploadOutcomeTests: XCTestCase {
                     reporter: RecordingUploadReporter(),
                     defaults: UploadOutcomeTests.freshDefaults(),
                     log: { box.lines.append($0) }
-                )
+                ),
+                uptime: uptime ?? { DataRefreshManager.systemUptime() }
             )
         }
 
@@ -330,6 +375,15 @@ final class RefreshUploadOutcomeTests: XCTestCase {
 
 final class LineBox: @unchecked Sendable {
     var lines: [String] = []
+}
+
+/// A stand-in for `systemUptime` that moves only when told.
+final class AwakeClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: TimeInterval
+    init(start: TimeInterval) { current = start }
+    var now: TimeInterval { lock.lock(); defer { lock.unlock() }; return current }
+    func advance(_ seconds: TimeInterval) { lock.lock(); current += seconds; lock.unlock() }
 }
 
 /// Which uploads the runtime was asked for.
