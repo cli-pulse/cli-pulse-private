@@ -53,7 +53,9 @@ final class CodexOlderFolderLookbackTests: XCTestCase {
     }
 
     private func json(_ object: [String: Any]) -> String {
-        String(decoding: try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]), as: UTF8.self)
+        // A line that does not encode is an empty one, and the counts fail.
+        let data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data()
+        return String(decoding: data, as: UTF8.self)
     }
 
     private func tokenCount(at date: Date, total: Int, last: Int) -> String {
