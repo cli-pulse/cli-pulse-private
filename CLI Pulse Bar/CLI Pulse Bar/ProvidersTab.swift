@@ -1,4 +1,5 @@
 import SwiftUI
+import StoreKit
 import CLIPulseCore
 
 struct ProvidersTab: View {
@@ -1161,6 +1162,12 @@ struct EnhancedProviderCard: View {
                 usageSection(
                     usage, chart: chart, chartVisible: chartVisible,
                     totalsVisible: visibility.isVisible(.usageTotals, for: kind))
+                    // 1.59 (59-16): a cost on this card counts towards the
+                    // App Store build's rating prompt (MacReviewPrompt).
+                    .modifier(ReviewPromptOnCostShown(showsCost: MacReviewPromptPolicy.cardShowsCost(
+                        usage, showsCost: showCost,
+                        totalsVisible: visibility.isVisible(.usageTotals, for: kind),
+                        isDemoMode: state.isDemoMode)))
 
                 // Usage tiers
                 if !showsQuota {
@@ -1447,5 +1454,32 @@ struct ProviderCardSectionsMenuItems: View {
             hiddenSectionsRaw = updated.storedValue
         }
         .disabled(!visibility.hasHiddenSections(for: kind))
+    }
+}
+
+/// 1.59 (59-16): a provider card that shows a cost counts the day towards the
+/// App Store build's rating prompt, and asks for the rating when
+/// `MacReviewPrompt` says it is time (at least three days with a cost, never
+/// in the first session, once a version, App Store build only).
+///
+/// It asks a moment after the card appears, so the prompt does not open over
+/// the menu while it is still drawing; the system decides whether the prompt
+/// is shown at all.
+private struct ReviewPromptOnCostShown: ViewModifier {
+    let showsCost: Bool
+    @Environment(\.requestReview) private var requestReview
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { costShown(showsCost) }
+            .onChange(of: showsCost) { costShown($0) }
+    }
+
+    private func costShown(_ shows: Bool) {
+        guard shows, MacReviewPrompt.shared.costShown(onDay: DayKey.string(from: Date())) else { return }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            requestReview()
+        }
     }
 }

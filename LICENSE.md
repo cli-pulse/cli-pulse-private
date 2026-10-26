@@ -32,7 +32,16 @@ Any binaries or installers obtained from other sources are **not** authentic and
 
 ## Third-party components
 
-CLI Pulse uses third-party open-source libraries, each under their own license (Sentry Cocoa SDK, Supabase Swift client, etc.). Those libraries are subject to their own terms, which are preserved in the respective package manifests and honored in the shipping app.
+The Mac, iPhone and iPad apps include third-party open-source software, each part under its own license, to which the terms above do not apply:
+
+- the **Sentry Cocoa SDK** (MIT), with the notices it carries for the code it includes (KSCrash, code from YANDEX LLC, fishhook, and Apple code under the Apple Public Source License 2.0);
+- **SweetCookieKit** (MIT), whose source is included in the Mac app;
+- **xterm.js** with its fit and web-links add-ons (MIT);
+- code adapted from **CodexBar** (MIT). Each adapted source file keeps CodexBar's notice in its header.
+
+The full license texts ship inside each app as `ThirdPartyNotices.txt`, in the app's resources. The same file is in this repository, [`CLI Pulse Bar/ThirdPartyNotices.txt`](CLI%20Pulse%20Bar/ThirdPartyNotices.txt). `scripts/generate_third_party_notices.py` writes it; run it again whenever a dependency, a vendored folder or a bundled web asset changes.
+
+**Known gap: the Companion CLI installer.** The Companion CLI `.pkg` is built with PyInstaller and bundles CPython (Python Software Foundation License), the `cryptography` package and OpenSSL (Apache License 2.0, which asks for its NOTICE to be passed on). Their notices are not in the `.pkg` yet; they go in with the next Companion release.
 
 ## Contact
 

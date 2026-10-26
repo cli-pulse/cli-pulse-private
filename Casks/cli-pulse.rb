@@ -58,12 +58,20 @@ cask "cli-pulse" do
   # the app's (HelperCachePurge.swift names the same places). Up to 1.56 its
   # cache and both apps' cookie files could hold credentialed requests, which is
   # why they are listed here and not left behind.
+  #
+  # A Mac that ran the App Store build first also has that build's sandbox
+  # containers: the app's, and its helper's (yyh.CLI-Pulse.helper), which holds
+  # that helper's own data, its web cache included (PRIVACY.md names the
+  # folder). This build never opens either container itself: opening another
+  # app's folder under ~/Library/Containers makes macOS ask the user
+  # (HelperCachePurge.swift). So --zap is where they get removed.
   zap trash: [
     "~/Library/Application Scripts/yyh.CLI-Pulse",
     "~/Library/Application Support/CLIPulse",
     "~/Library/Caches/yyh.CLI-Pulse",
     "~/Library/Caches/yyh.CLI-Pulse.helper",
     "~/Library/Containers/yyh.CLI-Pulse",
+    "~/Library/Containers/yyh.CLI-Pulse.helper",
     "~/Library/Group Containers/group.yyh.CLI-Pulse",
     "~/Library/HTTPStorages/yyh.CLI-Pulse",
     "~/Library/HTTPStorages/yyh.CLI-Pulse.binarycookies",

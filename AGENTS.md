@@ -143,6 +143,24 @@ If a task is specifically about the public repo, keep it distribution-only.
 - If a release tag must be recreated, ensure it is recreated on a
   distribution-only commit.
 
+## The release PR: third-party notices
+
+The Mac and iPhone/iPad apps ship `CLI Pulse Bar/ThirdPartyNotices.txt` in
+their resources: the license texts of the Sentry Cocoa SDK (with the notices
+it carries), the vendored SweetCookieKit, xterm.js and CodexBar. No CI gate
+checks it. In each release PR, run
+
+```bash
+python3 scripts/generate_third_party_notices.py --checkouts <SourcePackages>/checkouts --check
+```
+
+with any resolved checkouts folder (`swift package resolve`'s or Xcode's).
+When a package pin in `CLIPulseCore/Package.resolved`, a folder under
+`CLIPulseCore/Sources/CLIPulseCore/Vendor/` or a bundled web asset's LICENSE
+changed, it reports the file out of date: run it without `--check` and commit
+the result. A new dependency's license goes in by itself; give it a name and a
+line on what it is used for in the script's tables.
+
 ## Releasing a version to the App Store — the order
 
 Four scripts write to App Store Connect, and the order matters. The listing and
