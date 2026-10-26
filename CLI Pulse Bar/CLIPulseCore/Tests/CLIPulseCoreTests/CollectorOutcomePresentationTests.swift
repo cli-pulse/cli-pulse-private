@@ -31,13 +31,12 @@ final class CollectorOutcomePresentationTests: XCTestCase {
     /// with nothing to do is a dead end — it tells the user something is wrong
     /// and abandons them there.
     func testEveryActionableOutcomeOffersANextStep() {
-        let actionable: [CollectorOutcome] = [
-            .notReady(.notInstalled), .notReady(.notRunning),
-            .notReady(.missingCredentials), .notReady(.missingApiKey), .notReady(.unknown),
-            .ranButEmpty,
-            .failed(.auth), .failed(.network), .failed(.parse),
-            .failed(.permission), .failed(.http), .failed(.other),
-        ]
+        // 1.59: every reason and every failure, through `allCases`, so a new
+        // one (`keychainDenied`, `notConnected`) is held to this too.
+        let actionable: [CollectorOutcome] =
+            CollectorNotReadyReason.allCases.map { .notReady($0) }
+            + [.ranButEmpty]
+            + CollectorFailureCategory.allCases.map { .failed($0) }
         for outcome in actionable {
             XCTAssertNotNil(
                 presentation(outcome).nextStep,
@@ -169,13 +168,10 @@ final class CollectorOutcomePresentationTests: XCTestCase {
 
     /// No label may be empty, or the row renders a coloured blank.
     func testNoLabelIsEmpty() {
-        let all: [CollectorOutcome] = [
-            .disabled, .unsupported, .producedData, .ranButEmpty,
-            .notReady(.notInstalled), .notReady(.notRunning),
-            .notReady(.missingCredentials), .notReady(.missingApiKey), .notReady(.unknown),
-            .failed(.auth), .failed(.network), .failed(.parse),
-            .failed(.permission), .failed(.http), .failed(.other),
-        ]
+        let all: [CollectorOutcome] =
+            [.disabled, .unsupported, .producedData, .ranButEmpty]
+            + CollectorNotReadyReason.allCases.map { .notReady($0) }
+            + CollectorFailureCategory.allCases.map { .failed($0) }
         for outcome in all {
             XCTAssertFalse(presentation(outcome).label.isEmpty, "\(outcome) has an empty label")
         }
@@ -184,13 +180,10 @@ final class CollectorOutcomePresentationTests: XCTestCase {
     /// Labels must be real translations, not the raw lookup keys leaking
     /// through — which is what a missing entry in a .strings file looks like.
     func testLabelsAreResolvedNotRawKeys() {
-        let all: [CollectorOutcome] = [
-            .disabled, .unsupported, .producedData, .ranButEmpty,
-            .notReady(.notInstalled), .notReady(.notRunning),
-            .notReady(.missingCredentials), .notReady(.missingApiKey), .notReady(.unknown),
-            .failed(.auth), .failed(.network), .failed(.parse),
-            .failed(.permission), .failed(.http), .failed(.other),
-        ]
+        let all: [CollectorOutcome] =
+            [.disabled, .unsupported, .producedData, .ranButEmpty]
+            + CollectorNotReadyReason.allCases.map { .notReady($0) }
+            + CollectorFailureCategory.allCases.map { .failed($0) }
         for outcome in all {
             let p = presentation(outcome)
             XCTAssertFalse(p.label.hasPrefix("collector_status."),

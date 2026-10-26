@@ -1118,6 +1118,9 @@
 "collector_status.strict_privacy_mode" = "嚴格隱私模式下不讀取";
 "collector_status.strict_privacy_mode_cookie_hint" = "嚴格隱私模式下，CLI Pulse 不會從瀏覽器匯入 %@ 的 Cookie。可將它的「Cookie 來源」設為「手動」並貼上 Cookie，或在「設定 › 隱私」中關閉嚴格隱私模式。";
 "collector_status.strict_privacy_mode_keychain_hint" = "嚴格隱私模式下，CLI Pulse 不會讀取 %@ 的鑰匙圈項目。若要讓 CLI Pulse 讀取，請在「設定 › 隱私」中關閉嚴格隱私模式。";
+/* 1.59 (59-15 F2): Claude Code's keychain item, declined in macOS's dialog */
+"collector_status.keychain_denied" = "已拒絕鑰匙圈存取";
+"collector_status.keychain_denied_hint" = "macOS 稍後會再次詢問。請點「永遠允許」，讓 CLI Pulse 讀取你的 Claude Code 登入資訊。如果不想再被詢問，請在「設定 › 隱私」中開啟「略過 Claude Code 鑰匙圈存取」。";
 "collector_status.not_set_up" = "未設定";
 "collector_status.not_set_up_hint" = "開啟設定來連接這個服務商。";
 "collector_status.no_data" = "沒有回傳資料";

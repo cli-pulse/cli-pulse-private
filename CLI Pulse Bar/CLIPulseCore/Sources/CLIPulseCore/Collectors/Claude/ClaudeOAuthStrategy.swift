@@ -76,7 +76,7 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
                 // that keeps 401ing cannot re-trigger the macOS keychain dialog
                 // every refresh. Account-scoped config tokens never mutate
                 // another account's shared compatibility cache.
-                ClaudeCredentials.installKeychainReadCooldown()
+                ClaudeCredentials.installKeychainReadCooldown(cause: .rejectedToken)
             }
             throw ClaudeStrategyError.httpError(status: status, provider: "Claude")
         } catch ClaudeStrategyError.httpError(let status, _) where status == 429 {

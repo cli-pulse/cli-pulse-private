@@ -182,6 +182,9 @@ final class UnsandboxedDataMigrationTests: XCTestCase {
         // to an unprefixed name fails here (verifier 2026-06-28).
         XCTAssertTrue(covered(ClaudeCredentials.keychainReadCooldownKey),
                       "ClaudeCredentials.keychainReadCooldownKey must match appOwnedKeyPrefixes")
+        // 1.59: the cooldown's cause lives in the same suite, with the same fallback.
+        XCTAssertTrue(covered(ClaudeCredentials.keychainReadCooldownCauseKey),
+                      "ClaudeCredentials.keychainReadCooldownCauseKey must match appOwnedKeyPrefixes")
     }
 
     // MARK: - Path helpers

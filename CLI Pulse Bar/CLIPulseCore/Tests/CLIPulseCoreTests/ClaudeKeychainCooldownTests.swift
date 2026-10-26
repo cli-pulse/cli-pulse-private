@@ -71,6 +71,19 @@ final class ClaudeKeychainCooldownTests: XCTestCase {
         XCTAssertTrue(ClaudeCredentials.isKeychainReadOnCooldown())
     }
 
+    func test_aCooldownRemembersItsCause() {
+        // 1.59: the provider row says "declined" for one and "not signed in"
+        // for the other, so the cause is stored with the end time.
+        ClaudeCredentials.installKeychainReadCooldown(cause: .declined)
+        XCTAssertEqual(ClaudeCredentials.activeKeychainReadCooldown(), .declined)
+        ClaudeCredentials.installKeychainReadCooldown()
+        XCTAssertEqual(ClaudeCredentials.activeKeychainReadCooldown(), .rejectedToken,
+                       "the 401 path's default cause")
+        ClaudeCredentials.clearKeychainReadCooldown()
+        XCTAssertNil(ClaudeCredentials.activeKeychainReadCooldown())
+        XCTAssertNil(ClaudeCredentials.cooldownDefaults.string(forKey: ClaudeCredentials.keychainReadCooldownCauseKey))
+    }
+
     func test_clearCooldownResets() {
         ClaudeCredentials.installKeychainReadCooldown()
         XCTAssertTrue(ClaudeCredentials.isKeychainReadOnCooldown())

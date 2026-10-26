@@ -14,7 +14,12 @@ import Security
 public struct ClaudeCollector: ProviderCollector, Sendable {
     public let kind = ProviderKind.claude
 
-    private let resolver = ClaudeSourceResolver()
+    private let resolver: ClaudeSourceResolver
+
+    /// - Parameter resolver: tests pass one with their own strategies.
+    init(resolver: ClaudeSourceResolver = ClaudeSourceResolver()) {
+        self.resolver = resolver
+    }
 
     public func isAvailable(config: ProviderConfig) -> Bool {
         resolver.isAvailable(config: config)
@@ -25,12 +30,23 @@ public struct ClaudeCollector: ProviderCollector, Sendable {
     /// credential source, so `isAvailable` goes false while the user is
     /// perfectly signed in — and the default reason renders as "Not set up",
     /// which sends them to a Settings screen that already says Connected.
+    ///
+    /// 1.59 (59-15 F2): and say why otherwise too. The token resolver notes
+    /// where it stopped in a `ClaudeTokenResolutionLog` bound around this
+    /// call's own `isAvailable`, and `ClaudeNotReadyDiagnosis` names it:
+    /// declined in macOS's dialog, disconnected, Strict privacy mode, no
+    /// Claude.ai login on this Mac, Claude Code not installed. `.unknown` is
+    /// left for what really is unknown.
     public func readiness(config: ProviderConfig) -> CollectorReadiness {
-        if isAvailable(config: config) { return .ready }
+        let resolution = ClaudeTokenResolutionLog()
+        let available = ClaudeTokenResolutionLog.$current.withValue(resolution) {
+            isAvailable(config: config)
+        }
+        if available { return .ready }
         if let conflict = CollectorReadinessProbe.sharedCredentialConflict(
             kind: .claude, accountID: config.accountID
         ) { return conflict }
-        return .notReady(.unknown)
+        return .notReady(ClaudeNotReadyDiagnosis.reason(for: resolution.absence))
     }
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
