@@ -1127,6 +1127,9 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "collector_status.strict_privacy_mode" = "Not read in Strict privacy mode";
 "collector_status.strict_privacy_mode_cookie_hint" = "Strict privacy mode stops CLI Pulse from importing %@'s cookie from your browser. Set its Cookie source to Manual and paste the cookie yourself, or turn off Strict privacy mode in Settings › Privacy.";
 "collector_status.strict_privacy_mode_keychain_hint" = "Strict privacy mode stops CLI Pulse from reading %@'s keychain item. Turn off Strict privacy mode in Settings › Privacy to let CLI Pulse read it.";
+/* 1.59 (59-15 F2): Claude Code's keychain item, declined in macOS's dialog */
+"collector_status.keychain_denied" = "Keychain access declined";
+"collector_status.keychain_denied_hint" = "macOS will ask again later. Choose Always Allow so CLI Pulse can read your Claude Code login.";
 "collector_status.not_set_up" = "Not set up";
 "collector_status.not_set_up_hint" = "Open Settings to connect this provider.";
 "collector_status.no_data" = "No data returned";

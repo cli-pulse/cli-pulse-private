@@ -1,5 +1,6 @@
 #if os(macOS)
 import Foundation
+import os
 
 // MARK: - Strategy protocol
 
@@ -290,8 +291,11 @@ public enum ClaudeCredentials {
         // a bad token we install a cooldown: skip the cross-app read (return nil
         // → the resolver falls back to cli-pty/JSONL/web, no prompt) until it
         // expires, capping prompts to ≤1 per cooldown window. See
-        // feedback_claude_oauth_keychain_prompt_spam.
-        if !bypassCooldown, isKeychainReadOnCooldown() {
+        // feedback_claude_oauth_keychain_prompt_spam. 1.59: a declined read
+        // arms the same cooldown (below), and the cause is noted so the
+        // provider row can say which one it is.
+        if !bypassCooldown, let cause = activeKeychainReadCooldown() {
+            ClaudeKeychainReadLog.note(.onCooldown(cause))
             return nil
         }
 
@@ -302,10 +306,24 @@ public enum ClaudeCredentials {
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else { return nil }
-        guard let creds = parseCredentialsJSON(data) else { return nil }
+        let (status, item) = copyKeychainItem(query as CFDictionary)
+        guard status == errSecSuccess else {
+            // 1.59 (59-15 F6): the user said no in macOS's dialog. Without a
+            // cooldown every later refresh asked again (`readiness` →
+            // `isAvailable` → here), so one "Deny" became a dialog every few
+            // minutes. Armed in either process, like the 401 one, because
+            // the cooldown is shared through the app group.
+            if ClaudeKeychainMiss.isDeclined(status) {
+                installKeychainReadCooldown(cause: .declined)
+                keychainLogger.notice("Claude Code keychain read declined, status \(status, privacy: .public); not asking again until the cooldown ends")
+            }
+            ClaudeKeychainReadLog.note(.status(status))
+            return nil
+        }
+        guard let data = item as? Data, let creds = parseCredentialsJSON(data) else {
+            ClaudeKeychainReadLog.note(.unreadable)
+            return nil
+        }
 
         // 3. Cache in the app's own keychain so the prompt never recurs, and
         //    clear any cooldown — a successful read means we're back to normal.
@@ -379,26 +397,72 @@ public enum ClaudeCredentials {
     static var cooldownDefaults: UserDefaults =
         UserDefaults(suiteName: "group.yyh.CLI-Pulse") ?? .standard
 
-    static func installKeychainReadCooldown() {
+    /// 1.59: why the cooldown was armed (`ClaudeKeychainCooldownCause`), next
+    /// to its end time. Prefixed for the same reason as the key above.
+    static let keychainReadCooldownCauseKey = "cli_pulse_claude_keychain_read_cooldown_cause"
+
+    /// - Parameter cause: `.rejectedToken` for the OAuth 401 path (the
+    ///   default, which is what every caller before 1.59 meant), `.declined`
+    ///   when the user said no in macOS's dialog.
+    static func installKeychainReadCooldown(cause: ClaudeKeychainCooldownCause = .rejectedToken) {
         let until = nowProvider().addingTimeInterval(keychainReadCooldownInterval)
         cooldownDefaults.set(until.timeIntervalSince1970, forKey: keychainReadCooldownKey)
+        cooldownDefaults.set(cause.rawValue, forKey: keychainReadCooldownCauseKey)
     }
 
     static func clearKeychainReadCooldown() {
         cooldownDefaults.removeObject(forKey: keychainReadCooldownKey)
+        cooldownDefaults.removeObject(forKey: keychainReadCooldownCauseKey)
     }
 
-    /// True while a cooldown installed by a bad-token clear is still active.
+    /// True while a cooldown (a bad-token clear, or since 1.59 a declined
+    /// dialog) is still active.
     static func isKeychainReadOnCooldown() -> Bool {
+        activeKeychainReadCooldown() != nil
+    }
+
+    /// Why the cooldown is active, or nil when it is not. A cooldown with no
+    /// cause recorded (armed before 1.59) is a rejected token: that was the
+    /// only thing that armed one.
+    static func activeKeychainReadCooldown() -> ClaudeKeychainCooldownCause? {
         let epoch = cooldownDefaults.double(forKey: keychainReadCooldownKey)
-        guard epoch > 0 else { return false }
+        guard epoch > 0 else { return nil }
         if nowProvider().timeIntervalSince1970 >= epoch {
             // Expired — clean it up so the next read attempts the cross-app
             // keychain once more.
-            cooldownDefaults.removeObject(forKey: keychainReadCooldownKey)
-            return false
+            clearKeychainReadCooldown()
+            return nil
         }
-        return true
+        return cooldownDefaults.string(forKey: keychainReadCooldownCauseKey)
+            .flatMap(ClaudeKeychainCooldownCause.init(rawValue:)) ?? .rejectedToken
+    }
+
+    /// The cross-app read itself: `SecItemCopyMatching`, with the item it
+    /// returned. Tests replace it, so no test opens the real item (a test
+    /// binary is not in its access list, so macOS would show a dialog nobody
+    /// answers, and the suite would hang).
+    static var copyKeychainItem: (CFDictionary) -> (OSStatus, CFTypeRef?) = { query in
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query, &item)
+        return (status, item)
+    }
+
+    /// The background lookup the token resolver makes: the guarded read
+    /// (`readKeychainCredentialsIfAllowed`), and, when it found no token, why.
+    /// The read notes its status in a `ClaudeKeychainReadLog` bound here;
+    /// nothing noted means the guard did not read, so a Settings › Privacy
+    /// switch (or, in the LoginItem helper, no copy of them yet) said skip.
+    static func readKeychainForTokenResolver(
+        privacy: PrivacySettings = .shared
+    ) -> ClaudeKeychainLookup {
+        let log = ClaudeKeychainReadLog()
+        let creds = ClaudeKeychainReadLog.$current.withValue(log) {
+            readKeychainCredentialsIfAllowed(privacy: privacy)
+        }
+        if let creds { return .found(creds) }
+        if let miss = log.miss { return .missing(miss) }
+        let access = privacy.claudeKeychainAccess
+        return .missing(access.skips ? .skipped(access) : .unreadable)
     }
 
     /// Peek at the app's own keychain cache without ever triggering a
@@ -413,6 +477,8 @@ public enum ClaudeCredentials {
 
     private static let keychainCacheKey = "claude-code-creds-cache"
 
+    private static let keychainLogger = Logger(subsystem: "com.clipulse", category: "ClaudeCredentials")
+
     enum TokenSource: Equatable {
         case accountConfig
         case sharedEnvironment
@@ -425,10 +491,39 @@ public enum ClaudeCredentials {
         let token: String
         let tier: String?
         let source: TokenSource
+        /// 1.59: why there is no token; nil when there is one. Read by
+        /// `ClaudeCollector.readiness` (through `ClaudeTokenResolutionLog`),
+        /// which used to say "Not set up" for every one of these.
+        var absence: ClaudeTokenAbsence? = nil
     }
 
+    /// - Parameters:
+    ///   - environment, credentialsFile, keychain: the three machine-wide
+    ///     sources, in the order they are tried. Tests pass their own, so
+    ///     what this machine has never decides a result.
     static func resolveTokenDetails(
-        config: ProviderConfig
+        config: ProviderConfig,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        credentialsFile: () -> Creds? = { ClaudeCredentials.readCredentialsFile() },
+        keychain: () -> ClaudeKeychainLookup = { ClaudeCredentials.readKeychainForTokenResolver() }
+    ) -> ResolvedToken {
+        let resolved = resolveTokenFromSources(
+            config: config,
+            environment: environment,
+            credentialsFile: credentialsFile,
+            keychain: keychain
+        )
+        if let absence = resolved.absence {
+            ClaudeTokenResolutionLog.note(absence)
+        }
+        return resolved
+    }
+
+    private static func resolveTokenFromSources(
+        config: ProviderConfig,
+        environment: [String: String],
+        credentialsFile: () -> Creds?,
+        keychain: () -> ClaudeKeychainLookup
     ) -> ResolvedToken {
         // Explicitly connected tokens are copied into this account's
         // ProviderConfig Keychain slot. They always win over machine-global
@@ -446,7 +541,8 @@ public enum ClaudeCredentials {
             return ResolvedToken(
                 token: "",
                 tier: nil,
-                source: .none
+                source: .none,
+                absence: .fallbackDisabled
             )
         }
 
@@ -460,13 +556,14 @@ public enum ClaudeCredentials {
             return ResolvedToken(
                 token: "",
                 tier: nil,
-                source: .none
+                source: .none,
+                absence: .sharedLoginNotClaimed
             )
         }
 
         // Check environment variables: app-specific first, then Claude Code's own
         for envKey in ["CODEXBAR_CLAUDE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"] {
-            if let envToken = ProcessInfo.processInfo.environment[envKey],
+            if let envToken = environment[envKey],
                !envToken.isEmpty, envToken.hasPrefix("sk-ant-oat") {
                 return ResolvedToken(
                     token: envToken,
@@ -475,25 +572,28 @@ public enum ClaudeCredentials {
                 )
             }
         }
-        if let fileCreds = readCredentialsFile() {
+        if let fileCreds = credentialsFile() {
             return ResolvedToken(
                 token: fileCreds.accessToken,
                 tier: fileCreds.rateLimitTier,
                 source: .sharedCredentialsFile
             )
         }
-        if let keychainCreds = readKeychainCredentialsIfAllowed() {
+        switch keychain() {
+        case .found(let keychainCreds):
             return ResolvedToken(
                 token: keychainCreds.accessToken,
                 tier: keychainCreds.rateLimitTier,
                 source: .sharedKeychain
             )
+        case .missing(let miss):
+            return ResolvedToken(
+                token: "",
+                tier: nil,
+                source: .none,
+                absence: .keychain(miss)
+            )
         }
-        return ResolvedToken(
-            token: "",
-            tier: nil,
-            source: .none
-        )
     }
 
     /// Resolve an OAuth token from all available sources.

@@ -1060,6 +1060,9 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "collector_status.strict_privacy_mode" = "No se lee en modo de privacidad estricta";
 "collector_status.strict_privacy_mode_cookie_hint" = "En el modo de privacidad estricta, CLI Pulse no importa la cookie de %@ de tu navegador. Cambia «Fuente de cookies» a «Manual» y pega una, o desactiva el modo en Ajustes › Privacidad.";
 "collector_status.strict_privacy_mode_keychain_hint" = "En el modo de privacidad estricta, CLI Pulse no lee el elemento del Llavero de %@. Para que CLI Pulse lo lea, desactiva el modo en Ajustes › Privacidad.";
+/* 1.59 (59-15 F2): Claude Code's keychain item, declined in macOS's dialog */
+"collector_status.keychain_denied" = "Acceso al Llavero denegado";
+"collector_status.keychain_denied_hint" = "macOS volverá a preguntar más tarde. Haz clic en «Permitir siempre» para que CLI Pulse pueda leer tu inicio de sesión de Claude Code.";
 "collector_status.not_set_up" = "Sin configurar";
 "collector_status.not_set_up_hint" = "Abre Ajustes para conectar este proveedor.";
 "collector_status.no_data" = "Sin datos";

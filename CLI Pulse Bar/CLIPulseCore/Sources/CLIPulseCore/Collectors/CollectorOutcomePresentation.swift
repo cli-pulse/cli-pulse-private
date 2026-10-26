@@ -120,9 +120,26 @@ public struct CollectorOutcomePresentation: Sendable, Equatable {
                 severity: .normal
             )
 
-        case .notReady(.unknown):
-            // We could not tell why. Do not guess a cause — point at the one
-            // screen that can resolve any of them.
+        case .notReady(.keychainDenied):
+            // 1.59 (59-15 F2). The user said no in macOS's keychain dialog.
+            // "Not set up — Open Settings" was false (the provider is set up)
+            // and, in local mode, pointed at a Settings › Providers that is not
+            // drawn there. What works everywhere is the next dialog. Only
+            // Claude reports this today, so the hint names Claude Code; a
+            // second producer needs its own text here, not this one.
+            return .init(
+                label: L10n.collectorStatus.keychainDenied,
+                nextStep: L10n.collectorStatus.keychainDeniedHint,
+                severity: .attention
+            )
+
+        case .notReady(.notConnected), .notReady(.unknown):
+            // `.unknown`: we could not tell why. Do not guess a cause — point
+            // at the one screen that can resolve any of them.
+            // `.notConnected` (1.59): the user turned off this entry's use of
+            // the machine's login, and connecting is the fix, so "Not set up —
+            // connect this provider" is the true sentence for it too. Its own
+            // reason is for telemetry, which must tell the two apart.
             return .init(
                 label: L10n.collectorStatus.notSetUp,
                 nextStep: L10n.collectorStatus.notSetUpHint,

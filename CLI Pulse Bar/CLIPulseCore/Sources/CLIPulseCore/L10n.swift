@@ -692,6 +692,11 @@ public enum L10n {
         public static func strictPrivacyModeKeychainHint(_ provider: String) -> String {
             tr("collector_status.strict_privacy_mode_keychain_hint", provider)
         }
+        /// 1.59: the user declined macOS's keychain dialog for Claude Code's
+        /// login (`CollectorNotReadyReason.keychainDenied`).
+        public static var keychainDenied: String { tr("collector_status.keychain_denied") }
+        /// Names Claude Code: Claude is the only producer of the reason.
+        public static var keychainDeniedHint: String { tr("collector_status.keychain_denied_hint") }
         public static var notSetUp: String { tr("collector_status.not_set_up") }
         public static var notSetUpHint: String { tr("collector_status.not_set_up_hint") }
         public static var noData: String { tr("collector_status.no_data") }

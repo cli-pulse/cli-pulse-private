@@ -64,6 +64,13 @@ public enum CollectorOutcome: Sendable, Equatable {
     /// Stable short token for telemetry (`devices.collector_status`, v0.71).
     /// Kept flat and low-cardinality — this is aggregated across devices, not
     /// read per-row. Must stay stable: changing a token silently splits history.
+    ///
+    /// The server keeps the first `telemetryTokenStoredLength` characters
+    /// (`left(v, 24)` in migrate_v0.71). Four tokens are longer and are
+    /// already stored cut (`not_ready_missing_creden`, …); they keep their
+    /// names, because renaming one splits its history. A new token must fit,
+    /// and every token must still be told apart once cut:
+    /// `CollectorTelemetryTokenLengthTests`.
     public var telemetryToken: String {
         switch self {
         case .disabled: return "disabled"
@@ -74,6 +81,10 @@ public enum CollectorOutcome: Sendable, Equatable {
         case .failed(let category): return "failed_\(category.rawValue)"
         }
     }
+
+    /// How many characters of `telemetryToken` the server keeps
+    /// (`helper_report_app_version`, `left(v, 24)`).
+    public static let telemetryTokenStoredLength = 24
 }
 
 /// Why a collector declined to run.
@@ -87,7 +98,11 @@ public enum CollectorOutcome: Sendable, Equatable {
 /// default. It is honest: it says we don't know, and the UI says "not set up"
 /// rather than inventing a reason. Collectors that DO know override
 /// `readiness(config:)` and get a precise label.
-public enum CollectorNotReadyReason: String, Sendable, Equatable {
+///
+/// A raw value becomes a telemetry token (`not_ready_<raw>`), so a new case's
+/// raw value must keep that token within
+/// `CollectorOutcome.telemetryTokenStoredLength` characters.
+public enum CollectorNotReadyReason: String, Sendable, Equatable, CaseIterable {
     /// The provider's CLI/app is not present on this machine.
     case notInstalled = "not_installed"
     /// The tool is installed but its local service isn't answering. Distinct
@@ -127,6 +142,21 @@ public enum CollectorNotReadyReason: String, Sendable, Equatable {
     /// keychain item that is this provider's only credential (Zed's). Not
     /// "Not set up": the provider may well be set up; CLI Pulse did not look.
     case strictPrivacyModeKeychain = "strict_keychain"
+    /// 1.59: the user told CLI Pulse not to use this Mac's login for the
+    /// provider on its own, and the entry has no credential of its own. For
+    /// Claude: Disconnect in the provider editor, or "Skip Claude Code
+    /// keychain access" in Settings › Privacy with no credentials file. Split
+    /// from `unknown` for the fleet's sake; the user reads the same "Not set
+    /// up", which is exactly right here: connecting is the fix in both cases
+    /// (the Connect button's read is the user's own, so the switch does not
+    /// stop it).
+    case notConnected = "not_connected"
+    /// 1.59: macOS asked whether CLI Pulse may read the provider's keychain
+    /// item and the user declined (Deny or Cancel). Not "Not set up": the
+    /// provider is set up, and Settings cannot change the answer. macOS asks
+    /// again once the read's cooldown ends (`ClaudeCredentials`), and Always
+    /// Allow then sticks.
+    case keychainDenied = "kc_denied"
     /// `isAvailable` said no and the collector did not say why.
     case unknown
 }
@@ -134,7 +164,7 @@ public enum CollectorNotReadyReason: String, Sendable, Equatable {
 /// Failure classes, mapped from the error cases collectors actually throw
 /// (`CollectorError`) rather than invented. Anything unrecognised is `other` —
 /// a category that lies is worse than one that admits ignorance.
-public enum CollectorFailureCategory: String, Sendable, Equatable {
+public enum CollectorFailureCategory: String, Sendable, Equatable, CaseIterable {
     /// Credential was sent and the upstream rejected it (401/403), or the
     /// collector reports it is signed out. The user must re-authenticate.
     case auth
