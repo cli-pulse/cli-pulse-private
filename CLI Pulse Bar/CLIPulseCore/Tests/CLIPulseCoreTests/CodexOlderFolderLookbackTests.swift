@@ -100,6 +100,19 @@ final class CodexOlderFolderLookbackTests: XCTestCase {
         return CostUsageScanner.scan(options: options)
     }
 
+    /// A temporary path as either spelling of it: the directory listings
+    /// return `/private/var/...` for the `/var/...` the test wrote to.
+    private func samePath(_ a: String, _ b: String) -> Bool {
+        func canonical(_ path: String) -> String {
+            path.hasPrefix("/private/var/") ? String(path.dropFirst("/private".count)) : path
+        }
+        return canonical(a) == canonical(b)
+    }
+
+    private func isCached(_ url: URL) -> Bool {
+        CostUsageCacheIO.load(provider: "codex", cacheRoot: cacheRoot).files.keys.contains { samePath($0, url.path) }
+    }
+
     private func ioTokens(_ entries: [CostUsageScanResult.DailyEntry]) -> Int {
         entries.filter { $0.provider == "Codex" }.reduce(0) { $0 + $1.inputTokens + $1.outputTokens }
     }
@@ -113,7 +126,7 @@ final class CodexOlderFolderLookbackTests: XCTestCase {
         let result = scan()
         let candidate = try XCTUnwrap(result.activeSessionCandidates.first { $0.provider == "Codex" },
                                       "a conversation resumed from an older folder is not seen as running")
-        XCTAssertEqual(candidate.filePath, url.path)
+        XCTAssertTrue(samePath(candidate.filePath, url.path), candidate.filePath)
         XCTAssertEqual(candidate.sessionId, "resumed-now")
         XCTAssertEqual(candidate.projectName, "sample-app")
         XCTAssertEqual(candidate.totalTokens, 770, "the 90-day-old request is not the session's usage this window")
@@ -142,12 +155,11 @@ final class CodexOlderFolderLookbackTests: XCTestCase {
     func test_a_file_leaves_the_scan_once_the_window_passes_its_last_write() throws {
         let url = try resumedRollout("resumed-then-idle", startedDaysAgo: 60, resumedHoursAgo: 48, lastWrite: ago(days: 2))
         XCTAssertEqual(ioTokens(scan().entries), 770)
-        XCTAssertNotNil(CostUsageCacheIO.load(provider: "codex", cacheRoot: cacheRoot).files[url.path])
+        XCTAssertTrue(isCached(url))
 
         let later = Calendar.current.date(byAdding: .day, value: 40, to: now) ?? now
         XCTAssertEqual(ioTokens(scan(at: later).entries), 0)
-        XCTAssertNil(CostUsageCacheIO.load(provider: "codex", cacheRoot: cacheRoot).files[url.path],
-                     "a file last written before the window is still listed")
+        XCTAssertFalse(isCached(url), "a file last written before the window is still listed")
     }
 }
 
