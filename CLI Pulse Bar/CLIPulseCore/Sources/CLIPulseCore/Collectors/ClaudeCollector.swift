@@ -10,7 +10,7 @@ import Security
 /// 3. **CLI PTY** — runs `claude /usage` in a pseudo-terminal, handles TUI prompts
 ///
 /// Each strategy is tried in order; failures trigger fallback to the next strategy.
-/// Errors are logged to `$TMPDIR/clipulse_claude_resolver.log` for diagnostics.
+/// DEBUG builds log the chain to `$TMPDIR/clipulse_claude_resolver.log`; release builds write no file (1.59).
 public struct ClaudeCollector: ProviderCollector, Sendable {
     public let kind = ProviderKind.claude
 

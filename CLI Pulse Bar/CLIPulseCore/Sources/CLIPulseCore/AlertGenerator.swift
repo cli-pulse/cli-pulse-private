@@ -251,8 +251,12 @@ public enum AlertGenerator {
         let now = sharedISO8601Formatter.string(from: date)
         let sortedThresholds = thresholds.sorted(by: >) // highest first
 
-        // Claude launch-window quotas (Designs, Daily Routines) intentionally
-        // skip notifications this round — the brief explicitly excludes them.
+        // Claude launch-window quotas (Daily Routines) intentionally skip
+        // notifications — the brief explicitly excludes them. "Designs" stays
+        // in the set although 1.59 no longer produces it: these
+        // providers can come from the cloud, where an app up to 1.58 or
+        // Companion 1.33 still uploads a "Designs" tier read from
+        // `iguana_necktie`, now a cloud-credits object.
         // Suppression is provider-scoped: a non-Claude provider that happens
         // to ship a tier named "Designs" still alerts.
         let claudeNonAlertingTiers: Set<String> = ["Designs", "Daily Routines"]

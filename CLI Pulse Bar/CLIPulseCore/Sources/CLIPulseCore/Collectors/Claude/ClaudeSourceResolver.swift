@@ -158,6 +158,10 @@ public struct ClaudeSourceResolver: Sendable {
 
         // Truly no data available — log and throw
         if let lastError = errors.last {
+            // 1.59: DEBUG builds only, like the resolver log below. A
+            // release build wrote this into `$TMPDIR` for every user, with
+            // file paths and error text nobody read.
+            #if DEBUG
             let logPath = NSTemporaryDirectory() + "clipulse_claude_fallback.log"
             let timestamp = sharedISO8601Formatter.string(from: Date())
             var msg = "[\(timestamp)] All Claude strategies failed (including cache):\n"
@@ -172,6 +176,7 @@ public struct ClaudeSourceResolver: Sendable {
             } else {
                 try? msg.write(toFile: logPath, atomically: true, encoding: .utf8)
             }
+            #endif
 
             throw lastError.error
         }
@@ -254,21 +259,31 @@ public struct ClaudeSourceResolver: Sendable {
         return nil
     }
 
-    private static func log(_ message: String) {
+    /// The resolver's trace: the console and `$TMPDIR/clipulse_claude_resolver.log`,
+    /// in DEBUG builds only.
+    ///
+    /// 1.59: release builds wrote the file too, for every user, with
+    /// snapshot and account-cache paths in it ("wrote snapshot to <path>").
+    /// The message is an autoclosure so a release build does not even build
+    /// it: some lines read the helper files to describe them.
+    private static func log(_ message: @autoclosure () -> String) {
         #if DEBUG
-        print("[ClaudeSourceResolver] \(message)")
+        let text = message()
+        print("[ClaudeSourceResolver] \(text)")
+        appendToLog(text)
         #endif
-        appendToLog(message)
     }
 
     /// Log the final CollectorResult with all fields needed for runtime verification.
     private static func logResult(_ result: CollectorResult, source: String) {
+        #if DEBUG
         let u = result.usage
         let tierNames = u.tiers.map { "\($0.name)(\($0.remaining)/\($0.quota))" }.joined(separator: ", ")
-        let msg = "SUCCESS source=\(source) provider=\(u.provider) quota=\(u.quota ?? 0) remaining=\(u.remaining ?? 0) tiers.count=\(u.tiers.count) tiers=[\(tierNames)] plan_type=\(u.plan_type ?? "nil") reset_time=\(u.reset_time ?? "nil")"
-        log(msg)
+        log("SUCCESS source=\(source) provider=\(u.provider) quota=\(u.quota ?? 0) remaining=\(u.remaining ?? 0) tiers.count=\(u.tiers.count) tiers=[\(tierNames)] plan_type=\(u.plan_type ?? "nil") reset_time=\(u.reset_time ?? "nil")")
+        #endif
     }
 
+    #if DEBUG
     private static func appendToLog(_ message: String) {
         let logPath = NSTemporaryDirectory() + "clipulse_claude_resolver.log"
         let timestamp = sharedISO8601Formatter.string(from: Date())
@@ -281,5 +296,6 @@ public struct ClaudeSourceResolver: Sendable {
             try? entry.write(toFile: logPath, atomically: true, encoding: .utf8)
         }
     }
+    #endif
 }
 #endif

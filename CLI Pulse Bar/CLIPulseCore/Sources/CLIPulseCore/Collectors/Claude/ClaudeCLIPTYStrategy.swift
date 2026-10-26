@@ -171,21 +171,40 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
 
     /// Prompts the PTY auto-responds to (matching CodexBar).
     /// Claude v2.x uses selection-style prompts; Enter confirms the default choice.
-    private static let promptResponses: [(needle: String, response: String)] = [
+    ///
+    /// 1.59: no MCP prompt is answered any more. Until 1.58 "New MCP
+    /// server found" got an Enter, which confirms that dialog's default,
+    /// "Use this and all future MCP servers": a standing approval, given by a
+    /// background probe, for every server the user's config names. Upstream
+    /// answers none either. `--strict-mcp-config` and the probe's own empty
+    /// folder mean the dialog should never appear; if it does,
+    /// `mcpApprovalPromptVisible` stops the probe without sending another key
+    /// (an Enter for `/usage` or `/exit` would confirm the default just the
+    /// same). `ClaudeProbeMCPPromptTests` pins both.
+    static let promptResponses: [(needle: String, response: String)] = [
         ("Do you trust the files in this folder?", "y\r"),
         ("Quick safety check:", "\r"),           // v2.x trust prompt (Enter confirms default "Yes")
         ("Yes, I trust this folder", "\r"),
         ("Ready to code here?", "\r"),
         ("Press Enter to continue", "\r"),
-        // MCP server prompts — accept default (option 1: "Use this and all future MCP servers")
-        ("New MCP server found", "\r"),
-        ("Use this and all future MCP servers", "\r"),
-        ("Use this MCP server", "\r"),
-        ("Continue without using this MCP server", "\r"),
         // Command palette entries for /usage
         ("Show plan", "\r"),
         ("Show plan usage limits", "\r"),
     ]
+
+    /// Lowercased text that marks Claude Code's MCP server approval dialog.
+    static let mcpApprovalNeedles: [String] = [
+        "new mcp server found",
+        "use this and all future mcp servers",
+        "use this mcp server",
+        "continue without using this mcp server",
+    ]
+
+    /// True while the screen shows an MCP server approval. `normalized` is the
+    /// probe's ANSI-stripped, lowercased output.
+    static func mcpApprovalPromptVisible(_ normalized: String) -> Bool {
+        mcpApprovalNeedles.contains { normalized.contains($0) }
+    }
 
     private func capturePTY(binary: String, subcommand: String) async throws -> String {
         // Open a PTY pair
@@ -231,8 +250,14 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
         let pid = proc.processIdentifier
         _ = setpgid(pid, pid)
 
+        // Set when an MCP approval dialog is on screen: from then on nothing
+        // is written to the PTY, not even `/exit` (see `promptResponses`).
+        var stoppedAtMCPPrompt = false
+
         defer {
-            Self.writeToPTY(primaryFD, "/exit\r")
+            if !stoppedAtMCPPrompt {
+                Self.writeToPTY(primaryFD, "/exit\r")
+            }
             proc.terminate()
             kill(-pid, SIGTERM)
             let killDeadline = Date().addingTimeInterval(1.0)
@@ -266,6 +291,11 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
                 // Check all accumulated output for prompts
                 if let text = String(data: allOutput, encoding: .utf8) {
                     let normalized = ClaudeCredentials.stripANSI(text).lowercased()
+                    if Self.mcpApprovalPromptVisible(normalized) {
+                        stoppedAtMCPPrompt = true
+                        throw ClaudeStrategyError.parseFailed(
+                            "claude /usage showed an MCP server approval; probe stopped without answering it")
+                    }
                     for prompt in Self.promptResponses where !triggeredPrompts.contains(prompt.needle) {
                         if normalized.contains(prompt.needle.lowercased()) {
                             Self.writeToPTY(primaryFD, prompt.response)
@@ -376,7 +406,11 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
 
     // MARK: - Diagnostics
 
+    /// Appends the probe's screen text to `$TMPDIR/clipulse_claude_pty_raw.txt`,
+    /// in DEBUG builds only. 1.59: release builds wrote it for every
+    /// user; it holds whatever `claude` printed, account details included.
     private static func dumpRawOutput(_ output: String) {
+        #if DEBUG
         let clean = ClaudeCredentials.stripANSI(output)
         let path = NSTemporaryDirectory() + "clipulse_claude_pty_raw.txt"
         let timestamp = sharedISO8601Formatter.string(from: Date())
@@ -388,6 +422,7 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
         } else {
             try? entry.write(toFile: path, atomically: true, encoding: .utf8)
         }
+        #endif
     }
 
     // MARK: - CLI output parsing
