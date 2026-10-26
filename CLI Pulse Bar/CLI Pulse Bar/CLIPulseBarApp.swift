@@ -75,6 +75,19 @@ struct CLIPulseBarApp: App {
             )
         self.firstRunWelcome = firstRunWelcome
 
+        // 1.59 (59-16): the App Store build's rating prompt never asks in the
+        // app's first session on this Mac, which is the launch the check above
+        // calls a new install (or one it could not check). In memory only: it
+        // writes nothing, so its position here does not affect that check.
+        MacReviewPrompt.shared.begin(
+            appVersion: (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "",
+            isFirstSession: firstRunWelcome || !runtimeEnvironment.isLaunchSafe,
+            isAppStoreBuild: MacReviewPromptPolicy.isAppStoreBuild(
+                runtimeChannel: runtimeEnvironment.channel,
+                distribution: DistributionChannel.detectCurrent()
+            )
+        )
+
         // After the migration, which carries the language override across, and
         // after the first-run check, which must see no app-written defaults.
         // Mirrors the in-app language into `AppleLanguages` so alert buttons,
