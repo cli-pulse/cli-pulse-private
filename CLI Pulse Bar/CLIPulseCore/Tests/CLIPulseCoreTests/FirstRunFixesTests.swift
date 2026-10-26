@@ -285,7 +285,9 @@ final class FirstRunFixesTests: XCTestCase {
         let code = Self.codeOnly(try String(
             contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/DataRefreshManager.swift"),
             encoding: .utf8))
-        let start = try XCTUnwrap(code.range(of: "private func refreshLocal(context: Context, callbacks: Callbacks) async {"),
+        // No ` {` in the anchor: the signature may gain a return type
+        // (`async -> UploadOutcome`) without moving the body this reads.
+        let start = try XCTUnwrap(code.range(of: "private func refreshLocal(context: Context, callbacks: Callbacks) async"),
                                   "refreshLocal was not found")
         let end = try XCTUnwrap(code.range(of: "nonisolated static func runCollectorPass(", range: start.upperBound..<code.endIndex),
                                 "the end of refreshLocal was not found")
