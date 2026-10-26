@@ -36,6 +36,10 @@ final class CodexAccountingFixtureTests: XCTestCase {
     private struct File: Decodable {
         let path: String
         let lines: [AnyJSON]
+        /// The modification time the file gets after each write (v1.59: a
+        /// file outside the window's folders is read when it was last
+        /// written inside the window). nil keeps the time of the write.
+        let mtime_utc: String?
     }
 
     /// A fixture line kept as a JSON value, written back out compactly.
@@ -82,7 +86,7 @@ final class CodexAccountingFixtureTests: XCTestCase {
         file.path.split(separator: "/").reduce(home) { $0.appendingPathComponent(String($1)) }
     }
 
-    private func write(_ lines: ArraySlice<Data>, to url: URL, appending: Bool) throws {
+    private func write(_ lines: ArraySlice<Data>, to url: URL, appending: Bool, mtime: String? = nil) throws {
         var data = Data()
         for line in lines { data.append(line); data.append(0x0A) }
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -92,6 +96,10 @@ final class CodexAccountingFixtureTests: XCTestCase {
             try handle.write(contentsOf: data)
         } else {
             try data.write(to: url)
+        }
+        if let mtime {
+            let date = try XCTUnwrap(ISO8601DateFormatter().date(from: mtime), "mtime_utc \(mtime)")
+            try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: url.path)
         }
     }
 
@@ -120,7 +128,7 @@ final class CodexAccountingFixtureTests: XCTestCase {
             let cache = tmpRoot.appendingPathComponent("cache-full-\(testCase.name)", isDirectory: true)
             for file in testCase.files {
                 let lines = try encodedLines(file)
-                try write(lines[...], to: url(for: file, home: home), appending: false)
+                try write(lines[...], to: url(for: file, home: home), appending: false, mtime: file.mtime_utc)
             }
             let first = try scan(home: home, cache: cache, fixtures: fixtures, force: true)
             XCTAssertEqual(first, testCase.expected, "\(testCase.name): \(testCase.description)")
@@ -134,17 +142,17 @@ final class CodexAccountingFixtureTests: XCTestCase {
         for testCase in fixtures.cases {
             let home = tmpRoot.appendingPathComponent("inc-\(testCase.name)", isDirectory: true)
             let cache = tmpRoot.appendingPathComponent("cache-inc-\(testCase.name)", isDirectory: true)
-            var rest: [(URL, ArraySlice<Data>)] = []
+            var rest: [(URL, ArraySlice<Data>, String?)] = []
             for file in testCase.files {
                 let lines = try encodedLines(file)
                 let half = max(1, lines.count / 2)
                 let target = url(for: file, home: home)
-                try write(lines[..<half], to: target, appending: false)
-                rest.append((target, lines[half...]))
+                try write(lines[..<half], to: target, appending: false, mtime: file.mtime_utc)
+                rest.append((target, lines[half...], file.mtime_utc))
             }
             _ = try scan(home: home, cache: cache, fixtures: fixtures, force: true)
-            for (target, lines) in rest where !lines.isEmpty {
-                try write(lines, to: target, appending: true)
+            for (target, lines, mtime) in rest where !lines.isEmpty {
+                try write(lines, to: target, appending: true, mtime: mtime)
             }
             let resumed = try scan(home: home, cache: cache, fixtures: fixtures, force: false)
             XCTAssertEqual(resumed, testCase.expected, "\(testCase.name) (resumed from a half-written file)")

@@ -26,8 +26,11 @@ Rules mirrored (Swift names in brackets):
   * Selection [listCodexSessionFiles, codexSessionsRoots]: `sessions/YYYY/MM/DD`
     directories from one day before the window to one day after it, the same
     under `archived_sessions/`, plus `*.jsonl` directly in either root unless
-    the file name carries a date outside that range. A file reached twice (a
-    hard link) is read once.
+    the file name carries a date outside that range. Since 1.59 any other
+    `*.jsonl` in a date directory or directly in a root is read too when it
+    was last written on or after local midnight of the window's first day (a
+    conversation resumed or still running long after the day it started). A
+    file reached twice (a hard link) is read once.
   * Lines [readCodexFirstLine, scanJsonl, parseCodexFile]: the first line
     (up to 1 MB) alone gives the file's identity; a file whose first line has
     no newline yet is left for the next refresh, and a last line without a
@@ -69,7 +72,9 @@ test — one rule replaced by what it replaced or left out — and is not the ap
 `legacy` (the scanner before 1.56), `first-payload-id`, `count-all-files`,
 `any-overlap`, `children-only-inherit`, `no-ordinal-rule`,
 `ordinal-without-ancestor-meta`, `no-interagent-hold`, `last-over-gap`,
-`sum-last`, `totals-only`, `no-snapshot-skip`, `no-turn-marker`.
+`sum-last`, `totals-only`, `no-snapshot-skip`, `no-turn-marker`, and two for
+the selection: `no-lookback` (the listing before 1.59) and
+`lookback-without-mtime` (every file of every older date directory read).
 """
 
 from __future__ import annotations
@@ -80,7 +85,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 PREFIX_BYTES = 32 * 1024
 FIRST_LINE_MAX_BYTES = 1 << 20
@@ -100,6 +105,8 @@ POLICIES = (
     "totals-only",
     "no-snapshot-skip",
     "no-turn-marker",
+    "no-lookback",
+    "lookback-without-mtime",
 )
 
 # How a child's copied prefix was recognised [CodexCopiedPrefix]
@@ -996,35 +1003,80 @@ def _count_classified(res: FileResult, observations: list, held: list, policy: s
 # Selection [listCodexSessionFiles]
 
 
-def list_files(root: str, scan_since: str, scan_until: str) -> list[str]:
+def _listdir(path: str) -> list[str]:
+    try:
+        return os.listdir(path)
+    except OSError:
+        return []
+
+
+def _date_dirs(root: str) -> list[tuple[str, str]]:
+    """Every YYYY/MM/DD directory under `root`, by name alone, with its day."""
+
+    def digits(name: str, n: int) -> bool:
+        return len(name) == n and all("0" <= c <= "9" for c in name)
+
+    out = []
+    for y in _listdir(root):
+        if not digits(y, 4):
+            continue
+        for m in _listdir(os.path.join(root, y)):
+            if not digits(m, 2):
+                continue
+            for d in _listdir(os.path.join(root, y, m)):
+                if digits(d, 2):
+                    out.append((f"{y}-{m}-{d}", os.path.join(root, y, m, d)))
+    return out
+
+
+def _written_since(path: str, since_s: float | None, policy: str) -> bool:
+    if policy == "lookback-without-mtime" or since_s is None:
+        return True
+    try:
+        return os.stat(path).st_mtime >= since_s
+    except OSError:
+        return False
+
+
+def list_files(root: str, scan_since: str, scan_until: str, written_since_s: float | None = None,
+               policy: str = "overlap") -> list[str]:
+    """`written_since_s` is the window's first instant (epoch seconds): a file
+    outside the window's directories, or named for a day outside it, is read
+    when it was last written then or later. None reads none of them."""
+    lookback = written_since_s is not None and policy != "no-lookback"
     out, seen = [], set()
     if os.path.exists(root):
         d = date.fromisoformat(scan_since)
         end = date.fromisoformat(scan_until)
         while d <= end:
             day_dir = os.path.join(root, f"{d.year:04d}", f"{d.month:02d}", f"{d.day:02d}")
-            try:
-                names = os.listdir(day_dir)
-            except OSError:
-                names = []
-            for name in names:
+            for name in _listdir(day_dir):
                 p = os.path.join(day_dir, name)
                 if name.startswith(".") or not name.lower().endswith(".jsonl") or p in seen:
                     continue
                 seen.add(p)
                 out.append(p)
             d += timedelta(days=1)
-    try:
-        names = os.listdir(root)
-    except OSError:
-        names = []
-    for name in names:
+        if lookback:
+            for day, day_dir in _date_dirs(root):
+                if scan_since <= day <= scan_until:
+                    continue
+                for name in _listdir(day_dir):
+                    p = os.path.join(day_dir, name)
+                    if name.startswith(".") or not name.lower().endswith(".jsonl") or p in seen:
+                        continue
+                    if not _written_since(p, written_since_s, policy):
+                        continue
+                    seen.add(p)
+                    out.append(p)
+    for name in _listdir(root):
         p = os.path.join(root, name)
         if name.startswith(".") or not name.lower().endswith(".jsonl") or p in seen:
             continue
         m = _FILENAME_DATE.search(name)
         if m and not (scan_since <= m.group(1) <= scan_until):
-            continue
+            if not (lookback and _written_since(p, written_since_s, policy)):
+                continue
         seen.add(p)
         out.append(p)
     return sorted(out)
@@ -1100,6 +1152,11 @@ class Window:
     scan_until: str
 
 
+def first_instant_s(day: str, tz=None) -> float:
+    """Local midnight starting `day`, as epoch seconds [DayRange.firstReportedInstant]."""
+    return datetime.combine(date.fromisoformat(day), time.min, tzinfo=tz).timestamp()
+
+
 def window_for(today: date, days: int) -> Window:
     since = today - timedelta(days=days)
     return Window(
@@ -1134,8 +1191,9 @@ def scan(codex_home: str, today: date, days: int = 30, policy: str = "overlap", 
         raise ValueError(policy)
     win = window_for(today, days)
     paths, seen_paths, seen_ids = [], set(), set()
+    written_since = first_instant_s(win.since, tz)
     for root in roots_for(codex_home):
-        for p in list_files(root, win.scan_since, win.scan_until):
+        for p in list_files(root, win.scan_since, win.scan_until, written_since, policy):
             if p in seen_paths:
                 continue
             seen_paths.add(p)

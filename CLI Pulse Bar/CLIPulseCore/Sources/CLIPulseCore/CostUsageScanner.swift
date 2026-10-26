@@ -528,7 +528,9 @@ public enum CostUsageScanner {
         let scanUntilKey: String
         /// v1.55: the first moment of the first day the scan reports. A log
         /// whose last write is earlier than this cannot hold a line the scan
-        /// would report, so it is not opened at all (`scanClaudeRoot`).
+        /// would report, so it is not opened at all (`scanClaudeRoot`; for
+        /// Codex, since 1.59, a file outside the window's date folders,
+        /// `listCodexSessionFiles`).
         let firstReportedInstant: Date
 
         init(since: Date, until: Date) {
@@ -1243,17 +1245,48 @@ public enum CostUsageScanner {
         return roots
     }
 
-    private static func listCodexSessionFiles(root: URL, scanSinceKey: String, scanUntilKey: String) -> [URL] {
+    /// The rollout files of one Codex root (`sessions/` or
+    /// `archived_sessions/`) that a scan of `range` reads.
+    ///
+    /// * Every `*.jsonl` in the window's date folders, `YYYY/MM/DD` from
+    ///   `scanSinceKey` to `scanUntilKey`, and every `*.jsonl` directly in the
+    ///   root whose name carries no date, or a date in that range.
+    /// * v1.59 (59-03): any other `*.jsonl` in a date folder or directly in the
+    ///   root, when it was last written on or after the window's first instant
+    ///   (`DayRange.firstReportedInstant`). Codex keeps writing a conversation
+    ///   to the file it started in, in the folder of the day it started, so a
+    ///   conversation resumed (`codex resume`) or still running weeks later
+    ///   writes days the window reports into a folder the window does not
+    ///   reach. Until 1.59 such a file was not read and those days came out
+    ///   short, on This Mac and in what was uploaded. It is now read from its
+    ///   start, as the Claude scan reads a transcript still in use
+    ///   (`scanClaudeRoot`): its lines older than the window are dropped by
+    ///   `parseCodexFile` (they still raise the counter its later events grow
+    ///   from), and which files count is decided as for any other file
+    ///   (`CodexCopyResolver`). A file last written before that instant cannot
+    ///   hold a line the scan reports, and is not opened.
+    ///
+    /// No date folder is too old to look in: a conversation can be resumed
+    /// months later. Looking costs one directory listing per date folder and
+    /// one modification date per file in it; no file outside the window's
+    /// folders is opened unless it passes the date check. CodexBar finds the
+    /// same files in the 30 date folders before its window on a refresh, and
+    /// in every folder on a cold scan.
+    ///
+    /// `outsideWindow` is how many of `files` the second rule added.
+    private static func listCodexSessionFiles(root: URL, range: DayRange) -> (files: [URL], outsideWindow: Int) {
         var out: [URL] = []
         var seen: Set<String> = []
+        var outsideWindow = 0
+        let keys: [URLResourceKey] = [.isRegularFileKey, .contentModificationDateKey]
 
         // Date-partitioned: YYYY/MM/DD/*.jsonl. The Codex CLI names these
         // directories in Gregorian numbering, so the walk must too — under the
         // Japanese calendar the device's own numbering looks in 0008/09/17.
         if FileManager.default.fileExists(atPath: root.path) {
             let cal = DayKey.calendar()
-            var date = parseDayKey(scanSinceKey) ?? Date()
-            let untilDate = parseDayKey(scanUntilKey) ?? date
+            var date = parseDayKey(range.scanSinceKey) ?? Date()
+            let untilDate = parseDayKey(range.scanUntilKey) ?? date
             while date <= untilDate {
                 // "2026-09-17" -> 2026/09/17
                 let dayDir = DayKey.string(from: date).split(separator: "-")
@@ -1266,20 +1299,68 @@ public enum CostUsageScanner {
                 }
                 date = cal.date(byAdding: .day, value: 1, to: date) ?? untilDate.addingTimeInterval(1)
             }
+
+            // v1.59: every other date folder, for the files written to since
+            // the window began.
+            for folder in codexDateFolders(root: root)
+            where !DayRange.isInRange(dayKey: folder.dayKey, since: range.scanSinceKey, until: range.scanUntilKey) {
+                guard let items = try? FileManager.default.contentsOfDirectory(at: folder.url, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else { continue }
+                for item in items where item.pathExtension.lowercased() == "jsonl" && !seen.contains(item.path)
+                    && codexFileWritten(item, since: range.firstReportedInstant) {
+                    seen.insert(item.path)
+                    out.append(item)
+                    outsideWindow += 1
+                }
+            }
         }
 
         // Flat: *.jsonl in root
-        if let items = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles, .skipsPackageDescendants]) {
+        if let items = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants]) {
             for item in items where item.pathExtension.lowercased() == "jsonl" && !seen.contains(item.path) {
-                if let dayKey = dayKeyFromFilename(item.lastPathComponent) {
-                    if !DayRange.isInRange(dayKey: dayKey, since: scanSinceKey, until: scanUntilKey) { continue }
+                if let dayKey = dayKeyFromFilename(item.lastPathComponent),
+                   !DayRange.isInRange(dayKey: dayKey, since: range.scanSinceKey, until: range.scanUntilKey) {
+                    // v1.59: named for a day outside the range, read when it
+                    // was written to since the window began, as above.
+                    guard codexFileWritten(item, since: range.firstReportedInstant) else { continue }
+                    outsideWindow += 1
                 }
                 seen.insert(item.path)
                 out.append(item)
             }
         }
 
-        return out.sorted { $0.path < $1.path }
+        return (out.sorted { $0.path < $1.path }, outsideWindow)
+    }
+
+    /// Every `YYYY/MM/DD` folder under `root` with its day key ("2026-07-04"),
+    /// by name alone: four, two and two ASCII digits, as the Codex CLI names
+    /// them. A name of that shape that is not a folder lists nothing.
+    private static func codexDateFolders(root: URL) -> [(dayKey: String, url: URL)] {
+        func children(_ url: URL, digits: Int) -> [(name: String, url: URL)] {
+            let items = (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
+            return items.compactMap { item in
+                let name = item.lastPathComponent
+                guard name.utf8.count == digits, name.utf8.allSatisfy({ (0x30...0x39).contains($0) }) else { return nil }
+                return (name, item)
+            }
+        }
+        var out: [(dayKey: String, url: URL)] = []
+        for year in children(root, digits: 4) {
+            for month in children(year.url, digits: 2) {
+                for day in children(month.url, digits: 2) {
+                    out.append(("\(year.name)-\(month.name)-\(day.name)", day.url))
+                }
+            }
+        }
+        return out
+    }
+
+    /// Whether `url` was last written on or after `instant`. A file whose
+    /// modification date cannot be read was not.
+    private static func codexFileWritten(_ url: URL, since instant: Date) -> Bool {
+        guard let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        else { return false }
+        return modified >= instant
     }
 
     private static let codexFilenameDateRegex = try? NSRegularExpression(pattern: "(\\d{4}-\\d{2}-\\d{2})")
@@ -1713,8 +1794,11 @@ public enum CostUsageScanner {
         let roots = codexSessionsRoots(options: options)
         var seenPaths: Set<String> = []
         var files: [URL] = []
+        var outsideWindow = 0
         for root in roots {
-            for fileURL in listCodexSessionFiles(root: root, scanSinceKey: range.scanSinceKey, scanUntilKey: range.scanUntilKey) where !seenPaths.contains(fileURL.path) {
+            let listing = listCodexSessionFiles(root: root, range: range)
+            outsideWindow += listing.outsideWindow
+            for fileURL in listing.files where !seenPaths.contains(fileURL.path) {
                 seenPaths.insert(fileURL.path)
                 files.append(fileURL)
             }
@@ -1724,7 +1808,9 @@ public enum CostUsageScanner {
         // without stepping through a debugger. Also logs whether the
         // scan was skipped via cache-cooldown so a cold-start that
         // returns 0 candidates can be distinguished from a noop.
-        scanLogger.info("scanCodexProvider: roots=\(roots.count) files_in_range=\(files.count) refreshing=\(shouldRefresh) range=\(range.scanSinceKey)..\(range.scanUntilKey)")
+        // `older_folders`: of those files, the ones outside the window's date
+        // folders, read because they were written to inside it (v1.59).
+        scanLogger.info("scanCodexProvider: roots=\(roots.count) files_in_range=\(files.count) older_folders=\(outsideWindow) refreshing=\(shouldRefresh) range=\(range.scanSinceKey)..\(range.scanUntilKey)")
         let filePathsInScan = Set(files.map(\.path))
 
         if shouldRefresh {
@@ -2118,8 +2204,9 @@ public enum CostUsageScanner {
             // inside it, so it is not opened. Until 1.55 every Claude log of
             // any age was parsed on a first scan (and after every cache reset)
             // and its old lines thrown away — a read the consent screen, which
-            // says "the last 30 days", does not cover. Codex is already bounded
-            // by its date folders (`listCodexSessionFiles`). A log still being
+            // says "the last 30 days", does not cover. Codex is bounded by its
+            // date folders, and since 1.59 a Codex file outside them by the
+            // same rule (`listCodexSessionFiles`). A log still being
             // written to is parsed from its start, and its older lines are
             // dropped by `add` in `parseClaudeFile`, not kept.
             //
@@ -2250,7 +2337,7 @@ public enum CostUsageScanner {
         var totalFilesSeen = 0
         var freshFilesSeen = 0
         for root in roots {
-            let files = listCodexSessionFiles(root: root, scanSinceKey: range.scanSinceKey, scanUntilKey: range.scanUntilKey)
+            let files = listCodexSessionFiles(root: root, range: range).files
             totalFilesSeen += files.count
             for url in files {
                 let path = url.path

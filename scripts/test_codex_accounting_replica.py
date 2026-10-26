@@ -55,6 +55,9 @@ def write_case(home: str, case: dict) -> None:
                 fh.write(json.dumps(line, separators=(",", ":")) + "\n")
             if f.get("unterminated"):
                 fh.write(f["unterminated"])
+        if f.get("mtime_utc"):
+            t = datetime.fromisoformat(f["mtime_utc"].replace("Z", "+00:00")).timestamp()
+            os.utime(path, (t, t))
 
 
 def run_case(case: dict, fixtures: dict, policy: str = "overlap") -> dict:
@@ -132,7 +135,11 @@ class FixtureCases(unittest.TestCase):
             "continuation_that_replays_the_previous_tail_counts_it_twice",
         },
         # no copy resolution at all
-        "count-all-files": {"byte_identical_copy", "archived_prefix_of_live_file"},
+        "count-all-files": {
+            "byte_identical_copy",
+            "archived_prefix_of_live_file",
+            "older_file_and_its_archived_copy_count_once",
+        },
         # any overlap in time makes a copy
         "any-overlap": {
             "partial_overlap_both_count",
@@ -144,7 +151,7 @@ class FixtureCases(unittest.TestCase):
             "continuation_that_replays_the_previous_tail_counts_it_twice",
         },
         # copied history found only by time, not by line number
-        "no-ordinal-rule": {"copied_history_marked_by_ordinal"},
+        "no-ordinal-rule": {"copied_history_marked_by_ordinal", "older_parent_and_its_new_subagent_count_once"},
         # the line-number boundary trusted without a copied session_meta ahead
         # of it: Codex's migrated subagent rollouts lose all their usage
         "ordinal-without-ancestor-meta": {
@@ -179,6 +186,16 @@ class FixtureCases(unittest.TestCase):
             "copied_history_then_a_triggered_turn",
             "inherited_opening_then_a_copied_snapshot",
         },
+        # the listing before 1.59: nothing outside the window's directories
+        # and dates is read, however recently it was written
+        "no-lookback": {
+            "resumed_in_an_older_folder",
+            "older_flat_and_archived_files_written_inside_the_window",
+            "older_parent_and_its_new_subagent_count_once",
+            "older_file_and_its_archived_copy_count_once",
+        },
+        # every older file read, whenever it was last written
+        "lookback-without-mtime": {"older_file_last_written_before_the_window_is_not_opened"},
     }
 
     def test_each_rule_changes_exactly_the_cases_it_governs(self):
