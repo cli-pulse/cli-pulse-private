@@ -947,8 +947,10 @@ final class DemoMatchesProductionTests: XCTestCase {
 
     // MARK: - The Overview's tiles and the alert list
 
-    /// `dashboard_summary` counts every session whose status is 'Running',
-    /// with no time window, and every unresolved row of public.alerts. The
+    /// `dashboard_summary` counts every session whose status is 'Running'
+    /// and whose last activity is within 300 seconds (v0.87, in production
+    /// since 2026-10-26; before it there was no time window), and every
+    /// unresolved row of public.alerts. The
     /// cloud route passes both through: it raises the sessions figure only to
     /// the rows it lists, never lowers it, and leaves the alerts figure as the
     /// server sent it. helper_sync turns a session 'Ended' only ten minutes
@@ -980,17 +982,27 @@ final class DemoMatchesProductionTests: XCTestCase {
         XCTAssertTrue(demo.alerts.contains { $0.id.hasPrefix("quota-") && !$0.is_resolved },
                       "Demo has no quota alert; this test checks less than it says")
 
-        // The production half: the server's counts...
+        // The production half: the server's counts, as v0.87 defines them...
         let supabase = Self.appSourceRoot.deletingLastPathComponent().appendingPathComponent("backend/supabase")
-        for name in ["app_rpc.sql", "migrate_v0.44_user_tz_today.sql"] {
+        for name in ["app_rpc.sql", "migrate_v0.87_retention_cleanup_and_fresh_counts.sql"] {
             let summary = try String(contentsOf: supabase.appendingPathComponent(name), encoding: .utf8)
                 .replacingOccurrences(of: "\r\n", with: "\n")
             XCTAssertTrue(summary.contains(
-                "from public.sessions\n      where user_id = v_user_id and status = 'Running'\n    ),"),
+                "from public.sessions\n      where user_id = v_user_id and status = 'Running'\n"
+                + "        and last_active_at >= now() - interval '300 seconds' -- v0.87 fresh rows only\n    ),"),
                 "\(name): dashboard_summary counts sessions another way")
             XCTAssertTrue(summary.contains(
                 "from public.alerts\n      where user_id = v_user_id and is_resolved = false\n    ),"),
                 "\(name): dashboard_summary counts alerts another way")
+        }
+        // ...which leave out no Demo session: each Running one was active
+        // within those 300 seconds of Demo's refresh...
+        for session in demo.sessions where session.status == "Running" {
+            let lastActive = try XCTUnwrap(sharedISO8601Parse(session.last_active_at), session.id)
+            XCTAssertLessThanOrEqual(demo.refreshedAt.timeIntervalSince(lastActive), 300, """
+                \(session.id) was last active over 300 seconds before Demo's refresh, so dashboard_summary \
+                would not count it while the Sessions tile does
+                """)
         }
         // ...the cloud route's use of them...
         let refresh = Self.codeOnly(try String(
