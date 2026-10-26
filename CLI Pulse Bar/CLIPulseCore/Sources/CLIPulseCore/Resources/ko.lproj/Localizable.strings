@@ -1049,7 +1049,7 @@
 "collector_status.strict_privacy_mode_keychain_hint" = "엄격한 개인정보 보호 모드에서는 CLI Pulse가 %@의 키체인 항목을 읽지 않습니다. CLI Pulse가 읽을 수 있게 하려면 설정 › 개인정보 보호에서 이 모드를 끄세요.";
 /* 1.59 (59-15 F2): Claude Code's keychain item, declined in macOS's dialog */
 "collector_status.keychain_denied" = "키체인 접근 거부됨";
-"collector_status.keychain_denied_hint" = "macOS가 나중에 다시 묻습니다. CLI Pulse가 Claude Code 로그인 정보를 읽을 수 있도록 '항상 허용'을 클릭하세요.";
+"collector_status.keychain_denied_hint" = "macOS가 나중에 다시 묻습니다. CLI Pulse가 Claude Code 로그인 정보를 읽을 수 있도록 '항상 허용'을 클릭하세요. 더 이상 묻지 않게 하려면 설정 › 개인정보 보호에서 'Claude Code 키체인 접근 건너뛰기'를 켜세요.";
 "collector_status.not_set_up" = "설정되지 않음";
 "collector_status.not_set_up_hint" = "설정을 열어 이 공급자를 연결하세요.";
 "collector_status.no_data" = "데이터 없음";

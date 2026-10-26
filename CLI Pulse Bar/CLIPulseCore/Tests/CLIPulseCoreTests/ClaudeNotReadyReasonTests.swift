@@ -390,12 +390,13 @@ final class ClaudeNotReadyReasonTests: XCTestCase {
         XCTAssertEqual(shown.label, "已拒绝钥匙串访问")
         // L10n keeps "CLI Pulse" on one line (U+00A0) at lookup.
         XCTAssertEqual(shown.nextStep,
-                       "macOS 稍后会再次询问。请点按「始终允许」，让 CLI\u{00A0}Pulse 读取你的 Claude Code 登录信息。")
+                       "macOS 稍后会再次询问。请点按「始终允许」，让 CLI\u{00A0}Pulse 读取你的 Claude Code 登录信息。"
+                       + "如果不想再被询问，请在「设置 › 隐私」中开启「跳过 Claude Code 钥匙串访问」。")
         XCTAssertEqual(shown.severity, .attention)
         XCTAssertNotEqual(shown.label, L10n.collectorStatus.notSetUp)
     }
 
-    func test_declinedRow_inEveryLanguage_namesTheDialogsButtonAndClaudeCode() {
+    func test_declinedRow_inEveryLanguage_namesTheDialogsButton_andTheSwitchThatStopsIt() {
         XCTAssertEqual(Set(Self.alwaysAllow.keys), Set(LocaleOverrideStore.shippedLocalizations))
         for localization in LocaleOverrideStore.shippedLocalizations {
             LocaleOverrideStore.shared.set(localization)
@@ -408,6 +409,13 @@ final class ClaudeNotReadyReasonTests: XCTestCase {
                           "\(localization): the Connect button's hint names the button differently")
             XCTAssertTrue(hint.contains("Claude Code"), "\(localization): \(hint)")
             XCTAssertTrue(hint.contains("CLI\u{00A0}Pulse"), "\(localization): \(hint)")
+            // The way to stop the dialogs for good, word for word as the
+            // switch and its section are labelled in this language (Settings ›
+            // Privacy is drawn wherever the Mac scans, local mode included).
+            XCTAssertTrue(hint.contains(L10n.settings.skipClaudeKeychain),
+                          "\(localization): the hint does not name the switch \"\(L10n.settings.skipClaudeKeychain)\": \(hint)")
+            XCTAssertTrue(hint.contains("› \(L10n.settings.privacy)"),
+                          "\(localization): the hint does not name the section \"\(L10n.settings.privacy)\": \(hint)")
             if localization != "en" {
                 LocaleOverrideStore.shared.set("en")
                 let english = CollectorOutcomePresentation.of(.notReady(.keychainDenied), providerName: "Claude")

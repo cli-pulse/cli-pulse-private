@@ -1133,7 +1133,7 @@
 "collector_status.strict_privacy_mode_keychain_hint" = "プライバシー強化モード中は、CLI Pulse は %@ のキーチェーン項目を読み取りません。CLI Pulse が読み取れるようにするには、「設定 › プライバシー」でこのモードをオフにしてください。";
 /* 1.59 (59-15 F2): Claude Code's keychain item, declined in macOS's dialog */
 "collector_status.keychain_denied" = "キーチェーンへのアクセスが拒否されました";
-"collector_status.keychain_denied_hint" = "macOS があとでもう一度確認します。CLI Pulse が Claude Code のログイン情報を読み取れるよう、「常に許可」をクリックしてください。";
+"collector_status.keychain_denied_hint" = "macOS があとでもう一度確認します。CLI Pulse が Claude Code のログイン情報を読み取れるよう、「常に許可」をクリックしてください。今後確認を表示しないようにするには、「設定 › プライバシー」で「Claude Code のキーチェーンにアクセスしない」をオンにしてください。";
 "collector_status.not_set_up" = "未設定";
 "collector_status.not_set_up_hint" = "設定を開いてこのプロバイダーを接続してください。";
 "collector_status.no_data" = "データが空でした";

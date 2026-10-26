@@ -1120,7 +1120,7 @@
 "collector_status.strict_privacy_mode_keychain_hint" = "严格隐私模式下，CLI Pulse 不会读取 %@ 的钥匙串项目。如需让 CLI Pulse 读取，请在「设置 › 隐私」中关闭严格隐私模式。";
 /* 1.59 (59-15 F2): Claude Code's keychain item, declined in macOS's dialog */
 "collector_status.keychain_denied" = "已拒绝钥匙串访问";
-"collector_status.keychain_denied_hint" = "macOS 稍后会再次询问。请点按「始终允许」，让 CLI Pulse 读取你的 Claude Code 登录信息。";
+"collector_status.keychain_denied_hint" = "macOS 稍后会再次询问。请点按「始终允许」，让 CLI Pulse 读取你的 Claude Code 登录信息。如果不想再被询问，请在「设置 › 隐私」中开启「跳过 Claude Code 钥匙串访问」。";
 "collector_status.not_set_up" = "未配置";
 "collector_status.not_set_up_hint" = "打开设置来连接这个服务商。";
 "collector_status.no_data" = "没有返回数据";

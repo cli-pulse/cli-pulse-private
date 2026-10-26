@@ -449,7 +449,7 @@
 "provider_config.gemini_cli_fallback_note" = "If CLI Pulse can't refresh your Gemini sign-in, fall back to the Gemini CLI's own credentials. Direct-download builds only.";
 "provider_config.claude_code" = "Claude Code";
 "provider_config.connect_claude_code" = "Connect Claude Code";
-"provider_config.claude_keychain_hint" = "Reads your existing Claude Code login. macOS will ask once for permission — tap Always Allow.";
+"provider_config.claude_keychain_hint" = "Reads your existing Claude Code login. macOS will ask once for permission — click Always Allow.";
 "provider_config.claude_read_failed" = "Couldn't read Claude Code credentials. If you denied the prompt, try again or install/open Claude Code first.";
 "provider_config.test_connection" = "Test connection";
 "provider_config.testing" = "Testing…";
@@ -1129,7 +1129,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "collector_status.strict_privacy_mode_keychain_hint" = "Strict privacy mode stops CLI Pulse from reading %@'s keychain item. Turn off Strict privacy mode in Settings › Privacy to let CLI Pulse read it.";
 /* 1.59 (59-15 F2): Claude Code's keychain item, declined in macOS's dialog */
 "collector_status.keychain_denied" = "Keychain access declined";
-"collector_status.keychain_denied_hint" = "macOS will ask again later. Choose Always Allow so CLI Pulse can read your Claude Code login.";
+"collector_status.keychain_denied_hint" = "macOS will ask again later. Click Always Allow so CLI Pulse can read your Claude Code login. To stop being asked, turn on “Skip Claude Code keychain access” in Settings › Privacy.";
 "collector_status.not_set_up" = "Not set up";
 "collector_status.not_set_up_hint" = "Open Settings to connect this provider.";
 "collector_status.no_data" = "No data returned";

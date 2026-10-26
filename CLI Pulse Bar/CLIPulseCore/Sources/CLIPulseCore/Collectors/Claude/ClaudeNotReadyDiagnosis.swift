@@ -9,7 +9,7 @@ import Security
 // empty token: `resolveTokenDetails` returned `source: .none` from four
 // different branches, and the keychain read dropped its `OSStatus`. In the
 // field (`devices.collector_status`) Claude read `not_ready_unknown` on every
-// device that reported it, including the three where Codex was `ok`, so
+// device that reported it, including devices where Codex was `ok`, so
 // nobody could tell "no Claude login here" from "the user said no to the
 // keychain dialog" from "Strict privacy mode". The resolver now says which
 // branch it ended in (`ClaudeTokenAbsence`), the keychain read says what it
