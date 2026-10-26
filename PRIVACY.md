@@ -17,7 +17,7 @@ This document is the single source of truth for what we collect. If you find
 anything in the app, App Store listing, or GitHub README that contradicts this
 file, **the file wins** — please open an issue.
 
-It describes CLI Pulse 1.58.
+It describes CLI Pulse 1.59.
 
 ---
 
