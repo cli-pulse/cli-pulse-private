@@ -48,6 +48,16 @@ struct iOSOverviewTab: View {
                     }
 
                     if let dash = state.dashboard {
+                        // 1.59: an account with nothing synced gets zeros from
+                        // the cloud, so its dashboard arrives all the same.
+                        // Above those zeros, say why they are zeros and what
+                        // to do on the Mac (`OverviewSyncSetup`).
+                        if state.overviewAccountHasNothingSynced {
+                            iOSSyncOnboardingCard()
+                                .environmentObject(state)
+                                .padding(.horizontal)
+                        }
+
                         metricsGrid(dash)
 
                         // v1.41: GitHub-style usage-activity heatmap (year of
