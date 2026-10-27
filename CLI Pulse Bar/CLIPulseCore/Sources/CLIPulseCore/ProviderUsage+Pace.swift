@@ -27,13 +27,21 @@ public extension ProviderUsage {
     /// A `RateWindow` for the pace engine, or nil when there is no
     /// usable reset anchor. `ProviderUsage.usagePercent` is 0…1 while
     /// `RateWindow.usedPercent` is 0…100, hence the ×100.
+    ///
+    /// `windowMinutes` is the length of the window `reset_time` belongs to
+    /// (`paceWindowMinutes`), nil when that is not known. It used to be nil
+    /// always, and the engine then assumed 5 hours: for a Codex account
+    /// whose headline is its weekly or 30-day window, the last 5 hours
+    /// before that reset were paced as a 5-hour window ("▲NN%", "projected
+    /// empty in …" against a week's quota). With no known length the engine
+    /// now shows no pace at all (`UsagePaceText.sessionPace`).
     func paceRateWindow(now: Date = .init()) -> RateWindow? {
         guard let resetRaw = reset_time,
               let resetsAt = sharedISO8601Parse(resetRaw),
               resetsAt > now else { return nil }
         return RateWindow(
             usedPercent: usagePercent * 100,
-            windowMinutes: nil,
+            windowMinutes: paceWindowMinutes(resetsAt: resetsAt, now: now),
             resetsAt: resetsAt,
             resetDescription: resetRaw,
             nextRegenPercent: nil)
@@ -73,4 +81,47 @@ public extension ProviderUsage {
             return "▼\(Int(abs(pace.deltaPercent).rounded()))%"
         }
     }
+
+    /// Length in minutes of the window whose reset is `reset_time`, or nil
+    /// when it is not known.
+    ///
+    /// * Claude: its headline is always the 5-hour session window
+    ///   (`ClaudeResultBuilder` sets `reset_time` to the session reset), so
+    ///   300, as before.
+    /// * Codex: the headline is the session lane's window, or the weekly
+    ///   lane's when the account has no session window, and that window may
+    ///   be 5 hours, a week, 30 days, or a length the API did not say
+    ///   (`CodexCollector.buildResult`). The length is the one carried by
+    ///   the tier whose reset is the headline's; the session-role tier wins
+    ///   when several share it (that is the headline's lane, and the one the
+    ///   binding cap rewrites). Rows from writers that stored no length are
+    ///   read the way the bars read them (`CodexQuotaWindows.resolved`).
+    /// * Anything else: nil. The engine paces Codex and Claude only.
+    func paceWindowMinutes(resetsAt: Date, now: Date = .init()) -> Int? {
+        switch providerKind {
+        case .claude?:
+            return Self.claudeSessionMinutes
+        case .codex?:
+            let matching = tiers
+                .map { CodexQuotaWindows.resolved($0, now: now) }
+                .filter { tier in
+                    guard tier.role != .credits,
+                          let reset = tier.reset_time.flatMap(sharedISO8601Parse)
+                    else { return false }
+                    return abs(reset.timeIntervalSince(resetsAt)) < Self.resetMatchTolerance
+                }
+            let tier = matching.first { $0.role == .primary } ?? matching.first
+            guard let minutes = tier?.windowMinutes, minutes > 0 else { return nil }
+            return minutes
+        default:
+            return nil
+        }
+    }
+}
+
+private extension ProviderUsage {
+    static let claudeSessionMinutes = 300
+    /// The headline and its tier are written from the same date by the same
+    /// writer; the slack only absorbs a writer that rounds one of them.
+    static let resetMatchTolerance: TimeInterval = 60
 }

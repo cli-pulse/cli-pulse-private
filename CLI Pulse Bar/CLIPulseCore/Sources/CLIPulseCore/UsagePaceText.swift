@@ -25,6 +25,11 @@
 //     The unit letters were English at first ("2h 5m" inside a Japanese
 //     sentence); they now come from `usage_pace.eta_*` keys, which read
 //     "2h 5m" in English exactly as before.
+//   * `sessionPace` requires the window's own length and returns nil
+//     without one; upstream assumes 300 minutes. The provider-level
+//     window it is fed (`ProviderUsage.paceRateWindow`) can be a Codex
+//     weekly or 30-day window, which the 5-hour assumption paced as five
+//     hours in the last five hours before its reset.
 //   * v1.23.0 G4: the consumed surface (`UsagePaceText`, `WeeklyDetail`,
 //     and the `weekly*`/`session*` statics) is promoted to `public` so
 //     the macOS/iOS app targets can consume it (was internal in Phase A
@@ -175,7 +180,10 @@ public enum UsagePaceText {
     static func sessionPace(provider: ProviderKind, window: RateWindow, now: Date) -> UsagePace? {
         guard provider == .codex || provider == .claude else { return nil }
         guard window.remainingPercent > 0 else { return nil }
-        guard let pace = UsagePace.weekly(window: window, now: now, defaultWindowMinutes: 300) else { return nil }
+        // No assumed length (upstream defaults to 300 minutes here): a window
+        // of unknown length gets no pace, rather than a 5-hour one.
+        guard (window.windowMinutes ?? 0) > 0 else { return nil }
+        guard let pace = UsagePace.weekly(window: window, now: now) else { return nil }
         guard pace.expectedUsedPercent >= 3 else { return nil }
         return pace
     }
