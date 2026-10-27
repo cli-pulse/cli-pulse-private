@@ -212,6 +212,89 @@ class FixtureCases(unittest.TestCase):
                         self.assertEqual(got, case["expected"])
 
 
+def zstd_raw_frame(content: bytes, block: int = 128 * 1024) -> bytes:
+    """A zstd frame holding `content` in raw blocks (RFC 8878 3.1.1.2), which
+    any zstd decoder reads; written without a compressor, as the Swift tests'
+    ZstdTestFrames does."""
+    out = bytearray(b"\x28\xb5\x2f\xfd\x00\x38")  # magic; no size/checksum; 128 KB window
+    offset = 0
+    while True:
+        chunk = content[offset:offset + block]
+        offset += len(chunk)
+        last = 1 if offset >= len(content) else 0
+        header = last | (len(chunk) << 3)  # raw block type is 0
+        out += header.to_bytes(3, "little") + chunk
+        if last:
+            return bytes(out)
+
+
+def archive(path: str) -> None:
+    """What Codex does to a finished session: `<name>.jsonl` becomes
+    `<name>.jsonl.zst`, with the same content and modification date."""
+    with open(path, "rb") as fh:
+        content = fh.read()
+    st = os.stat(path)
+    with open(path + ".zst", "wb") as fh:
+        fh.write(zstd_raw_frame(content))
+    os.utime(path + ".zst", (st.st_atime, st.st_mtime))
+    os.remove(path)
+
+
+def run_archived_case(case: dict, fixtures: dict, archives, policy: str = "overlap") -> dict:
+    now = datetime.fromisoformat(fixtures["now_utc"].replace("Z", "+00:00"))
+    today = datetime.fromtimestamp(now.timestamp()).date()
+    home = tempfile.mkdtemp(prefix="codex-accounting-zst-")
+    try:
+        write_case(home, case)
+        for index, f in enumerate(case["files"]):
+            if archives(index):
+                archive(os.path.join(home, *f["path"].split("/")))
+        res = replica.scan(home, today, fixtures["days_to_scan"], policy)
+        return {day: {m: list(r) for m, r in models.items()} for day, models in res.days.items()}
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
+
+
+class ArchivedLogs(unittest.TestCase):
+    """1.59.1 (N1): sessions the Codex CLI archives as `*.jsonl.zst`, as the
+    Swift scanner reads them (CodexAccountingFixtureTests.
+    test_every_case_with_its_logs_archived, CodexArchivedSessionsTests)."""
+
+    def test_a_zstd_decoder_is_there(self):
+        # Not a skip: without a decoder every archived case below would fail
+        # for that reason alone, and a skipped check reads as a passed one.
+        self.assertIsNotNone(replica.zstd_decoder_name())
+        self.assertEqual(replica.zstd_decode(zstd_raw_frame(b"a\nb\n" * 70_000)), b"a\nb\n" * 70_000)
+        self.assertIsNone(replica.zstd_decode(zstd_raw_frame(b"x" * 1000)[:-10]))
+
+    def test_every_case_counts_the_same_with_its_logs_archived(self):
+        fx = load_fixtures()
+        modes = {"all": lambda i: True, "even": lambda i: i % 2 == 0, "odd": lambda i: i % 2 == 1}
+        for mode, archives in modes.items():
+            for case in fx["cases"]:
+                with self.subTest(mode=mode, case=case["name"]):
+                    self.assertEqual(run_archived_case(case, fx, archives), case["expected"], case["description"])
+
+    def test_the_listing_before_1_59_1_loses_archived_usage(self):
+        fx = load_fixtures()
+        lost = 0
+        for case in fx["cases"]:
+            if total_input(case["expected"]) == 0:
+                continue
+            with self.subTest(case=case["name"]):
+                self.assertNotEqual(run_archived_case(case, fx, lambda i: True, "plain-only"), case["expected"])
+                lost += 1
+        self.assertGreaterEqual(lost, 20)
+
+    def test_a_log_and_its_archive_side_by_side_list_the_log(self):
+        names = ["rollout-a.jsonl", "rollout-a.jsonl.zst", "rollout-b.jsonl.zst", "rollout-c.JSONL.ZST",
+                 "rollout-d.zst", "rollout-e.json.zst", ".rollout-f.jsonl.zst", "notes.txt",
+                 "rollout-g.JSONL", "rollout-g.jsonl.zst"]
+        self.assertEqual(sorted(replica.logs_in(names)),
+                         ["rollout-a.jsonl", "rollout-b.jsonl.zst", "rollout-c.JSONL.ZST", "rollout-g.JSONL"])
+        self.assertEqual(replica.logs_in(names, "plain-only"), ["rollout-a.jsonl", "rollout-g.JSONL"])
+
+
 class FirstLine(unittest.TestCase):
     """Mirrors the first-line tests in CodexTokenAccountingTests.swift."""
 

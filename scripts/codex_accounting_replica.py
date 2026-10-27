@@ -30,7 +30,16 @@ Rules mirrored (Swift names in brackets):
     `*.jsonl` in a date directory or directly in a root is read too when it
     was last written on or after local midnight of the window's first day (a
     conversation resumed or still running long after the day it started). A
-    file reached twice (a hard link) is read once.
+    file reached twice (a hard link) is read once. Since 1.59.1 each
+    `*.jsonl` above stands for either form Codex writes: `*.jsonl`, or the
+    `*.jsonl.zst` it archives a finished session as, unless the `*.jsonl` of
+    the same name is in the same directory (then that one) [codexLogs(in:)].
+    An archive is decoded in memory (Python 3.14's `compression.zstd`, the
+    `zstandard` package, or the `zstd` CLI, whichever is there first); one
+    that does not decode is not read, like a log whose first line is not
+    complete [LogByteReader]. Not mirrored: the app keeps the count of a log
+    whose archive cannot be decoded [codexEntriesKeptForUnreadableArchives];
+    the replica has no cache, so it reads such a session as missing.
   * Lines [readCodexFirstLine, scanJsonl, parseCodexFile]: the first line
     (up to 1 MB) alone gives the file's identity; a file whose first line has
     no newline yet is left for the next refresh, and a last line without a
@@ -73,8 +82,9 @@ test — one rule replaced by what it replaced or left out — and is not the ap
 `any-overlap`, `children-only-inherit`, `no-ordinal-rule`,
 `ordinal-without-ancestor-meta`, `no-interagent-hold`, `last-over-gap`,
 `sum-last`, `totals-only`, `no-snapshot-skip`, `no-turn-marker`, and two for
-the selection: `no-lookback` (the listing before 1.59) and
-`lookback-without-mtime` (every file of every older date directory read).
+the selection: `no-lookback` (the listing before 1.59),
+`lookback-without-mtime` (every file of every older date directory read) and
+`plain-only` (the listing before 1.59.1: no `*.jsonl.zst`).
 """
 
 from __future__ import annotations
@@ -83,6 +93,8 @@ import argparse
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
@@ -107,6 +119,7 @@ POLICIES = (
     "no-turn-marker",
     "no-lookback",
     "lookback-without-mtime",
+    "plain-only",
 )
 
 # How a child's copied prefix was recognised [CodexCopiedPrefix]
@@ -836,12 +849,64 @@ def _decodes(line: bytes) -> bool:
         return False
 
 
+def zstd_decoder_name() -> str | None:
+    """Which zstd decoder `zstd_decode` uses, or None when there is none."""
+    try:
+        from compression import zstd  # noqa: F401  (Python 3.14+)
+        return "compression.zstd"
+    except ImportError:
+        pass
+    try:
+        import zstandard  # noqa: F401
+        return "zstandard"
+    except ImportError:
+        pass
+    return "zstd CLI" if shutil.which("zstd") else None
+
+
+def zstd_decode(raw: bytes) -> bytes | None:
+    """The content of a zstd stream (one or more frames), in memory; None when
+    it does not decode (corrupt, cut off). Raises when no decoder is there."""
+    name = zstd_decoder_name()
+    if name is None:
+        raise RuntimeError("no zstd decoder: Python 3.14+, `pip install zstandard`, or the zstd CLI")
+    try:
+        if name == "compression.zstd":
+            from compression import zstd
+            return zstd.decompress(raw)
+        if name == "zstandard":
+            import zstandard
+            # Frame by frame: a stream reader returns a cut-off frame's
+            # content without an error, and the app does not read one.
+            out, rest = [], raw
+            while rest:
+                frame = zstandard.ZstdDecompressor().decompressobj()
+                out.append(frame.decompress(rest))
+                if not frame.eof:
+                    return None
+                rest = frame.unused_data
+            return b"".join(out) if out else None
+        done = subprocess.run(["zstd", "-dcq"], input=raw, capture_output=True, check=False)
+        return done.stdout if done.returncode == 0 else None
+    except Exception:  # noqa: BLE001  (each decoder has its own error type)
+        return None
+
+
+def read_log(path: str) -> bytes | None:
+    """A log's content: the file, or a `.zst` archive decoded [LogByteReader]."""
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    return zstd_decode(raw) if path.lower().endswith(".zst") else raw
+
+
 def parse_file(path: str, scan_since: str, scan_until: str, policy: str, tz=None) -> FileResult:
     legacy = policy == "legacy"
     res = FileResult(path=path)
     model = None
-    with open(path, "rb") as fh:
-        data = fh.read()
+    data = read_log(path)
+    if data is None:
+        res.complete = False  # an archive that does not decode is not read
+        return res
     if not legacy:
         newline = data.find(b"\n")
         if newline < 0:
@@ -1038,6 +1103,22 @@ def _written_since(path: str, since_s: float | None, policy: str) -> bool:
         return False
 
 
+def logs_in(names: list[str], policy: str = "overlap") -> list[str]:
+    """The Codex logs among one directory's entries [codexLogs(in:)]: every
+    `*.jsonl`, and every `*.jsonl.zst` whose `*.jsonl` is not beside it."""
+    plain = {n.lower() for n in names if n.lower().endswith(".jsonl")}
+    out = []
+    for name in names:
+        if name.startswith("."):
+            continue
+        lower = name.lower()
+        if lower.endswith(".jsonl"):
+            out.append(name)
+        elif lower.endswith(".jsonl.zst") and policy != "plain-only" and lower[: -len(".zst")] not in plain:
+            out.append(name)
+    return out
+
+
 def list_files(root: str, scan_since: str, scan_until: str, written_since_s: float | None = None,
                policy: str = "overlap") -> list[str]:
     """`written_since_s` is the window's first instant (epoch seconds): a file
@@ -1050,9 +1131,9 @@ def list_files(root: str, scan_since: str, scan_until: str, written_since_s: flo
         end = date.fromisoformat(scan_until)
         while d <= end:
             day_dir = os.path.join(root, f"{d.year:04d}", f"{d.month:02d}", f"{d.day:02d}")
-            for name in _listdir(day_dir):
+            for name in logs_in(_listdir(day_dir), policy):
                 p = os.path.join(day_dir, name)
-                if name.startswith(".") or not name.lower().endswith(".jsonl") or p in seen:
+                if p in seen:
                     continue
                 seen.add(p)
                 out.append(p)
@@ -1061,17 +1142,17 @@ def list_files(root: str, scan_since: str, scan_until: str, written_since_s: flo
             for day, day_dir in _date_dirs(root):
                 if scan_since <= day <= scan_until:
                     continue
-                for name in _listdir(day_dir):
+                for name in logs_in(_listdir(day_dir), policy):
                     p = os.path.join(day_dir, name)
-                    if name.startswith(".") or not name.lower().endswith(".jsonl") or p in seen:
+                    if p in seen:
                         continue
                     if not _written_since(p, written_since_s, policy):
                         continue
                     seen.add(p)
                     out.append(p)
-    for name in _listdir(root):
+    for name in logs_in(_listdir(root), policy):
         p = os.path.join(root, name)
-        if name.startswith(".") or not name.lower().endswith(".jsonl") or p in seen:
+        if p in seen:
             continue
         m = _FILENAME_DATE.search(name)
         if m and not (scan_since <= m.group(1) <= scan_until):

@@ -36,6 +36,7 @@ The Mac, iPhone and iPad apps include third-party open-source software, each par
 
 - the **Sentry Cocoa SDK** (MIT), with the notices it carries for the code it includes (KSCrash, code from YANDEX LLC, fishhook, and Apple code under the Apple Public Source License 2.0);
 - **SweetCookieKit** (MIT), whose source is included in the Mac app;
+- the **Zstandard (zstd)** decoder (BSD; zstd is dual-licensed BSD or GPLv2, and CLI Pulse uses it under the BSD license), whose source is included in the Mac app, to read the Codex sessions the Codex CLI archives as `.jsonl.zst`;
 - **xterm.js** with its fit and web-links add-ons (MIT);
 - code adapted from **CodexBar** (MIT). Each adapted source file keeps CodexBar's notice in its header.
 

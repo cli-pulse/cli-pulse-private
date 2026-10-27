@@ -555,6 +555,9 @@ public enum CostUsageScanner {
 
     // MARK: - JSONL Parser
 
+    /// Opens a log for reading its content (`LogByteReader`).
+    typealias LogOpener = (URL) throws -> LogByteReader
+
     private struct JsonlLine {
         /// The whole line; when `wasTruncated`, only its first
         /// `jsonlTruncatedHeadBytes` bytes — enough to see what kind of line
@@ -586,20 +589,25 @@ public enum CostUsageScanner {
     /// tail (one it does not keep whole) once that tail looks complete, and it
     /// can resume a tail part-way through. Here a tail is read only when it
     /// decodes, and an oversized one waits for its newline.
+    ///
+    /// 1.59.1: the content comes from `open` (by default a `LogByteReader`),
+    /// so a Codex archive (`.jsonl.zst`) is read decoded, and offsets count
+    /// decoded bytes. An archive that is corrupt or cut off throws.
     @discardableResult
     private static func scanJsonl(
         fileURL: URL,
         offset: Int64 = 0,
         maxLineBytes: Int,
         prefixBytes: Int,
+        open: LogOpener = LogByteReader.init(fileURL:),
         onLine: (JsonlLine) -> Void
     ) throws -> Int64 {
-        let handle = try FileHandle(forReadingFrom: fileURL)
-        defer { try? handle.close() }
+        let handle = try open(fileURL)
+        defer { handle.close() }
 
         let startOffset = max(0, offset)
         if startOffset > 0 {
-            try handle.seek(toOffset: UInt64(startOffset))
+            try handle.skip(startOffset)
         }
 
         var current = Data()
@@ -636,7 +644,7 @@ public enum CostUsageScanner {
         }
 
         while true {
-            let chunk = try handle.read(upToCount: 256 * 1024) ?? Data()
+            let chunk = try handle.read(upToCount: 256 * 1024)
             if chunk.isEmpty {
                 // An oversized tail was not kept in full (`truncated`), so it
                 // cannot be checked; it waits for its newline like a partial one.
@@ -1273,6 +1281,11 @@ public enum CostUsageScanner {
     /// same files in the 30 date folders before its window on a refresh, and
     /// in every folder on a cold scan.
     ///
+    /// 1.59.1 (N1): "`*.jsonl`" above means a log in either form Codex
+    /// writes, `*.jsonl` or the `*.jsonl.zst` it archives a finished session
+    /// as (`codexLogs(in:)`). An archive keeps its log's modification date, so
+    /// the date rule picks the same files in both forms.
+    ///
     /// `outsideWindow` is how many of `files` the second rule added.
     private static func listCodexSessionFiles(root: URL, range: DayRange) -> (files: [URL], outsideWindow: Int) {
         var out: [URL] = []
@@ -1292,7 +1305,7 @@ public enum CostUsageScanner {
                 let dayDir = DayKey.string(from: date).split(separator: "-")
                     .reduce(root) { $0.appendingPathComponent(String($1), isDirectory: true) }
                 if let items = try? FileManager.default.contentsOfDirectory(at: dayDir, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) {
-                    for item in items where item.pathExtension.lowercased() == "jsonl" && !seen.contains(item.path) {
+                    for item in codexLogs(in: items) where !seen.contains(item.path) {
                         seen.insert(item.path)
                         out.append(item)
                     }
@@ -1305,7 +1318,7 @@ public enum CostUsageScanner {
             for folder in codexDateFolders(root: root)
             where !DayRange.isInRange(dayKey: folder.dayKey, since: range.scanSinceKey, until: range.scanUntilKey) {
                 guard let items = try? FileManager.default.contentsOfDirectory(at: folder.url, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else { continue }
-                for item in items where item.pathExtension.lowercased() == "jsonl" && !seen.contains(item.path)
+                for item in codexLogs(in: items) where !seen.contains(item.path)
                     && codexFileWritten(item, since: range.firstReportedInstant) {
                     seen.insert(item.path)
                     out.append(item)
@@ -1314,9 +1327,9 @@ public enum CostUsageScanner {
             }
         }
 
-        // Flat: *.jsonl in root
+        // Flat: *.jsonl (and *.jsonl.zst) in root
         if let items = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants]) {
-            for item in items where item.pathExtension.lowercased() == "jsonl" && !seen.contains(item.path) {
+            for item in codexLogs(in: items) where !seen.contains(item.path) {
                 if let dayKey = dayKeyFromFilename(item.lastPathComponent),
                    !DayRange.isInRange(dayKey: dayKey, since: range.scanSinceKey, until: range.scanUntilKey) {
                     // v1.59: named for a day outside the range, read when it
@@ -1330,6 +1343,29 @@ public enum CostUsageScanner {
         }
 
         return (out.sorted { $0.path < $1.path }, outsideWindow)
+    }
+
+    /// The Codex logs among one folder's `items`: every `*.jsonl`, and every
+    /// `*.jsonl.zst` (1.59.1, N1) whose `*.jsonl` is not in the same folder.
+    ///
+    /// The Codex CLI archives a finished session by compressing its log to
+    /// `<name>.jsonl.zst` and then deleting `<name>.jsonl`, so for a moment
+    /// both are there, with the same content. The plain file is the one read
+    /// then: it may still be written to, and reading both would read the
+    /// session twice (`CodexCopyResolver` would keep one, but only after
+    /// decoding the other for nothing). Once the plain file is gone, the
+    /// archive is read in its place, and the scan carries the session over
+    /// (`scanCodexProvider`).
+    static func codexLogs(in items: [URL]) -> [URL] {
+        // Names compared lowercased: on the default (case-insensitive) APFS
+        // volume `X.JSONL` and `x.jsonl.zst` name the same session.
+        let plain = Set(items.lazy.map { $0.lastPathComponent.lowercased() }.filter { $0.hasSuffix(".jsonl") })
+        return items.filter { item in
+            let name = item.lastPathComponent.lowercased()
+            if name.hasSuffix(".jsonl") { return true }
+            guard name.hasSuffix(".jsonl.zst") else { return false }
+            return !plain.contains(String(name.dropLast(".zst".count)))
+        }
     }
 
     /// Every `YYYY/MM/DD` folder under `root` with its day key ("2026-07-04"),
@@ -1395,14 +1431,18 @@ public enum CostUsageScanner {
     }
 
     /// The bytes of a file's first line, without reading the rest.
-    static func readCodexFirstLine(fileURL: URL, maxBytes: Int = codexFirstLineMaxBytes) -> CodexFirstLine {
-        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return .unreadable }
-        defer { try? handle.close() }
+    /// A `.jsonl.zst` archive is decoded only as far as its first line.
+    static func readCodexFirstLine(
+        fileURL: URL, maxBytes: Int = codexFirstLineMaxBytes,
+        open: LogOpener = LogByteReader.init(fileURL:)
+    ) -> CodexFirstLine {
+        guard let handle = try? open(fileURL) else { return .unreadable }
+        defer { handle.close() }
         var buffer = Data()
         while buffer.count <= maxBytes {
             let chunk: Data
             do {
-                chunk = try handle.read(upToCount: min(256 * 1024, maxBytes + 1 - buffer.count)) ?? Data()
+                chunk = try handle.read(upToCount: min(256 * 1024, maxBytes + 1 - buffer.count))
             } catch {
                 return .unreadable
             }
@@ -1426,7 +1466,8 @@ public enum CostUsageScanner {
         startOffset: Int64 = 0,
         initialModel: String? = nil,
         initialTotals: CostUsageCodexTotals? = nil,
-        initialState: CostUsageCodexFileState = CostUsageCodexFileState()
+        initialState: CostUsageCodexFileState = CostUsageCodexFileState(),
+        open: LogOpener = LogByteReader.init(fileURL:)
     ) -> CodexParseResult {
         var currentModel = initialModel
         var accountant = CodexTokenAccountant(watermark: initialTotals, state: initialState)
@@ -1444,7 +1485,7 @@ public enum CostUsageScanner {
         // line scan below starts at the same byte, so it skips that line.
         var skipFirstLine = false
         if startOffset == 0 {
-            switch readCodexFirstLine(fileURL: fileURL) {
+            switch readCodexFirstLine(fileURL: fileURL, open: open) {
             case .incomplete, .unreadable:
                 return incomplete()
             case .tooLong:
@@ -1552,7 +1593,7 @@ public enum CostUsageScanner {
 
         let parsedBytes: Int64
         do {
-            parsedBytes = try scanJsonl(fileURL: fileURL, offset: startOffset, maxLineBytes: maxLineBytes, prefixBytes: prefixBytes, onLine: { line in
+            parsedBytes = try scanJsonl(fileURL: fileURL, offset: startOffset, maxLineBytes: maxLineBytes, prefixBytes: prefixBytes, open: open, onLine: { line in
                 lineIndex += 1
                 if skipFirstLine {
                     skipFirstLine = false
@@ -1733,12 +1774,23 @@ public enum CostUsageScanner {
             seenFileIds.insert(fileId)
         }
 
+        // An archive that could not be decoded is tried again only once it
+        // has changed (1.59.1): it is immutable, and decoding a large one on
+        // every refresh to fail again is wasted work.
+        let stamp = CostUsageFileStamp(mtimeUnixMs: mtimeMs, size: size)
+        let compressed = LogByteReader.isCompressed(fileURL)
+        if compressed, cache.unreadableCodexArchives?[path] == stamp { return }
+
         let cached = cache.files[path]
         // An entry without `codex` state predates these rules: re-parse it.
+        // An archive (`.jsonl.zst`) never changes once written, so it is
+        // decoded once and then only its size and date are checked.
         if let cached, cached.codex != nil, cached.mtimeUnixMs == mtimeMs, cached.size == size { return }
 
-        // A rollout classified whole (rule 5) is read again from the start.
-        if let cached, let state = cached.codex, !state.classifiesWholeFile {
+        // A rollout classified whole (rule 5) is read again from the start,
+        // and so is an archive that changed: its size is the compressed one,
+        // and nothing says the new one only adds to the old.
+        if let cached, let state = cached.codex, !state.classifiesWholeFile, !compressed {
             let startOffset = cached.parsedBytes ?? cached.size
             if size > cached.size && startOffset > 0 && startOffset <= size {
                 let delta = parseCodexFile(
@@ -1760,17 +1812,53 @@ public enum CostUsageScanner {
             }
         }
 
-        let parsed = parseCodexFile(fileURL: fileURL, range: range)
-        guard parsed.complete else {
+        guard let entry = codexFileEntry(fileURL: fileURL, range: range, mtimeUnixMs: mtimeMs, size: size) else {
             // Not stored, so not counted this time and read again next time.
+            // A corrupt or cut-off archive ends here too, and only it: the
+            // other files are read as usual. It is remembered as it is now.
             cache.files.removeValue(forKey: path)
+            if compressed { cache.unreadableCodexArchives = (cache.unreadableCodexArchives ?? [:]).merging([path: stamp]) { $1 } }
             return
         }
-        cache.files[path] = CostUsageFileUsage(
-            mtimeUnixMs: mtimeMs, size: size, days: parsed.days, parsedBytes: parsed.parsedBytes,
+        cache.files[path] = entry
+        if compressed { cache.unreadableCodexArchives?.removeValue(forKey: path) }
+    }
+
+    /// One file's cache entry from a parse from its first line, or nil when
+    /// it cannot be read to the end (or its first line is not complete yet).
+    static func codexFileEntry(
+        fileURL: URL, range: DayRange, mtimeUnixMs: Int64, size: Int64,
+        open: LogOpener = LogByteReader.init(fileURL:)
+    ) -> CostUsageFileUsage? {
+        let parsed = parseCodexFile(fileURL: fileURL, range: range, open: open)
+        guard parsed.complete else { return nil }
+        return CostUsageFileUsage(
+            mtimeUnixMs: mtimeUnixMs, size: size, days: parsed.days, parsedBytes: parsed.parsedBytes,
             lastModel: parsed.lastModel, lastTotals: parsed.lastTotals,
             sessionId: parsed.sessionId, codex: parsed.state, project: parsed.project
         )
+    }
+
+    /// 1.59.1 (N1): the entries of logs that Codex has since archived, kept
+    /// while their archive cannot be read.
+    ///
+    /// When Codex archives a session, `<name>.jsonl` is replaced by
+    /// `<name>.jsonl.zst` with the same content. The scan reads the archive in
+    /// its place; that entry replaces the old one, which is dropped as any
+    /// file no longer listed is, so the session counts once throughout. If
+    /// the archive cannot be read (corrupt, cut off), dropping the old entry
+    /// would lose usage this Mac had already counted, so it stays — under its
+    /// old path, counted as before — for as long as the archive is listed and
+    /// unreadable. These are the paths of such entries.
+    static func codexEntriesKeptForUnreadableArchives(
+        listed files: [URL], cache: CostUsageCache
+    ) -> Set<String> {
+        var kept: Set<String> = []
+        for file in files where LogByteReader.isCompressed(file) && cache.files[file.path] == nil {
+            let plain = file.deletingPathExtension().path
+            if cache.files[plain] != nil { kept.insert(plain) }
+        }
+        return kept
     }
 
     /// Rebuild the Codex day rows from the files that count.
@@ -1810,19 +1898,27 @@ public enum CostUsageScanner {
         // returns 0 candidates can be distinguished from a noop.
         // `older_folders`: of those files, the ones outside the window's date
         // folders, read because they were written to inside it (v1.59).
-        scanLogger.info("scanCodexProvider: roots=\(roots.count) files_in_range=\(files.count) older_folders=\(outsideWindow) refreshing=\(shouldRefresh) range=\(range.scanSinceKey)..\(range.scanUntilKey)")
+        // `archived`: of those files, the ones read from a `.jsonl.zst` (1.59.1).
+        let archived = files.filter(LogByteReader.isCompressed).count
+        scanLogger.info("scanCodexProvider: roots=\(roots.count) files_in_range=\(files.count) archived=\(archived) older_folders=\(outsideWindow) refreshing=\(shouldRefresh) range=\(range.scanSinceKey)..\(range.scanUntilKey)")
         let filePathsInScan = Set(files.map(\.path))
 
         if shouldRefresh {
             if options.forceRescan { cache = CostUsageCache() }
             var seenFileIds: Set<String> = []
             for fileURL in files { scanCodexFile(fileURL: fileURL, range: range, cache: &cache, seenFileIds: &seenFileIds) }
-            for key in cache.files.keys where !filePathsInScan.contains(key) {
+            let keptForArchives = codexEntriesKeptForUnreadableArchives(listed: files, cache: cache)
+            for key in cache.files.keys where !filePathsInScan.contains(key) && !keptForArchives.contains(key) {
                 cache.files.removeValue(forKey: key)
+            }
+            if let unreadable = cache.unreadableCodexArchives {
+                let listed = unreadable.filter { filePathsInScan.contains($0.key) }
+                cache.unreadableCodexArchives = listed.isEmpty ? nil : listed
             }
             let tally = rebuildCodexDays(cache: &cache)
             let children = cache.files.values.filter { $0.codex?.isChild == true }.count
-            scanLogger.info("scanCodexProvider: files=\(tally.files) counted=\(tally.counted) copies_skipped=\(tally.files - tally.counted) subagent_or_fork=\(children)")
+            let unreadableArchives = cache.unreadableCodexArchives?.count ?? 0
+            scanLogger.info("scanCodexProvider: files=\(tally.files) counted=\(tally.counted) copies_skipped=\(tally.files - tally.counted) subagent_or_fork=\(children) archives_unreadable=\(unreadableArchives) kept_for_archives=\(keptForArchives.count)")
             pruneDays(cache: &cache, sinceKey: range.scanSinceKey, untilKey: range.scanUntilKey)
             // 1.58: an entry written before the cache kept each log's folder
             // gets it from the log's first line, once.
@@ -2388,9 +2484,15 @@ public enum CostUsageScanner {
     /// stall the scanner. Returns `nil` fields when the parse fails;
     /// callers must tolerate that.
     static func readCodexSessionMeta(fileURL: URL) -> (sessionId: String?, cwd: String?)? {
-        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return nil }
-        defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: 32 * 1024) else { return nil }
+        // A `.jsonl.zst` archive is decoded only this far (1.59.1).
+        guard let handle = try? LogByteReader(fileURL: fileURL) else { return nil }
+        defer { handle.close() }
+        var data = Data()
+        while data.count < 32 * 1024 {
+            guard let chunk = try? handle.read(upToCount: 32 * 1024 - data.count), !chunk.isEmpty else { break }
+            data.append(chunk)
+        }
+        guard !data.isEmpty else { return nil }
         // Split on newline (0x0A); examine each line up to a small cap so
         // we don't burn CPU re-parsing huge JSONL bodies for one field.
         var inspected = 0
