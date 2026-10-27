@@ -1,8 +1,8 @@
 cask "cli-pulse" do
   arch arm: "arm64"
 
-  version "1.58.0"
-  sha256 "7502c4aafba07f68f2e85580f360efbb1b8fc84495e7d146f53369ccef3cd873"
+  version "1.59.0"
+  sha256 "490fd5380a5a6eee27a24416c80861a47098463ce90fc8e4e88353fe50517a8a"
 
   # PINNED: the app update repo is `cli-pulse-distrib`, NOT `cli-pulse`, and the
   # owner segment stays `JasonYeYuhe` even after the org move — the shipped
