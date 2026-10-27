@@ -48,5 +48,12 @@ regexes = [
     # Scoped to the `quota_tier.` prefix, so a real credential in that same field
     # is still caught — verified by committing one and watching gitleaks fail.
     '''quota_tier\.[a-z0-9_]+''',
+    # An x86 SIMD intrinsic, not a credential: xxHash's AVX-512 path in the
+    # vendored zstd decoder (CLIPulseCore/Sources/CZstd/zstddeclib.c) has
+    # `__m512i const data_key_lo = _mm512_srli_epi64 (data_key, 32);`, and the
+    # generic-api-key rule fires on the `key` in the variable name and captures
+    # the intrinsic. Scoped to that one intrinsic name, so anything else
+    # assigned to a `*key*` in that file is still caught.
+    '''_mm512_srli_epi64''',
 ]
 stopwords = ["example", "redacted", "stub", "dummy", "placeholder", "changeme", "your-"]
