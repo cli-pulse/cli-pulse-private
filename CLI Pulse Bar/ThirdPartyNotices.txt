@@ -9,8 +9,9 @@ Do not edit it by hand.
 Contents
   1. Sentry Cocoa SDK
   2. SweetCookieKit
-  3. xterm.js, with its fit and web-links add-ons
-  4. CodexBar
+  3. Zstandard (zstd), decoder
+  4. xterm.js, with its fit and web-links add-ons
+  5. CodexBar
 
 ==============================================================================
 1. Sentry Cocoa SDK
@@ -309,7 +310,47 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ==============================================================================
-3. xterm.js, with its fit and web-links add-ons
+3. Zstandard (zstd), decoder
+==============================================================================
+
+Source: https://github.com/facebook/zstd
+Used for: reading the Codex sessions the Codex CLI archives as .jsonl.zst (Mac only). Its single-file decoder is included in CLI Pulse. zstd is dual-licensed (BSD or GPLv2); CLI Pulse uses it under the BSD license below.
+
+--- License ---
+
+BSD License
+
+For Zstandard software
+
+Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+ * Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+ * Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+ * Neither the name Facebook, nor Meta, nor the names of its contributors may
+   be used to endorse or promote products derived from this software without
+   specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+==============================================================================
+4. xterm.js, with its fit and web-links add-ons
 ==============================================================================
 
 Source: https://github.com/xtermjs/xterm.js
@@ -340,7 +381,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ==============================================================================
-4. CodexBar
+5. CodexBar
 ==============================================================================
 
 Source: https://github.com/steipete/CodexBar

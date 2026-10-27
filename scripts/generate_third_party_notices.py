@@ -20,6 +20,8 @@ WHAT GOES IN, AND FROM WHERE
      item 2), and changing that file is not this script's business.
   2. Every folder under `CLIPulseCore/Sources/CLIPulseCore/Vendor/` (vendored
      source). Each must hold a LICENSE file; a folder without one fails.
+     Likewise every other target folder under `CLIPulseCore/Sources/` (a
+     vendored C library is a target of its own: `CZstd`, zstd's decoder).
   3. Every LICENSE* file under `CLIPulseCore/Sources/CLIPulseCore/Resources/`
      (bundled web assets: xterm.js and its add-ons for the terminal view).
   4. CodexBar's MIT license, `scripts/third_party_licenses/CodexBar-LICENSE.txt`
@@ -53,7 +55,8 @@ REPO = Path(__file__).resolve().parent.parent
 APP = REPO / "CLI Pulse Bar"
 CORE = APP / "CLIPulseCore"
 RESOLVED = CORE / "Package.resolved"
-VENDOR = CORE / "Sources" / "CLIPulseCore" / "Vendor"
+SOURCES = CORE / "Sources"
+VENDOR = SOURCES / "CLIPulseCore" / "Vendor"
 RESOURCES = CORE / "Sources" / "CLIPulseCore" / "Resources"
 CODEXBAR_LICENSE = REPO / "scripts" / "third_party_licenses" / "CodexBar-LICENSE.txt"
 OUTPUT = APP / "ThirdPartyNotices.txt"
@@ -72,6 +75,15 @@ VENDORED = {
         "https://github.com/steipete/SweetCookieKit",
         "reading browser cookies for providers that sign in through a "
         "browser (Mac only). Its source is included in CLI Pulse.",
+    ),
+    # A target folder under SOURCES, not a Vendor folder.
+    "CZstd": (
+        "Zstandard (zstd), decoder",
+        "https://github.com/facebook/zstd",
+        "reading the Codex sessions the Codex CLI archives as .jsonl.zst "
+        "(Mac only). Its single-file decoder is included in CLI Pulse. zstd "
+        "is dual-licensed (BSD or GPLv2); CLI Pulse uses it under the BSD "
+        "license below.",
     ),
 }
 BUNDLED = {
@@ -163,16 +175,17 @@ def build(checkouts: Path) -> str:
             bodies.append((f"Notices for the software it includes ({notices.name})", read_text(notices)))
         entries.append((name, lines, bodies))
 
-    if VENDOR.is_dir():
-        for folder in sorted(p for p in VENDOR.iterdir() if p.is_dir()):
-            license_file = first_existing(folder, LICENSE_NAMES)
-            if license_file is None:
-                raise NoticeError(f"{folder.relative_to(REPO)} has no LICENSE file")
-            name, url, use = VENDORED.get(folder.name, (folder.name, "", ""))
-            lines = [f"Source: {url}" if url else f"Vendored source: {folder.relative_to(APP)}"]
-            if use:
-                lines.append(f"Used for: {use}")
-            entries.append((name, lines, [("License", read_text(license_file))]))
+    vendored = sorted(p for p in VENDOR.iterdir() if p.is_dir()) if VENDOR.is_dir() else []
+    vendored += sorted(p for p in SOURCES.iterdir() if p.is_dir() and p.name != "CLIPulseCore")
+    for folder in vendored:
+        license_file = first_existing(folder, LICENSE_NAMES)
+        if license_file is None:
+            raise NoticeError(f"{folder.relative_to(REPO)} has no LICENSE file")
+        name, url, use = VENDORED.get(folder.name, (folder.name, "", ""))
+        lines = [f"Source: {url}" if url else f"Vendored source: {folder.relative_to(APP)}"]
+        if use:
+            lines.append(f"Used for: {use}")
+        entries.append((name, lines, [("License", read_text(license_file))]))
 
     if RESOURCES.is_dir():
         for license_file in sorted(RESOURCES.rglob("LICENSE*")):

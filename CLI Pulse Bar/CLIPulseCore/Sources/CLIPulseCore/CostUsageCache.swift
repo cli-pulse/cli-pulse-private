@@ -75,6 +75,7 @@ import Foundation
 ///       test_claude_rate_changes_come_with_a_rules_version_bump` pins a
 ///       fingerprint of the table next to this number.
 ///   8 — not used for Claude. It is the Codex cache's (1.56, P0-1b).
+///   9 — not used for Claude. It is the Codex cache's (1.59.1, N1).
 let costUsageCachePricingVersion: Int = 7
 
 /// Cache-rules version for the Codex cache (`codex-v2.json`). Bump it when
@@ -117,7 +118,16 @@ let costUsageCachePricingVersion: Int = 7
 ///       history ordinal counts its first tokens, a repeat of the counter it
 ///       started from or a copied snapshot adds nothing. A cache written under
 ///       5 can hold copied history counted as usage.
-let costUsageCodexCacheRulesVersion: Int = 8
+///   9 — 1.59.1 (N1): the sessions Codex archives as `*.jsonl.zst` are read
+///       (`LogByteReader`, `CostUsageScanner.codexLogs(in:)`). Nothing about
+///       how a file is counted changed, and an entry written under 8 is still
+///       right for its file; the bump is for the history. The Codex history
+///       rebuild (`CodexHistoryRebuild`) runs once per version, and under 8
+///       it read only `.jsonl`: a day older than the routine month whose
+///       sessions were partly archived by then took the figure of the part
+///       still in `.jsonl` (a day with none left kept its old figure). The
+///       bump makes it read those days again, archives included.
+let costUsageCodexCacheRulesVersion: Int = 9
 
 enum CostUsageCacheRules {
     /// The rules version a cache for `provider` must carry to be trusted.

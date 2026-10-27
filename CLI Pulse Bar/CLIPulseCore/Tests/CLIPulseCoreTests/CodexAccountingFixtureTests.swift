@@ -137,6 +137,50 @@ final class CodexAccountingFixtureTests: XCTestCase {
         }
     }
 
+    /// 1.59.1 (N1): every case again with its logs archived the way the Codex
+    /// CLI archives a finished session, `<name>.jsonl` replaced by
+    /// `<name>.jsonl.zst` (same content, same modification date): all of
+    /// them, then every other one, then the rest. The totals may not move.
+    /// Between them the cases put an archive in each place a log is listed
+    /// from (a date folder in the window, an older date folder written to
+    /// since, the flat `sessions/` root and `archived_sessions/`), and every
+    /// parent-and-child case gets a child whose parent is archived and one
+    /// whose parent is not.
+    func test_every_case_with_its_logs_archived() throws {
+        let fixtures = try loadFixtures()
+        let modes: [(name: String, archives: (Int) -> Bool)] = [
+            ("all", { _ in true }), ("even", { $0 % 2 == 0 }), ("odd", { $0 % 2 == 1 }),
+        ]
+        var archivedFiles = 0
+        for mode in modes {
+            for testCase in fixtures.cases {
+                let home = tmpRoot.appendingPathComponent("zst-\(mode.name)-\(testCase.name)", isDirectory: true)
+                let cache = tmpRoot.appendingPathComponent("cache-zst-\(mode.name)-\(testCase.name)", isDirectory: true)
+                for (index, file) in testCase.files.enumerated() {
+                    var content = Data()
+                    for line in try encodedLines(file) { content.append(line); content.append(0x0A) }
+                    var target = url(for: file, home: home)
+                    if mode.archives(index) {
+                        target = target.appendingPathExtension("zst")
+                        try ZstdTestFrames.write(content, to: target)
+                        archivedFiles += 1
+                    } else {
+                        try write((try encodedLines(file))[...], to: target, appending: false)
+                    }
+                    if let mtime = file.mtime_utc {
+                        let date = try XCTUnwrap(ISO8601DateFormatter().date(from: mtime), "mtime_utc \(mtime)")
+                        try FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: target.path)
+                    }
+                }
+                let first = try scan(home: home, cache: cache, fixtures: fixtures, force: true)
+                XCTAssertEqual(first, testCase.expected, "\(testCase.name) (\(mode.name) archived): \(testCase.description)")
+                let again = try scan(home: home, cache: cache, fixtures: fixtures, force: false)
+                XCTAssertEqual(again, testCase.expected, "\(testCase.name) (\(mode.name) archived, rescan on the saved cache)")
+            }
+        }
+        XCTAssertGreaterThan(archivedFiles, fixtures.cases.count)
+    }
+
     func test_every_case_incremental_scan() throws {
         let fixtures = try loadFixtures()
         for testCase in fixtures.cases {
