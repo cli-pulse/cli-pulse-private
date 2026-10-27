@@ -24,14 +24,23 @@ final class MenuBarReadoutTests: XCTestCase {
         super.tearDown()
     }
 
-    private func usage(_ provider: String, quota: Int?, remaining: Int?, resetIn: TimeInterval? = nil) -> ProviderUsage {
-        ProviderUsage(
+    private func usage(_ provider: String, quota: Int?, remaining: Int?, resetIn: TimeInterval? = nil,
+                       windowMinutes: Int? = nil) -> ProviderUsage {
+        let reset = resetIn.map { ISO8601DateFormatter().string(from: now.addingTimeInterval($0)) }
+        // The headline's window as its own tier, the way the collector
+        // writes it: the pace line takes the window's length from there.
+        let tiers = windowMinutes.map {
+            [TierDTO(name: "5h Window", quota: quota ?? 0, remaining: remaining ?? 0,
+                     reset_time: reset, windowMinutes: $0, role: .primary)]
+        } ?? []
+        return ProviderUsage(
             provider: provider,
             today_usage: 0, week_usage: 0,
             estimated_cost_today: 0, estimated_cost_week: 0,
             cost_status_today: "ok", cost_status_week: "ok",
             quota: quota, remaining: remaining,
-            reset_time: resetIn.map { ISO8601DateFormatter().string(from: now.addingTimeInterval($0)) },
+            reset_time: reset,
+            tiers: tiers,
             status_text: "",
             trend: [], recent_sessions: [], recent_errors: [])
     }
@@ -64,7 +73,8 @@ final class MenuBarReadoutTests: XCTestCase {
     /// and "almost equal to". The glyph stays on screen; the words are spoken.
     func test_paceMode_speaksTheVerdictNotTheGlyph() {
         // 5h window, 2h to reset: 60% of the window has elapsed, 40% is used.
-        let r = readout(mode: .pace, top: usage("Codex", quota: 100, remaining: 60, resetIn: 2 * 3600))
+        let r = readout(mode: .pace, top: usage("Codex", quota: 100, remaining: 60, resetIn: 2 * 3600,
+                                                 windowMinutes: 300))
         XCTAssertEqual(r.visibleText, "▼20%")
         let spoken = r.accessibilityLabel(serverOnline: true)
         XCTAssertEqual(spoken, "\(appName)、Codex、ペース: 20% 余裕")
