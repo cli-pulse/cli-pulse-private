@@ -136,19 +136,17 @@ final class ProviderUsagePaceTests: XCTestCase {
         let pace = try XCTUnwrap(UsagePaceText.sessionPace(provider: .codex, window: w, now: now))
         let label = u.paceMenuLabel(now: now)
 
-        do {
-            let expectedPrefix: String
-            switch pace.stage {
-            case .onTrack: expectedPrefix = "≈"
-            case .slightlyAhead, .ahead, .farAhead: expectedPrefix = "▲"
-            case .slightlyBehind, .behind, .farBehind: expectedPrefix = "▼"
-            }
-            XCTAssertEqual(label?.hasPrefix(expectedPrefix), true)
-            XCTAssertLessThanOrEqual(label?.count ?? 0, 6)  // ultra-compact menu form
+        let expectedPrefix: String
+        switch pace.stage {
+        case .onTrack: expectedPrefix = "≈"
+        case .slightlyAhead, .ahead, .farAhead: expectedPrefix = "▲"
+        case .slightlyBehind, .behind, .farBehind: expectedPrefix = "▼"
         }
+        XCTAssertEqual(label?.hasPrefix(expectedPrefix), true)
+        XCTAssertLessThanOrEqual(label?.count ?? 0, 6)  // ultra-compact menu form
     }
 
-    // MARK: - Window length of the headline (1.60 N4)
+    // MARK: - Window length of the headline
     //
     // The pace line used to build its window with no length, and the engine
     // took 5 hours. For a Codex account whose headline is a weekly or 30-day
@@ -243,6 +241,39 @@ final class ProviderUsagePaceTests: XCTestCase {
             ])
         XCTAssertEqual(try XCTUnwrap(u.paceRateWindow(now: now)).windowMinutes, 300)
         XCTAssertEqual(u.paceMenuLabel(now: now), "▲20%")
+    }
+
+    /// A session tier and a weekly tier with the same reset (the weekly one
+    /// listed first): the headline is the session lane, so it is paced on
+    /// 5 hours (▲20%), not on the week (which would read ▼19%).
+    func test_codex_shared_reset_is_paced_on_the_session_tier() throws {
+        let reset = iso(now.addingTimeInterval(2 * 3600))
+        let u = usage(
+            provider: "Codex", quota: 100, remaining: 20, reset_time: reset,
+            tiers: [
+                TierDTO(name: "Weekly", quota: 100, remaining: 20, reset_time: reset,
+                        windowMinutes: 10080, role: .secondary),
+                TierDTO(name: "5h Window", quota: 100, remaining: 20, reset_time: reset,
+                        windowMinutes: 300, role: .primary),
+            ])
+        XCTAssertEqual(try XCTUnwrap(u.paceRateWindow(now: now)).windowMinutes, 300)
+        XCTAssertEqual(u.paceMenuLabel(now: now), "▲20%")
+    }
+
+    /// The headline's reset written Postgres-style (`+00:00`, as the Python
+    /// helper's `isoformat()` and the database return it) and the tier's in
+    /// `Z` form, 30 seconds apart: still the same window.
+    func test_codex_reset_match_tolerates_format_and_rounding() throws {
+        let resetDate = now.addingTimeInterval(2 * 3600)
+        let headline = iso(resetDate).replacingOccurrences(of: "Z", with: "+00:00")
+        XCTAssertTrue(headline.hasSuffix("+00:00"), headline)
+        let u = usage(
+            provider: "Codex", quota: 100, remaining: 10, reset_time: headline,
+            tiers: [TierDTO(name: "Weekly", quota: 100, remaining: 10,
+                            reset_time: iso(resetDate.addingTimeInterval(30)),
+                            windowMinutes: 10080, role: .secondary)])
+        XCTAssertEqual(try XCTUnwrap(u.paceRateWindow(now: now)).windowMinutes, 10080)
+        XCTAssertEqual(u.paceMenuLabel(now: now), "▼9%")
     }
 
     /// Claude is unchanged: its headline is the session window, paced on

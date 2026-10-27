@@ -93,9 +93,15 @@ public extension ProviderUsage {
     ///   be 5 hours, a week, 30 days, or a length the API did not say
     ///   (`CodexCollector.buildResult`). The length is the one carried by
     ///   the tier whose reset is the headline's; the session-role tier wins
-    ///   when several share it (that is the headline's lane, and the one the
-    ///   binding cap rewrites). Rows from writers that stored no length are
-    ///   read the way the bars read them (`CodexQuotaWindows.resolved`).
+    ///   when several share it, because that is the headline's lane. (The
+    ///   binding cap gives the capped session tier the blocker's reset, so
+    ///   both match then; the capped headline reads 0% left, and the engine
+    ///   shows no pace for it either way.) A tier with no stored length is
+    ///   read the way the bars read it (`CodexQuotaWindows.resolved`, which
+    ///   the display projection has usually applied already): a length is
+    ///   inferred from its name, and for the session-lane names from how far
+    ///   away its reset is. A tier whose length is neither stored nor
+    ///   inferable that way gets no pace.
     /// * Anything else: nil. The engine paces Codex and Claude only.
     func paceWindowMinutes(resetsAt: Date, now: Date = .init()) -> Int? {
         switch providerKind {
