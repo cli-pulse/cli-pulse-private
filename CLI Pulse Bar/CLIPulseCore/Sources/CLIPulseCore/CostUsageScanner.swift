@@ -1357,12 +1357,13 @@ public enum CostUsageScanner {
     /// archive is read in its place, and the scan carries the session over
     /// (`scanCodexProvider`).
     static func codexLogs(in items: [URL]) -> [URL] {
-        func isPlain(_ name: String) -> Bool { name.lowercased().hasSuffix(".jsonl") }
-        let plain = Set(items.lazy.map(\.lastPathComponent).filter(isPlain))
+        // Names compared lowercased: on the default (case-insensitive) APFS
+        // volume `X.JSONL` and `x.jsonl.zst` name the same session.
+        let plain = Set(items.lazy.map { $0.lastPathComponent.lowercased() }.filter { $0.hasSuffix(".jsonl") })
         return items.filter { item in
-            let name = item.lastPathComponent
-            if isPlain(name) { return true }
-            guard name.lowercased().hasSuffix(".jsonl.zst") else { return false }
+            let name = item.lastPathComponent.lowercased()
+            if name.hasSuffix(".jsonl") { return true }
+            guard name.hasSuffix(".jsonl.zst") else { return false }
             return !plain.contains(String(name.dropLast(".zst".count)))
         }
     }
@@ -1773,6 +1774,13 @@ public enum CostUsageScanner {
             seenFileIds.insert(fileId)
         }
 
+        // An archive that could not be decoded is tried again only once it
+        // has changed (1.59.1): it is immutable, and decoding a large one on
+        // every refresh to fail again is wasted work.
+        let stamp = CostUsageFileStamp(mtimeUnixMs: mtimeMs, size: size)
+        let compressed = LogByteReader.isCompressed(fileURL)
+        if compressed, cache.unreadableCodexArchives?[path] == stamp { return }
+
         let cached = cache.files[path]
         // An entry without `codex` state predates these rules: re-parse it.
         // An archive (`.jsonl.zst`) never changes once written, so it is
@@ -1782,7 +1790,7 @@ public enum CostUsageScanner {
         // A rollout classified whole (rule 5) is read again from the start,
         // and so is an archive that changed: its size is the compressed one,
         // and nothing says the new one only adds to the old.
-        if let cached, let state = cached.codex, !state.classifiesWholeFile, !LogByteReader.isCompressed(fileURL) {
+        if let cached, let state = cached.codex, !state.classifiesWholeFile, !compressed {
             let startOffset = cached.parsedBytes ?? cached.size
             if size > cached.size && startOffset > 0 && startOffset <= size {
                 let delta = parseCodexFile(
@@ -1807,11 +1815,13 @@ public enum CostUsageScanner {
         guard let entry = codexFileEntry(fileURL: fileURL, range: range, mtimeUnixMs: mtimeMs, size: size) else {
             // Not stored, so not counted this time and read again next time.
             // A corrupt or cut-off archive ends here too, and only it: the
-            // other files are read as usual.
+            // other files are read as usual. It is remembered as it is now.
             cache.files.removeValue(forKey: path)
+            if compressed { cache.unreadableCodexArchives = (cache.unreadableCodexArchives ?? [:]).merging([path: stamp]) { $1 } }
             return
         }
         cache.files[path] = entry
+        if compressed { cache.unreadableCodexArchives?.removeValue(forKey: path) }
     }
 
     /// One file's cache entry from a parse from its first line, or nil when
@@ -1901,10 +1911,13 @@ public enum CostUsageScanner {
             for key in cache.files.keys where !filePathsInScan.contains(key) && !keptForArchives.contains(key) {
                 cache.files.removeValue(forKey: key)
             }
+            if let unreadable = cache.unreadableCodexArchives {
+                let listed = unreadable.filter { filePathsInScan.contains($0.key) }
+                cache.unreadableCodexArchives = listed.isEmpty ? nil : listed
+            }
             let tally = rebuildCodexDays(cache: &cache)
             let children = cache.files.values.filter { $0.codex?.isChild == true }.count
-            // An archive that is listed but has no entry could not be decoded.
-            let unreadableArchives = files.filter { LogByteReader.isCompressed($0) && cache.files[$0.path] == nil }.count
+            let unreadableArchives = cache.unreadableCodexArchives?.count ?? 0
             scanLogger.info("scanCodexProvider: files=\(tally.files) counted=\(tally.counted) copies_skipped=\(tally.files - tally.counted) subagent_or_fork=\(children) archives_unreadable=\(unreadableArchives) kept_for_archives=\(keptForArchives.count)")
             pruneDays(cache: &cache, sinceKey: range.scanSinceKey, untilKey: range.scanUntilKey)
             // 1.58: an entry written before the cache kept each log's folder

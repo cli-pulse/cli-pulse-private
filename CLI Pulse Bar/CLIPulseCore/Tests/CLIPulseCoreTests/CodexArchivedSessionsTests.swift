@@ -192,6 +192,37 @@ final class CodexArchivedSessionsTests: XCTestCase {
         XCTAssertThrowsError(try readAll(zeroBytes))
     }
 
+    /// The window a frame may ask for is capped at 2^27 (128 MB), set on the
+    /// decoder explicitly; a frame asking for 2^28 is refused before any
+    /// memory is taken for it.
+    func test_a_frame_asking_for_a_window_over_the_cap_is_refused() throws {
+        XCTAssertEqual(LogByteReader.windowLogMax, 27)
+        let content = Data("{\"type\":\"session_meta\"}\n".utf8)
+        let atCap = tmpRoot.appendingPathComponent("window-27.jsonl.zst")
+        try ZstdTestFrames.raw(content, windowLog: 27).write(to: atCap)
+        XCTAssertEqual(try readAll(atCap), content)
+        let overCap = tmpRoot.appendingPathComponent("window-28.jsonl.zst")
+        try ZstdTestFrames.raw(content, windowLog: 28).write(to: overCap)
+        XCTAssertThrowsError(try readAll(overCap)) { XCTAssertEqual($0 as? LogByteReader.Failure, .corrupt) }
+    }
+
+    func test_an_archive_that_decodes_past_the_limit_is_refused() throws {
+        XCTAssertEqual(LogByteReader.defaultMaxDecodedBytes, 4 << 30)
+        let url = tmpRoot.appendingPathComponent("long.jsonl.zst")
+        try ZstdTestFrames.write(Data(repeating: 0x41, count: 300_000), to: url)
+        func read(limit: Int64) throws -> Int {
+            let reader = try LogByteReader(fileURL: url, maxDecodedBytes: limit)
+            var total = 0
+            while true {
+                let chunk = try reader.read(upToCount: 64 * 1024)
+                if chunk.isEmpty { return total }
+                total += chunk.count
+            }
+        }
+        XCTAssertEqual(try read(limit: 300_000), 300_000)
+        XCTAssertThrowsError(try read(limit: 299_999)) { XCTAssertEqual($0 as? LogByteReader.Failure, .tooLarge) }
+    }
+
     // MARK: - Counting
 
     /// The signature test of N1: an archive counts what its plain log counts.
@@ -286,6 +317,50 @@ final class CodexArchivedSessionsTests: XCTestCase {
         XCTAssertEqual(scan(home: home, cache: cache), before, "the usage already counted stays")
         XCTAssertEqual(scan(home: home, cache: cache), before, "on every refresh")
         XCTAssertEqual(cachedNames(cache), ["rollout-d.jsonl", "rollout-e.jsonl"])
+        XCTAssertEqual(unreadableNames(cache), ["rollout-d.jsonl.zst"], "and the archive is remembered as unreadable")
+    }
+
+    private func unreadableNames(_ cache: URL) -> Set<String> {
+        Set((CostUsageCacheIO.load(provider: "codex", cacheRoot: cache).unreadableCodexArchives ?? [:]).keys
+            .map { ($0 as NSString).lastPathComponent })
+    }
+
+    /// An archive that could not be decoded is not decoded again on every
+    /// refresh, only once its size or modification date changes.
+    func test_an_unreadable_archive_is_tried_again_only_when_it_changes() throws {
+        let home = tmpRoot.appendingPathComponent("retry", isDirectory: true)
+        let folder = dayFolder(home, "2026-09-17")
+        let archive = folder.appendingPathComponent("rollout-i.jsonl.zst")
+        var frame = ZstdTestFrames.raw(rollout(id: "99999999-aaaa-4000-8000-000000000009", day: "17", events: 2))
+        // Block type 3 is reserved: the same bytes, one bit pair off, do not decode.
+        let blockHeader = 6
+        let good = frame[blockHeader]
+        frame[blockHeader] = good | 0b110
+        try write(frame, to: archive)
+        let written = try XCTUnwrap(try FileManager.default.attributesOfItem(atPath: archive.path)[.modificationDate] as? Date)
+        let cache = tmpRoot.appendingPathComponent("cache-retry")
+
+        XCTAssertEqual(totals(scan(home: home, cache: cache)), [0, 0, 0])
+        XCTAssertEqual(unreadableNames(cache), ["rollout-i.jsonl.zst"])
+
+        // Repaired in place, same size and same date: not looked at again.
+        frame[blockHeader] = good
+        try frame.write(to: archive)
+        try FileManager.default.setAttributes([.modificationDate: written], ofItemAtPath: archive.path)
+        XCTAssertEqual(totals(scan(home: home, cache: cache)), [0, 0, 0], "an unchanged archive is not decoded again")
+
+        // Its date changes: decoded, counted, and no longer remembered.
+        try FileManager.default.setAttributes([.modificationDate: written.addingTimeInterval(60)], ofItemAtPath: archive.path)
+        XCTAssertEqual(totals(scan(home: home, cache: cache)), [2_000, 0, 200])
+        XCTAssertEqual(unreadableNames(cache), [])
+
+        // Gone from the folder: nothing about it is kept.
+        frame[blockHeader] = good | 0b110
+        try frame.write(to: archive)
+        XCTAssertEqual(totals(scan(home: home, cache: cache)), [0, 0, 0])
+        try FileManager.default.removeItem(at: archive)
+        XCTAssertEqual(totals(scan(home: home, cache: cache)), [0, 0, 0])
+        XCTAssertEqual(unreadableNames(cache), [])
     }
 
     func test_a_corrupt_or_cut_off_archive_is_skipped_and_nothing_else_is() throws {
@@ -329,12 +404,13 @@ final class CodexArchivedSessionsTests: XCTestCase {
             "rollout-a.jsonl", "rollout-a.jsonl.zst",   // both: the log
             "rollout-b.jsonl.zst",                      // archive only
             "rollout-c.JSONL.ZST",                      // any case
+            "rollout-g.JSONL", "rollout-g.jsonl.zst",   // a twin in another case is still a twin
             "rollout-d.zst", "rollout-e.json.zst",      // not a JSONL archive
             "rollout-f.jsonl.gz", "notes.txt",
         ]
         let listed = CostUsageScanner.codexLogs(in: names.map { folder.appendingPathComponent($0) })
             .map(\.lastPathComponent)
-        XCTAssertEqual(Set(listed), ["rollout-a.jsonl", "rollout-b.jsonl.zst", "rollout-c.JSONL.ZST"])
+        XCTAssertEqual(Set(listed), ["rollout-a.jsonl", "rollout-b.jsonl.zst", "rollout-c.JSONL.ZST", "rollout-g.JSONL"])
     }
 }
 

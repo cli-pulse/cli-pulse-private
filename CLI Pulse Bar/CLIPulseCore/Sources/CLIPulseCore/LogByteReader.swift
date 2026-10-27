@@ -10,8 +10,9 @@ import Foundation
 /// The Codex CLI archives a finished session as `rollout-*.jsonl.zst` and
 /// deletes the `.jsonl`. Until 1.59.1 the scanner read only `.jsonl`, so once
 /// a session was archived its usage disappeared from This Mac, Projects,
-/// Sessions and the cloud: on the Mac this was found on, about 97 % of the
-/// last month's Codex events were in `.zst` files.
+/// Sessions and the cloud. For anyone on a current Codex CLI, every session
+/// that has ended is in a `.zst` file, so most of their Codex usage was
+/// missing.
 ///
 /// HOW
 /// ---
@@ -20,8 +21,9 @@ import Foundation
 /// plain log. Nothing decoded is written to disk. Memory stays bounded: one
 /// compressed and one decoded buffer of zstd's recommended streaming sizes
 /// (about 128 KB each), plus the decoder's window, which the frame header
-/// sets and zstd's default limit caps at 128 MB (`ZSTD_d_windowLogMax` 27).
-/// A whole archive is never held at once.
+/// sets and which is capped at 128 MB here (`windowLogMax`, 27; Codex's
+/// archives use 2 MB). A whole archive is never held at once, and one that
+/// decodes to more than `maxDecodedBytes` is refused as `tooLarge`.
 ///
 /// A corrupt or truncated archive is an error (`Failure`), never a short
 /// read: a caller that gets no error has the whole content.
@@ -32,7 +34,18 @@ final class LogByteReader {
         case corrupt
         /// The file ended inside a frame.
         case truncated
+        /// The content is longer than the limit it was opened with.
+        case tooLarge
     }
+
+    /// The largest window a frame may ask for, as a power of two: 2^27,
+    /// 128 MB, zstd's own default, set explicitly so it cannot drift.
+    static let windowLogMax: Int32 = 27
+
+    /// The most content one archive may decode to: 4 GiB, far above any
+    /// session log seen (a few hundred MB at most), so a malformed or
+    /// hostile file cannot keep the scan decoding forever.
+    static let defaultMaxDecodedBytes: Int64 = 4 << 30
 
     /// Whether `url` names a zstd-compressed log.
     static func isCompressed(_ url: URL) -> Bool {
@@ -46,12 +59,16 @@ final class LogByteReader {
     private var memoryPosition = 0
     private var closed = false
 
-    init(fileURL: URL) throws {
+    convenience init(fileURL: URL) throws {
+        try self.init(fileURL: fileURL, maxDecodedBytes: Self.defaultMaxDecodedBytes)
+    }
+
+    init(fileURL: URL, maxDecodedBytes: Int64) throws {
         let handle = try FileHandle(forReadingFrom: fileURL)
         self.handle = handle
         memory = nil
         if Self.isCompressed(fileURL) {
-            guard let decoder = ZstdDecoder() else {
+            guard let decoder = ZstdDecoder(maxDecodedBytes: maxDecodedBytes) else {
                 try? handle.close()
                 throw Failure.corrupt
             }
@@ -121,10 +138,17 @@ private final class ZstdDecoder {
     /// file, anything else means it was cut off mid-frame. False before any
     /// data, so an empty file is a truncated one too.
     private var atFrameEnd = false
+    private let maxDecodedBytes: Int64
+    private var decodedBytes: Int64 = 0
 
-    init?() {
+    init?(maxDecodedBytes: Int64) {
         guard let context = ZSTD_createDCtx() else { return nil }
+        guard ZSTD_isError(ZSTD_DCtx_setParameter(context, ZSTD_d_windowLogMax, LogByteReader.windowLogMax)) == 0 else {
+            ZSTD_freeDCtx(context)
+            return nil
+        }
         self.context = context
+        self.maxDecodedBytes = maxDecodedBytes
         inputCapacity = max(1, ZSTD_DStreamInSize())
         outputCapacity = max(1, ZSTD_DStreamOutSize())
         input = UnsafeMutableRawPointer.allocate(byteCount: inputCapacity, alignment: 16)
@@ -157,7 +181,11 @@ private final class ZstdDecoder {
             let consumed = inBuffer.pos - inputPosition
             inputPosition = inBuffer.pos
             if consumed > 0 || outBuffer.pos > 0 { atFrameEnd = hint == 0 }
-            if outBuffer.pos > 0 { return Data(bytes: output, count: outBuffer.pos) }
+            if outBuffer.pos > 0 {
+                decodedBytes += Int64(outBuffer.pos)
+                if decodedBytes > maxDecodedBytes { throw LogByteReader.Failure.tooLarge }
+                return Data(bytes: output, count: outBuffer.pos)
+            }
             if inputPosition == inputSize, sourceEnded {
                 if !atFrameEnd { throw LogByteReader.Failure.truncated }
                 return Data()

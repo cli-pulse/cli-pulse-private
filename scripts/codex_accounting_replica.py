@@ -37,7 +37,9 @@ Rules mirrored (Swift names in brackets):
     An archive is decoded in memory (Python 3.14's `compression.zstd`, the
     `zstandard` package, or the `zstd` CLI, whichever is there first); one
     that does not decode is not read, like a log whose first line is not
-    complete [LogByteReader].
+    complete [LogByteReader]. Not mirrored: the app keeps the count of a log
+    whose archive cannot be decoded [codexEntriesKeptForUnreadableArchives];
+    the replica has no cache, so it reads such a session as missing.
   * Lines [readCodexFirstLine, scanJsonl, parseCodexFile]: the first line
     (up to 1 MB) alone gives the file's identity; a file whose first line has
     no newline yet is left for the next refresh, and a last line without a
@@ -1104,7 +1106,7 @@ def _written_since(path: str, since_s: float | None, policy: str) -> bool:
 def logs_in(names: list[str], policy: str = "overlap") -> list[str]:
     """The Codex logs among one directory's entries [codexLogs(in:)]: every
     `*.jsonl`, and every `*.jsonl.zst` whose `*.jsonl` is not beside it."""
-    plain = {n for n in names if n.lower().endswith(".jsonl")}
+    plain = {n.lower() for n in names if n.lower().endswith(".jsonl")}
     out = []
     for name in names:
         if name.startswith("."):
@@ -1112,7 +1114,7 @@ def logs_in(names: list[str], policy: str = "overlap") -> list[str]:
         lower = name.lower()
         if lower.endswith(".jsonl"):
             out.append(name)
-        elif lower.endswith(".jsonl.zst") and policy != "plain-only" and name[: -len(".zst")] not in plain:
+        elif lower.endswith(".jsonl.zst") and policy != "plain-only" and lower[: -len(".zst")] not in plain:
             out.append(name)
     return out
 

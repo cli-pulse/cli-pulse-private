@@ -162,6 +162,18 @@ struct CostUsageCache: Codable {
     /// (`CostUsageScanner.claudeProjectLookupLimit`). Optional, so a cache
     /// written before 1.58 still loads; it has none yet.
     var projectRoots: [String: String]? = nil
+    /// Codex only (1.59.1, N1): the archives (`*.jsonl.zst`) that could not
+    /// be decoded, by path, with the size and modification date they had
+    /// then. An archive never changes once written, so one recorded here is
+    /// not decoded again until its size or date does; the entry goes when the
+    /// archive is no longer listed. Optional, so an older cache still loads.
+    var unreadableCodexArchives: [String: CostUsageFileStamp]? = nil
+}
+
+/// A file's size and modification date, as the cache compares them.
+struct CostUsageFileStamp: Codable, Equatable {
+    var mtimeUnixMs: Int64
+    var size: Int64
 }
 
 /// Codex (1.58, P1-4): what a rollout's first line says about where it ran.

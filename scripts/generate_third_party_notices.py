@@ -79,7 +79,7 @@ VENDORED = {
     # A target folder under SOURCES, not a Vendor folder.
     "CZstd": (
         "Zstandard (zstd), decoder",
-        "https://github.com/facebook/zstd",
+        "https://github.com/facebook/zstd (release v1.5.7)",
         "reading the Codex sessions the Codex CLI archives as .jsonl.zst "
         "(Mac only). Its single-file decoder is included in CLI Pulse. zstd "
         "is dual-licensed (BSD or GPLv2); CLI Pulse uses it under the BSD "

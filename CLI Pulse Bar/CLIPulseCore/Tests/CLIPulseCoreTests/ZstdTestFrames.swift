@@ -13,10 +13,12 @@ import Foundation
 enum ZstdTestFrames {
     /// One frame holding `content` in raw blocks of at most `blockSize` bytes
     /// (128 KB, the format's largest). No content size, no checksum.
-    static func raw(_ content: Data, blockSize: Int = 128 * 1024) -> Data {
+    /// `windowLog` is the window the header asks for (2^windowLog bytes,
+    /// at least 17 so a full raw block fits).
+    static func raw(_ content: Data, blockSize: Int = 128 * 1024, windowLog: Int = 17) -> Data {
         var frame = Data([0x28, 0xB5, 0x2F, 0xFD]) // magic number, little-endian 0xFD2FB528
         frame.append(0x00) // frame header descriptor: no content size, no checksum, no dictionary
-        frame.append(0x38) // window descriptor: exponent 7, mantissa 0 → 2^17 = 128 KB
+        frame.append(UInt8((windowLog - 10) << 3)) // window descriptor: exponent windowLog − 10, mantissa 0
         var offset = content.startIndex
         repeat {
             let end = min(content.endIndex, offset + blockSize)

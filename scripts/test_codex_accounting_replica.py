@@ -288,9 +288,11 @@ class ArchivedLogs(unittest.TestCase):
 
     def test_a_log_and_its_archive_side_by_side_list_the_log(self):
         names = ["rollout-a.jsonl", "rollout-a.jsonl.zst", "rollout-b.jsonl.zst", "rollout-c.JSONL.ZST",
-                 "rollout-d.zst", "rollout-e.json.zst", ".rollout-f.jsonl.zst", "notes.txt"]
-        self.assertEqual(sorted(replica.logs_in(names)), ["rollout-a.jsonl", "rollout-b.jsonl.zst", "rollout-c.JSONL.ZST"])
-        self.assertEqual(replica.logs_in(names, "plain-only"), ["rollout-a.jsonl"])
+                 "rollout-d.zst", "rollout-e.json.zst", ".rollout-f.jsonl.zst", "notes.txt",
+                 "rollout-g.JSONL", "rollout-g.jsonl.zst"]
+        self.assertEqual(sorted(replica.logs_in(names)),
+                         ["rollout-a.jsonl", "rollout-b.jsonl.zst", "rollout-c.JSONL.ZST", "rollout-g.JSONL"])
+        self.assertEqual(replica.logs_in(names, "plain-only"), ["rollout-a.jsonl", "rollout-g.JSONL"])
 
 
 class FirstLine(unittest.TestCase):
