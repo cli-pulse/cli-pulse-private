@@ -1,0 +1,3 @@
+For Codex accounts whose main limit is the weekly or 30-day one, the pace line now covers that whole window.
+
+• Codex: when the limit shown first on the card is the weekly or 30-day one, the pace line on the Providers tab and on Apple Watch is now based on that window's length. In the last 5 hours before the reset, it used to be based on 5 hours and could say the limit would run out within minutes.

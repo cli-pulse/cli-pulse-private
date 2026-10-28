@@ -1,0 +1,3 @@
+En las cuentas de Codex cuyo límite principal es el semanal o el de 30 días, la indicación de ritmo abarca ahora todo ese periodo.
+
+• Codex: cuando el límite que la tarjeta muestra primero es el semanal o el de 30 días, la indicación de ritmo en la pestaña Proveedores y en el Apple Watch se basa ahora en la duración de ese periodo. En las últimas 5 horas antes del reinicio se basaba en 5 horas y podía indicar que el límite se agotaría en minutos.

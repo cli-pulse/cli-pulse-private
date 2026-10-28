@@ -1,0 +1,5 @@
+Codex sessions archived by the Codex CLI are counted again, and the pace line for weekly and 30-day Codex limits is fixed.
+
+• Newer versions of the Codex CLI compress each finished session into a .jsonl.zst file and delete the original. CLI Pulse read only uncompressed files, so most past Codex usage was missing from the Overview, Projects, Sessions and cost figures, and from the usage this Mac syncs to your account. CLI Pulse now reads the compressed files as well, without unpacking them to disk, and counts each session once. After you update, the first refresh rereads your Codex history in the background.
+
+• Codex: when the limit shown first is the weekly or 30-day one, the pace line in the menu bar and on the card is now based on that window's length. In the last 5 hours before the reset, it used to be based on 5 hours and could say the limit would run out within minutes.
