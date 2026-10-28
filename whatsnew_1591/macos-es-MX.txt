@@ -1,0 +1,5 @@
+Las sesiones que archiva Codex CLI vuelven a contarse, y se corrige la indicación de ritmo de los límites semanal y de 30 días de Codex.
+
+• Las versiones recientes de Codex CLI comprimen cada sesión terminada en un archivo .jsonl.zst y borran el original. CLI Pulse solo leía archivos sin comprimir, así que la mayor parte del uso anterior de Codex faltaba en Resumen, Proyectos, Sesiones y los costos, y en el uso que este Mac sincroniza con tu cuenta. CLI Pulse lee ahora también los archivos comprimidos, sin descomprimirlos en el disco, y cuenta cada sesión una sola vez. Tras actualizar, la primera actualización vuelve a leer tu historial de Codex en segundo plano.
+
+• Codex: cuando el límite que se muestra primero es el semanal o el de 30 días, la indicación de ritmo en la barra de menús y en la tarjeta se basa ahora en la duración de ese periodo. En las últimas 5 horas antes del reinicio se basaba en 5 horas y podía indicar que el límite se agotaría en minutos.
