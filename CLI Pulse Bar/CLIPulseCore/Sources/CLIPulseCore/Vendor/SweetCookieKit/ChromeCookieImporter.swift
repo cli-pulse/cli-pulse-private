@@ -29,12 +29,18 @@ enum ChromeCookieImporter {
     enum ImportError: LocalizedError {
         case cookieDBNotFound(path: String)
         case keychainDenied
+        /// CLI Pulse (1.60, N2): reading the Safe Storage key needs the user to
+        /// approve a Keychain dialog, and this read is not one a person started,
+        /// so no dialog was shown. Not a denial: a manual refresh may ask.
+        case keychainApprovalNeeded
         case sqliteFailed(message: String)
 
         var errorDescription: String? {
             switch self {
             case let .cookieDBNotFound(path): "Chromium Cookies DB not found at \(path)."
             case .keychainDenied: "macOS Keychain denied access to Chrome Safe Storage."
+            case .keychainApprovalNeeded:
+                "Reading Chrome Safe Storage needs Keychain approval; it is asked for on a manual refresh."
             case let .sqliteFailed(message): "Failed to read Chromium cookies: \(message)"
             }
         }
@@ -76,29 +82,84 @@ enum ChromeCookieImporter {
             }
     }
 
+    /// CLI Pulse (1.60, N2) changes the order upstream used. Upstream derived the
+    /// Safe Storage key first and read the database second, so every Chromium
+    /// browser with a cookie store cost one Keychain lookup — a dialog, for an
+    /// app the item does not trust — even when the browser held no cookie for
+    /// the provider. Here the copied database is read first, and the key is
+    /// asked for only when a host-matching row is encrypted. The lookup may
+    /// show a dialog only when `allowKeychainInteraction` is true, which
+    /// `BrowserCookieAutoImporter` sets for a refresh a person started.
     static func loadCookies(
         from store: BrowserCookieStore,
         matchingDomains domains: [String],
-        domainMatch: BrowserCookieDomainMatch) throws -> [CookieRecord]
+        domainMatch: BrowserCookieDomainMatch,
+        allowKeychainInteraction: Bool = false) throws -> [CookieRecord]
     {
         guard let sourceDB = store.databaseURL else {
             throw ImportError.cookieDBNotFound(path: "Missing cookie DB for \(store.label)")
         }
-        let chromeKey = try Self.chromeSafeStorageKey(for: store.browser)
-        return try Self.readCookiesFromLockedChromeDB(
+        let rows = try Self.readRowsFromLockedChromeDB(
             sourceDB: sourceDB,
-            key: chromeKey,
             matchingDomains: domains,
             domainMatch: domainMatch)
+        guard rows.contains(where: \.needsSafeStorageKey) else {
+            return rows.compactMap { $0.record(key: nil) }
+        }
+        let chromeKey = try Self.chromeSafeStorageKey(
+            for: store.browser,
+            allowInteraction: allowKeychainInteraction,
+            passwordLookup: Self.passwordLookupOverrideForTesting ?? { service, account, allowInteraction in
+                Self.findGenericPassword(service: service, account: account, allowInteraction: allowInteraction)
+            })
+        return rows.compactMap { $0.record(key: chromeKey) }
+    }
+
+    /// A host-matching row as stored: the plain value, or the encrypted one
+    /// still to be decrypted.
+    struct CookieRow {
+        let hostKey: String
+        let name: String
+        let path: String
+        let expiresUTC: Int64
+        let isSecure: Bool
+        let isHTTPOnly: Bool
+        let plainValue: String?
+        let encryptedValue: Data?
+
+        /// Only a row with no plain value and a non-empty encrypted one needs the key.
+        var needsSafeStorageKey: Bool {
+            (self.plainValue ?? "").isEmpty && !(self.encryptedValue ?? Data()).isEmpty
+        }
+
+        func record(key: Data?) -> CookieRecord? {
+            let value: String
+            if let plain = self.plainValue, !plain.isEmpty {
+                value = plain
+            } else if let enc = self.encryptedValue, !enc.isEmpty, let key,
+                      let decrypted = ChromeCookieImporter.decryptChromiumValue(enc, key: key)
+            {
+                value = decrypted
+            } else {
+                return nil
+            }
+            return CookieRecord(
+                hostKey: self.hostKey,
+                name: self.name,
+                path: self.path,
+                expiresUTC: self.expiresUTC,
+                isSecure: self.isSecure,
+                isHTTPOnly: self.isHTTPOnly,
+                value: value)
+        }
     }
 
     // MARK: - DB copy helper
 
-    private static func readCookiesFromLockedChromeDB(
+    private static func readRowsFromLockedChromeDB(
         sourceDB: URL,
-        key: Data,
         matchingDomains: [String],
-        domainMatch: BrowserCookieDomainMatch) throws -> [CookieRecord]
+        domainMatch: BrowserCookieDomainMatch) throws -> [CookieRow]
     {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("sweet-cookie-kit-chrome-cookies-\(UUID().uuidString)", isDirectory: true)
@@ -117,20 +178,18 @@ enum ChromeCookieImporter {
 
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
-        return try Self.readCookies(
+        return try Self.readRows(
             fromDB: copiedDB.path,
-            key: key,
             matchingDomains: matchingDomains,
             domainMatch: domainMatch)
     }
 
     // MARK: - SQLite read
 
-    private static func readCookies(
+    private static func readRows(
         fromDB path: String,
-        key: Data,
         matchingDomains: [String],
-        domainMatch: BrowserCookieDomainMatch) throws -> [CookieRecord]
+        domainMatch: BrowserCookieDomainMatch) throws -> [CookieRow]
     {
         var db: OpaquePointer?
         if sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
@@ -154,35 +213,17 @@ enum ChromeCookieImporter {
         }
         defer { sqlite3_finalize(stmt) }
 
-        var out: [CookieRecord] = []
+        var out: [CookieRow] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
-            let hostKey = String(cString: sqlite3_column_text(stmt, 0))
-            let name = String(cString: sqlite3_column_text(stmt, 1))
-            let path = String(cString: sqlite3_column_text(stmt, 2))
-            let expires = sqlite3_column_int64(stmt, 3)
-            let isSecure = sqlite3_column_int(stmt, 4) != 0
-            let isHTTPOnly = sqlite3_column_int(stmt, 5) != 0
-
-            let plain = Self.readTextColumn(stmt, index: 6)
-            let enc = Self.readBlobColumn(stmt, index: 7)
-
-            let value: String
-            if let plain, !plain.isEmpty {
-                value = plain
-            } else if let enc, !enc.isEmpty, let decrypted = Self.decryptChromiumValue(enc, key: key) {
-                value = decrypted
-            } else {
-                continue
-            }
-
-            out.append(CookieRecord(
-                hostKey: hostKey,
-                name: name,
-                path: path,
-                expiresUTC: expires,
-                isSecure: isSecure,
-                isHTTPOnly: isHTTPOnly,
-                value: value))
+            out.append(CookieRow(
+                hostKey: String(cString: sqlite3_column_text(stmt, 0)),
+                name: String(cString: sqlite3_column_text(stmt, 1)),
+                path: String(cString: sqlite3_column_text(stmt, 2)),
+                expiresUTC: sqlite3_column_int64(stmt, 3),
+                isSecure: sqlite3_column_int(stmt, 4) != 0,
+                isHTTPOnly: sqlite3_column_int(stmt, 5) != 0,
+                plainValue: Self.readTextColumn(stmt, index: 6),
+                encryptedValue: Self.readBlobColumn(stmt, index: 7)))
         }
         return out
     }
@@ -202,17 +243,27 @@ enum ChromeCookieImporter {
 
     // MARK: - Keychain + crypto
 
-    static func chromeSafeStorageKey(for browser: Browser) throws -> Data {
-        try self.chromeSafeStorageKey(for: browser, passwordLookup: self.findGenericPassword)
-    }
-
     typealias SafeStoragePasswordLookup =
         @Sendable (_ service: String, _ account: String, _ allowInteraction: Bool) -> (
             status: OSStatus,
             password: String?)
 
+    /// Replaces the Keychain read in tests, for the task it is bound in.
+    @TaskLocal static var passwordLookupOverrideForTesting: SafeStoragePasswordLookup?
+
+    /// CLI Pulse (1.60, N2): the no-UI read always goes first, and a dialog is
+    /// allowed only when `allowInteraction` is true. Upstream read every label
+    /// with interaction allowed, whoever started the refresh.
+    ///
+    /// - An item this app may already read comes back from the no-UI read.
+    /// - None exists under any label: `.keychainDenied`, as before.
+    /// - One exists but needs approval, and no dialog is allowed:
+    ///   `.keychainApprovalNeeded`, which is not remembered as a denial.
+    /// - Dialog allowed: asked for each existing label in order, stopping at
+    ///   the first that answers or the first the person cancels.
     static func chromeSafeStorageKey(
         for browser: Browser,
+        allowInteraction: Bool,
         passwordLookup: @escaping SafeStoragePasswordLookup) throws -> Data
     {
         if BrowserCookieKeychainAccessGate.isDisabled {
@@ -228,16 +279,31 @@ enum ChromeCookieImporter {
 
         let labels = Self.safeStorageLabels(for: browser)
 
-        if let context = Self.preflightSafeStoragePrompt(labels: labels, passwordLookup: passwordLookup) {
-            BrowserCookieKeychainPromptHandler.handler?(context)
-        }
-
         var password: String?
+        var existing: [(service: String, account: String)] = []
         for label in labels {
-            let result = passwordLookup(label.service, label.account, true)
+            let result = passwordLookup(label.service, label.account, false)
             if let p = result.password {
                 password = p
                 break
+            }
+            if result.status != errSecItemNotFound { existing.append(label) }
+        }
+
+        if password == nil {
+            guard !existing.isEmpty else { throw ImportError.keychainDenied }
+            guard allowInteraction else { throw ImportError.keychainApprovalNeeded }
+            for label in existing {
+                BrowserCookieKeychainPromptHandler.handler?(BrowserCookieKeychainPromptContext(
+                    service: label.service,
+                    account: label.account,
+                    label: label.service))
+                let result = passwordLookup(label.service, label.account, true)
+                if let p = result.password {
+                    password = p
+                    break
+                }
+                if result.status == errSecUserCanceled || result.status == errSecAuthFailed { break }
             }
         }
         guard let password else { throw ImportError.keychainDenied }
@@ -334,27 +400,6 @@ enum ChromeCookieImporter {
         return String(value[i...])
     }
 
-    private static func preflightSafeStoragePrompt(
-        labels: [(service: String, account: String)],
-        passwordLookup: SafeStoragePasswordLookup) -> BrowserCookieKeychainPromptContext?
-    {
-        for label in labels {
-            let result = passwordLookup(label.service, label.account, false)
-            switch result.status {
-            case errSecSuccess:
-                if result.password != nil { return nil }
-            case errSecInteractionNotAllowed:
-                return BrowserCookieKeychainPromptContext(
-                    service: label.service,
-                    account: label.account,
-                    label: label.service)
-            default:
-                continue
-            }
-        }
-        return nil
-    }
-
     private static func safeStorageLabels(for browser: Browser) -> [(service: String, account: String)] {
         let labels = browser.safeStorageLabels
         if !labels.isEmpty { return labels }
@@ -377,6 +422,12 @@ enum ChromeCookieImporter {
             let context = LAContext()
             context.interactionNotAllowed = true
             query[kSecUseAuthenticationContext] = context
+            // CLI Pulse (1.60, N2): `interactionNotAllowed` alone can still
+            // show the legacy Allow/Deny dialog for a file-based Keychain item,
+            // which is what a browser's Safe Storage item is. The UI-fail flag
+            // makes that read fail with errSecInteractionNotAllowed instead
+            // (as `ZedCollector` and upstream CodexBar's no-UI query do).
+            query[kSecUseAuthenticationUI] = kSecUseAuthenticationUIFail
         }
 
         var result: CFTypeRef?

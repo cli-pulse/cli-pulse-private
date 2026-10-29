@@ -140,7 +140,8 @@ public struct BrowserCookieClient: Sendable {
                 let loaded = try ChromeCookieImporter.loadCookies(
                     from: store,
                     matchingDomains: query.domains,
-                    domainMatch: query.domainMatch)
+                    domainMatch: query.domainMatch,
+                    allowKeychainInteraction: query.allowsKeychainPrompt)
                 records = loaded.map { record in
                     BrowserCookieRecord(
                         domain: BrowserCookieDomainMatcher.normalizeDomain(record.hostKey),
@@ -366,6 +367,10 @@ extension BrowserCookieError {
             BrowserCookieError.notFound(browser: browser, details: error.localizedDescription)
         case .keychainDenied:
             BrowserCookieError.accessDenied(browser: browser, details: error.localizedDescription)
+        case .keychainApprovalNeeded:
+            // Not `.accessDenied`: nobody said no, so the caller must not
+            // remember it as a refusal (CLI Pulse 1.60, N2).
+            BrowserCookieError.loadFailed(browser: browser, details: error.localizedDescription)
         case .sqliteFailed:
             BrowserCookieError.loadFailed(browser: browser, details: error.localizedDescription)
         }

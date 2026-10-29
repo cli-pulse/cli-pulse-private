@@ -2437,11 +2437,24 @@ internal final class DataRefreshManager {
     /// Exposed as `internal` (not private) so AppState's public
     /// `requestRefresh()` can route manual refreshes through this same
     /// single-in-flight discipline.
-    func requestRefresh(using onRefreshRequested: @escaping @MainActor () async -> Void) {
+    ///
+    /// 1.60 (N2): `interaction` is bound for the whole refresh
+    /// (`RefreshInteraction.current`). The timer, the adaptive tick and the
+    /// helper's sync notice leave it `.background`; only
+    /// `AppState.requestManualRefresh()` passes `.userInitiated`.
+    @discardableResult
+    func requestRefresh(
+        _ interaction: RefreshInteraction = .background,
+        using onRefreshRequested: @escaping @MainActor () async -> Void
+    ) -> Task<Void, Never> {
         refreshTask?.cancel()
-        refreshTask = Task { @MainActor in
-            await onRefreshRequested()
+        let task = Task { @MainActor in
+            await RefreshInteraction.$current.withValue(interaction) {
+                await onRefreshRequested()
+            }
         }
+        refreshTask = task
+        return task
     }
 
     /// `internal nonisolated` (not `private`) so XCTest can call it
@@ -2604,10 +2617,25 @@ extension AppState {
     /// Do not `await` this; the Button is already disabled via `isLoading`.
     @MainActor
     public func requestRefresh() {
+        requestRefresh(.background)
+    }
+
+    /// 1.60 (N2): the refresh a person asked for — the refresh buttons and ⌘R
+    /// on the Mac. The one refresh allowed to show the macOS Keychain dialog
+    /// for a browser's Safe Storage item (`RefreshInteraction`). A refresh the
+    /// app starts after some other choice (a consent answer, a settings
+    /// switch) stays `requestRefresh()`.
+    @MainActor
+    public func requestManualRefresh() {
+        requestRefresh(.userInitiated)
+    }
+
+    @MainActor
+    private func requestRefresh(_ interaction: RefreshInteraction) {
         guard runtimeEnvironment.capabilities.allowsLiveCollection else {
             return
         }
-        dataRefreshManager.requestRefresh(using: refreshRequest())
+        dataRefreshManager.requestRefresh(interaction, using: refreshRequest())
     }
 
     #if os(macOS)

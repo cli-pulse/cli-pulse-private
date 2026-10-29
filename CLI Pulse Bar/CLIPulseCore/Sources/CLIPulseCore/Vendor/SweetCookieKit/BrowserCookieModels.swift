@@ -219,6 +219,9 @@ public struct BrowserCookieQuery: Sendable {
     public var includeExpired: Bool
     /// Reference date used to filter expired cookies.
     public var referenceDate: Date
+    /// CLI Pulse (1.60, N2): whether reading a Chromium Safe Storage key may
+    /// show the macOS Keychain dialog. Off unless a person started the read.
+    public var allowsKeychainPrompt: Bool
 
     /// Creates a query for filtering and converting cookies.
     /// - Parameters:
@@ -232,13 +235,15 @@ public struct BrowserCookieQuery: Sendable {
         domainMatch: BrowserCookieDomainMatch = .contains,
         origin: BrowserCookieOriginStrategy = .domainBased,
         includeExpired: Bool = false,
-        referenceDate: Date = Date())
+        referenceDate: Date = Date(),
+        allowsKeychainPrompt: Bool = false)
     {
         self.domains = domains
         self.domainMatch = domainMatch
         self.origin = origin
         self.includeExpired = includeExpired
         self.referenceDate = referenceDate
+        self.allowsKeychainPrompt = allowsKeychainPrompt
     }
 }
 
