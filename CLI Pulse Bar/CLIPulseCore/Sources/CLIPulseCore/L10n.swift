@@ -1296,6 +1296,16 @@ public enum L10n {
         public static var serverName: String { tr("settings.server_name") }
         public static var status: String { tr("settings.status") }
         public static var connected: String { tr("settings.connected") }
+        /// 1.60: the row under Status in Settings › General › Connection.
+        public static var lastUpload: String { tr("settings.last_upload") }
+        /// Its value before this Mac's first upload for the account.
+        public static var lastUploadNever: String { tr("settings.last_upload_never") }
+        /// The line under it when the last attempt failed: "(5m ago)".
+        public static func lastUploadFailed(_ when: String) -> String { tr("settings.last_upload_failed", when) }
+        /// The same with the HTTP status the server answered.
+        public static func lastUploadFailedHTTP(_ status: Int, _ when: String) -> String {
+            tr("settings.last_upload_failed_http", status, when)
+        }
         public static var disconnected: String { tr("settings.disconnected") }
         public static var paired: String { tr("settings.paired") }
         public static var notPaired: String { tr("settings.not_paired") }

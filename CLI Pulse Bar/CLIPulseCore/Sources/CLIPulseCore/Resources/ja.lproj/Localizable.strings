@@ -127,6 +127,10 @@
 "settings.server_name" = "Supabase（東京）";
 "settings.status" = "ステータス";
 "settings.connected" = "接続済み";
+"settings.last_upload" = "前回のクラウドアップロード";
+"settings.last_upload_never" = "まだありません";
+"settings.last_upload_failed" = "前回のアップロードに失敗しました（%@）";
+"settings.last_upload_failed_http" = "前回のアップロードに失敗しました（HTTP %1$d、%2$@）";
 "settings.disconnected" = "未接続";
 "settings.paired" = "同期済み";
 "settings.not_paired" = "未同期";

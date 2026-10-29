@@ -687,6 +687,9 @@ extension AppState {
             await completeAuthenticatedSignIn(session)
             isLoading = false
         case .unavailable:
+            // 1.60: no account on this launch, so no "Last cloud upload" of
+            // one; the next sign-in may be another account.
+            CloudUploadStatusStore.shared.reset()
             // iter19 (2026-04-29): pre-iter19 this was just `break`,
             // which left the AppState init's default
             // `selectedTab = .overview` intact. For a cold launch with
@@ -758,6 +761,8 @@ extension AppState {
         // Another account without a sign-out in between: the webhook filter
         // on screen is the previous account's (see `applySignedOutState`).
         if userId != session.userId { resetWebhookEventFilter() }
+        // 1.60: "Last cloud upload" was the other account's.
+        if !userId.isEmpty, userId != session.userId { CloudUploadStatusStore.shared.reset() }
         userId = session.userId
         userName = session.userName
         userEmail = session.userEmail
@@ -850,6 +855,8 @@ extension AppState {
     }
 
     func applySignedOutState() {
+        // 1.60: "Last cloud upload" belongs to the account signed out of.
+        CloudUploadStatusStore.shared.reset()
         isLoading = false
         isAuthenticated = false
         isPaired = false

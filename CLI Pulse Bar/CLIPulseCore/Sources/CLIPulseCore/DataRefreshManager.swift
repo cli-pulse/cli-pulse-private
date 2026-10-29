@@ -375,6 +375,11 @@ internal final class DataRefreshManager {
     /// `UploadOutcome`, logged here. The route bodies return it, so a new
     /// early return cannot leave a refresh unexplained: it does not compile.
     func refreshAll(context: Context, callbacks: Callbacks) async {
+        #if os(macOS)
+        // "Last cloud upload" takes this refresh's outcome only if no sign-out
+        // or switch of account came in between (1.60).
+        let statusGeneration = uploadOutcomes.statusStore.generation
+        #endif
         let callbacks = callbacks.observingLoading { [weak self] isLoading in
             guard let self else { return }
             if isLoading {
@@ -414,7 +419,7 @@ internal final class DataRefreshManager {
             outcome = await refreshCloud(context: context, callbacks: callbacks)
         }
         #if os(macOS)
-        uploadOutcomes.record(outcome, route: UploadRoute(route))
+        uploadOutcomes.record(outcome, route: UploadRoute(route), statusGeneration: statusGeneration)
         #endif
     }
 
