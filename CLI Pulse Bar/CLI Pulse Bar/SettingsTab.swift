@@ -136,9 +136,14 @@ struct SettingsTab: View {
 
             if usePasswordLogin {
                 // Password sign-in mode
-                TextField(L10n.settings.email, text: $email)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 11))
+                NoAutoFillTextField(
+                    placeholder: L10n.settings.email,
+                    text: $email,
+                    voiceOverLabel: L10n.settings.email,
+                    fontSize: 11,
+                    singleLine: true
+                )
+                .frame(maxWidth: .infinity, minHeight: 22)
 
                 SecureField(L10n.auth.passwordLabel, text: $password)
                     .textFieldStyle(.roundedBorder)
@@ -195,9 +200,14 @@ struct SettingsTab: View {
                     Text(L10n.auth.backToEmail).font(.system(size: 10))
                 }
             } else {
-                TextField(L10n.settings.email, text: $email)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 11))
+                NoAutoFillTextField(
+                    placeholder: L10n.settings.email,
+                    text: $email,
+                    voiceOverLabel: L10n.settings.email,
+                    fontSize: 11,
+                    singleLine: true
+                )
+                .frame(maxWidth: .infinity, minHeight: 22)
 
                 Button {
                     Task { await state.sendOTP(email: email) }
