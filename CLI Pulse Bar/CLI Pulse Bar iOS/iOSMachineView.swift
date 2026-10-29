@@ -30,6 +30,13 @@ struct iOSMachineView: View {
     @State private var actionError: String?
 
     private var device: DeviceRecord? { state.devices.first(where: { $0.id == deviceID }) }
+    /// 1.60 (C9): "Hide personal information" covers the device's name.
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
+
+    private func shownName(_ d: DeviceRecord) -> String {
+        PersonalInfoMask.deviceName(d.name, numbers: state.deviceNameNumbers, hidePersonalInfo: hidePersonalInfo)
+            ?? L10n.tab.machine
+    }
 
     var body: some View {
         ScrollView {
@@ -40,7 +47,7 @@ struct iOSMachineView: View {
                     // control actions below stay crisp + interactive.
                     Group {
                         systemCard(device)
-                        DeviceHealthCard(device: device)   // Sensors + Battery + thermal
+                        DeviceHealthCard(device: device, name: shownName(device))   // Sensors + Battery + thermal
                         powerCard(device)
                     }
                     .opacity(device.isReadingStale() ? 0.6 : 1.0)
@@ -57,7 +64,7 @@ struct iOSMachineView: View {
                 .frame(maxWidth: .infinity).padding(.top, 60)
             }
         }
-        .navigationTitle(device?.name ?? L10n.tab.machine)
+        .navigationTitle(device.map(shownName) ?? L10n.tab.machine)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await state.refreshAll() }
     }
@@ -173,7 +180,7 @@ struct iOSMachineView: View {
                     sendBoost(d)
                 }
             } message: {
-                Text(L10n.machine.boostConfirmBody(d.name))
+                Text(L10n.machine.boostConfirmBody(shownName(d)))
             }
         }
     }

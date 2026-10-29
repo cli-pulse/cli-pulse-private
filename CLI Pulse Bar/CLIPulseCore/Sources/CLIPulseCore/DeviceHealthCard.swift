@@ -7,8 +7,15 @@ import SwiftUI
 /// a Mac mini shows no battery and a fanless Air no fan. Read-only — no control.
 public struct DeviceHealthCard: View {
     public let device: DeviceRecord
+    /// The device's name as the caller shows it: through
+    /// `PersonalInfoMask.deviceName`, so "Hide personal information" applies
+    /// (1.60, C9). No default, so a caller cannot forget it.
+    public let name: String
 
-    public init(device: DeviceRecord) { self.device = device }
+    public init(device: DeviceRecord, name: String) {
+        self.device = device
+        self.name = name
+    }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -27,7 +34,7 @@ public struct DeviceHealthCard: View {
             Image(systemName: "memorychip")
                 .font(.system(size: 11))
                 .foregroundStyle(PulseTheme.accent)
-            Text(device.name)
+            Text(name)
                 .font(.system(size: 12, weight: .semibold))
                 .lineLimit(1)
             Spacer()

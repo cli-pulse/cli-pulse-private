@@ -158,7 +158,7 @@
 "settings.manage_providers" = "プロバイダー管理";
 "settings.advanced" = "詳細";
 "settings.hide_personal_info" = "個人情報を非表示";
-"settings.hide_personal_info_iphone_hint" = "メールアドレスを表示しません。「概要」「セッション」「アラート」と書き出したファイルでは、プロジェクトフォルダの名前とセッション名も表示しません。Apple Watch はペアリングした iPhone のこの設定に従います。アカウント名、デバイス名、「リモート操作」の内容は表示されたままです。";
+"settings.hide_personal_info_iphone_hint" = "メールアドレスとデバイス名を表示しません。「概要」「セッション」「アラート」と書き出したファイルでは、プロジェクトフォルダの名前とセッション名も表示しません。Apple Watch はペアリングした iPhone のこの設定に従います。アカウント名と、「リモート操作」に表示されるセッションの内容（フォルダ、コマンド、ターミナル出力など）は表示されたままです。";
 "settings.force_refresh" = "すべてのデータを強制更新";
 "settings.about" = "情報";
 "settings.version" = "バージョン";
@@ -616,7 +616,7 @@
 "advanced.background_sync_hint" = "iPhone、Apple Watch、Android 用にクラウドへ使用状況を同期";
 "advanced.background_sync_hint_local_mode" = "この Mac の使用状況をバックグラウンドで読み取ります。ローカルモードでは何もアップロードしません。";
 "advanced.full_details" = "詳細:";
-"advanced.hide_personal_info_help" = "メールアドレス、プロジェクトフォルダの名前とパス、セッション名を、画面にも書き出したファイルにも表示しません。";
+"advanced.hide_personal_info_help" = "メールアドレス、デバイス名、プロジェクトフォルダの名前とパス、セッション名を、画面にも書き出したファイルにも表示しません。";
 /* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */
 "advanced.track_git" = "Git アクティビティを追跡（Yield Score）";
 "advanced.track_git_hint" = "ハッシュ化したコミットメタデータのみを送信し、メッセージ、差分、パスはアップロードしません。収集するのは Companion CLI だけです。";
@@ -1687,6 +1687,8 @@
 "projects.unknown" = "不明";
 "projects.anonymous" = "プロジェクト %d";
 "projects.hidden" = "非表示のプロジェクト";
+"devices.anonymous" = "デバイス %d";
+"devices.hidden" = "非表示のデバイス";
 "projects.shown_of" = "%2$d 件のプロジェクトのうち上位 %1$d 件";
 "projects.help" = "各セッションを実行したフォルダごとに、この Mac のログから集計しています。\nこの一覧はアカウントに同期されません。";
 "projects.unknown_help" = "これらのセッションのログには、どのフォルダで実行したかが記録されていません。";

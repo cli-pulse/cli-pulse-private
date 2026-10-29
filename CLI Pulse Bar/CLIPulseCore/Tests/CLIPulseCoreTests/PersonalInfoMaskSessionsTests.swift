@@ -441,7 +441,7 @@ final class PersonalInfoMaskSessionsTests: XCTestCase {
 
     /// Settings › Advanced says what the switch hides, in every language.
     func testTheSwitchsLineNamesWhatItHides() {
-        XCTAssertEqual(L10n.advanced.hidePersonalInfoHelp, "在屏幕上和导出的文件中隐藏邮箱地址、项目文件夹的名称和路径，以及会话名称。")
+        XCTAssertEqual(L10n.advanced.hidePersonalInfoHelp, "在屏幕上和导出的文件中隐藏邮箱地址、设备名称、项目文件夹的名称和路径，以及会话名称。")
         XCTAssertEqual(L10n.projects.hidden, "隐藏的项目")
         for language in ["en", "zh-Hans", "zh-Hant", "ja", "ko", "es"] {
             LocaleOverrideStore.shared.set(language)
@@ -449,7 +449,7 @@ final class PersonalInfoMaskSessionsTests: XCTestCase {
             XCTAssertNotEqual(line, "advanced.hide_personal_info_help", language)
             XCTAssertFalse(line.isEmpty, language)
             if language != "en" {
-                XCTAssertNotEqual(line, "Hides email addresses, project folder names and paths, and session names, on screen and in exports.", language)
+                XCTAssertNotEqual(line, "Hides email addresses, device names, project folder names and paths, and session names, on screen and in exports.", language)
             }
         }
     }

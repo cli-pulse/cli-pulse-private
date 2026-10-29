@@ -35,6 +35,36 @@
    "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderAccountSetupCard.swift",
    "line": "\"\\(option.provider.rawValue), \\(option.accountLabel)\"",
    "reason": "Setup v2's account cards (the agent-setup wizard), which production does not show yet. When Setup v2 is turned on, these labels must go through PersonalInfoMask like every other place that names an account, and these four entries go away."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
+   "line": "let label = session.client_label?.trimmingCharacters(in: .whitespaces) ?? \"\"",
+   "reason": "Only compares the managed session's label with its device's name, to decide whether the row adds the device after its title. Neither is shown here; the title and the device go through managedSessionTitle and deviceName."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
+   "line": "let device = session.device_name?.trimmingCharacters(in: .whitespaces) ?? \"\"",
+   "reason": "Only compares the managed session's label with its device's name, to decide whether the row adds the device after its title. Neither is shown here; the title and the device go through managedSessionTitle and deviceName."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar Watch/WatchAlertsView.swift",
+   "line": "if alert.related_provider != nil || project != nil || alert.related_device_name != nil {",
+   "reason": "Only asks whether the alert names a device, to decide whether the Related section is drawn. The device row in it goes through PersonalInfoMask.deviceName."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/LANRemoteScreens.swift",
+   "line": "Text(a.title).font(.subheadline.weight(.semibold))",
+   "reason": "Remote Control's approval card: the tool's request the user is asked to approve (a command or a file). The iPhone's line under the switch says what Remote Control shows of a session is not hidden; the user cannot approve a request they cannot read."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/LANRemoteScreens.swift",
+   "line": "id: peer.id, name: peer.displayName, endpoint: parsed.endpoint,",
+   "reason": "Builds the connection target for a paired Mac reached by address. Not shown: the screens that name it go through PersonalInfoMask.pairedDeviceName."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/LANRemoteScreens.swift",
+   "line": "await MainActor.run { step = .succeeded(macName: peer.displayName) }",
+   "reason": "Keeps the paired Mac's name in the pairing step. The step's screen shows it through PersonalInfoMask.pairedDeviceName."
   }
  ]
 }

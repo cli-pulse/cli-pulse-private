@@ -12,6 +12,9 @@ import CoreImage.CIFilterBuiltins
 public struct LANRemoteControlSection: View {
     @ObservedObject private var agent: LANLinkAgent
     @State private var addrCopied = false
+    /// 1.60 (C9): with it on, a paired iPhone is "Device N", its place in the
+    /// list.
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     public init(agent: LANLinkAgent) {
         self.agent = agent
@@ -101,12 +104,13 @@ public struct LANRemoteControlSection: View {
 
                 if !agent.peers.isEmpty {
                     Divider().padding(.vertical, 2)
-                    ForEach(agent.peers) { peer in
+                    ForEach(Array(agent.peers.enumerated()), id: \.element.id) { position, peer in
                         HStack(spacing: 6) {
                             Image(systemName: "iphone")
                                 .font(.system(size: 10))
                                 .foregroundStyle(.secondary)
-                            Text(peer.displayName)
+                            Text(PersonalInfoMask.listedDeviceName(
+                                peer.displayName, position: position, hidePersonalInfo: hidePersonalInfo))
                                 .font(.system(size: 11))
                             Text(peer.pairedAt, style: .date)
                                 .font(.system(size: 10))
@@ -173,6 +177,9 @@ public struct LANRemoteControlSection: View {
 struct LANPairingInline: View {
     @ObservedObject var agent: LANLinkAgent
     @State private var now = Date()
+    /// 1.60 (C9): the iPhone being paired is "Device N", the place it will
+    /// have among the paired ones.
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
     @State private var copied = false
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -207,7 +214,8 @@ struct LANPairingInline: View {
                 }
 
             case let .awaitingApproval(sas, peerName):
-                Text(L10n.remote.pairApprovalPrompt(peerName))
+                Text(L10n.remote.pairApprovalPrompt(PersonalInfoMask.pairedDeviceName(
+                    peerName, peerID: nil, hidePersonalInfo: hidePersonalInfo, peers: agent.peers)))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -225,7 +233,9 @@ struct LANPairingInline: View {
             case let .succeeded(peerName):
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                    Text(L10n.remote.peerIsPaired(peerName)).font(.system(size: 11))
+                    Text(L10n.remote.peerIsPaired(PersonalInfoMask.pairedDeviceName(
+                        peerName, peerID: nil, hidePersonalInfo: hidePersonalInfo, peers: agent.peers)))
+                        .font(.system(size: 11))
                     Spacer()
                     Button(L10n.remote.done) { agent.dismissPairingResult() }.controlSize(.small)
                 }

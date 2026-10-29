@@ -452,6 +452,12 @@ public final class WatchAppState: ObservableObject {
         refreshTickCount = 0
     }
 
+    // MARK: - Device names
+
+    /// 1.60 (C9): the devices the Watch holds, numbered for "Device N"
+    /// (`DeviceNameNumbers`), for "Hide personal information".
+    var deviceNameNumbers: DeviceNameNumbers { .devices(devices) }
+
     // MARK: - Sessions clock
 
     /// 1.60 (59-05): the moment the Watch counts sessions and devices against

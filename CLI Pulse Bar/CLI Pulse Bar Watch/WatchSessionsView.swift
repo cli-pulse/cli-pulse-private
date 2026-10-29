@@ -31,7 +31,8 @@ struct WatchSessionsView: View {
                 if !state.sessions.isEmpty {
                     ForEach(runningSessions) { session in
                         NavigationLink {
-                            WatchSessionDetailView(session: session, showCost: state.showCost)
+                            WatchSessionDetailView(session: session, showCost: state.showCost,
+                                                   deviceNumbers: state.deviceNameNumbers)
                         } label: {
                             SessionCard(session: session, showCost: state.showCost)
                         }
@@ -39,7 +40,8 @@ struct WatchSessionsView: View {
                     }
                     ForEach(otherSessions) { session in
                         NavigationLink {
-                            WatchSessionDetailView(session: session, showCost: state.showCost)
+                            WatchSessionDetailView(session: session, showCost: state.showCost,
+                                                   deviceNumbers: state.deviceNameNumbers)
                         } label: {
                             SessionCompactRow(session: session)
                         }
@@ -232,6 +234,8 @@ struct ActivitySpark: View {
 struct WatchSessionDetailView: View {
     let session: SessionRecord
     let showCost: Bool
+    /// 1.60 (C9): the devices the Watch holds, numbered for "Device N".
+    var deviceNumbers: DeviceNameNumbers = .none
     /// v1.58 (P1-6): "Hide personal information", the iPhone's choice
     /// (`PersonalInfoMask.adoptPhoneChoice`): the title and project are
     /// masked. No project numbers: the Watch has no scan.
@@ -269,7 +273,9 @@ struct WatchSessionDetailView: View {
                     value: PersonalInfoMask.sessionDetailProject(
                         session, numbers: .none, hidePersonalInfo: hidePersonalInfo),
                     icon: "folder")
-                WatchMetricRow(label: L10n.detail.device, value: session.device_name, icon: "desktopcomputer")
+                WatchMetricRow(label: L10n.detail.device, value: PersonalInfoMask.deviceName(
+                    session.device_name, numbers: deviceNumbers, hidePersonalInfo: hidePersonalInfo) ?? "",
+                    icon: "desktopcomputer")
                 WatchMetricRow(label: L10n.detail.started, value: RelativeTime.format(session.started_at), icon: "clock")
             }
 

@@ -412,7 +412,7 @@ struct PulseHomeView: View {
                     NavigationLink {
                         WatchMachineDetailView(device: d)
                     } label: {
-                        WatchMachineCard(device: d, now: state.sessionsClock())
+                        WatchMachineCard(device: d, now: state.sessionsClock(), numbers: state.deviceNameNumbers)
                     }
                     .buttonStyle(.plain)
                 }

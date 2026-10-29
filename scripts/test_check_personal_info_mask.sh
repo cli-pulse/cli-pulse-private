@@ -366,5 +366,36 @@ new_tree; view 'Text(chip.project)'
 allowlist '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar/V.swift", "line": "Text(chip.project)", "reason": "A made-up chip whose project is a placeholder the app wrote, not a folder."}]}'
 expect 0 "an allowlisted project read with a reason passes"
 
+# v1.60 (C9): device names.
+new_tree; view 'Label(session.device_name, systemImage: "desktopcomputer")'
+expect 1 "a session's device shown as stored fails"
+
+new_tree; view_in "$IOS" 'if let device = alert.related_device_name { chipView(icon: "desktopcomputer", text: device) }'
+expect 1 "an alert's device read into a local and shown fails"
+
+new_tree; view_in "$WATCH" 'Text(device.name)'
+expect 1 "the Watch machine card back on device.name fails"
+
+new_tree; view 'Text(row.clientLabel ?? ProviderDisplay.defaultLabel(for: row.provider))'
+expect 1 "a managed session's label (an iPhone's name) shown as stored fails"
+
+new_tree; mkdir -p "$T/$CORE"; printf '%s\n' 'Text(peer.displayName)' > "$T/$CORE/LANRemoteControlSection.swift"
+expect 1 "Remote Control's paired list in CLIPulseCore is scanned, and peer.displayName fails"
+
+new_tree; view 'struct V: View {
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
+    var body: some View {
+        if let device = PersonalInfoMask.deviceName(session.device_name, numbers: n, hidePersonalInfo: hidePersonalInfo) {
+            Label(device, systemImage: "desktopcomputer")
+        }
+        Text(PersonalInfoMask.deviceName(device.name, numbers: n, hidePersonalInfo: hidePersonalInfo) ?? "")
+        Text(PersonalInfoMask.listedDeviceName(peer.displayName, position: 0, hidePersonalInfo: hidePersonalInfo))
+        Text(PersonalInfoMask.pairedDeviceName(mac.name, peerID: nil, hidePersonalInfo: hidePersonalInfo, peers: p))
+        Text(PersonalInfoMask.managedSessionTitle(clientLabel: s.client_label, deviceName: s.device_name,
+             provider: s.provider, numbers: n, hidePersonalInfo: hidePersonalInfo))
+    }
+}'
+expect 0 "device names and managed labels read inside the mask pass"
+
 echo "check_personal_info_mask: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

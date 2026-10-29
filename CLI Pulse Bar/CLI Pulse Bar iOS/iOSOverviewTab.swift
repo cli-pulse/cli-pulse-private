@@ -324,7 +324,9 @@ struct iOSOverviewTab: View {
                     NavigationLink {
                         iOSMachineView(deviceID: device.id)
                     } label: {
-                        DeviceHealthCard(device: device)
+                        DeviceHealthCard(device: device, name: PersonalInfoMask.deviceName(
+                            device.name, numbers: state.deviceNameNumbers,
+                            hidePersonalInfo: hidePersonalInfo) ?? "")
                     }
                     .buttonStyle(.plain)
                 }

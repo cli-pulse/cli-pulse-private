@@ -7,10 +7,11 @@ import XCTest
 /// The Mac's line says the switch hides project folders and session names "on
 /// screen and in exports". On iPhone that is not true: Remote Control's New
 /// session sheet lists the Mac's working directories, its terminal shows a
-/// session's own output, its approval cards show a tool's command or file,
-/// Settings shows the account's name, and no device's name is masked
-/// anywhere. So the iPhone has a line of its own, which names the places the
-/// switch works by the names the app gives them and says what it leaves alone.
+/// session's own output, its approval cards show a tool's command or file, and
+/// Settings shows the account's name. So the iPhone has a line of its own,
+/// which names the places the switch works by the names the app gives them and
+/// says what it leaves alone. Since 1.60 (C9) it also hides device names,
+/// everywhere, Remote Control included.
 ///
 /// The same line is shown on iPad, which cannot pair with an Apple Watch
 /// (`PhoneSessionManager` sends nothing unless `WCSession.isSupported()`), and
@@ -34,22 +35,28 @@ final class HidePersonalInfoIPhoneLineTests: XCTestCase {
         LocaleOverrideStore.shared.set("zh-Hans")
         XCTAssertEqual(
             L10n.settings.hidePersonalInfoIPhoneHint,
-            "隐藏邮箱地址；在「概览」「会话」「告警」和导出的文件中，还会隐藏项目文件夹的名称和会话名称。"
+            "隐藏邮箱地址和设备名称；在「概览」「会话」「告警」和导出的文件中，还会隐藏项目文件夹的名称和会话名称。"
                 + "Apple\u{00A0}Watch 遵循与其配对的 iPhone 上的此开关。"
-                + "账户名称、设备名称，以及「远程控制」中的任何内容，都不会被隐藏。")
+                + "账户名称，以及「远程控制」中显示的会话内容（例如其文件夹、命令和终端输出），都不会被隐藏。")
     }
 
-    /// What each language says stays visible: the account's name, device
-    /// names and everything in Remote Control, and the words that say they
-    /// are not hidden.
+    /// What each language says stays visible: the account's name and what
+    /// Remote Control shows of a session, and the words that say they are
+    /// not hidden.
     private static let notHidden: [String: [String]] = [
-        "en": ["Not hidden:", "your account name", "device names", "anything in Remote Control"],
-        "zh-Hans": ["都不会被隐藏", "账户名称", "设备名称", "「远程控制」中的任何内容"],
-        "zh-Hant": ["都不會隱藏", "帳號名稱", "裝置名稱", "「遠端控制」中的任何內容"],
-        "ja": ["表示されたまま", "アカウント名", "デバイス名", "「リモート操作」の内容"],
-        "ko": ["숨기지 않습니다", "계정 이름", "기기 이름", "'원격 제어'의 내용"],
-        "es": ["Siguen visibles", "el nombre de tu cuenta", "los nombres de los dispositivos",
-               "todo lo que se ve en Control remoto"],
+        "en": ["Not hidden:", "your account name", "what Remote Control shows of a session"],
+        "zh-Hans": ["都不会被隐藏", "账户名称", "「远程控制」中显示的会话内容"],
+        "zh-Hant": ["都不會隱藏", "帳號名稱", "「遠端控制」中顯示的工作階段內容"],
+        "ja": ["表示されたまま", "アカウント名", "「リモート操作」に表示されるセッションの内容"],
+        "ko": ["숨기지 않습니다", "계정 이름", "'원격 제어'에 표시되는 세션 내용"],
+        "es": ["Siguen visibles", "el nombre de tu cuenta", "lo que Control remoto muestra de una sesión"],
+    ]
+
+    /// 1.60 (C9): device names, in the first sentence, which says what is
+    /// hidden everywhere, not in the one that says what is not.
+    private static let deviceNames: [String: String] = [
+        "en": "device names", "zh-Hans": "设备名称", "zh-Hant": "裝置名稱",
+        "ja": "デバイス名", "ko": "기기 이름", "es": "los nombres de los dispositivos",
     ]
 
     /// The Watch sentence, in each language: it follows the switch on the
@@ -129,6 +136,11 @@ final class HidePersonalInfoIPhoneLineTests: XCTestCase {
             for phrase in Self.notHidden[language]! {
                 XCTAssertTrue(line.contains(phrase), "\(language): lost \"\(phrase)\": \(line)")
             }
+            let devices = Self.deviceNames[language]!
+            XCTAssertTrue(Self.sentences(line).first?.contains(devices) == true,
+                          "\(language): the first sentence does not say it hides \"\(devices)\": \(line)")
+            XCTAssertEqual(line.components(separatedBy: devices).count - 1, 1,
+                           "\(language): \"\(devices)\" is named twice, once perhaps as not hidden: \(line)")
             // Not the Mac's promise.
             XCTAssertNotEqual(line, L10n.advanced.hidePersonalInfoHelp, language)
             XCTAssertFalse(line.contains(Self.paths[language]!), "\(language): claims paths: \(line)")
@@ -161,9 +173,10 @@ final class HidePersonalInfoIPhoneLineTests: XCTestCase {
     }
 
     /// What the line says, the code does. Hidden: the three tabs it names read
-    /// the switch, both exports it offers are told it, and the Watch is sent
-    /// it. Not hidden: Remote Control's screens never read it, and there is no
-    /// mask for a device's name. If one of these changes, change the line.
+    /// the switch, both exports it offers are told it, the Watch is sent it,
+    /// and device names go through the mask, Remote Control's included. Not
+    /// hidden: the New session sheet's folders and the terminal never read it.
+    /// If one of these changes, change the line.
     func testTheLineSaysWhatTheIPhoneDoes() throws {
         let reads = "@AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo"
         for file in ["iOSOverviewTab.swift", "iOSSessionsTab.swift", "iOSAlertsTab.swift"] {
@@ -179,16 +192,31 @@ final class HidePersonalInfoIPhoneLineTests: XCTestCase {
             .contains("PersonalInfoMask.addPhoneChoice("), "the Watch is no longer sent the switch")
 
         let remote = try Self.code("CLIPulseCore/Sources/CLIPulseCore/LANRemoteScreens.swift")
-        XCTAssertTrue(remote.contains("struct LANNewSessionSheet"), "the New session sheet moved; recheck what it shows")
-        for word in ["PersonalInfoMask", "hidePersonalInfo"] {
-            XCTAssertFalse(remote.contains(word),
-                           "Remote Control now reads the switch: the line still says it does not hide it")
+        // The session's own content is not masked: the New session sheet (the
+        // Mac's folders) never reads the switch, and the terminal reads it for
+        // its title alone (the session's label, which an iPhone sets to its
+        // own name), never for the output.
+        func body(of screen: String) throws -> Substring {
+            let start = try XCTUnwrap(remote.range(of: screen), "\(screen) moved; recheck what it shows")
+            let next = [remote[start.upperBound...].range(of: "\nstruct ")?.lowerBound,
+                        remote[start.upperBound...].range(of: "\npublic struct ")?.lowerBound]
+                .compactMap { $0 }.min() ?? remote.endIndex
+            return remote[start.lowerBound..<next]
         }
-        for file in ["PersonalInfoMask.swift", "PersonalInfoMaskSessions.swift"] {
-            let mask = try Self.code("CLIPulseCore/Sources/CLIPulseCore/" + file)
-            XCTAssertFalse(mask.range(of: #"func\s+device"#, options: .regularExpression) != nil,
-                           "\(file) masks a device's name now: the line still says it does not")
-        }
+        XCTAssertFalse(try body(of: "struct LANNewSessionSheet").contains("hidePersonalInfo"),
+                       "the New session sheet now reads the switch: the line still says its folders are not hidden")
+        let terminal = try body(of: "public struct LANTerminalScreen")
+        // The declaration, and the one argument `hidePersonalInfo: hidePersonalInfo`.
+        XCTAssertEqual(terminal.components(separatedBy: "hidePersonalInfo").count - 1, 3,
+                       "the terminal reads the switch for more than its title: the line still says its output is not hidden")
+        XCTAssertTrue(terminal.contains("PersonalInfoMask.managedSessionTitle("), "the terminal's title is not masked")
+        // Device names: Remote Control's lists and titles go through the mask.
+        XCTAssertGreaterThanOrEqual(remote.components(separatedBy: "PersonalInfoMask.pairedDeviceName(").count - 1
+                                    + remote.components(separatedBy: "PersonalInfoMask.listedDeviceName(").count - 1, 6,
+                                    "Remote Control shows a device's name outside the mask")
+        let mask = try Self.code("CLIPulseCore/Sources/CLIPulseCore/PersonalInfoMaskDevices.swift")
+        XCTAssertNotNil(mask.range(of: #"static\s+func\s+deviceName\("#, options: .regularExpression),
+                        "the device-name mask is gone: the line says device names are hidden")
     }
 
     // MARK: - The scan consent (local_scan_consent.derived_detail)

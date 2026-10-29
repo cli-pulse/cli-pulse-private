@@ -79,6 +79,18 @@ This reads the app targets' Swift (and one Core file) and checks five things:
      too) sets the body from `PersonalInfoMask.alertText(…)` with
      `hidePersonalInfo: PersonalInfoMask.isOn()`.
 
+  6. DEVICE NAMES ARE READ ONLY INSIDE THE MASK (v1.60, C9).
+     A session's device (`.device_name`) and an alert's (`.related_device_name`)
+     are read only inside `PersonalInfoMask.deviceName(…)` (a session's device
+     also inside `managedSessionTitle(…)`); a managed session's label
+     (`.client_label`, `.clientLabel`), which an iPhone sets to its own name,
+     only inside `PersonalInfoMask.managedSessionTitle(…)`. A device's own
+     name, found by the receiver the views use (`device.name`, `d.name`,
+     `peer.displayName`, `mac.name`), only inside `deviceName(…)`,
+     `listedDeviceName(…)` or `pairedDeviceName(…)`. The views in
+     CLIPulseCore that name a device (`CORE_VIEWS`: the device health card and
+     Remote Control's screens on both ends) are scanned with the app targets.
+
 WHAT IT CANNOT SEE
   A label, project or session name that reaches the screen under another name
   (a Core type that copies it into a field called something else) is invisible
@@ -113,6 +125,13 @@ PHONE = f"{APPLE}/CLI Pulse Bar iOS/PhoneSessionManager.swift"
 WATCH = f"{APPLE}/CLI Pulse Bar Watch/WatchSessionManager.swift"
 NOTIFY = f"{APPLE}/CLIPulseCore/Sources/CLIPulseCore/DataRefreshManager.swift"
 ALLOWLIST = "scripts/personal_info_mask_allowlist.json"
+# v1.60 (C9): views in CLIPulseCore that show a device's name, scanned like the
+# app targets' files.
+CORE_VIEWS = [
+    f"{APPLE}/CLIPulseCore/Sources/CLIPulseCore/DeviceHealthCard.swift",
+    f"{APPLE}/CLIPulseCore/Sources/CLIPulseCore/LANRemoteScreens.swift",
+    f"{APPLE}/CLIPulseCore/Sources/CLIPulseCore/LANRemoteControlSection.swift",
+]
 
 # The fields that hold something personal, and the calls that turn each into
 # what may be shown. A read of a field outside every one of its calls fails.
@@ -126,6 +145,11 @@ FIELD_MASKS = {
     "detailProject": {"projectName"},
     "related_project_name": {"projectName"},
     "related_session_name": set(),
+    # v1.60 (C9): device names.
+    "device_name": {"deviceName", "managedSessionTitle"},
+    "related_device_name": {"deviceName"},
+    "client_label": {"managedSessionTitle"},
+    "clientLabel": {"managedSessionTitle"},
 }
 ACCOUNT_FIELDS = {"accountLabel", "accountEmail"}
 
@@ -161,6 +185,9 @@ RECEIVER_READS = [
      "PersonalInfoMask.sessionTitle"),
     (re.compile(r"\b(proj|project|topProject)\s*\??\s*\.\s*(name)\b"), {"projectName"},
      "PersonalInfoMask.projectName"),
+    # v1.60 (C9): a device's own name.
+    (re.compile(r"\b(device|d|peer|mac)\s*\??\s*\.\s*(name|displayName)\b"),
+     {"deviceName", "listedDeviceName", "pairedDeviceName"}, "PersonalInfoMask.deviceName"),
 ]
 LITERAL_SWITCH = re.compile(r"\bhidePersonalInfo\s*:\s*(true|false)\b")
 SWITCH_DECL = re.compile(r"\b(?:var|let)\s+hidePersonalInfo\b")
@@ -527,13 +554,22 @@ def main() -> int:
     scanned = 0
     showing = 0
     exports = 0
+    files: list[Path] = []
     for rel_dir in TARGETS:
         base = root / rel_dir
         if not base.is_dir():
             if real_tree:
                 errors.append(f"{rel_dir} not found: the gate is not looking where the app targets are")
             continue
-        for path in sorted(base.rglob("*.swift")):
+        files += sorted(base.rglob("*.swift"))
+    for rel_file in CORE_VIEWS:
+        path = root / rel_file
+        if path.is_file():
+            files.append(path)
+        elif real_tree:
+            errors.append(f"{rel_file} not found: the gate is not looking at the views that name a device")
+    if True:
+        for path in files:
             if "/.build/" in str(path):
                 continue
             scanned += 1

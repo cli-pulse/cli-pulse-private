@@ -98,7 +98,7 @@ struct iOSAlertsTab: View {
                         .padding(.vertical, 40)
                     } else {
                         ForEach(filteredAlerts) { alert in
-                            iOSAlertRow(alert: alert) {
+                            iOSAlertRow(alert: alert, deviceNumbers: state.deviceNameNumbers) {
                                 await state.acknowledgeAlert(alert)
                             } onResolve: {
                                 await state.resolveAlert(alert)
@@ -142,6 +142,8 @@ struct iOSAlertsTab: View {
 
 struct iOSAlertRow: View {
     let alert: AlertRecord
+    /// 1.60 (C9): the account's devices, numbered for "Device N".
+    let deviceNumbers: DeviceNameNumbers
     let onAcknowledge: () async -> Void
     let onResolve: () async -> Void
     let onSnooze: (Int) async -> Void
@@ -192,7 +194,8 @@ struct iOSAlertRow: View {
                     }
                     .buttonStyle(.plain)
                 }
-                if let device = alert.related_device_name {
+                if let device = PersonalInfoMask.deviceName(
+                    alert.related_device_name, numbers: deviceNumbers, hidePersonalInfo: hidePersonalInfo) {
                     chipView(icon: "desktopcomputer", text: device)
                 }
 

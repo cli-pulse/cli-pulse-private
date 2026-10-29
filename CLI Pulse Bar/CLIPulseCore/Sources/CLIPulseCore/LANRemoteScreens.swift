@@ -22,6 +22,9 @@ import Network
 public struct LANNearbyMacsView: View {
     @StateObject private var browser = LANMacBrowser()
     @State private var peers: [LANPairing.PairedPeer] = []
+    /// 1.60 (C9): with it on, a Mac is "Device N" by its place in this list:
+    /// the paired ones first, then the others as they are discovered.
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
     @State private var pairingTarget: LANMacBrowser.DiscoveredMac?
     @State private var showScanner = false
 
@@ -68,13 +71,14 @@ public struct LANNearbyMacsView: View {
 
             if !peers.isEmpty {
                 Section(L10n.remote.paired) {
-                    ForEach(peers) { peer in
+                    ForEach(Array(peers.enumerated()), id: \.element.id) { position, peer in
                         let discovered = steady.contains { $0.id == peer.id }
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
                                 Image(systemName: "desktopcomputer")
                                 VStack(alignment: .leading) {
-                                    Text(peer.displayName)
+                                    Text(PersonalInfoMask.listedDeviceName(
+                                        peer.displayName, position: position, hidePersonalInfo: hidePersonalInfo))
                                     Text(peer.pairedAt, style: .date).font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
@@ -119,6 +123,14 @@ public struct LANNearbyMacsView: View {
         }
     }
 
+    /// A discovered Mac's name as the list shows it (`hidePersonalInfo`).
+    private func shownName(_ mac: LANMacBrowser.DiscoveredMac) -> String {
+        let unpaired = browser.macs.filter { !$0.isPairingService && !peers.map(\.id).contains($0.id) }
+        let position = peers.firstIndex { $0.id == mac.id }
+            ?? peers.count + (unpaired.firstIndex { $0.id == mac.id } ?? unpaired.count)
+        return PersonalInfoMask.listedDeviceName(mac.name, position: position, hidePersonalInfo: hidePersonalInfo)
+    }
+
     private func savedAddress(_ peer: LANPairing.PairedPeer) -> String? {
         LANPeerAddressStore.address(for: peer.id)?.displayString
     }
@@ -127,7 +139,7 @@ public struct LANNearbyMacsView: View {
         HStack {
             Image(systemName: "desktopcomputer").foregroundStyle(color)
             VStack(alignment: .leading) {
-                Text(mac.name)
+                Text(shownName(mac))
                 Text(subtitle).font(.caption).foregroundStyle(color)
             }
             Spacer()
@@ -152,6 +164,9 @@ public struct LANDirectConnectView: View {
 
     public init(peer: LANPairing.PairedPeer) { self.peer = peer }
 
+    /// 1.60 (C9): "Device N" by the Mac's place among the paired ones.
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
+
     public var body: some View {
         Form {
             Section {
@@ -175,7 +190,7 @@ public struct LANDirectConnectView: View {
                 .disabled(connecting || typed.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
-        .navigationTitle(peer.displayName)
+        .navigationTitle(PersonalInfoMask.pairedDeviceName(peer.displayName, peerID: peer.id, hidePersonalInfo: hidePersonalInfo))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             if typed.isEmpty, let saved = LANPeerAddressStore.address(for: peer.id) {
@@ -231,6 +246,9 @@ public struct LANPairingFlowView: View {
     @State private var step: Step = .scanning
     @State private var pasted = ""
     @State private var task: Task<Void, Never>?
+    /// 1.60 (C9): the Mac being paired is "Device N", the place it has (or
+    /// will have) among the paired ones.
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     public init(browser: LANMacBrowser, initialPayload: LANPairing.QRPayload?) {
         self.browser = browser
@@ -267,7 +285,7 @@ public struct LANPairingFlowView: View {
                     ProgressView(L10n.remote.connecting)
 
                 case let .compare(sas, macName):
-                    Text(macName).font(.headline)
+                    Text(PersonalInfoMask.pairedDeviceName(macName, peerID: nil, hidePersonalInfo: hidePersonalInfo)).font(.headline)
                     Text(L10n.remote.compareCode)
                         .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     Text(sas)
@@ -279,7 +297,8 @@ public struct LANPairingFlowView: View {
 
                 case let .succeeded(macName):
                     Image(systemName: "checkmark.circle.fill").font(.system(size: 56)).foregroundStyle(.green)
-                    Text(L10n.remote.peerIsPaired(macName)).font(.headline)
+                    Text(L10n.remote.peerIsPaired(
+                        PersonalInfoMask.pairedDeviceName(macName, peerID: nil, hidePersonalInfo: hidePersonalInfo))).font(.headline)
                     Button(L10n.remote.done) { dismiss() }.buttonStyle(.borderedProminent)
 
                 case let .failed(why):
@@ -463,6 +482,10 @@ public struct LANMacSessionsView: View {
 
     private var controlAllowed: Bool { hello?.controlAllowed ?? false }
 
+    /// 1.60 (C9): the Mac's name, and a session label an iPhone set to its
+    /// own name, follow "Hide personal information".
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
+
     public var body: some View {
         List {
             Section {
@@ -497,7 +520,9 @@ public struct LANMacSessionsView: View {
                                 LANTerminalScreen(client: client, session: s, controlAllowed: controlAllowed)
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(s.clientLabel.map { ProviderDisplay.clientLabelDisplay($0, provider: s.provider) } ?? s.id)
+                                    Text(PersonalInfoMask.managedSessionTitle(
+                                        clientLabel: s.clientLabel, deviceName: nil, provider: s.provider,
+                                        numbers: .none, hidePersonalInfo: hidePersonalInfo))
                                         .lineLimit(1)
                                     Text("\(ProviderDisplay.displayName(for: s.provider)) · \(L10n.status.localized(s.status))").font(.caption).foregroundStyle(.secondary)
                                     if let n = pendingBySession[s.id], n > 0 {
@@ -527,7 +552,7 @@ public struct LANMacSessionsView: View {
                 }
             }
         }
-        .navigationTitle(peer.displayName)
+        .navigationTitle(PersonalInfoMask.pairedDeviceName(peer.displayName, peerID: peer.id, hidePersonalInfo: hidePersonalInfo))
         .toolbar {
             if controlAllowed, let client, let hello, hello.helperReachable {
                 ToolbarItem(placement: .primaryAction) {
@@ -743,6 +768,11 @@ public struct LANTerminalScreen: View {
     @State private var expired: Set<String> = []
     @State private var controlRefused: String?
 
+    /// 1.60 (C9): the title is the session's label, which an iPhone sets to
+    /// its own name. The screen's content, the session's output, is not
+    /// masked.
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
+
     public init(client: LANSessionControlClient, session: SessionControlSummary, controlAllowed: Bool = false) {
         self.client = client
         self.session = session
@@ -778,7 +808,9 @@ public struct LANTerminalScreen: View {
             .padding(.horizontal, 12).padding(.vertical, 6)
             .background(.bar)
         }
-        .navigationTitle(session.clientLabel.map { ProviderDisplay.clientLabelDisplay($0, provider: session.provider) } ?? session.id)
+        .navigationTitle(PersonalInfoMask.managedSessionTitle(
+            clientLabel: session.clientLabel, deviceName: nil, provider: session.provider,
+            numbers: .none, hidePersonalInfo: hidePersonalInfo))
         .navigationBarTitleDisplayMode(.inline)
         .ignoresSafeArea(.keyboard)
         .task {
