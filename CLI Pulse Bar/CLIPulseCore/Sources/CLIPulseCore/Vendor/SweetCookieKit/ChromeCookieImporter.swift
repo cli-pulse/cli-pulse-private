@@ -127,9 +127,12 @@ enum ChromeCookieImporter {
         let plainValue: String?
         let encryptedValue: Data?
 
-        /// Only a row with no plain value and a non-empty encrypted one needs the key.
+        /// Only a row with no plain value and a `v10` encrypted one needs the
+        /// key: `v10` is the only format `decryptChromiumValue` reads, so any
+        /// other would cost a dialog and still yield nothing.
         var needsSafeStorageKey: Bool {
-            (self.plainValue ?? "").isEmpty && !(self.encryptedValue ?? Data()).isEmpty
+            guard (self.plainValue ?? "").isEmpty, let enc = self.encryptedValue else { return false }
+            return enc.count > 3 && enc.starts(with: Data("v10".utf8))
         }
 
         func record(key: Data?) -> CookieRecord? {
@@ -293,6 +296,7 @@ enum ChromeCookieImporter {
         if password == nil {
             guard !existing.isEmpty else { throw ImportError.keychainDenied }
             guard allowInteraction else { throw ImportError.keychainApprovalNeeded }
+            var refused = false
             for label in existing {
                 BrowserCookieKeychainPromptHandler.handler?(BrowserCookieKeychainPromptContext(
                     service: label.service,
@@ -303,8 +307,15 @@ enum ChromeCookieImporter {
                     password = p
                     break
                 }
-                if result.status == errSecUserCanceled || result.status == errSecAuthFailed { break }
+                if result.status == errSecUserCanceled || result.status == errSecAuthFailed {
+                    refused = true
+                    break
+                }
             }
+            // No answer and no refusal (a locked Keychain or screen comes back
+            // as errSecInteractionNotAllowed even here): not a denial either,
+            // so the run does not remember it as one.
+            if password == nil, !refused { throw ImportError.keychainApprovalNeeded }
         }
         guard let password else { throw ImportError.keychainDenied }
 
@@ -425,8 +436,9 @@ enum ChromeCookieImporter {
             // CLI Pulse (1.60, N2): `interactionNotAllowed` alone can still
             // show the legacy Allow/Deny dialog for a file-based Keychain item,
             // which is what a browser's Safe Storage item is. The UI-fail flag
-            // makes that read fail with errSecInteractionNotAllowed instead
-            // (as `ZedCollector` and upstream CodexBar's no-UI query do).
+            // makes that read fail with errSecInteractionNotAllowed instead.
+            // Both flags together is what upstream CodexBar's no-UI query
+            // (`KeychainNoUIQuery`) sets; `ZedCollector` sets the UI-fail one.
             query[kSecUseAuthenticationUI] = kSecUseAuthenticationUIFail
         }
 

@@ -43,8 +43,21 @@ final class ChromeSafeStorageOrderTests: XCTestCase {
         private let lock = NSLock()
         private var calls: [Bool] = []
         let password: String
+        /// What the no-UI read returns: by default, an item this app is not
+        /// trusted for yet.
+        let noUIStatus: OSStatus
+        /// What the dialog returns: by default, the person allows it.
+        let interactiveStatus: OSStatus
 
-        init(password: String) { self.password = password }
+        init(
+            password: String,
+            noUIStatus: OSStatus = errSecInteractionNotAllowed,
+            interactiveStatus: OSStatus = errSecSuccess
+        ) {
+            self.password = password
+            self.noUIStatus = noUIStatus
+            self.interactiveStatus = interactiveStatus
+        }
 
         var interactive: [Bool] { lock.lock(); defer { lock.unlock() }; return calls }
         var interactiveCount: Int { interactive.filter { $0 }.count }
@@ -52,9 +65,8 @@ final class ChromeSafeStorageOrderTests: XCTestCase {
         var lookup: ChromeCookieImporter.SafeStoragePasswordLookup {
             { [self] _, _, allowInteraction in
                 lock.lock(); calls.append(allowInteraction); lock.unlock()
-                return allowInteraction
-                    ? (errSecSuccess, password)
-                    : (errSecInteractionNotAllowed, nil)
+                let status = allowInteraction ? interactiveStatus : noUIStatus
+                return (status, status == errSecSuccess ? password : nil)
             }
         }
     }
@@ -227,6 +239,72 @@ final class ChromeSafeStorageOrderTests: XCTestCase {
         XCTAssertEqual(recorder.interactive, [false])
     }
 
+    /// A `v11`/`v20` value is not one this reader decrypts: no dialog for it.
+    func test_matchingNonV10Row_asksForNoKey() throws {
+        var other = encryptV10("tok-1")
+        other.replaceSubrange(0..<3, with: Data("v20".utf8))
+        let url = try makeChromeProfile(rows: [
+            Row(host: ".cursor.com", name: "WorkosCursorSessionToken", plain: "", encrypted: other),
+        ])
+        let recorder = KeychainRecorder(password: password)
+        XCTAssertEqual(try load(url, interactive: true, recorder: recorder).count, 0)
+        XCTAssertEqual(recorder.interactive, [])
+    }
+
+    /// No Safe Storage item at all: a denial, and no dialog even when allowed.
+    func test_missingItem_isDeniedWithoutDialog() throws {
+        let url = try makeChromeProfile(rows: [
+            Row(host: ".cursor.com", name: "WorkosCursorSessionToken", plain: "", encrypted: encryptV10("tok-1")),
+        ])
+        let recorder = KeychainRecorder(password: password, noUIStatus: errSecItemNotFound)
+        XCTAssertThrowsError(try load(url, interactive: true, recorder: recorder)) { error in
+            guard case ChromeCookieImporter.ImportError.keychainDenied = error else {
+                return XCTFail("expected keychainDenied, got \(error)")
+            }
+        }
+        XCTAssertEqual(recorder.interactive, [false])
+    }
+
+    /// The person cancels the dialog: a denial (remembered for the run).
+    func test_userCancels_isDenied() throws {
+        let url = try makeChromeProfile(rows: [
+            Row(host: ".cursor.com", name: "WorkosCursorSessionToken", plain: "", encrypted: encryptV10("tok-1")),
+        ])
+        let recorder = KeychainRecorder(password: password, interactiveStatus: errSecUserCanceled)
+        XCTAssertThrowsError(try load(url, interactive: true, recorder: recorder)) { error in
+            guard case ChromeCookieImporter.ImportError.keychainDenied = error else {
+                return XCTFail("expected keychainDenied, got \(error)")
+            }
+        }
+        XCTAssertEqual(recorder.interactive, [false, true])
+    }
+
+    /// A manual refresh whose dialog cannot be shown (locked Keychain or
+    /// screen): nobody said no, so it is not a denial.
+    func test_manualRefreshWithoutAnAnswer_isNotADenial() throws {
+        let url = try makeChromeProfile(rows: [
+            Row(host: ".cursor.com", name: "WorkosCursorSessionToken", plain: "", encrypted: encryptV10("tok-1")),
+        ])
+        let recorder = KeychainRecorder(password: password, interactiveStatus: errSecInteractionNotAllowed)
+        XCTAssertThrowsError(try load(url, interactive: true, recorder: recorder)) { error in
+            guard case ChromeCookieImporter.ImportError.keychainApprovalNeeded = error else {
+                return XCTFail("expected keychainApprovalNeeded, got \(error)")
+            }
+        }
+    }
+
+    /// Once read, the key is cached for the browser: the next read asks nothing.
+    func test_cachedKey_asksNothingTheSecondTime() throws {
+        let url = try makeChromeProfile(rows: [
+            Row(host: ".cursor.com", name: "WorkosCursorSessionToken", plain: "", encrypted: encryptV10("tok-1")),
+        ])
+        let recorder = KeychainRecorder(password: password)
+        _ = try load(url, interactive: true, recorder: recorder)
+        let second = KeychainRecorder(password: password)
+        XCTAssertEqual(try load(url, interactive: false, recorder: second).map(\.value), ["tok-1"])
+        XCTAssertEqual(second.interactive, [])
+    }
+
     // MARK: - The refresh's origin reaches the Keychain read
 
     private func importer() -> BrowserCookieAutoImporter {
@@ -328,6 +406,88 @@ final class ChromeSafeStorageOrderTests: XCTestCase {
         }
         let body = core[start.upperBound...].prefix { $0 != "}" }
         XCTAssertTrue(body.contains("requestRefresh(.userInitiated)"), String(body))
+        guard let plain = core.range(of: "public func requestRefresh() {") else {
+            return XCTFail("requestRefresh is gone")
+        }
+        let plainBody = core[plain.upperBound...].prefix { $0 != "}" }
+        XCTAssertTrue(plainBody.contains("requestRefresh(.background)"), String(plainBody))
+    }
+}
+
+/// The interaction a refresh is started with reaches a collector the way a
+/// real refresh runs it: `runCollectorPass`, its bounded task group, and
+/// `runOneCollectorWithOutcome`. A `Task.detached` anywhere on that path
+/// would drop it back to `.background` and turn this red.
+final class RefreshInteractionCollectorPassTests: XCTestCase {
+    private var originalDefaults: UserDefaults?
+    private var originalLock: GeminiCredentialMutationLock!
+    private var lockPath: String!
+
+    override func setUp() {
+        super.setUp()
+        // `runCollectorPass` reconciles the shared-credential owner first;
+        // with no defaults it does nothing, and the lock is a temporary file.
+        originalDefaults = ProviderSharedCredentialOwner.defaults
+        ProviderSharedCredentialOwner.defaults = nil
+        originalLock = ProviderSharedCredentialOwner.mutationLock
+        lockPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("refresh-interaction-\(UUID().uuidString).lock").path
+        ProviderSharedCredentialOwner.mutationLock = GeminiCredentialMutationLock(lockFilePath: lockPath)
+    }
+
+    override func tearDown() {
+        ProviderSharedCredentialOwner.mutationLock = originalLock
+        ProviderSharedCredentialOwner.defaults = originalDefaults
+        try? FileManager.default.removeItem(atPath: lockPath)
+        super.tearDown()
+    }
+
+    private actor Seen {
+        var values: [RefreshInteraction] = []
+        func add(_ value: RefreshInteraction) { values.append(value) }
+    }
+
+    private struct InteractionRecordingCollector: ProviderCollector {
+        let seen: Seen
+        let kind: ProviderKind = .cursor
+        func isAvailable(config: ProviderConfig) -> Bool { true }
+        func collect(config: ProviderConfig) async throws -> CollectorResult {
+            await seen.add(RefreshInteraction.current)
+            throw CollectorError.missingCredentials(CredentialProblem("Cursor", .noSessionCookieImportable))
+        }
+    }
+
+    @MainActor
+    private func run(_ interaction: RefreshInteraction?) async -> [RefreshInteraction] {
+        let seen = Seen()
+        let collector = InteractionRecordingCollector(seen: seen)
+        let configs = [ProviderConfig(kind: .cursor), ProviderConfig(kind: .cursor)]
+        let manager = DataRefreshManager(api: APIClient(
+            supabaseURL: "https://stub.cli-pulse.test",
+            supabaseAnonKey: "anon"))
+        let body: @MainActor () async -> Void = {
+            _ = await DataRefreshManager.runCollectorPass(
+                providerConfigs: configs,
+                collectorResolver: { _ in collector })
+        }
+        if let interaction {
+            await manager.requestRefresh(interaction, using: body).value
+        } else {
+            await manager.requestRefresh(using: body).value
+        }
+        return await seen.values
+    }
+
+    @MainActor
+    func test_manualRefresh_reachesEveryCollectorAsUserInitiated() async {
+        let seen = await run(.userInitiated)
+        XCTAssertEqual(seen, [.userInitiated, .userInitiated])
+    }
+
+    @MainActor
+    func test_otherRefreshes_reachCollectorsAsBackground() async {
+        let seen = await run(nil)
+        XCTAssertEqual(seen, [.background, .background])
     }
 }
 #endif
