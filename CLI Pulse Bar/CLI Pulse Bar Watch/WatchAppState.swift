@@ -442,6 +442,7 @@ public final class WatchAppState: ObservableObject {
         sessions = []
         alerts = []
         devices = []
+        fetchedDeviceNumbers = nil
         costSummary = CostSummary()
         isLoading = false
         lastError = nil
@@ -454,9 +455,12 @@ public final class WatchAppState: ObservableObject {
 
     // MARK: - Device names
 
-    /// 1.60 (C9): the devices the Watch holds, numbered for "Device N"
-    /// (`DeviceNameNumbers`), for "Hide personal information".
-    var deviceNameNumbers: DeviceNameNumbers { .devices(devices) }
+    /// 1.60 (C9): the account's devices, numbered for "Device N"
+    /// (`DeviceNameNumbers`), for "Hide personal information": the whole list
+    /// from the Watch's own last fetch, as the iPhone numbers it, else the
+    /// devices it was sent (only those that report machine health).
+    var deviceNameNumbers: DeviceNameNumbers { fetchedDeviceNumbers ?? .devices(devices) }
+    private var fetchedDeviceNumbers: DeviceNameNumbers?
 
     // MARK: - Sessions clock
 
@@ -560,9 +564,11 @@ public final class WatchAppState: ObservableObject {
             let fetchedSessions = try await sessTask
             let fetchedAlerts = try await alertTask
             var fetchedDevices: [WatchDeviceSummary]?
+            var fetchedNumbers: DeviceNameNumbers?
             if fetchDevices, let rawDevices = try? await api.devices() {
                 fetchedDevices =
                     WatchDeviceTrim.summaries(from: rawDevices)
+                fetchedNumbers = .devices(rawDevices)
             }
 
             guard refreshGate.canCommit(
@@ -590,6 +596,7 @@ public final class WatchAppState: ObservableObject {
             alerts = fetchedAlerts
             if let fetchedDevices {
                 devices = fetchedDevices
+                fetchedDeviceNumbers = fetchedNumbers
             }
             serverOnline = true
             lastRefresh = Date()

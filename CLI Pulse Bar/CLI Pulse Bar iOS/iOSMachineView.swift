@@ -34,7 +34,7 @@ struct iOSMachineView: View {
     @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     private func shownName(_ d: DeviceRecord) -> String {
-        PersonalInfoMask.deviceName(d.name, numbers: state.deviceNameNumbers, hidePersonalInfo: hidePersonalInfo)
+        PersonalInfoMask.deviceName(d.name, id: d.id, numbers: state.deviceNameNumbers, hidePersonalInfo: hidePersonalInfo)
             ?? L10n.tab.machine
     }
 

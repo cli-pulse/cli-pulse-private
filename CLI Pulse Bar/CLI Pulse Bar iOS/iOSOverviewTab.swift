@@ -314,6 +314,7 @@ struct iOSOverviewTab: View {
     @ViewBuilder
     private var deviceHealthSection: some View {
         let healthy = state.devices.filter { $0.hasDeviceHealth }
+        let numbers = state.deviceNameNumbers
         if !healthy.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 SectionHeader(title: L10n.machine.deviceHealth, icon: "waveform.path.ecg")
@@ -325,7 +326,7 @@ struct iOSOverviewTab: View {
                         iOSMachineView(deviceID: device.id)
                     } label: {
                         DeviceHealthCard(device: device, name: PersonalInfoMask.deviceName(
-                            device.name, numbers: state.deviceNameNumbers,
+                            device.name, id: device.id, numbers: numbers,
                             hidePersonalInfo: hidePersonalInfo) ?? "")
                     }
                     .buttonStyle(.plain)

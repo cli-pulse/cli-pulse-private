@@ -158,7 +158,7 @@
 "settings.manage_providers" = "管理服務商";
 "settings.advanced" = "進階";
 "settings.hide_personal_info" = "隱藏個人資訊";
-"settings.hide_personal_info_iphone_hint" = "隱藏電子郵件地址與裝置名稱；在「概覽」「工作階段」「警示」與匯出的檔案中，還會隱藏專案資料夾的名稱與工作階段名稱。Apple Watch 會遵循與其配對的 iPhone 上的此開關。帳號名稱，以及「遠端控制」中顯示的工作階段內容（例如其資料夾、指令與終端機輸出），都不會隱藏。";
+"settings.hide_personal_info_iphone_hint" = "隱藏電子郵件地址與裝置名稱；在「概覽」「工作階段」「警示」與匯出的檔案中，還會隱藏專案資料夾的名稱與工作階段名稱。Apple Watch 會遵循與其配對的 iPhone 上的此開關。帳號名稱，以及「遠端控制」中顯示的工作階段內容（例如工作階段的資料夾、指令與終端機輸出），都不會隱藏。";
 "settings.force_refresh" = "強制重新整理所有資料";
 "settings.about" = "關於";
 "settings.version" = "版本";

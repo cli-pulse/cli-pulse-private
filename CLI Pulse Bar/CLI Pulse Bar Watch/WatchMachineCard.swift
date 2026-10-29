@@ -24,7 +24,7 @@ struct WatchMachineCard: View {
                 Circle().fill(statusColor).frame(width: 7, height: 7)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(PersonalInfoMask.deviceName(
-                        device.name, numbers: numbers, hidePersonalInfo: hidePersonalInfo) ?? "")
+                        device.name, id: device.id, numbers: numbers, hidePersonalInfo: hidePersonalInfo) ?? "")
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                     Text(subtitle)
@@ -120,6 +120,6 @@ struct WatchMachineDetailView: View {
         }
         .opacity(d.isReadingStale() ? 0.6 : 1.0)   // grey stale readings, like iOS
         .navigationTitle(PersonalInfoMask.deviceName(
-            d.name, numbers: state.deviceNameNumbers, hidePersonalInfo: hidePersonalInfo) ?? "")
+            d.name, id: d.id, numbers: state.deviceNameNumbers, hidePersonalInfo: hidePersonalInfo) ?? "")
     }
 }

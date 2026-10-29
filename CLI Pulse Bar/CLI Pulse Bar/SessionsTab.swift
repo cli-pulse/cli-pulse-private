@@ -1959,6 +1959,7 @@ private struct ManagedSessionRow: View {
         PersonalInfoMask.managedSessionTitle(
             clientLabel: session.client_label,
             deviceName: session.device_name,
+            deviceID: session.device_id,
             provider: session.provider,
             numbers: deviceNumbers,
             hidePersonalInfo: hidePersonalInfo)
@@ -1986,7 +1987,8 @@ private struct ManagedSessionRow: View {
                             .font(.system(size: 11, weight: .semibold))
                             .lineLimit(1)
                         if showSecondaryDevice, let device = PersonalInfoMask.deviceName(
-                            session.device_name, numbers: deviceNumbers, hidePersonalInfo: hidePersonalInfo) {
+                            session.device_name, id: session.device_id, numbers: deviceNumbers,
+                            hidePersonalInfo: hidePersonalInfo) {
                             Text("·").foregroundStyle(.tertiary).font(.system(size: 11))
                             Text(device).font(.system(size: 10)).foregroundStyle(.secondary)
                         }

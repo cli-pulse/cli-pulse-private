@@ -43,6 +43,18 @@ final class PersonalInfoMaskDevicesTests: XCTestCase {
         XCTAssertNil(shown(nil))
     }
 
+    /// A screen that holds the device itself finds it by id, so two devices
+    /// with one name (a reinstalled helper) keep numbers of their own.
+    func testAScreenThatHoldsTheDeviceNumbersItById() {
+        let numbers = DeviceNameNumbers.devices(Self.devices)
+        XCTAssertEqual(PersonalInfoMask.deviceName("lab-server-01", id: "b-2", numbers: numbers, hidePersonalInfo: true), "设备 2")
+        XCTAssertEqual(PersonalInfoMask.deviceName("lab-server-01", id: "d-4", numbers: numbers, hidePersonalInfo: true), "设备 4")
+        XCTAssertEqual(PersonalInfoMask.deviceName("lab-server-01", id: "gone", numbers: numbers, hidePersonalInfo: true),
+                       "隐藏的设备", "an id the list does not have falls back to the name, which two devices share")
+        XCTAssertEqual(PersonalInfoMask.deviceName("lab-server-01", id: "b-2", numbers: numbers, hidePersonalInfo: false),
+                       "lab-server-01")
+    }
+
     func testTheSwitchOffShowsTheName() {
         let numbers = DeviceNameNumbers.devices(Self.devices)
         XCTAssertEqual(PersonalInfoMask.deviceName("Jane's MacBook Pro", numbers: numbers, hidePersonalInfo: false),
@@ -86,6 +98,10 @@ final class PersonalInfoMaskDevicesTests: XCTestCase {
         XCTAssertEqual(PersonalInfoMask.pairedDeviceName("Jane's iMac", peerID: nil, hidePersonalInfo: true, peers: peers), "设备 3",
                        "not paired yet: the next place")
         XCTAssertEqual(PersonalInfoMask.pairedDeviceName("Jane's iMac", peerID: nil, hidePersonalInfo: false, peers: peers), "Jane's iMac")
+        // Two paired devices with one name: the one paired last.
+        let twins = peers + [try Self.peer("mac-c", "Jane's Mac mini")]
+        XCTAssertEqual(PersonalInfoMask.pairedDeviceName("Jane's Mac mini", peerID: nil, hidePersonalInfo: true, peers: twins), "设备 3")
+        XCTAssertEqual(PersonalInfoMask.pairedDeviceName("Jane's Mac mini", peerID: "mac-b", hidePersonalInfo: true, peers: twins), "设备 2")
     }
 
     private static func peer(_ id: String, _ name: String) throws -> LANPairing.PairedPeer {
@@ -119,6 +135,15 @@ final class PersonalInfoMaskDevicesTests: XCTestCase {
                            ProviderDisplay.managedRowLabel(clientLabel: label, deviceName: device, provider: "claude"))
         }
         XCTAssertFalse(title("Jane's iPhone").contains("Jane"))
+        // Remote Control shows a session without a label by its id, either way.
+        for hide in [true, false] {
+            XCTAssertEqual(PersonalInfoMask.managedSessionTitle(
+                clientLabel: nil, deviceName: nil, provider: "claude", numbers: .none,
+                hidePersonalInfo: hide, withoutLabel: "sess-42"), "sess-42")
+        }
+        XCTAssertEqual(PersonalInfoMask.managedSessionTitle(
+            clientLabel: "Jane's iPhone", deviceName: nil, provider: "claude", numbers: .none,
+            hidePersonalInfo: true, withoutLabel: "sess-42"), session, "a label is still masked")
     }
 
     // MARK: - The words

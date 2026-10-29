@@ -522,8 +522,6 @@ public enum L10n {
         public static var chartHint: String { tr("provider_panel.chart_hint") }
     }
 
-    /// v1.58 (P1-4): the project lists (`ProjectUsageList`) in the usage
-    /// panel's provider mode and on the Mac Overview's Top Projects card.
     /// 1.60 (C9): device names with "Hide personal information" on.
     public enum devices {
         /// A device the surface numbers: "Device 2" (`DeviceNameNumbers`).
@@ -533,6 +531,8 @@ public enum L10n {
         public static var hidden: String { tr("devices.hidden") }
     }
 
+    /// v1.58 (P1-4): the project lists (`ProjectUsageList`) in the usage
+    /// panel's provider mode and on the Mac Overview's Top Projects card.
     public enum projects {
         /// The panel section's title.
         public static var title: String { tr("projects.title") }

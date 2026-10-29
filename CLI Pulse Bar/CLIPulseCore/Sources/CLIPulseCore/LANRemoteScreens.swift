@@ -522,7 +522,7 @@ public struct LANMacSessionsView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(PersonalInfoMask.managedSessionTitle(
                                         clientLabel: s.clientLabel, deviceName: nil, provider: s.provider,
-                                        numbers: .none, hidePersonalInfo: hidePersonalInfo))
+                                        numbers: .none, hidePersonalInfo: hidePersonalInfo, withoutLabel: s.id))
                                         .lineLimit(1)
                                     Text("\(ProviderDisplay.displayName(for: s.provider)) · \(L10n.status.localized(s.status))").font(.caption).foregroundStyle(.secondary)
                                     if let n = pendingBySession[s.id], n > 0 {
@@ -810,7 +810,7 @@ public struct LANTerminalScreen: View {
         }
         .navigationTitle(PersonalInfoMask.managedSessionTitle(
             clientLabel: session.clientLabel, deviceName: nil, provider: session.provider,
-            numbers: .none, hidePersonalInfo: hidePersonalInfo))
+            numbers: .none, hidePersonalInfo: hidePersonalInfo, withoutLabel: session.id))
         .navigationBarTitleDisplayMode(.inline)
         .ignoresSafeArea(.keyboard)
         .task {

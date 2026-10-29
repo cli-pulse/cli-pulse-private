@@ -37,7 +37,7 @@ final class HidePersonalInfoIPhoneLineTests: XCTestCase {
             L10n.settings.hidePersonalInfoIPhoneHint,
             "隐藏邮箱地址和设备名称；在「概览」「会话」「告警」和导出的文件中，还会隐藏项目文件夹的名称和会话名称。"
                 + "Apple\u{00A0}Watch 遵循与其配对的 iPhone 上的此开关。"
-                + "账户名称，以及「远程控制」中显示的会话内容（例如其文件夹、命令和终端输出），都不会被隐藏。")
+                + "账户名称，以及「远程控制」中显示的会话内容（例如会话的文件夹、命令和终端输出），都不会被隐藏。")
     }
 
     /// What each language says stays visible: the account's name and what
@@ -56,7 +56,7 @@ final class HidePersonalInfoIPhoneLineTests: XCTestCase {
     /// hidden everywhere, not in the one that says what is not.
     private static let deviceNames: [String: String] = [
         "en": "device names", "zh-Hans": "设备名称", "zh-Hant": "裝置名稱",
-        "ja": "デバイス名", "ko": "기기 이름", "es": "los nombres de los dispositivos",
+        "ja": "デバイス名", "ko": "기기 이름", "es": "los nombres de dispositivos",
     ]
 
     /// The Watch sentence, in each language: it follows the switch on the

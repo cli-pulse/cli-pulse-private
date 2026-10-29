@@ -10,8 +10,13 @@ import Foundation
 //     Watch's machine cards, a session's device, an alert's device) are
 //     "Device N", numbered in the order of their ids, which does not change as
 //     they sync, so a device keeps its number from one refresh to the next and
-//     on every screen of one app. A name the list does not have, or that two
-//     of its devices share, is "Hidden device".
+//     on every screen of one app. A screen that holds the device itself (a
+//     machine card, a managed session) finds it by id; one that knows only a
+//     name (a session's device, an alert's) by name, and a name the list does
+//     not have, or that two of its devices share, is "Hidden device". The
+//     Watch numbers the account's whole list when it fetches it itself, and
+//     the devices it was sent otherwise, so its numbers can differ from the
+//     iPhone's until its own next fetch.
 //   * Remote Control's paired devices (the Macs an iPhone pairs with, the
 //     iPhones a Mac lets in) are "Device N" by their place in that list, and
 //     a device being paired gets the number it will have there.
@@ -29,9 +34,12 @@ public struct DeviceNameNumbers: Sendable, Equatable {
 
     /// Name → its number.
     public let numbersByName: [String: Int]
+    /// Device id → its number.
+    public let numbersByID: [String: Int]
 
-    public init(numbersByName: [String: Int]) {
+    public init(numbersByName: [String: Int], numbersByID: [String: Int] = [:]) {
         self.numbersByName = numbersByName
+        self.numbersByID = numbersByID
     }
 
     /// The account's devices numbered from 1 in the order of their ids. A
@@ -40,14 +48,16 @@ public struct DeviceNameNumbers: Sendable, Equatable {
     public static func devices(_ devices: [(id: String, name: String)]) -> DeviceNameNumbers {
         let ordered = devices.sorted { $0.id < $1.id }
         var numbers: [String: Int] = [:]
+        var byID: [String: Int] = [:]
         var shared: Set<String> = []
         for (index, device) in ordered.enumerated() {
+            byID[device.id] = index + 1
             let name = device.name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { continue }
             if numbers[name] != nil { shared.insert(name) } else { numbers[name] = index + 1 }
         }
         for name in shared { numbers[name] = nil }
-        return DeviceNameNumbers(numbersByName: numbers)
+        return DeviceNameNumbers(numbersByName: numbers, numbersByID: byID)
     }
 
     public static func devices(_ devices: [DeviceRecord]) -> DeviceNameNumbers {
@@ -62,6 +72,11 @@ public struct DeviceNameNumbers: Sendable, Equatable {
     public func number(forName name: String) -> Int? {
         numbersByName[name.trimmingCharacters(in: .whitespacesAndNewlines)]
     }
+
+    /// The number of the device with this id, or nil.
+    public func number(forID id: String) -> Int? {
+        numbersByID[id]
+    }
 }
 
 public extension PersonalInfoMask {
@@ -73,6 +88,7 @@ public extension PersonalInfoMask {
     /// device".
     static func deviceName(
         _ name: String?,
+        id: String? = nil,
         numbers: DeviceNameNumbers,
         hidePersonalInfo: Bool
     ) -> String? {
@@ -80,7 +96,10 @@ public extension PersonalInfoMask {
             return nil
         }
         guard hidePersonalInfo else { return trimmed }
-        return numbers.number(forName: trimmed).map(L10n.devices.anonymous) ?? L10n.devices.hidden
+        // By id when the caller holds the device: two devices with one name
+        // (a reinstalled helper) still get numbers of their own.
+        return (id.flatMap(numbers.number(forID:)) ?? numbers.number(forName: trimmed))
+            .map(L10n.devices.anonymous) ?? L10n.devices.hidden
     }
 
     /// A device in a Remote Control list, by its place there (from 0): with
@@ -100,8 +119,11 @@ public extension PersonalInfoMask {
         hidePersonalInfo: Bool,
         peers: [LANPairing.PairedPeer]
     ) -> String {
+        // By name, the latest pairing of that name: a re-paired device is
+        // stored again, and a name two devices share most likely means the
+        // one paired last.
         let position = peerID.flatMap { id in peers.firstIndex { $0.id == id } }
-            ?? peers.firstIndex { $0.displayName == name }
+            ?? peers.lastIndex { $0.displayName == name }
             ?? peers.count
         return listedDeviceName(name, position: position, hidePersonalInfo: hidePersonalInfo)
     }
@@ -109,7 +131,9 @@ public extension PersonalInfoMask {
     #if os(iOS)
     /// The iPhone's paired Macs (`LANPairingStore`).
     static func pairedDeviceName(_ name: String, peerID: String?, hidePersonalInfo: Bool) -> String {
-        pairedDeviceName(name, peerID: peerID, hidePersonalInfo: hidePersonalInfo, peers: LANPairingStore.peers())
+        // The store reads the keychain: not on every render with the switch off.
+        guard hidePersonalInfo else { return name }
+        return pairedDeviceName(name, peerID: peerID, hidePersonalInfo: hidePersonalInfo, peers: LANPairingStore.peers())
     }
     #endif
 
@@ -121,22 +145,27 @@ public extension PersonalInfoMask {
     /// that is the session's device's name reads "<Provider> on Device N",
     /// and any other label, such as the name an iPhone sends for itself, is
     /// "<Provider> session".
+    /// `withoutLabel`: what a screen shows for a session with no label
+    /// (Remote Control shows its id), instead of "<Provider> session".
     static func managedSessionTitle(
         clientLabel: String?,
         deviceName: String?,
+        deviceID: String? = nil,
         provider: String,
         numbers: DeviceNameNumbers,
-        hidePersonalInfo: Bool
+        hidePersonalInfo: Bool,
+        withoutLabel: String? = nil
     ) -> String {
+        let label = clientLabel?.trimmingCharacters(in: .whitespaces) ?? ""
+        if label.isEmpty, let withoutLabel { return withoutLabel }
         guard hidePersonalInfo else {
             return ProviderDisplay.managedRowLabel(clientLabel: clientLabel, deviceName: deviceName, provider: provider)
         }
-        let label = clientLabel?.trimmingCharacters(in: .whitespaces) ?? ""
         let device = deviceName?.trimmingCharacters(in: .whitespaces) ?? ""
         let providerName = ProviderDisplay.displayName(for: provider)
         if label.isEmpty { return L10n.sessions.rowFallbackLabel(providerName) }
         if !device.isEmpty && label.caseInsensitiveCompare(device) == .orderedSame,
-           let masked = self.deviceName(device, numbers: numbers, hidePersonalInfo: true) {
+           let masked = self.deviceName(device, id: deviceID, numbers: numbers, hidePersonalInfo: hidePersonalInfo) {
             return L10n.sessions.rowLabelOnDevice(providerName, masked)
         }
         if ProviderDisplay.isAppClientLabel(label, provider: provider) {

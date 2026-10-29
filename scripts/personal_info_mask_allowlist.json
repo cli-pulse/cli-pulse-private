@@ -65,6 +65,21 @@
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/LANRemoteScreens.swift",
    "line": "await MainActor.run { step = .succeeded(macName: peer.displayName) }",
    "reason": "Keeps the paired Mac's name in the pairing step. The step's screen shows it through PersonalInfoMask.pairedDeviceName."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/PairingSection.swift",
+   "line": "let deviceName = Host.current().localizedName ?? \"Mac\"",
+   "reason": "The name this Mac registers with the account when it pairs (register_helper). Sent, not shown; the screens that show a device's name go through PersonalInfoMask.deviceName."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/LANRemoteScreens.swift",
+   "line": "displayName: UIDevice.current.name, payload: payload,",
+   "reason": "The name this iPhone gives itself in the Remote Control pairing exchange, so the Mac can list it. Sent, not shown here; the Mac shows it through PersonalInfoMask.listedDeviceName / pairedDeviceName."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/LANRemoteScreens.swift",
+   "line": "_ = try await client.startManagedSession(provider: provider, clientLabel: UIDevice.current.name,",
+   "reason": "The label a session started from this iPhone carries. Sent, not shown here; every screen that shows a managed session's label does it through PersonalInfoMask.managedSessionTitle."
   }
  ]
 }

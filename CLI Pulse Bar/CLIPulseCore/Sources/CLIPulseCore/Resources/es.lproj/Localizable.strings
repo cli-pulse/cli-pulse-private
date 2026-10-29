@@ -158,7 +158,7 @@
 "settings.manage_providers" = "Gestionar proveedores";
 "settings.advanced" = "Avanzado";
 "settings.hide_personal_info" = "Ocultar información personal";
-"settings.hide_personal_info_iphone_hint" = "Oculta las direcciones de correo y los nombres de los dispositivos y, en Resumen, Sesiones, Alertas y al exportar, los nombres de las carpetas de proyecto y de las sesiones. El Apple Watch sigue este ajuste del iPhone con el que está enlazado. Siguen visibles el nombre de tu cuenta y lo que Control remoto muestra de una sesión, como su carpeta, los comandos y la salida del terminal.";
+"settings.hide_personal_info_iphone_hint" = "Oculta las direcciones de correo y los nombres de dispositivos. En Resumen, Sesiones, Alertas y al exportar, oculta además los nombres de las carpetas de proyecto y de las sesiones. El Apple Watch sigue este ajuste del iPhone con el que está enlazado. Siguen visibles el nombre de tu cuenta y lo que Control remoto muestra de una sesión, como su carpeta, los comandos y la salida del terminal.";
 "settings.force_refresh" = "Forzar actualización de datos";
 "settings.about" = "Acerca de";
 "settings.version" = "Versión";

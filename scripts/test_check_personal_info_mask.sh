@@ -382,6 +382,19 @@ expect 1 "a managed session's label (an iPhone's name) shown as stored fails"
 new_tree; mkdir -p "$T/$CORE"; printf '%s\n' 'Text(peer.displayName)' > "$T/$CORE/LANRemoteControlSection.swift"
 expect 1 "Remote Control's paired list in CLIPulseCore is scanned, and peer.displayName fails"
 
+new_tree; mkdir -p "$T/$CORE"; printf '%s\n' 'ForEach(browser.macs) { m in Text(m.name) }' > "$T/$CORE/LANRemoteScreens.swift"
+expect 1 "in Remote Control's Core screens any receiver's .name fails (m.name)"
+
+new_tree; view_in "$IOS" 'Text(UIDevice.current.name)'
+expect 1 "this iPhone's own name shown fails"
+
+new_tree; view 'Text(Host.current().localizedName ?? "Mac")'
+expect 1 "this Mac's own name shown fails"
+
+new_tree; view 'Text(mode.localizedName)
+Text(ProviderDisplay.displayName(for: p))'
+expect 0 "an enum's localizedName and a provider's display name are not device names"
+
 new_tree; view 'struct V: View {
     @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
     var body: some View {
