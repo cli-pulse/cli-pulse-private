@@ -267,12 +267,16 @@ struct RunLoopModeReader: Sendable {
             box.set(copy())
             done.signal()
         }
-        thread.name = "com.clipulse.stall-probe.mode"
+        thread.name = Self.threadName
         thread.qualityOfService = .utility
         thread.start()
         guard done.wait(timeout: .now() + timeout) == .success else { return .unreadable }
         return RunLoopModeWord(mode: box.value)
     }
+
+    /// A constant, not an inline literal: scripts/check_quota_tier_names.py
+    /// reads every `name = "…"` as a quota tier name.
+    private static let threadName = "com.clipulse.stall-probe.mode"
 
     private final class ModeBox: @unchecked Sendable {
         private let lock = NSLock()
@@ -340,7 +344,7 @@ struct SentryStallReporter: StallReporter {
             "explained": report.explained ? "true" : "false",
         ]
         let thread = SentryThread(threadId: 0)
-        thread.name = "com.clipulse.stall-probe"
+        thread.name = MainThreadStallProbe.threadName
         thread.current = NSNumber(value: false)
         thread.crashed = NSNumber(value: false)
         event.threads = [thread]
@@ -370,6 +374,9 @@ struct SentryStallReporter: StallReporter {
 ///   * nothing is written to disk.
 public final class MainThreadStallProbe: @unchecked Sendable {
     public static let shared = MainThreadStallProbe()
+
+    /// See `RunLoopModeReader.threadName` for why this is a constant.
+    static let threadName = "com.clipulse.stall-probe"
 
     struct Dependencies: Sendable {
         var reporter: any StallReporter = SentryStallReporter()
@@ -418,7 +425,7 @@ public final class MainThreadStallProbe: @unchecked Sendable {
         stopped = false
         while stopSignal.wait(timeout: .now()) == .success {}
         let watchdog = Foundation.Thread { [self] in run(sampler: sampler) }
-        watchdog.name = "com.clipulse.stall-probe"
+        watchdog.name = Self.threadName
         watchdog.qualityOfService = .userInitiated
         thread = watchdog
         watchdog.start()
