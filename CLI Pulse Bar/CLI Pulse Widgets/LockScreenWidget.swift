@@ -150,13 +150,13 @@ struct LockScreenWidgetView: View {
         let percent = topProvider.map { QuotaPercent.usedAndLeft(usedFraction: $0.usagePercent).used } ?? 0
         let name = topProvider?.name ?? L10n.auth.title
 
-        return Text(verbatim: "\(name) \(percent)% • \(L10n.watch.sessionsCount(entry.data.activeSessions))")
+        return Text(verbatim: "\(name) \(percent)% • \(L10n.watch.sessionsCount(entry.activeSessions))")
             // The terse line says neither that the share is used (the circular
             // and rectangular families do) nor what the count is; VoiceOver
             // gets the whole clauses instead ("No data" in place of the 0%
             // drawn when there is no provider).
             .accessibilityLabel(L10n.a11y.usageAndSessions(
-                topProvider?.name, percentUsed: percent, activeSessions: entry.data.activeSessions))
+                topProvider?.name, percentUsed: percent, activeSessions: entry.activeSessions))
     }
 }
 

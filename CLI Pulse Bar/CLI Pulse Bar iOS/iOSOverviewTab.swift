@@ -128,7 +128,8 @@ struct iOSOverviewTab: View {
                 ToolbarItem(placement: .secondaryAction) {
                     Menu {
                         if let url = ExportService.exportCostReportCSV(
-                            dashboard: state.dashboard, providers: providerState.providers, sessions: state.sessions,
+                            dashboard: state.dashboard, counts: state.dashboardCounts(),
+                            providers: providerState.providers, sessions: state.sessions,
                             hidePersonalInfo: hidePersonalInfo, projectNumbers: .none
                         ) {
                             ShareLink(item: url) { Label(L10n.dashboard.exportCostReport, systemImage: "doc.text") }
@@ -268,13 +269,15 @@ struct iOSOverviewTab: View {
         if OverviewFormatters.showsRequestsMetric(route: state.refreshRoute, sessions: state.sessions) {
             tiles.append(MetricTile(id: "requests", title: L10n.dashboard.requests, value: "\(dash.total_requests_today)", icon: "arrow.up.arrow.down", color: .purple))
         }
+        // v1.58: the rows the Sessions tab lists under Active, so the tile and
+        // the tab agree; 1.60 (59-05): and the devices seen within the grace,
+        // both counted now (`DashboardCounts`), not `dashboard_summary`'s
+        // figures from the refresh.
+        let counts = state.dashboardCounts()
         tiles += [
-            // v1.58: the rows the Sessions tab lists under Active, not
-            // `dashboard_summary`'s count of rows still marked Running
-            // (`SessionListCount`), so the tile and the tab agree.
             MetricTile(id: "sessions", title: L10n.tab.sessions,
-                       value: "\(SessionListCount.active(state.sessions, now: state.sessionsClock()))", icon: "terminal", color: .cyan),
-            MetricTile(id: "devices", title: L10n.dashboard.onlineDevices, value: "\(dash.online_devices)", icon: "desktopcomputer", color: .blue),
+                       value: "\(counts.activeSessions)", icon: "terminal", color: .cyan),
+            MetricTile(id: "devices", title: L10n.dashboard.onlineDevices, value: "\(counts.onlineDevices)", icon: "desktopcomputer", color: .blue),
             MetricTile(id: "alerts", title: L10n.tab.alerts, value: "\(dash.unresolved_alerts)", icon: "bell.badge", color: dash.unresolved_alerts > 0 ? .orange : .gray),
         ]
         return tiles

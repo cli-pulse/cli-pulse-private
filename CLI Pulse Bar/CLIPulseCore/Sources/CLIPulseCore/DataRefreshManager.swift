@@ -795,30 +795,13 @@ internal final class DataRefreshManager {
             let mergedSessions = SessionFreshnessFilter.filterCurrent(sessionData, now: now)
             #endif
 
-            // iter23: when the local synthesizer recovered sessions
-            // the cloud `dashboard.active_sessions` doesn't know
-            // about, bump the count so the Overview top-card
-            // doesn't disagree with the Sessions tab. Never bump
-            // DOWN — other devices may legitimately contribute
-            // sessions the local scanner can't see.
-            let adjustedDashboard: DashboardSummary = {
-                guard mergedSessions.count > dashboardData.active_sessions else { return dashboardData }
-                return DashboardSummary(
-                    total_usage_today: dashboardData.total_usage_today,
-                    total_estimated_cost_today: dashboardData.total_estimated_cost_today,
-                    cost_status: dashboardData.cost_status,
-                    total_requests_today: dashboardData.total_requests_today,
-                    active_sessions: mergedSessions.count,
-                    online_devices: dashboardData.online_devices,
-                    unresolved_alerts: dashboardData.unresolved_alerts,
-                    provider_breakdown: dashboardData.provider_breakdown,
-                    top_projects: dashboardData.top_projects,
-                    trend: dashboardData.trend,
-                    recent_activity: dashboardData.recent_activity,
-                    risk_signals: dashboardData.risk_signals,
-                    alert_summary: dashboardData.alert_summary
-                )
-            }()
+            // The dashboard is passed on as the server sent it. Its session
+            // and device figures are not shown anywhere: the Overview, the
+            // exports, the widgets and Siri count `mergedSessions` and the
+            // devices themselves, when they show them (`DashboardCounts`,
+            // 1.60). Before that the Mac raised the session figure to
+            // `mergedSessions.count` and never lowered it, so a row the list
+            // had dropped went on counting.
 
             // Every awaited read/collector callback above can yield while the
             // user signs out or switches accounts. Authentication still being
@@ -909,7 +892,7 @@ internal final class DataRefreshManager {
 
             callbacks.applyPayload(
                 RefreshPayload(
-                    dashboard: adjustedDashboard,
+                    dashboard: dashboardData,
                     providers: costAdjustedProviders,
                     providerAccounts: providerAccounts,
                     sessions: mergedSessions,
@@ -3258,16 +3241,24 @@ extension AppState {
         }
 
         let currency = converter.handoff()
+        // 1.60 (59-05): the sessions counted now, and when each was last
+        // active, so the widgets and Siri count again at the time they show
+        // the figure (`DashboardCounts.activeSessions(published:lastActiveAt:now:)`):
+        // a widget drawn five minutes after this publish no longer counts a
+        // session that ended. Demo never refreshes and its sessions are as
+        // Demo was entered, so it sends no times and its figure stands.
+        let clock = sessionsClock()
         return PublishedWidgetData(
             totalUsageToday: dashboard?.total_usage_today ?? 0,
             totalCostToday: dashboard?.total_estimated_cost_today ?? 0,
-            activeSessions: dashboard?.active_sessions ?? 0,
+            activeSessions: DashboardCounts.activeSessions(sessions, now: clock),
             unresolvedAlerts: alerts.filter { !$0.is_resolved }.count,
             providers: Array(widgetProviders),
             lastUpdated: Date(),
             isPro: subscriptionManager.isProOrAbove,
             displayCurrency: currency.currencyCode,
-            fxRate: currency.rate
+            fxRate: currency.rate,
+            activeSessionLastActiveAt: isDemoMode ? nil : DashboardCounts.activeSessionTimes(sessions, now: clock)
         )
     }
 
@@ -4038,6 +4029,11 @@ struct PublishedWidgetData: Codable, Equatable {
     /// ignores them.
     var displayCurrency: String? = nil
     var fxRate: Double? = nil
+    /// 1.60: when each session counted in `activeSessions` was last active.
+    /// The widgets and Siri count again from these at the time they show the
+    /// figure. Key must match WidgetData and CLIPulseIntentCache.Snapshot;
+    /// nil (Demo) leaves them `activeSessions`.
+    var activeSessionLastActiveAt: [Date]? = nil
 
     /// Equal in every user-visible field EXCEPT `lastUpdated` — drives the
     /// publish-path dedupe so an unchanged refresh skips the cfprefsd write
@@ -4051,5 +4047,8 @@ struct PublishedWidgetData: Codable, Equatable {
             && isPro == other.isPro
             && displayCurrency == other.displayCurrency
             && fxRate == other.fxRate
+            // A row rewritten by its producer moves the time its session
+            // stops counting, so a new time is a new payload.
+            && activeSessionLastActiveAt == other.activeSessionLastActiveAt
     }
 }

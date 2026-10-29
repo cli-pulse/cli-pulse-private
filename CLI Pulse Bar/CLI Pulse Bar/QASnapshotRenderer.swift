@@ -2377,14 +2377,16 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             .appendingPathComponent("\(UUID().uuidString)-cli-pulse-report.pdf")
         let files: [(String, URL?)] = [
             ("cost-report.csv", ExportService.exportCostReportCSV(
-                dashboard: state.dashboard, providers: state.providerState.providers, sessions: state.sessions,
+                dashboard: state.dashboard, counts: state.dashboardCounts(),
+                providers: state.providerState.providers, sessions: state.sessions,
                 hidePersonalInfo: hide, projectNumbers: numbers)),
             ("sessions.csv", ExportService.exportSessionsCSV(
                 sessions: state.sessions, hidePersonalInfo: hide, projectNumbers: numbers)),
             ("alerts.csv", ExportService.exportAlertsCSV(
                 alerts: state.alertState.alerts, hidePersonalInfo: hide, projectNumbers: numbers)),
             ("report.pdf", ExportService.exportPDFReport(
-                dashboard: state.dashboard, providers: state.providerState.providers, sessions: state.sessions,
+                dashboard: state.dashboard, counts: state.dashboardCounts(),
+                providers: state.providerState.providers, sessions: state.sessions,
                 dailyUsage: state.dailyUsage, costForecast: state.costForecast,
                 hidePersonalInfo: hide, projectNumbers: numbers, destinationURL: pdf)),
         ]

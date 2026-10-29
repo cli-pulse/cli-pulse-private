@@ -452,6 +452,16 @@ public final class WatchAppState: ObservableObject {
         refreshTickCount = 0
     }
 
+    // MARK: - Sessions clock
+
+    /// 1.60 (59-05): the moment the Watch counts sessions and devices against
+    /// (`SessionsClock`, as `AppState.sessionsClock` on the iPhone and Mac):
+    /// now, and in Demo (or a screenshot capture of it) the moment its one
+    /// refresh is shown at, so Demo's rows do not age out while it is open.
+    func sessionsClock(now: Date = Date()) -> Date {
+        SessionsClock.at(now, demoRefresh: (isDemoMode || currentUserID == "demo") ? lastRefresh : nil)
+    }
+
     // MARK: - Provider Helpers
 
     var enabledProviderNames: Set<String> {

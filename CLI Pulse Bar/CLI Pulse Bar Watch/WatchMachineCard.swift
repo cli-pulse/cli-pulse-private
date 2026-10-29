@@ -10,6 +10,9 @@ import CLIPulseCore
 /// Compact card (a NavigationLink label in `folded()`).
 struct WatchMachineCard: View {
     let device: WatchDeviceSummary
+    /// The Watch's `sessionsClock()`: a device not seen within
+    /// `DashboardCounts.deviceOnlineGrace` of it reads Offline (1.60, 59-05).
+    let now: Date
 
     var body: some View {
         WatchCard {
@@ -34,13 +37,13 @@ struct WatchMachineCard: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var statusColor: Color { device.deviceStatus == .online ? .green : .secondary }
+    private var statusColor: Color { device.isOnline(now: now) ? .green : .secondary }
 
     /// One glanceable metric: temp, else uptime, else the status word.
     private var subtitle: String {
         if let t = device.cpuTempC { return String(format: "%.0f°C", t) }
         if let up = device.uptimeSeconds { return MachineFormat.uptime(up) }
-        return L10n.status.localized(device.status)
+        return L10n.status.localized(device.displayStatus(now: now))
     }
 }
 

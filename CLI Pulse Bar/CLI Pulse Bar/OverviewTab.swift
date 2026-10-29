@@ -186,6 +186,7 @@ struct OverviewTab: View {
             Button {
                 if let url = ExportService.exportCostReportCSV(
                     dashboard: state.dashboard,
+                    counts: state.dashboardCounts(),
                     providers: providerState.providers,
                     sessions: state.sessions,
                     hidePersonalInfo: hidePersonalInfo,
@@ -263,6 +264,7 @@ struct OverviewTab: View {
 
         if let saved = ExportService.exportPDFReport(
             dashboard: state.dashboard,
+            counts: state.dashboardCounts(),
             providers: providerState.providers,
             sessions: state.sessions,
             dailyUsage: state.dailyUsage,
@@ -368,15 +370,20 @@ struct OverviewTab: View {
                     color: .purple
                 )
             }
+            // 1.60 (59-05): counted from the rows now (`DashboardCounts`): the
+            // Sessions tab's Active rows, and the devices seen within the
+            // grace. The dashboard's own figures were fixed at the refresh,
+            // and the session one was raised to the list and never lowered.
+            let counts = state.dashboardCounts()
             MetricCard(
                 title: L10n.tab.sessions,
-                value: DisplayFormat.count(dash.active_sessions),
+                value: DisplayFormat.count(counts.activeSessions),
                 icon: "terminal",
                 color: .cyan
             )
             MetricCard(
                 title: L10n.dashboard.onlineDevices,
-                value: DisplayFormat.count(dash.online_devices),
+                value: DisplayFormat.count(counts.onlineDevices),
                 icon: "desktopcomputer",
                 color: .blue
             )

@@ -147,7 +147,9 @@ struct iOSMachineView: View {
         //    sticky last-known column, so a sleeping/offline Mac would still
         //    "advertise" controls; a command it can't pick up just expires in 60s);
         //  - the Mac reports the specific capability (executor opt-in + daemon).
-        let live = d.deviceStatus == .online && !d.isReadingStale()
+        // 1.60 (59-05): Online and seen within the grace
+        // (`DashboardCounts.isOnline`); the stored status alone is Online forever.
+        let live = d.isOnline(now: Date()) && !d.isReadingStale()
         let canFan = live && state.remoteControlEnabled && d.remoteControlCan("remote_fan")
         let canLPM = live && state.remoteControlEnabled && d.remoteControlCan("remote_lpm")
         let canKeepAwake = live && state.remoteControlEnabled && d.remoteControlCan("keep_awake")

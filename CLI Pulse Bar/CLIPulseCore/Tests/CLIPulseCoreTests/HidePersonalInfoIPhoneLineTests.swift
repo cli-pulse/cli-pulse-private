@@ -172,7 +172,7 @@ final class HidePersonalInfoIPhoneLineTests: XCTestCase {
         let overview = try Self.code("CLI Pulse Bar iOS/iOSOverviewTab.swift")
         for export in ["ExportService.exportCostReportCSV(", "ExportService.exportSessionsCSV("] {
             let call = try XCTUnwrap(overview.range(of: export), "\(export) is gone from the Overview")
-            XCTAssertTrue(overview[call.upperBound...].prefix(200).contains("hidePersonalInfo: hidePersonalInfo"),
+            XCTAssertTrue(overview[call.upperBound...].prefix(300).contains("hidePersonalInfo: hidePersonalInfo"),
                           "\(export) is not told the switch")
         }
         XCTAssertTrue(try Self.code("CLI Pulse Bar iOS/PhoneSessionManager.swift")

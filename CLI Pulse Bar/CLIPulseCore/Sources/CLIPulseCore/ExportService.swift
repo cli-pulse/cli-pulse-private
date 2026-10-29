@@ -107,12 +107,13 @@ public enum ExportService {
     /// Export a combined cost report with dashboard + provider breakdown.
     public static func exportCostReportCSV(
         dashboard: DashboardSummary?,
+        counts: DashboardCounts,
         providers: [ProviderUsage],
         sessions: [SessionRecord],
         hidePersonalInfo: Bool,
         projectNumbers: ProjectNameNumbers
     ) -> URL? {
-        writeTemp(costReportCSV(dashboard: dashboard, providers: providers, sessions: sessions,
+        writeTemp(costReportCSV(dashboard: dashboard, counts: counts, providers: providers, sessions: sessions,
                                 hidePersonalInfo: hidePersonalInfo, projectNumbers: projectNumbers),
                   name: "cli-pulse-cost-report.csv")
     }
@@ -144,8 +145,12 @@ public enum ExportService {
     /// "Unknown" in the reader's language rather than a producer's English
     /// placeholder, and with "Hide personal information" on "Project N" or
     /// "Hidden project".
+    ///
+    /// 1.60 (59-05): Active Sessions and Online Devices are `counts`, counted
+    /// from the rows at the time of the export, not the dashboard's figures.
     static func costReportCSV(
         dashboard: DashboardSummary?,
+        counts: DashboardCounts,
         providers: [ProviderUsage],
         sessions: [SessionRecord],
         hidePersonalInfo: Bool,
@@ -166,8 +171,8 @@ public enum ExportService {
             csv += row([esc(L10n.pdf.summary)])
             csv += row([esc(L10n.pdf.todayUsage), "\(d.total_usage_today)"])
             csv += row([esc(L10n.pdf.todayEstimatedCost), "$\(d.total_estimated_cost_today)"])
-            csv += row([esc(L10n.pdf.activeSessions), "\(d.active_sessions)"])
-            csv += row([esc(L10n.pdf.onlineDevices), "\(d.online_devices)"])
+            csv += row([esc(L10n.pdf.activeSessions), "\(counts.activeSessions)"])
+            csv += row([esc(L10n.pdf.onlineDevices), "\(counts.onlineDevices)"])
             csv += row([esc(L10n.pdf.unresolvedAlerts), "\(d.unresolved_alerts)"]) + "\n"
         }
 
@@ -204,6 +209,7 @@ public enum ExportService {
     /// resolves a Downloads-or-temp default.
     public static func exportPDFReport(
         dashboard: DashboardSummary?,
+        counts: DashboardCounts,
         providers: [ProviderUsage],
         sessions: [SessionRecord],
         dailyUsage: [DailyUsage],
@@ -214,6 +220,7 @@ public enum ExportService {
     ) -> URL? {
         PDFReportGenerator.generateReport(
             dashboard: dashboard,
+            counts: counts,
             providers: providers,
             sessions: sessions,
             dailyUsage: dailyUsage,

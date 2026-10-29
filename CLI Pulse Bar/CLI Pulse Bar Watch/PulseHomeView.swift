@@ -17,7 +17,15 @@ struct PulseHomeView: View {
     @Binding var selectedTab: WatchTab
 
     private var activity: Double {
-        WatchPulseFormat.activityLevel(activeSessions: state.dashboard?.active_sessions ?? 0)
+        WatchPulseFormat.activityLevel(activeSessions: activeSessions)
+    }
+
+    /// 1.60 (59-05): the sessions the iPhone's Sessions tab lists under
+    /// Active, counted now (`DashboardCounts`), not the dashboard's figure
+    /// from the last refresh. (The Live page lists rows by their stored
+    /// status, as it did; it can show a Running row this has stopped counting.)
+    private var activeSessions: Int {
+        DashboardCounts.activeSessions(state.sessions, now: state.sessionsClock())
     }
 
     private var visibleProviders: [ProviderUsage] {
@@ -296,9 +304,9 @@ struct PulseHomeView: View {
         HStack(spacing: 6) {
             StatChip(
                 icon: "terminal",
-                value: "\(dash.active_sessions)",
+                value: "\(activeSessions)",
                 tint: .blue,
-                accessibilityText: L10n.watch.sessionsCount(dash.active_sessions),
+                accessibilityText: L10n.watch.sessionsCount(activeSessions),
                 action: { selectedTab = .live }
             )
             StatChip(
@@ -404,7 +412,7 @@ struct PulseHomeView: View {
                     NavigationLink {
                         WatchMachineDetailView(device: d)
                     } label: {
-                        WatchMachineCard(device: d)
+                        WatchMachineCard(device: d, now: state.sessionsClock())
                     }
                     .buttonStyle(.plain)
                 }

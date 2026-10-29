@@ -23,6 +23,11 @@ struct WidgetData: Codable {
     /// has neither, and costs show in dollars as that app did here.
     var displayCurrency: String? = nil
     var fxRate: Double? = nil
+    /// 1.60: when each session counted in `activeSessions` was last active
+    /// (`PublishedWidgetData.activeSessionLastActiveAt`), so an entry counts
+    /// again at its own date (`CLIPulseEntry.activeSessions`). Nil in a payload
+    /// from before it, and in Demo's.
+    var activeSessionLastActiveAt: [Date]? = nil
 
     static let empty = WidgetData(
         totalUsageToday: 0,
@@ -141,11 +146,15 @@ struct CLIPulseTimelineProvider: TimelineProvider {
         // of one. WidgetKit will pick the most relevant one to render based
         // on the relevance score, and the staleness label rendered inside
         // the widget keeps reading sensibly as the entry timestamps advance.
-        let entries: [CLIPulseEntry] = (0..<3).map { offset in
-            let entryDate = Calendar.current.date(byAdding: .minute, value: offset * 5, to: now) ?? now.addingTimeInterval(TimeInterval(offset * 300))
-            return CLIPulseEntry(date: entryDate, data: data)
-        }
         let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: now) ?? now.addingTimeInterval(900)
+        var dates: [Date] = (0..<3).map { offset in
+            Calendar.current.date(byAdding: .minute, value: offset * 5, to: now) ?? now.addingTimeInterval(TimeInterval(offset * 300))
+        }
+        // 1.60 (59-05): and one where each session stops counting
+        // (`CLIPulseEntry.activeSessions`), so the figure drops then rather
+        // than at the next five-minute entry.
+        dates += DashboardCounts.countDrops(lastActiveAt: data.activeSessionLastActiveAt, after: now, until: nextUpdate)
+        let entries = Array(Set(dates)).sorted().map { CLIPulseEntry(date: $0, data: data) }
         let timeline = Timeline(entries: entries, policy: .after(nextUpdate))
         completion(timeline)
     }
@@ -154,6 +163,14 @@ struct CLIPulseTimelineProvider: TimelineProvider {
 struct CLIPulseEntry: TimelineEntry {
     let date: Date
     let data: WidgetData
+
+    /// The sessions active at this entry's date (1.60, 59-05). The payload's
+    /// own figure was counted when the app published it; an entry drawn
+    /// five or ten minutes later counted a session that had ended since.
+    var activeSessions: Int {
+        DashboardCounts.activeSessions(
+            published: data.activeSessions, lastActiveAt: data.activeSessionLastActiveAt, now: date)
+    }
 
     // v1.21 D6: relevance scoring for iOS 17+ Smart Stack. The widget rises
     // in the stack when (a) there are unresolved alerts, or (b) the highest-

@@ -30,7 +30,7 @@ struct GetStatusIntent: AppIntent {
         let spoken = L10n.intents.statusSummary(
             usage: usage,
             cost: cost,
-            sessions: snapshot.activeSessions,
+            sessions: snapshot.activeSessions(at: Date()),
             alerts: snapshot.unresolvedAlerts
         )
 

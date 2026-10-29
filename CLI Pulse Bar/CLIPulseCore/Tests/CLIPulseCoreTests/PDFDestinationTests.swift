@@ -80,6 +80,7 @@ final class PDFDestinationTests: XCTestCase {
 
         let url = PDFReportGenerator.generateReport(
             dashboard: nil,
+            counts: DashboardCounts(activeSessions: 0, onlineDevices: 0),
             providers: [],
             sessions: [],
             dailyUsage: [],
