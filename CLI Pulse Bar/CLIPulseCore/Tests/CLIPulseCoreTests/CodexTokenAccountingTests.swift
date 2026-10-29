@@ -775,7 +775,7 @@ final class CodexTokenAccountingTests: XCTestCase {
         }
         XCTAssertEqual(
             [UInt64(costUsageCodexCacheRulesVersion), hash],
-            [9, 5_837_815_579_421_536_959],
+            [10, 4_796_790_004_104_045_051],
             "Codex rates changed: bump costUsageCodexCacheRulesVersion, then pin the new version and hash"
         )
     }

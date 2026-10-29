@@ -476,9 +476,16 @@ public enum CostUsageScanner {
     /// instead of reading $0. Every row the scanner writes has slot 3; a cache
     /// written before it is rejected by `CostUsageCacheIO.load`, so a row
     /// without it is treated as unpriced rather than guessed at.
+    ///
+    /// 1.60 (A5): a model with no rate can still be priced, when every
+    /// request in the row was (slot 4, its requests with no rate, is 0): a
+    /// row of free Auto-review requests costs $0 rather than "no rate".
     static func codexCost(model: String, packed: [Int]) -> Double? {
-        guard Pricing.codexPricingKey(model) != nil, let costNanos = packed[safeIdx: 3] else { return nil }
-        return Double(costNanos) / 1_000_000_000.0
+        guard let costNanos = packed[safeIdx: 3] else { return nil }
+        if Pricing.codexPricingKey(model) != nil || packed[safeIdx: 4] == 0 {
+            return Double(costNanos) / 1_000_000_000.0
+        }
+        return nil
     }
 
     private static func entriesFromClaudeCache(_ cache: CostUsageCache, range: DayRange) -> [CostUsageScanResult.DailyEntry] {
@@ -861,6 +868,15 @@ public enum CostUsageScanner {
             codexPriceResolution(raw)?.key
         }
 
+        /// 1.60 (A5): a `codex-auto-review` request made at or after
+        /// `CodexPricingTable.autoReviewFreeSince` in a session created signed
+        /// in with ChatGPT costs nothing (upstream 0.82.0).
+        static func isFreeAutoReview(model: String, at instant: Date, hasCreatorAccountId: Bool) -> Bool {
+            hasCreatorAccountId
+                && instant >= CodexPricingTable.autoReviewFreeSince
+                && normalizeCodexModel(model) == CodexPricingTable.autoReviewModel
+        }
+
         /// The row `raw` is charged at: its own, then an alias's (a dated
         /// spelling of an alias included), then the version fallback above
         /// (approximate).
@@ -1120,6 +1136,12 @@ public enum CostUsageScanner {
             for name in codexFingerprintModelNames {
                 lines.append("name \(name) -> \(normalizeCodexModel(name)) -> \(codexPricingKey(name) ?? "nil")")
             }
+            // 1.60 (A4, A5): what a Fast turn and a free Auto-review cost.
+            for key in CodexPricingTable.fastMultipliers.keys.sorted() {
+                let longContext = CodexPricingTable.fastLongContextRows.contains(key) ? "long-context" : "standard-only"
+                lines.append("fast \(key) x\(number(CodexPricingTable.fastMultipliers[key])) \(longContext)")
+            }
+            lines.append("auto-review \(CodexPricingTable.autoReviewModel) free since \(Int(CodexPricingTable.autoReviewFreeSince.timeIntervalSince1970))")
             return lines.joined(separator: "\n")
         }
 
@@ -1475,6 +1497,13 @@ public enum CostUsageScanner {
         var project: CostUsageFileProject?
         var days: [String: [String: [Int]]] = [:]
         let costScale = 1_000_000_000.0
+        // 1.60 (A4, A5): the Fast setting and the turn's tier, resumed from
+        // the state a previous read of the file ended with; and whether the
+        // session was created signed in with ChatGPT, from its first line.
+        var serviceTier = initialState.serviceTier
+        var turnServiceTier = initialState.turnServiceTier
+        var turnAwaitsRequest = initialState.turnAwaitsRequest
+        var hasCreatorAccountId = initialState.hasCreatorAccountId
 
         func incomplete() -> CodexParseResult {
             CodexParseResult(days: [:], parsedBytes: startOffset, lastModel: initialModel, lastTotals: initialTotals,
@@ -1501,6 +1530,8 @@ public enum CostUsageScanner {
                     let payload = obj["payload"] as? [String: Any]
                     sessionId = payload?["session_id"] as? String ?? payload?["sessionId"] as? String ?? payload?["id"] as? String ?? obj["session_id"] as? String
                     project = codexFileProject(sessionMeta: obj)
+                    hasCreatorAccountId = (payload?["creator_account_id"] as? String)
+                        .map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
                     let metaTime = (payload?["timestamp"] as? String) ?? (obj["timestamp"] as? String)
                     let metaInstant = metaTime.flatMap { instantFromTimestamp($0) ?? instantFromParsedISO($0) }
                     accountant.observeSessionMeta(
@@ -1524,9 +1555,9 @@ public enum CostUsageScanner {
             return overflow ? Int.max : sum
         }
         var normalizedModels: [String: String] = [:]
-        var pricingKeys: [String: String?] = [:]
+        var pricingKeys: [String: Pricing.PriceResolution?] = [:]
 
-        func add(dayKey: String, model: String, delta: CostUsageCodexTotals, costNanos: Int) {
+        func add(dayKey: String, model: String, delta: CostUsageCodexTotals, costNanos: Int, priced: Bool) {
             guard DayRange.isInRange(dayKey: dayKey, since: range.scanSinceKey, until: range.scanUntilKey) else { return }
             let normModel: String
             if let known = normalizedModels[model] {
@@ -1536,12 +1567,13 @@ public enum CostUsageScanner {
                 normalizedModels[model] = normModel
             }
             var dayModels = days[dayKey] ?? [:]
-            var packed = dayModels[normModel] ?? [0, 0, 0, 0]
-            while packed.count < 4 { packed.append(0) }
+            var packed = dayModels[normModel] ?? [0, 0, 0, 0, 0]
+            while packed.count < 5 { packed.append(0) }
             packed[0] = plus(packed[0], delta.input)
             packed[1] = plus(packed[1], min(delta.cached, delta.input))
             packed[2] = plus(packed[2], delta.output)
             packed[3] = plus(packed[3], costNanos)
+            if !priced { packed[4] = plus(packed[4], 1) }
             dayModels[normModel] = packed
             days[dayKey] = dayModels
         }
@@ -1565,21 +1597,41 @@ public enum CostUsageScanner {
 
         /// File one counted event under its local day and model, priced at
         /// the `CodexPricingTable` rates in force at its own time.
+        ///
+        /// 1.60: a Fast turn's request at the Fast multiple of the rate
+        /// (`CodexPricingTable.fastMultiplier`, only for a row the model is
+        /// exactly, never a borrowed one), and a free Auto-review request at
+        /// $0. A request with no rate adds 1 to the row's slot 4.
         func file(_ counted: CodexTokenAccountant.Counted) {
             let event = counted.event
-            let key: String?
+            let resolution: Pricing.PriceResolution?
             if let known = pricingKeys[event.model] {
-                key = known
+                resolution = known
             } else {
-                key = Pricing.codexPricingKey(event.model)
-                pricingKeys[event.model] = key
+                resolution = Pricing.codexPriceResolution(event.model)
+                pricingKeys[event.model] = resolution
             }
             var costNanos = 0
-            if let key, let rates = CodexPricingTable.rates(forKey: key, at: event.instant) {
-                let nanos = Pricing.codexEventCostUSD(rates: rates, counted: counted.delta, request: event.last) * costScale
+            // A model with a row is priced, as `codexCost` reads it.
+            var priced = resolution != nil
+            if let key = resolution?.key, let rates = CodexPricingTable.rates(forKey: key, at: event.instant) {
+                var cost = Pricing.codexEventCostUSD(rates: rates, counted: counted.delta, request: event.last)
+                // The multiple is today's, applied to the rate in force at the
+                // event's time (a dated one included): OpenAI lists Fast as a
+                // multiple of the standard rate, not as dated rows of its own.
+                if event.fast, resolution?.isApproximate == false,
+                   let multiplier = CodexPricingTable.fastMultiplier(
+                       forKey: key, requestInputTokens: (event.last ?? counted.delta).input) {
+                    cost *= multiplier
+                }
+                let nanos = cost * costScale
                 if nanos.isFinite { costNanos = Int(min(max(0, nanos), 1e18).rounded()) }
+            } else if Pricing.isFreeAutoReview(
+                model: event.model, at: event.instant, hasCreatorAccountId: hasCreatorAccountId == true) {
+                priced = true
             }
-            add(dayKey: DayRange.dayKey(from: event.instant), model: event.model, delta: counted.delta, costNanos: costNanos)
+            add(dayKey: DayRange.dayKey(from: event.instant), model: event.model, delta: counted.delta,
+                costNanos: costNanos, priced: priced)
         }
 
         let maxLineBytes = 256 * 1024
@@ -1629,7 +1681,10 @@ public enum CostUsageScanner {
                 guard !line.wasTruncated else { return }
                 guard line.bytes.asciiContains(#""type":"event_msg""#)
                     || line.bytes.asciiContains(#""type":"turn_context""#) else { return }
-                if line.bytes.asciiContains(#""type":"event_msg""#), !line.bytes.asciiContains(#""token_count""#) { return }
+                if line.bytes.asciiContains(#""type":"event_msg""#),
+                   !line.bytes.asciiContains(#""token_count""#),
+                   !line.bytes.asciiContains(#""thread_settings_applied""#),
+                   !line.bytes.asciiContains(#""task_started""#) { return }
 
                 guard let obj = (try? JSONSerialization.jsonObject(with: line.bytes)) as? [String: Any],
                       let type = obj["type"] as? String else { return }
@@ -1646,9 +1701,28 @@ public enum CostUsageScanner {
                     return
                 }
 
-                guard type == "event_msg",
-                      let payload = obj["payload"] as? [String: Any],
-                      (payload["type"] as? String) == "token_count" else { return }
+                guard type == "event_msg", let payload = obj["payload"] as? [String: Any] else { return }
+                // 1.60 (A4): the Fast setting, and the turn it applies to. A
+                // turn runs at the tier set when it started, as upstream
+                // latches it, or at one applied after it started and before
+                // its first request: Codex writes a session's first turn as
+                // task_started, turn_context, thread_settings_applied, then
+                // the first token_count.
+                switch payload["type"] as? String {
+                case "thread_settings_applied":
+                    let settings = payload["thread_settings"] as? [String: Any]
+                    serviceTier = settings?["service_tier"] as? String
+                    if turnAwaitsRequest == true { turnServiceTier = serviceTier }
+                    return
+                case "task_started":
+                    turnServiceTier = serviceTier
+                    turnAwaitsRequest = true
+                    return
+                case "token_count":
+                    turnAwaitsRequest = false
+                default:
+                    return
+                }
 
                 let info = payload["info"] as? [String: Any]
                 let total = totals(info?["total_token_usage"] as? [String: Any])
@@ -1661,7 +1735,8 @@ public enum CostUsageScanner {
                     total: total,
                     last: last,
                     model: modelFromInfo ?? currentModel ?? "gpt-5",
-                    line: lineIndex
+                    line: lineIndex,
+                    fast: turnServiceTier == "priority"
                 )
                 for counted in accountant.receive(event) { file(counted) }
             })
@@ -1673,13 +1748,19 @@ public enum CostUsageScanner {
         // Events still held at the end of the read count (rule 2).
         for counted in accountant.finish() { file(counted) }
 
+        var state = accountant.state
+        state.serviceTier = serviceTier
+        state.turnServiceTier = turnServiceTier
+        state.turnAwaitsRequest = turnAwaitsRequest
+        state.hasCreatorAccountId = hasCreatorAccountId
+
         return CodexParseResult(
             days: days,
             parsedBytes: parsedBytes,
             lastModel: currentModel,
             lastTotals: accountant.watermark,
             sessionId: sessionId,
-            state: accountant.state,
+            state: state,
             project: project,
             complete: true
         )

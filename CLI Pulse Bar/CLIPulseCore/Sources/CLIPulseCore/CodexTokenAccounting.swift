@@ -183,6 +183,10 @@ struct CodexTokenAccountant {
         /// The line's position in the file, counting the first line as 0
         /// (only a rollout read whole needs it).
         var line: Int = 0
+        /// 1.60 (A4): the turn this event belongs to ran on the Fast
+        /// (priority) tier. Taken when the event is read, since a held event
+        /// is priced later in the read.
+        var fast: Bool = false
 
         var unixMs: Int64 { CostUsageScanner.unixMillis(instant) }
     }
