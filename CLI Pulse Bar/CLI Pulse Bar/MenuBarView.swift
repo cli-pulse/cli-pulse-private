@@ -473,7 +473,6 @@ struct MenuBarView: View {
                     // it is under 3:1), a 16 pt close, as the notices below.
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 9))
-                        .accessibilityHidden(true)
                     Text(error)
                         .font(.system(size: 9))
                         .lineLimit(1)
@@ -510,7 +509,6 @@ struct MenuBarView: View {
                     // 16 pt target around its 8 pt glyph.
                     Image(systemName: "checkmark.shield")
                         .font(.system(size: 9))
-                        .accessibilityHidden(true)
                     Text(L10n.menuBar.tierMigration(kept: state.subscriptionManager.maxProviders, disabled: state.providerLimitMigrationCount))
                         .font(.system(size: 9))
                         .lineLimit(3)
@@ -584,7 +582,6 @@ struct MenuBarView: View {
                     // close (as the notices above).
                     Image(systemName: "exclamationmark.arrow.trianglehead.counterclockwise.rotate.90")
                         .font(.system(size: 9))
-                        .accessibilityHidden(true)
                     Text(warning)
                         .font(.system(size: 9))
                         .lineLimit(2)

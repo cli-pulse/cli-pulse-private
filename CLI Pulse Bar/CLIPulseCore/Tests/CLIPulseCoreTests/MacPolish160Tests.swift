@@ -50,7 +50,10 @@ final class MacPolish160Tests: XCTestCase {
         for message in ["Text(error)", "Text(L10n.menuBar.tierMigration(", "Text(L10n.menuBar.retiredProvidersNotice)",
                         "Text(warning)"] {
             let at = try XCTUnwrap(menu.range(of: message), "\(message) is gone")
-            XCTAssertTrue(menu[at.upperBound...].prefix(260).contains(".foregroundStyle(Color.primary)"),
+            // Up to the end of the message's own modifiers: the next view.
+            let rest = menu[at.upperBound...]
+            let end = rest.range(of: "Spacer(")?.lowerBound ?? rest.endIndex
+            XCTAssertTrue(rest[..<end].contains(".foregroundStyle(Color.primary)"),
                           "\(message) is drawn in the banner's tint, which is under 3:1 on its fill")
         }
     }
