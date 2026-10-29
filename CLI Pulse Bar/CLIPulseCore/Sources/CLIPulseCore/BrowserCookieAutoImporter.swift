@@ -63,7 +63,18 @@ public actor BrowserCookieAutoImporter: CookieImporting {
     /// re-attempted on every refresh cycle (D1).
     private var deniedThisRun: Set<Browser> = []
 
-    public init() {}
+    private let client: BrowserCookieClient
+    private let browsers: [Browser]
+
+    public init() {
+        self.init(client: BrowserCookieClient(), browsers: Self.browserOrder)
+    }
+
+    /// Tests point the client at a temporary home folder.
+    init(client: BrowserCookieClient, browsers: [Browser]) {
+        self.client = client
+        self.browsers = browsers
+    }
 
     public func importCookieHeader(
         domains: [String],
@@ -71,10 +82,16 @@ public actor BrowserCookieAutoImporter: CookieImporting {
         logger: (@Sendable (String) -> Void)?
     ) async -> String? {
         let log: (String) -> Void = { msg in logger?("[cookie-auto] \(msg)") }
-        let client = BrowserCookieClient()
-        let query = BrowserCookieQuery(domains: domains, domainMatch: .contains)
+        // 1.60 (N2): a Keychain dialog only on a refresh a person started.
+        // A background read that needs approval fails as `.loadFailed`, which
+        // is not remembered below, so the next manual refresh still asks.
+        let query = BrowserCookieQuery(
+            domains: domains,
+            domainMatch: .contains,
+            allowsKeychainPrompt: RefreshInteraction.current == .userInitiated
+        )
 
-        for browser in Self.browserOrder where !deniedThisRun.contains(browser) {
+        for browser in browsers where !deniedThisRun.contains(browser) {
             do {
                 let cookies = try client.cookies(matching: query, in: browser)
                 guard !cookies.isEmpty else { continue }

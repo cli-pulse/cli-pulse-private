@@ -1322,6 +1322,12 @@
    "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit import error description. Its only consumer, BrowserCookieAutoImporter (macOS), absorbs every import error into its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw), and nothing outside Vendor/SweetCookieKit reads a store label or loginHint."
   },
   {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/ChromeCookieImporter.swift",
+   "literal": "\"Reading Chrome Safe Storage needs Keychain approval; it is asked for on a manual refresh.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit import error description (1.60, N2: Keychain approval needed on a background refresh). Mapped to BrowserCookieError.loadFailed, whose only consumer, BrowserCookieAutoImporter (macOS), writes it to its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw); nothing shows it."
+  },
+  {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/GeckoCookieImporter.swift",
    "literal": "\"Failed to read \\(browser.displayName) cookies: \\(message)\"",
    "count": 1,

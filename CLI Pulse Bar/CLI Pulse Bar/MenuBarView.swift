@@ -755,7 +755,7 @@ struct MenuBarView: View {
             LanguagePickerMenu()
 
             Button {
-                state.requestRefresh()
+                state.requestManualRefresh()
             } label: {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 9))

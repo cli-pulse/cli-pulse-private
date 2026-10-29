@@ -278,7 +278,7 @@ struct OverviewTab: View {
 
     private var refreshButton: some View {
         Button {
-            state.requestRefresh()
+            state.requestManualRefresh()
         } label: {
             Image(systemName: "arrow.clockwise")
                 .font(.system(size: 10))
