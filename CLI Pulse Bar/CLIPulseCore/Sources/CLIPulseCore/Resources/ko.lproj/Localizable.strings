@@ -1784,8 +1784,6 @@
 "provider_config.source_api" = "API";
 "provider_config.source_auto" = "자동";
 "provider_config.source_cli" = "CLI";
-"provider_config.source_local" = "로컬";
-"provider_config.source_merged" = "클라우드 + 로컬";
 "provider_config.source_oauth" = "OAuth";
 "provider_config.source_web" = "웹";
 "providers.plan_multiple_accounts" = "여러 계정";

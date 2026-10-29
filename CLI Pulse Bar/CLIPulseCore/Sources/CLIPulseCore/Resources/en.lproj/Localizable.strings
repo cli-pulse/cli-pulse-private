@@ -1826,8 +1826,6 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "provider_config.source_api" = "API";
 "provider_config.source_auto" = "Automatic";
 "provider_config.source_cli" = "CLI";
-"provider_config.source_local" = "Local";
-"provider_config.source_merged" = "Cloud + local";
 "provider_config.source_oauth" = "OAuth";
 "provider_config.source_web" = "Web";
 "providers.plan_multiple_accounts" = "Multiple accounts";

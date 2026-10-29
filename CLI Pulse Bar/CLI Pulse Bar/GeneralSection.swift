@@ -336,11 +336,14 @@ struct WebhookEventFilterDisclosure: View {
                     // between them: translated labels do not fit one row at
                     // the popover's width, and a chip squeezed to fit broke
                     // "デバイスオフライン" mid-word.
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    // 1.60 (C14): each label sits above its chips. In a 70 pt
+                    // column beside them, "Severidades" and "Tipos de alerta"
+                    // broke across lines (the refresh cadence's label moved
+                    // above its picker for the same reason).
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(L10n.integrations.filterSeverities)
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
-                            .frame(width: 70, alignment: .leading)
                         WebhookChipFlowLayout(spacing: 4) {
                             ForEach(WebhookEventFilter.severityChips(for: filter), id: \.self) { severity in
                                 filterChip(
@@ -354,11 +357,10 @@ struct WebhookEventFilterDisclosure: View {
                         }
                     }
 
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(L10n.integrations.filterTypes)
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
-                            .frame(width: 70, alignment: .leading)
                         WebhookChipFlowLayout(spacing: 4) {
                             ForEach(WebhookEventFilter.typeChips(for: filter), id: \.self) { type in
                                 filterChip(label: WebhookEventFilter.typeLabel(type), isSelected: filter.types.contains(type)) {

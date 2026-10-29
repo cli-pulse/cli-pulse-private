@@ -2264,10 +2264,10 @@ internal final class DataRefreshManager {
 
         for entry in scan.entries {
             var r = rollup[entry.provider, default: Rollup()]
-            // v1.9.4 second revision: uniform `input + output` for every
-            // provider. Cache tokens excluded from the displayed count (cost
-            // still uses full per-component pricing — see
-            // `CostUsageScanResult.totalTokens(for:)` for the rationale).
+            // `input + output` for every provider, as
+            // `CostUsageScanResult.totalTokens(for:)` counts them: that leaves
+            // Claude's cache reads and writes out, while Codex's input already
+            // holds its cached share. Cost is priced per component either way.
             let entryTokens = entry.inputTokens + entry.outputTokens
             if entry.date == todayKey {
                 r.todayCost += entry.costUSD ?? 0

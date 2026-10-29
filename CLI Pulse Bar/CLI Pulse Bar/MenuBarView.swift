@@ -469,17 +469,23 @@ struct MenuBarView: View {
             // Error banner
             if let error = state.lastError {
                 HStack(spacing: 4) {
+                    // 1.60 (C25): primary text on the orange fill (orange on
+                    // it is under 3:1), a 16 pt close, as the notices below.
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 9))
+                        .accessibilityHidden(true)
                     Text(error)
                         .font(.system(size: 9))
                         .lineLimit(1)
-                    Spacer()
+                        .foregroundStyle(Color.primary)
+                    Spacer(minLength: 0)
                     Button {
                         state.lastError = nil
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 8))
+                            .frame(width: 16, height: 16)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(L10n.a11y.dismissError)
@@ -496,13 +502,20 @@ struct MenuBarView: View {
             // from the tier-limit warning (purple, over-limit) so users see
             // an action, not a failure.
             if state.providerLimitMigrationCount > 0 {
-                HStack(spacing: 4) {
+                HStack(alignment: .top, spacing: 4) {
+                    // 1.60 (C25): as the retired-provider notice below. The
+                    // message is primary text on the tinted fill (system blue
+                    // on it is about 3:1 in light mode); the icon, the Edit
+                    // button and the close keep the tint, and the close is a
+                    // 16 pt target around its 8 pt glyph.
                     Image(systemName: "checkmark.shield")
                         .font(.system(size: 9))
+                        .accessibilityHidden(true)
                     Text(L10n.menuBar.tierMigration(kept: state.subscriptionManager.maxProviders, disabled: state.providerLimitMigrationCount))
                         .font(.system(size: 9))
                         .lineLimit(3)
-                    Spacer()
+                        .foregroundStyle(Color.primary)
+                    Spacer(minLength: 0)
                     Button {
                         state.selectedTab = .settings
                     } label: {
@@ -515,6 +528,8 @@ struct MenuBarView: View {
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 8))
+                            .frame(width: 16, height: 16, alignment: .top)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(L10n.a11y.dismissTierWarning)
@@ -564,18 +579,24 @@ struct MenuBarView: View {
 
             // Tier limit warning banner
             if let warning = state.tierLimitWarning {
-                HStack(spacing: 4) {
+                HStack(alignment: .top, spacing: 4) {
+                    // 1.60 (C25): primary text on the purple fill, a 16 pt
+                    // close (as the notices above).
                     Image(systemName: "exclamationmark.arrow.trianglehead.counterclockwise.rotate.90")
                         .font(.system(size: 9))
+                        .accessibilityHidden(true)
                     Text(warning)
                         .font(.system(size: 9))
                         .lineLimit(2)
-                    Spacer()
+                        .foregroundStyle(Color.primary)
+                    Spacer(minLength: 0)
                     Button {
                         state.tierLimitWarning = nil
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 8))
+                            .frame(width: 16, height: 16, alignment: .top)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(L10n.a11y.dismissTierWarning)

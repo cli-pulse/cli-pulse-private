@@ -325,8 +325,12 @@ public enum SourceType: String, Codable, CaseIterable, Sendable {
         case .cli: return L10n.providerConfig.sourceCLI
         case .oauth: return L10n.providerConfig.sourceOAuth
         case .api: return L10n.providerConfig.sourceAPI
-        case .local: return L10n.providerConfig.sourceLocal
-        case .merged: return L10n.providerConfig.sourceMerged
+        // 1.60 (C26): this Mac by the name the usage scope and the provider
+        // card give it ("This Mac", "Cloud + this Mac"), not "Local", so the
+        // editor's Data source picker and the card do not call one Mac two
+        // things.
+        case .local: return L10n.providerPanel.scopeThisMac
+        case .merged: return L10n.providerCard.sourceMergedThisMac
         }
     }
 }
