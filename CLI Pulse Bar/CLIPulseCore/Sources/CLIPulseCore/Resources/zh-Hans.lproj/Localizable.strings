@@ -127,6 +127,10 @@
 "settings.server_name" = "Supabase（东京）";
 "settings.status" = "状态";
 "settings.connected" = "已连接";
+"settings.last_upload" = "上次云端上传";
+"settings.last_upload_never" = "尚未上传";
+"settings.last_upload_failed" = "最近一次尝试失败（%@）";
+"settings.last_upload_failed_http" = "最近一次尝试失败（HTTP %1$d，%2$@）";
 "settings.disconnected" = "未连接";
 "settings.paired" = "已同步";
 "settings.not_paired" = "未同步";

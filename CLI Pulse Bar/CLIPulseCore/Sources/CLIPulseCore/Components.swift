@@ -732,7 +732,12 @@ public enum RelativeTime {
         guard let date = formatterWithFractional.date(from: isoString) ?? formatterBasic.date(from: isoString) else {
             return isoString
         }
-        let interval = Date().timeIntervalSince(date)
+        return format(date, now: Date())
+    }
+
+    /// `date` relative to `now`: "just now", "5m ago", "in 2h".
+    public static func format(_ date: Date, now: Date) -> String {
+        let interval = now.timeIntervalSince(date)
         if interval >= 0 {
             // Past
             if interval < 60 { return L10n.time.justNow }

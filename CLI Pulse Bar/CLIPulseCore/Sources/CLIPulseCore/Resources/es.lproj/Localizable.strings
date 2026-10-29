@@ -127,6 +127,10 @@
 "settings.server_name" = "Supabase (Tokio)";
 "settings.status" = "Estado";
 "settings.connected" = "Conectado";
+"settings.last_upload" = "Última subida a la nube";
+"settings.last_upload_never" = "Todavía no";
+"settings.last_upload_failed" = "El último intento falló (%@)";
+"settings.last_upload_failed_http" = "El último intento falló (HTTP %1$d, %2$@)";
 "settings.disconnected" = "Desconectado";
 "settings.paired" = "Sincronizado";
 "settings.not_paired" = "No sincronizado";

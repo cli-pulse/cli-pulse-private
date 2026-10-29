@@ -758,6 +758,8 @@ extension AppState {
         // Another account without a sign-out in between: the webhook filter
         // on screen is the previous account's (see `applySignedOutState`).
         if userId != session.userId { resetWebhookEventFilter() }
+        // 1.60: "Last cloud upload" was the other account's.
+        if !userId.isEmpty, userId != session.userId { CloudUploadStatusStore.shared.reset() }
         userId = session.userId
         userName = session.userName
         userEmail = session.userEmail
@@ -850,6 +852,8 @@ extension AppState {
     }
 
     func applySignedOutState() {
+        // 1.60: "Last cloud upload" belongs to the account signed out of.
+        CloudUploadStatusStore.shared.reset()
         isLoading = false
         isAuthenticated = false
         isPaired = false

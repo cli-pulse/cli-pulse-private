@@ -312,21 +312,29 @@ final class UploadOutcomeTracker {
     private let defaults: UserDefaults
     private let now: () -> Date
     private let log: (String) -> Void
+    /// 1.60: what Settings › General shows as "Last cloud upload".
+    let statusStore: CloudUploadStatusStore
     private(set) var failuresInARow = 0
 
+    /// `statusStore`: the shared one with the standard defaults (the app),
+    /// else one on `defaults` (a test's own suite).
     init(
         reporter: any UploadReporter = SentryUploadReporter(),
         defaults: UserDefaults = .standard,
         now: @escaping () -> Date = { Date() },
-        log: @escaping (String) -> Void = { uploadOutcomeLogger.notice("\($0, privacy: .public)") }
+        log: @escaping (String) -> Void = { uploadOutcomeLogger.notice("\($0, privacy: .public)") },
+        statusStore: CloudUploadStatusStore? = nil
     ) {
         self.reporter = reporter
         self.defaults = defaults
         self.now = now
         self.log = log
+        self.statusStore = statusStore
+            ?? (defaults === UserDefaults.standard ? .shared : CloudUploadStatusStore(defaults: defaults))
     }
 
     func record(_ outcome: UploadOutcome, route: UploadRoute) {
+        statusStore.record(outcome, at: now())
         switch outcome.kind {
         case .success, .finished: failuresInARow = 0
         case .failure: failuresInARow += 1

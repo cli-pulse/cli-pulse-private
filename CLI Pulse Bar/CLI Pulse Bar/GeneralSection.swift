@@ -46,6 +46,13 @@ struct GeneralSection: View {
                     .foregroundStyle(state.serverOnline ? .green : .red)
             }
 
+            // 1.60: when this Mac's last upload reached the account, and
+            // whether the last attempt since then failed. Signed in only:
+            // local mode and Demo upload nothing.
+            if state.isAuthenticated && !state.isDemoMode {
+                LastCloudUploadRow(store: CloudUploadStatusStore.shared)
+            }
+
             // The label sits above the picker. Beside a 300-point picker it had
             // about 30 points left, and broke inside its words in every
             // language ("Refre/sh Caden/ce", "새로고/침 주기").
@@ -456,5 +463,35 @@ private struct WebhookChipFlowLayout: Layout {
             x += size.width + spacing
         }
         return (origins, usedWidth, y + rowHeight)
+    }
+}
+
+/// "Last cloud upload" under the connection's status (1.60): the time of this
+/// Mac's last upload that reached the account, and a line when the last
+/// attempt since then failed. Times and an HTTP status only
+/// (`CloudUploadStatus`). Redrawn each minute so "5m ago" stays true.
+private struct LastCloudUploadRow: View {
+    @ObservedObject var store: CloudUploadStatusStore
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            VStack(alignment: .trailing, spacing: 2) {
+                HStack {
+                    Text(L10n.settings.lastUpload)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(store.status.lastUploadText(now: context.date))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
+                if let failure = store.status.failureText(now: context.date) {
+                    Label(failure, systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
     }
 }
