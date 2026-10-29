@@ -580,13 +580,13 @@ with CLI Pulse 1.55, and later releases follow them:
   app also sends an error report when its main thread has not answered for ten
   seconds, at most two a launch. Besides what every report carries (the app
   and OS version, the device details and the SDK's random installation
-  identifier), it holds only the number of seconds, whether the main thread
-  was running, waiting or suspended, how many times it was suspended, how much
-  processor time it used while we looked and how long it had been asleep, a
-  fixed word for the kind of event loop it was in (`default`, `event_tracking`,
-  `modal_panel`, `none`, `unreadable` or `other`), which install channel this
-  Mac has, and whether the loop was one that waits for you on purpose (a menu
-  held open or a dialog). It has no stack trace and no breadcrumbs, and no
+  identifier), it holds only the number of seconds, a fixed word for what the
+  main thread was doing (running, waiting, stopped, uninterruptible, halted or
+  unknown), how many times it was suspended, how much processor time it used
+  while we looked, a fixed word for the kind of event loop it was in
+  (`default`, `event_tracking`, `modal_panel`, `none`, `unreadable` or
+  `other`), which install channel this Mac has, and whether it was waiting in
+  a loop that waits for you on purpose (a menu held open or a dialog). It has no stack trace and no breadcrumbs, and no
   window title, file name or account detail. Performance tracing
   is disabled
   (`tracesSampleRate = 0`). There is no switch to turn crash reporting off.

@@ -94,6 +94,9 @@ struct StallDetector {
         lastTick = uptime
     }
 
+    /// Whether either per-launch report slot is still free.
+    var hasFreeSlot: Bool { !unexplainedUsed || !explainedUsed }
+
     /// Takes one of the two per-launch report slots, if it is free. An
     /// `explained` stall (the run loop was in menu tracking or a modal panel)
     /// has a slot of its own, so a benign one cannot use up the budget for an
@@ -170,8 +173,6 @@ struct MainThreadSample: Equatable, Sendable {
     /// Processor time (user + system) the thread used between the first look
     /// and the last, in milliseconds.
     var cpuMilliseconds: Int
-    /// How long the kernel says the thread has been asleep, in seconds.
-    var sleepSeconds: Int
     /// The kernel's id of the thread that was looked at. Not sent anywhere:
     /// the tests compare it with the main thread's own.
     var threadID: UInt64
@@ -194,7 +195,6 @@ struct MainThreadSampler: Sendable {
     func sample() -> MainThreadSample {
         var states: [MainThreadRunState] = []
         var suspend = 0
-        var sleep = 0
         var firstCPU: Int?
         var lastCPU = 0
         for index in 0..<max(looks, 1) {
@@ -205,7 +205,6 @@ struct MainThreadSampler: Sendable {
             }
             states.append(MainThreadRunState(machRunState: info.run_state))
             suspend = max(suspend, Int(info.suspend_count))
-            sleep = Int(info.sleep_time)
             let cpu = Self.microseconds(info.user_time) + Self.microseconds(info.system_time)
             if firstCPU == nil { firstCPU = cpu }
             lastCPU = cpu
@@ -216,7 +215,6 @@ struct MainThreadSampler: Sendable {
             runState: state,
             suspendCount: suspend,
             cpuMilliseconds: max(0, lastCPU - (firstCPU ?? lastCPU)) / 1000,
-            sleepSeconds: sleep,
             threadID: Self.threadID(of: port) ?? 0
         )
     }
@@ -251,8 +249,8 @@ struct MainThreadSampler: Sendable {
 /// Reads the main run loop's current mode without being able to hang the
 /// caller. `CFRunLoopCopyCurrentMode` takes the run loop's lock, and a main
 /// thread that is suspended while holding it would never give it back; so the
-/// read runs on a throwaway thread and is abandoned after `timeout`. At most
-/// two are ever started in a launch.
+/// read runs on a throwaway thread and is abandoned after `timeout`. One is
+/// started per sampled stall, and none once both report slots are spent.
 struct RunLoopModeReader: Sendable {
     var timeout: TimeInterval = 1
     /// The read itself. Replaced in tests by one that never returns.
@@ -294,12 +292,14 @@ struct StallReport: Equatable, Sendable {
     var runState: MainThreadRunState
     var suspendCount: Int
     var cpuMilliseconds: Int
-    var sleepSeconds: Int
     var runLoopMode: RunLoopModeWord
     var channel: DistributionChannel
 
-    /// The run loop was in a mode that waits for the user on purpose.
-    var explained: Bool { runLoopMode.isExplained }
+    /// The main thread was waiting in a run-loop mode that waits for the user
+    /// on purpose. A thread that is *running* inside such a loop is busy with
+    /// something (a handler called from the tracking loop), which is not
+    /// benign, so it keeps the other slot.
+    var explained: Bool { runLoopMode.isExplained && runState != .running }
 }
 
 /// Where stall reports go. A protocol so the tests can see every report
@@ -335,7 +335,6 @@ struct SentryStallReporter: StallReporter {
             "main_run_state": report.runState.rawValue,
             "main_suspend_count": String(report.suspendCount),
             "main_cpu_ms": String(report.cpuMilliseconds),
-            "main_sleep_s": String(report.sleepSeconds),
             "runloop_mode": report.runLoopMode.rawValue,
             "channel": report.channel.rawValue,
             "explained": report.explained ? "true" : "false",
@@ -388,6 +387,7 @@ public final class MainThreadStallProbe: @unchecked Sendable {
     private var thread: Foundation.Thread?
     private let stopSignal = DispatchSemaphore(value: 0)
     private var stopped = false
+    private var ticks = 0
 
     private convenience init() {
         self.init(configuration: .production, dependencies: Dependencies())
@@ -424,13 +424,28 @@ public final class MainThreadStallProbe: @unchecked Sendable {
         watchdog.start()
     }
 
-    /// Ends the watchdog. Only the tests need it.
+    /// Ends the watchdog. Only the tests need it: nothing in the app stops the
+    /// probe, so a stopped-and-restarted one (fresh report budgets) never
+    /// happens outside them.
     func stop() {
         lock.lock()
         guard thread != nil else { lock.unlock(); return }
         stopped = true
         lock.unlock()
         stopSignal.signal()
+    }
+
+    /// Whether the watchdog thread is still in its loop (it leaves it only
+    /// after `stop()`).
+    var isAlive: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return thread != nil
+    }
+
+    /// How many times the watchdog has gone round its loop.
+    var tickCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return ticks
     }
 
     var isRunning: Bool {
@@ -455,12 +470,13 @@ public final class MainThreadStallProbe: @unchecked Sendable {
                 unansweredSince = nil
             }
             let now = dependencies.uptime()
+            lock.lock(); ticks += 1; lock.unlock()
 
             switch detector.observe(uptime: now, unansweredSince: unansweredSince) {
             case .quiet, .discarded:
                 break
             case .stalled(let seconds):
-                handleStall(seconds, since: unansweredSince ?? now, sampler: sampler, detector: &detector)
+                handleStall(seconds, observedAt: now, sampler: sampler, detector: &detector)
                 detector.resume(at: dependencies.uptime())
             }
 
@@ -480,26 +496,28 @@ public final class MainThreadStallProbe: @unchecked Sendable {
 
     private func handleStall(
         _ crossed: TimeInterval,
-        since: TimeInterval,
+        observedAt: TimeInterval,
         sampler: MainThreadSampler,
         detector: inout StallDetector
     ) {
+        // Both reports of this launch are spent: skip the looks and the
+        // throwaway thread.
+        guard detector.hasFreeSlot else { return }
         // A debugger stops the main thread on purpose.
         guard !dependencies.isBeingTraced() else { return }
         let sample = sampler.sample()
         let mode = dependencies.modeReader.read()
-        guard detector.claimSlot(explained: mode.isExplained) else { return }
-        // Measured after the looks, so the number includes them.
-        let seconds = max(crossed, dependencies.uptime() - since)
-        dependencies.reporter.report(StallReport(
-            stall: seconds,
+        let candidate = StallReport(
+            // Counted from the moment the detector crossed the threshold, which
+            // already leaves out any stretch it discarded, plus the looks.
+            stall: crossed + (dependencies.uptime() - observedAt),
             runState: sample.runState,
             suspendCount: sample.suspendCount,
             cpuMilliseconds: sample.cpuMilliseconds,
-            sleepSeconds: sample.sleepSeconds,
             runLoopMode: mode,
-            channel: dependencies.channel()
-        ))
+            channel: dependencies.channel())
+        guard detector.claimSlot(explained: candidate.explained) else { return }
+        dependencies.reporter.report(candidate)
     }
 
     // MARK: System
