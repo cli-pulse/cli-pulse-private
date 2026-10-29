@@ -260,7 +260,9 @@ struct WatchAlertDetailView: View {
                                 .font(.caption)
                         }
                     }
-                    if let device = alert.related_device_name {
+                    if let device = PersonalInfoMask.deviceName(
+                        alert.related_device_name, numbers: state.deviceNameNumbers,
+                        hidePersonalInfo: hidePersonalInfo) {
                         HStack {
                             Image(systemName: "desktopcomputer")
                                 .font(.caption2)

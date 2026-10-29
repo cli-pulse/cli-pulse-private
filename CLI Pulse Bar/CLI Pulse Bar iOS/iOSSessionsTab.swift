@@ -27,7 +27,8 @@ struct iOSSessionsTab: View {
                 .navigationTitle(L10n.tab.sessions)
         } detail: {
             if let session = selectedSession {
-                SessionDetailView(session: session, showCost: state.showCost, now: state.sessionsClock())
+                SessionDetailView(session: session, showCost: state.showCost, now: state.sessionsClock(),
+                                  deviceNumbers: state.deviceNameNumbers)
             } else {
                 ContentUnavailableView {
                     Label(L10n.sessions.select, systemImage: "terminal")
@@ -62,7 +63,8 @@ struct iOSSessionsTab: View {
             }
             .navigationTitle(L10n.tab.sessions)
             .navigationDestination(for: SessionRecord.self) { session in
-                SessionDetailView(session: session, showCost: state.showCost, now: state.sessionsClock())
+                SessionDetailView(session: session, showCost: state.showCost, now: state.sessionsClock(),
+                                  deviceNumbers: state.deviceNameNumbers)
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -237,7 +239,9 @@ struct iOSSessionsTab: View {
                         // project, so its line names the device instead.
                         HStack(spacing: 6) {
                             if session.titleNamesProviderAndProject {
-                                Text(session.device_name).font(.caption2)
+                                Text(PersonalInfoMask.deviceName(
+                                    session.device_name, numbers: state.deviceNameNumbers,
+                                    hidePersonalInfo: hidePersonalInfo) ?? "").font(.caption2)
                                     .lineLimit(1)
                             } else {
                                 Text(session.provider).font(.caption2)
@@ -332,6 +336,8 @@ struct SessionDetailView: View {
     /// The moment its badge is classified at: the list's
     /// (`AppState.sessionsClock`), so in Demo it matches the row tapped.
     var now = Date()
+    /// 1.60 (C9): the account's devices, numbered for "Device N".
+    var deviceNumbers: DeviceNameNumbers = .none
     /// v1.58 (P1-6): the title and the Project field follow "Hide personal
     /// information" (`PersonalInfoMask`; no project numbers on the iPhone).
     @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
@@ -384,7 +390,9 @@ struct SessionDetailView: View {
                         value: PersonalInfoMask.sessionDetailProject(
                             session, numbers: .none, hidePersonalInfo: hidePersonalInfo),
                         icon: "folder")
-                    detailItem(label: L10n.detail.device, value: session.device_name, icon: "desktopcomputer")
+                    detailItem(label: L10n.detail.device, value: PersonalInfoMask.deviceName(
+                        session.device_name, numbers: deviceNumbers, hidePersonalInfo: hidePersonalInfo) ?? "",
+                        icon: "desktopcomputer")
                     detailItem(label: L10n.detail.started, value: RelativeTime.format(session.started_at), icon: "clock")
                 }
 

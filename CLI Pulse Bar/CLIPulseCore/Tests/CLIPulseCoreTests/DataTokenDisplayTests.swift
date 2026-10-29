@@ -316,13 +316,20 @@ final class DataTokenDisplayTests: XCTestCase {
                    mapped: "planEvidence.displayValue.map(L10n.providers.planDisplay)"),
             Wiring(file: "CLI Pulse Bar/OnboardingWizardView.swift",
                    mapped: "planEvidence.displayValue.map(L10n.providers.planDisplay)"),
-            Wiring(file: "CLI Pulse Bar/SessionsTab.swift", mapped: "ProviderDisplay.managedRowLabel("),
+            // 1.60 (C9): through `PersonalInfoMask.managedSessionTitle`, which
+            // is `managedRowLabel` with the switch off and keeps the app's own
+            // labels translated with it on (`PersonalInfoMaskDevicesTests`).
+            Wiring(file: "CLI Pulse Bar/SessionsTab.swift", mapped: "PersonalInfoMask.managedSessionTitle(", count: 2),
             Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/LANRemoteScreens.swift",
-                   mapped: "ProviderDisplay.clientLabelDisplay($0, provider: s.provider)",
+                   mapped: "clientLabel: s.clientLabel, deviceName: nil, provider: s.provider,",
                    raw: ["Text(s.clientLabel ?? s.id)"]),
             Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/LANRemoteScreens.swift",
-                   mapped: "ProviderDisplay.clientLabelDisplay($0, provider: session.provider)",
+                   mapped: "clientLabel: session.clientLabel, deviceName: nil, provider: session.provider,",
                    raw: [".navigationTitle(session.clientLabel ?? session.id)"]),
+            Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/PersonalInfoMaskDevices.swift",
+                   mapped: "ProviderDisplay.managedRowLabel(clientLabel: clientLabel, deviceName: deviceName, provider: provider)"),
+            Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/PersonalInfoMaskDevices.swift",
+                   mapped: "return ProviderDisplay.clientLabelDisplay(label, provider: provider)"),
             Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/PDFReportGenerator.swift",
                    mapped: "topSessionRow(s, hidePersonalInfo: hidePersonalInfo, projectNumbers: projectNumbers)"),
             // The display mappers recognize these labels by exact match, so the

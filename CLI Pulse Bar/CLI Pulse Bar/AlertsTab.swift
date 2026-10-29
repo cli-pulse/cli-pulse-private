@@ -94,7 +94,7 @@ struct AlertsTab: View {
                 } else {
                     let numbers = state.projectNameNumbers(hidePersonalInfo: hidePersonalInfo)
                     ForEach(filteredAlerts) { alert in
-                        AlertRow(alert: alert, projectNumbers: numbers) {
+                        AlertRow(alert: alert, projectNumbers: numbers, deviceNumbers: state.deviceNameNumbers) {
                             await state.acknowledgeAlert(alert)
                         } onResolve: {
                             await state.resolveAlert(alert)
@@ -131,6 +131,8 @@ struct AlertRow: View {
     let alert: AlertRecord
     /// v1.58 (P1-6): the numbers "Project N" gives this Mac's projects.
     let projectNumbers: ProjectNameNumbers
+    /// 1.60 (C9): the account's devices, numbered for "Device N".
+    let deviceNumbers: DeviceNameNumbers
     let onAcknowledge: () async -> Void
     let onResolve: () async -> Void
     let onSnooze: (Int) async -> Void
@@ -180,7 +182,8 @@ struct AlertRow: View {
                 if let session = PersonalInfoMask.alertSessionName(alert, hidePersonalInfo: hidePersonalInfo) {
                     chipView(icon: "terminal", text: session)
                 }
-                if let device = alert.related_device_name {
+                if let device = PersonalInfoMask.deviceName(
+                    alert.related_device_name, numbers: deviceNumbers, hidePersonalInfo: hidePersonalInfo) {
                     chipView(icon: "desktopcomputer", text: device)
                 }
             }

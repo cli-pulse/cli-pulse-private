@@ -68,6 +68,13 @@ public enum ProviderDisplay {
     /// window. An identifier rather than copy, and translated the same way.
     public static let inAppTerminalClientLabel = "in-app-terminal"
 
+    /// Whether `label` is one this app writes itself (`localStartClientLabel`,
+    /// `inAppTerminalClientLabel`), not a name another client sent, such as
+    /// an iPhone's own.
+    public static func isAppClientLabel(_ label: String, provider: String) -> Bool {
+        label == inAppTerminalClientLabel || label == localStartClientLabel(for: provider)
+    }
+
     /// A managed session's `client_label` as shown to the reader. The two labels
     /// this app writes itself are rendered in the reader's language; anything
     /// else — an iPhone's own device name, a label from another client — is the

@@ -13,13 +13,18 @@ struct WatchMachineCard: View {
     /// The Watch's `sessionsClock()`: a device not seen within
     /// `DashboardCounts.deviceOnlineGrace` of it reads Offline (1.60, 59-05).
     let now: Date
+    /// 1.60 (C9): the devices the Watch holds, numbered for "Device N".
+    let numbers: DeviceNameNumbers
+    /// The paired iPhone's "Hide personal information".
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     var body: some View {
         WatchCard {
             HStack(spacing: 8) {
                 Circle().fill(statusColor).frame(width: 7, height: 7)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(device.name)
+                    Text(PersonalInfoMask.deviceName(
+                        device.name, id: device.id, numbers: numbers, hidePersonalInfo: hidePersonalInfo) ?? "")
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                     Text(subtitle)
@@ -52,6 +57,8 @@ struct WatchMachineCard: View {
 /// back to the snapshot it was pushed with if the device drops out of the list.
 struct WatchMachineDetailView: View {
     @EnvironmentObject var state: WatchAppState
+    /// The paired iPhone's "Hide personal information" (1.60, C9).
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
     let device: WatchDeviceSummary
 
     private var live: WatchDeviceSummary {
@@ -112,6 +119,7 @@ struct WatchMachineDetailView: View {
             }
         }
         .opacity(d.isReadingStale() ? 0.6 : 1.0)   // grey stale readings, like iOS
-        .navigationTitle(d.name)
+        .navigationTitle(PersonalInfoMask.deviceName(
+            d.name, id: d.id, numbers: state.deviceNameNumbers, hidePersonalInfo: hidePersonalInfo) ?? "")
     }
 }

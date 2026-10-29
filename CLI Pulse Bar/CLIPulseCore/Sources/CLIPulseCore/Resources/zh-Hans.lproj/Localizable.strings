@@ -158,7 +158,7 @@
 "settings.manage_providers" = "管理服务商";
 "settings.advanced" = "高级";
 "settings.hide_personal_info" = "隐藏个人信息";
-"settings.hide_personal_info_iphone_hint" = "隐藏邮箱地址；在「概览」「会话」「告警」和导出的文件中，还会隐藏项目文件夹的名称和会话名称。Apple Watch 遵循与其配对的 iPhone 上的此开关。账户名称、设备名称，以及「远程控制」中的任何内容，都不会被隐藏。";
+"settings.hide_personal_info_iphone_hint" = "隐藏邮箱地址和设备名称；在「概览」「会话」「告警」和导出的文件中，还会隐藏项目文件夹的名称和会话名称。Apple Watch 遵循与其配对的 iPhone 上的此开关。账户名称，以及「远程控制」中显示的会话内容（例如会话的文件夹、命令和终端输出），都不会被隐藏。";
 "settings.force_refresh" = "强制刷新所有数据";
 "settings.about" = "关于";
 "settings.version" = "版本";
@@ -616,7 +616,7 @@
 "advanced.background_sync_hint" = "将用量数据同步到云端，供 iPhone、Apple Watch 和 Android 使用";
 "advanced.background_sync_hint_local_mode" = "在后台读取这台 Mac 的用量。本地模式下不上传任何数据。";
 "advanced.full_details" = "详细信息：";
-"advanced.hide_personal_info_help" = "在屏幕上和导出的文件中隐藏邮箱地址、项目文件夹的名称和路径，以及会话名称。";
+"advanced.hide_personal_info_help" = "在屏幕上和导出的文件中隐藏邮箱地址、设备名称、项目文件夹的名称和路径，以及会话名称。";
 /* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */
 "advanced.track_git" = "追踪 git 活动（Yield Score）";
 "advanced.track_git_hint" = "只记录经哈希处理的提交元数据，不上传提交说明、diff 或路径。仅由 Companion CLI 收集。";
@@ -1674,6 +1674,8 @@
 "projects.unknown" = "未知";
 "projects.anonymous" = "项目 %d";
 "projects.hidden" = "隐藏的项目";
+"devices.anonymous" = "设备 %d";
+"devices.hidden" = "隐藏的设备";
 "projects.shown_of" = "%2$d 个项目中的前 %1$d 个";
 "projects.help" = "根据这台 Mac 的会话日志，按每个会话运行时所在的文件夹归类。\n此列表不会同步到你的账户。";
 "projects.unknown_help" = "这些会话的日志没有记录它们在哪个文件夹中运行。";

@@ -79,6 +79,23 @@ This reads the app targets' Swift (and one Core file) and checks five things:
      too) sets the body from `PersonalInfoMask.alertText(…)` with
      `hidePersonalInfo: PersonalInfoMask.isOn()`.
 
+  6. DEVICE NAMES ARE READ ONLY INSIDE THE MASK (v1.60, C9).
+     A session's device (`.device_name`) and an alert's (`.related_device_name`)
+     are read only inside `PersonalInfoMask.deviceName(…)` (a session's device
+     also inside `managedSessionTitle(…)`); a managed session's label
+     (`.client_label`, `.clientLabel`), which an iPhone sets to its own name,
+     only inside `PersonalInfoMask.managedSessionTitle(…)`. A device's own
+     name, found by the receiver the views use (`device.name`, `d.name`,
+     `peer.displayName`, `mac.name`), only inside `deviceName(…)`,
+     `listedDeviceName(…)` or `pairedDeviceName(…)`. The views in
+     CLIPulseCore that name a device (`CORE_VIEWS`: the device health card and
+     Remote Control's screens on both ends) are scanned with the app targets,
+     and in them any `.name` / `.displayName` counts, whatever the receiver.
+     This device's own name (`UIDevice.current.name`, `.localizedName`) is
+     never read where it could be shown; the places that only send it are
+     allowlisted. The real tree must make at least
+     MIN_DEVICE_MASK_CALLS_REAL_TREE calls to the device mask.
+
 WHAT IT CANNOT SEE
   A label, project or session name that reaches the screen under another name
   (a Core type that copies it into a field called something else) is invisible
@@ -113,6 +130,13 @@ PHONE = f"{APPLE}/CLI Pulse Bar iOS/PhoneSessionManager.swift"
 WATCH = f"{APPLE}/CLI Pulse Bar Watch/WatchSessionManager.swift"
 NOTIFY = f"{APPLE}/CLIPulseCore/Sources/CLIPulseCore/DataRefreshManager.swift"
 ALLOWLIST = "scripts/personal_info_mask_allowlist.json"
+# v1.60 (C9): views in CLIPulseCore that show a device's name, scanned like the
+# app targets' files.
+CORE_VIEWS = [
+    f"{APPLE}/CLIPulseCore/Sources/CLIPulseCore/DeviceHealthCard.swift",
+    f"{APPLE}/CLIPulseCore/Sources/CLIPulseCore/LANRemoteScreens.swift",
+    f"{APPLE}/CLIPulseCore/Sources/CLIPulseCore/LANRemoteControlSection.swift",
+]
 
 # The fields that hold something personal, and the calls that turn each into
 # what may be shown. A read of a field outside every one of its calls fails.
@@ -126,6 +150,11 @@ FIELD_MASKS = {
     "detailProject": {"projectName"},
     "related_project_name": {"projectName"},
     "related_session_name": set(),
+    # v1.60 (C9): device names.
+    "device_name": {"deviceName", "managedSessionTitle"},
+    "related_device_name": {"deviceName"},
+    "client_label": {"managedSessionTitle"},
+    "clientLabel": {"managedSessionTitle"},
 }
 ACCOUNT_FIELDS = {"accountLabel", "accountEmail"}
 
@@ -134,6 +163,21 @@ ACCOUNT_FIELDS = {"accountLabel", "accountEmail"}
 # VoiceOver label, the Mac rows (two labels), Settings › Providers and
 # Settings › Display, the iPhone row and the Watch.
 MIN_MASKED_READS_REAL_TREE = 8
+
+# v1.60 (C9): in the Core views that name a device, any receiver's name.
+CORE_VIEW_READS = [
+    (re.compile(r"\b(\w+)\s*\??\s*\.\s*(name|displayName)\b(?!\s*\()"),
+     {"deviceName", "listedDeviceName", "pairedDeviceName"}, "PersonalInfoMask.deviceName"),
+]
+# This device's own name, in every scanned file: never shown.
+OWN_NAME_READS = [
+    (re.compile(r"\b(UIDevice\s*\.\s*current)\s*\.\s*(name)\b"), set(), "PersonalInfoMask.deviceName"),
+    (re.compile(r"\b(Host\s*\.\s*current\s*\(\s*\))\s*\.\s*(localizedName)\b"), set(),
+     "PersonalInfoMask.deviceName"),
+]
+DEVICE_MASK_CALLS = re.compile(
+    r"\bPersonalInfoMask\s*\.\s*(deviceName|listedDeviceName|pairedDeviceName|managedSessionTitle)\s*\(")
+MIN_DEVICE_MASK_CALLS_REAL_TREE = 20
 
 # v1.58: the calls that show a session, an alert or a project, which the real
 # tree must make at least this often (Mac: the Sessions tab's rows and Alerts;
@@ -161,6 +205,9 @@ RECEIVER_READS = [
      "PersonalInfoMask.sessionTitle"),
     (re.compile(r"\b(proj|project|topProject)\s*\??\s*\.\s*(name)\b"), {"projectName"},
      "PersonalInfoMask.projectName"),
+    # v1.60 (C9): a device's own name.
+    (re.compile(r"\b(device|d|peer|mac)\s*\??\s*\.\s*(name|displayName)\b"),
+     {"deviceName", "listedDeviceName", "pairedDeviceName"}, "PersonalInfoMask.deviceName"),
 ]
 LITERAL_SWITCH = re.compile(r"\bhidePersonalInfo\s*:\s*(true|false)\b")
 SWITCH_DECL = re.compile(r"\b(?:var|let)\s+hidePersonalInfo\b")
@@ -322,12 +369,12 @@ def label_reads(src: str, code: str) -> list[tuple[int, str, bool]]:
     ]
 
 
-def receiver_reads(code: str) -> list[tuple[int, str, bool, str]]:
+def receiver_reads(code: str, rules: list | None = None) -> list[tuple[int, str, bool, str]]:
     """(offset of the field name, `receiver.field`, masked?, what to show it
     through) for every read of an alert's title or message, a session's name
     or a top project's name (`RECEIVER_READS`)."""
     found: list[tuple[int, str, set[str], str]] = []
-    for pattern, masks, through in RECEIVER_READS:
+    for pattern, masks, through in (RECEIVER_READS if rules is None else rules):
         for m in pattern.finditer(code):
             before = code[:m.start()].rstrip()
             if re.search(r"\bL10n\s*\.(?:\s*\w+\s*\.)*$", before):
@@ -335,6 +382,8 @@ def receiver_reads(code: str) -> list[tuple[int, str, bool, str]]:
             if re.match(r"\s*=(?!=)", code[m.end():]):
                 continue                 # a write, not a read
             found.append((m.start(2), f"{m.group(1)}.{m.group(2)}", masks, through))
+    seen: set[int] = set()
+    found = [f for f in found if not (f[0] in seen or seen.add(f[0]))]
     opens = enclosing_opens(code, [pos for pos, _, _, _ in found])
     return [
         (pos, what, any(ch == "(" and callee(code, at) in masks for at, ch in opens[pos]), through)
@@ -527,49 +576,63 @@ def main() -> int:
     scanned = 0
     showing = 0
     exports = 0
+    files: list[Path] = []
     for rel_dir in TARGETS:
         base = root / rel_dir
         if not base.is_dir():
             if real_tree:
                 errors.append(f"{rel_dir} not found: the gate is not looking where the app targets are")
             continue
-        for path in sorted(base.rglob("*.swift")):
-            if "/.build/" in str(path):
+        files += sorted(base.rglob("*.swift"))
+    for rel_file in CORE_VIEWS:
+        path = root / rel_file
+        if path.is_file():
+            files.append(path)
+        elif real_tree:
+            errors.append(f"{rel_file} not found: the gate is not looking at the views that name a device")
+    device_calls = 0
+    core_views = {str((root / f).resolve()) for f in CORE_VIEWS}
+    for path in files:
+        if "/.build/" in str(path):
+            continue
+        scanned += 1
+        rel = str(path.relative_to(root))
+        src = path.read_text(encoding="utf-8", errors="replace")
+        code = code_only(src)
+        for pos, field, is_masked in label_reads(src, code):
+            if is_masked:
+                if field in ACCOUNT_FIELDS:
+                    masked += 1
                 continue
-            scanned += 1
-            rel = str(path.relative_to(root))
-            src = path.read_text(encoding="utf-8", errors="replace")
-            code = code_only(src)
-            for pos, field, is_masked in label_reads(src, code):
-                if is_masked:
-                    if field in ACCOUNT_FIELDS:
-                        masked += 1
-                    continue
-                key = (rel, line_text(src, pos))
-                if key in allowed:
-                    used.add(key)
-                    continue
-                calls = "/".join(sorted(FIELD_MASKS[field]))
-                where = (
-                    f"outside PersonalInfoMask.{calls}" if calls
-                    else "at all (show it through PersonalInfoMask.alertSessionName)"
-                )
-                errors.append(f"{rel}:{line_of(src, pos)}: `.{field}` is read {where}: {key[1]}")
-            for pos, what, is_masked, through in receiver_reads(code):
-                if is_masked:
-                    continue
-                key = (rel, line_text(src, pos))
-                if key in allowed:
-                    used.add(key)
-                    continue
-                errors.append(
-                    f"{rel}:{line_of(src, pos)}: `{what}` is read outside the mask (show it through"
-                    f" {through}): {key[1]}"
-                )
-            check_switch(rel, src, code, errors)
-            file_showing, file_exports = check_showing(rel, src, code, errors)
-            showing += file_showing
-            exports += file_exports
+            key = (rel, line_text(src, pos))
+            if key in allowed:
+                used.add(key)
+                continue
+            calls = "/".join(sorted(FIELD_MASKS[field]))
+            where = (
+                f"outside PersonalInfoMask.{calls}" if calls
+                else "at all (show it through PersonalInfoMask.alertSessionName)"
+            )
+            errors.append(f"{rel}:{line_of(src, pos)}: `.{field}` is read {where}: {key[1]}")
+        rules = RECEIVER_READS + OWN_NAME_READS
+        if str(path.resolve()) in core_views:
+            rules = rules + CORE_VIEW_READS
+        device_calls += len(DEVICE_MASK_CALLS.findall(code))
+        for pos, what, is_masked, through in receiver_reads(code, rules):
+            if is_masked:
+                continue
+            key = (rel, line_text(src, pos))
+            if key in allowed:
+                used.add(key)
+                continue
+            errors.append(
+                f"{rel}:{line_of(src, pos)}: `{what}` is read outside the mask (show it through"
+                f" {through}): {key[1]}"
+            )
+        check_switch(rel, src, code, errors)
+        file_showing, file_exports = check_showing(rel, src, code, errors)
+        showing += file_showing
+        exports += file_exports
 
     for key in allowed:
         if key not in used:
@@ -588,6 +651,11 @@ def main() -> int:
         errors.append(
             f"only {showing} calls that show a session, an alert or a project through PersonalInfoMask"
             f" (expected at least {MIN_SHOWING_CALLS_REAL_TREE}): the gate is not seeing the places that name them"
+        )
+    if real_tree and device_calls < MIN_DEVICE_MASK_CALLS_REAL_TREE:
+        errors.append(
+            f"only {device_calls} calls to the device-name mask found (expected at least"
+            f" {MIN_DEVICE_MASK_CALLS_REAL_TREE}): the gate is not seeing the places that name a device"
         )
     if real_tree and exports < MIN_EXPORT_CALLS_REAL_TREE:
         errors.append(
@@ -610,7 +678,8 @@ def main() -> int:
         return 1
     print(
         f"personal info mask: OK — {scanned} Swift files, {masked} label reads masked,"
-        f" {showing} sessions, alerts and projects shown through the mask, {exports} exports told the switch,"
+        f" {showing} sessions, alerts and projects shown through the mask, {device_calls} device names"
+        f" through the mask, {exports} exports told the switch,"
         f" {len(used)} shown as typed with a recorded reason; the Watch follows the iPhone,"
         " and an alert's banner follows the switch."
     )

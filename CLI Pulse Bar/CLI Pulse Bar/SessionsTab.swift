@@ -377,6 +377,7 @@ struct SessionsTab: View {
                     ForEach(displayed) { session in
                         ManagedSessionRow(
                             session: session,
+                            deviceNumbers: state.deviceNameNumbers,
                             isSelected: selectedManagedSessionId == session.id,
                             routesLocally: state.shouldRouteSessionLocally(session),
                             isStaleLocal: state.isStaleLocalSession(session),
@@ -702,7 +703,10 @@ struct SessionsTab: View {
                 .font(.system(size: 11))
                 .foregroundStyle(PulseTheme.providerColor(row.provider))
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.clientLabel ?? ProviderDisplay.defaultLabel(for: row.provider))
+                // 1.60 (C9): a label an iPhone set is its own name.
+                Text(PersonalInfoMask.managedSessionTitle(
+                    clientLabel: row.clientLabel, deviceName: nil, provider: row.provider,
+                    numbers: state.deviceNameNumbers, hidePersonalInfo: hidePersonalInfo))
                     .font(.system(size: 11, weight: .semibold))
                     .lineLimit(1)
                 Text(L10n.status.localized(row.status))
@@ -833,12 +837,14 @@ struct SessionsTab: View {
             // Once per section, not per row: the numbers rank this Mac's
             // projects over 30 days.
             let numbers = state.projectNameNumbers(hidePersonalInfo: hidePersonalInfo)
+            let deviceNumbers = state.deviceNameNumbers
             ForEach(sessions) { session in
                 let tier = SessionFreshnessTierClassifier.classify(session, now: now)
                 SessionRow(
                     session: session,
                     showCost: state.showCost,
                     projectNumbers: numbers,
+                    deviceNumbers: deviceNumbers,
                     freshnessTier: tier
                 )
             }
@@ -1925,6 +1931,9 @@ struct SessionsTab: View {
 
 private struct ManagedSessionRow: View {
     let session: RemoteSession
+    /// 1.60 (C9): the account's devices, numbered for "Device N".
+    let deviceNumbers: DeviceNameNumbers
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
     let isSelected: Bool
     /// True when the row's actions (prompt/stop) route through the
     /// local UDS path rather than Supabase. Drives the "Local"
@@ -1947,10 +1956,13 @@ private struct ManagedSessionRow: View {
     /// as confusing. The labels this app sends itself ("Local Claude
     /// session", "in-app-terminal") are translated there too.
     private var displayLabel: String {
-        ProviderDisplay.managedRowLabel(
+        PersonalInfoMask.managedSessionTitle(
             clientLabel: session.client_label,
             deviceName: session.device_name,
-            provider: session.provider)
+            deviceID: session.device_id,
+            provider: session.provider,
+            numbers: deviceNumbers,
+            hidePersonalInfo: hidePersonalInfo)
     }
 
     private var showSecondaryDevice: Bool {
@@ -1974,7 +1986,9 @@ private struct ManagedSessionRow: View {
                         Text(displayLabel)
                             .font(.system(size: 11, weight: .semibold))
                             .lineLimit(1)
-                        if showSecondaryDevice, let device = session.device_name {
+                        if showSecondaryDevice, let device = PersonalInfoMask.deviceName(
+                            session.device_name, id: session.device_id, numbers: deviceNumbers,
+                            hidePersonalInfo: hidePersonalInfo) {
                             Text("·").foregroundStyle(.tertiary).font(.system(size: 11))
                             Text(device).font(.system(size: 10)).foregroundStyle(.secondary)
                         }
@@ -2059,6 +2073,8 @@ struct SessionRow: View {
     /// Projects lists (`AppState.projectNameNumbers`), so a row reads
     /// "Project 2" where Projects does.
     let projectNumbers: ProjectNameNumbers
+    /// 1.60 (C9): the account's devices, numbered for "Device N".
+    let deviceNumbers: DeviceNameNumbers
     /// Optional tier badge — Active vs Recent split passes its
     /// classifier result so the user can see whether the row is
     /// process-confirmed ("running") vs JSONL-only ("recent
@@ -2071,11 +2087,12 @@ struct SessionRow: View {
 
     init(
         session: SessionRecord, showCost: Bool, projectNumbers: ProjectNameNumbers,
-        freshnessTier: FreshnessTier? = nil
+        deviceNumbers: DeviceNameNumbers, freshnessTier: FreshnessTier? = nil
     ) {
         self.session = session
         self.showCost = showCost
         self.projectNumbers = projectNumbers
+        self.deviceNumbers = deviceNumbers
         self.freshnessTier = freshnessTier
     }
 
@@ -2143,7 +2160,10 @@ struct SessionRow: View {
                         Label(project, systemImage: "folder")
                     }
                 }
-                Label(session.device_name, systemImage: "desktopcomputer")
+                if let device = PersonalInfoMask.deviceName(
+                    session.device_name, numbers: deviceNumbers, hidePersonalInfo: hidePersonalInfo) {
+                    Label(device, systemImage: "desktopcomputer")
+                }
                 if !showsFigures {
                     Spacer(minLength: 8)
                     lastActive
