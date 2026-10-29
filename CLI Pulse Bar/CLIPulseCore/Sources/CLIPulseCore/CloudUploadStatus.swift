@@ -31,11 +31,17 @@ public struct CloudUploadStatus: Equatable, Sendable {
         self.lastFailure = lastFailure
     }
 
-    /// The status after `outcome`, at `now`. A success clears the failure; a
-    /// failure is kept until the next success. An outcome that tried nothing
-    /// (nothing to send, "Not now", signed out) or did not conclude (offline,
-    /// a refresh still running, replaced) changes nothing: it says nothing
-    /// about the uploads.
+    /// The status after `outcome`, at `now`.
+    ///   * A success sets the time and clears the failure.
+    ///   * A failure is kept until the next success, or until a refresh ends
+    ///     with nothing to try. A refresh stuck in flight keeps the time it was
+    ///     first found stuck, not the latest check's.
+    ///   * A refresh that ran to its end with nothing to send ("Not now", no
+    ///     scan, nothing new: `finished`) clears the failure as the tracker's
+    ///     count of failures in a row does: the Mac no longer tries, so "the
+    ///     last attempt failed" would stay on screen for good.
+    ///   * One that did not conclude (offline, a refresh still running,
+    ///     replaced: `inconclusive`) changes nothing.
     public func recording(_ outcome: UploadOutcome, at now: Date) -> CloudUploadStatus {
         var next = self
         switch outcome.kind {
@@ -43,8 +49,11 @@ public struct CloudUploadStatus: Equatable, Sendable {
             next.lastSuccess = now
             next.lastFailure = nil
         case .failure:
+            if outcome.reason == .refreshStuck, lastFailure?.reason == .refreshStuck { break }
             next.lastFailure = Failure(at: now, reason: outcome.reason, status: outcome.status)
-        case .finished, .inconclusive:
+        case .finished:
+            next.lastFailure = nil
+        case .inconclusive:
             break
         }
         return next
@@ -55,13 +64,14 @@ public struct CloudUploadStatus: Equatable, Sendable {
     /// The row's value: when the last upload reached the account ("5m ago"),
     /// or "Not yet".
     public func lastUploadText(now: Date) -> String {
-        lastSuccess.map { RelativeTime.format($0, now: now) } ?? L10n.settings.lastUploadNever
+        lastSuccess.map { RelativeTime.format(min($0, now), now: now) } ?? L10n.settings.lastUploadNever
     }
 
     /// The line under it when the last attempt failed, else nil.
     public func failureText(now: Date) -> String? {
         guard let lastFailure else { return nil }
-        let when = RelativeTime.format(lastFailure.at, now: now)
+        // Never "in 5m": a clock set back makes a past time look ahead.
+        let when = RelativeTime.format(min(lastFailure.at, now), now: now)
         if let status = lastFailure.status {
             return L10n.settings.lastUploadFailedHTTP(status, when)
         }
@@ -83,6 +93,11 @@ public final class CloudUploadStatusStore: ObservableObject {
     static let failureStatusKey = "cli_pulse_upload_last_failure_status"
 
     @Published public private(set) var status: CloudUploadStatus
+    /// Bumped by `reset()`. A refresh notes it as it starts, and an outcome
+    /// it records afterwards counts only if it has not changed: an upload
+    /// that finished after a sign-out, or after a switch of account, is the
+    /// previous account's. Not kept across launches.
+    public private(set) var generation = 0
     private let defaults: UserDefaults
 
     public init(defaults: UserDefaults = .standard) {
@@ -90,7 +105,8 @@ public final class CloudUploadStatusStore: ObservableObject {
         self.status = Self.load(from: defaults)
     }
 
-    func record(_ outcome: UploadOutcome, at now: Date) {
+    func record(_ outcome: UploadOutcome, at now: Date, generation: Int? = nil) {
+        guard generation == nil || generation == self.generation else { return }
         let next = status.recording(outcome, at: now)
         guard next != status else { return }
         status = next
@@ -99,6 +115,7 @@ public final class CloudUploadStatusStore: ObservableObject {
 
     /// Forgets both, for the next account: a sign-out or a switch of account.
     public func reset() {
+        generation += 1
         status = CloudUploadStatus()
         Self.save(status, to: defaults)
     }

@@ -41,10 +41,45 @@ final class CloudUploadStatusTests: XCTestCase {
             case .failure:
                 XCTAssertEqual(next.lastSuccess, earlier.lastSuccess, "\(reason): the last success stands")
                 XCTAssertEqual(next.lastFailure, .init(at: now, reason: reason, status: outcome.status), "\(reason)")
-            case .finished, .inconclusive:
-                XCTAssertEqual(next, earlier, "\(reason) tried nothing or did not conclude, so it says nothing")
+            case .finished:
+                XCTAssertEqual(next, CloudUploadStatus(lastSuccess: earlier.lastSuccess, lastFailure: nil),
+                               "\(reason): the Mac no longer tries, so the failure line goes")
+            case .inconclusive:
+                XCTAssertEqual(next, earlier, "\(reason) did not conclude, so it says nothing")
             }
         }
+    }
+
+    /// A refresh found stuck on every check keeps the time it was first found.
+    func testAStuckRefreshKeepsWhenItWasFirstFound() {
+        let stuck = UploadOutcome.refreshInFlight(seconds: UploadOutcome.stuckRefreshSeconds)
+        let first = CloudUploadStatus().recording(stuck, at: Self.t0)
+        let later = first.recording(.refreshInFlight(seconds: 5000), at: Self.t0.addingTimeInterval(3600))
+        XCTAssertEqual(later.lastFailure?.at, Self.t0)
+        XCTAssertEqual(later.recording(.rejected(status: 500), at: Self.t0.addingTimeInterval(7200)).lastFailure?.at,
+                       Self.t0.addingTimeInterval(7200), "another failure is a new attempt")
+    }
+
+    /// An outcome recorded after a sign-out (or a switch of account) by a
+    /// refresh that started before it is the previous account's.
+    func testAnOutcomeFromBeforeAResetIsDropped() {
+        let defaults = UploadOutcomeTests.freshDefaults()
+        let tracker = UploadOutcomeTracker(
+            reporter: RecordingUploadReporter(), defaults: defaults, now: { Self.t0 }, log: { _ in })
+        let started = tracker.statusStore.generation
+        tracker.statusStore.reset()   // signed out while the upload was in flight
+        tracker.record(.uploaded(rows: 1, status: 200, afterTokenRefresh: false), route: .cloud,
+                       statusGeneration: started)
+        XCTAssertEqual(tracker.statusStore.status, CloudUploadStatus())
+        tracker.record(.uploaded(rows: 1, status: 200, afterTokenRefresh: false), route: .cloud,
+                       statusGeneration: tracker.statusStore.generation)
+        XCTAssertEqual(tracker.statusStore.status.lastSuccess, Self.t0, "control: a current one counts")
+    }
+
+    /// A time ahead of now (the clock set back) reads "just now", never "in 5m".
+    func testATimeAheadOfNowIsNotShownAsTheFuture() {
+        let status = CloudUploadStatus(lastSuccess: Self.t0.addingTimeInterval(300))
+        XCTAssertEqual(status.lastUploadText(now: Self.t0), L10n.time.justNow)
     }
 
     func testTheTrackerRecordsEveryOutcomeIntoTheStatus() {
@@ -110,21 +145,25 @@ final class CloudUploadStatusTests: XCTestCase {
         XCTAssertEqual(unreachable.failureText(now: now), "最近一次尝试失败（2 小时前）")
     }
 
+    /// Each language's own words: a key missing from one catalogue would
+    /// fall back to the English and pass a check for "not empty".
     func testTheWordsInEveryLanguage() {
-        for language in ["en", "zh-Hans", "zh-Hant", "ja", "ko", "es"] {
+        let expected: [String: [String]] = [
+            "en": ["Last cloud upload", "Not yet", "Last attempt failed (X)", "Last attempt failed (HTTP 503, X)"],
+            "zh-Hans": ["上次云端上传", "尚未上传", "最近一次尝试失败（X）", "最近一次尝试失败（HTTP 503，X）"],
+            "zh-Hant": ["上次雲端上傳", "尚未上傳", "最近一次嘗試失敗（X）", "最近一次嘗試失敗（HTTP 503，X）"],
+            "ja": ["前回のクラウドアップロード", "まだありません", "前回のアップロードに失敗しました（X）",
+                   "前回のアップロードに失敗しました（HTTP 503、X）"],
+            "ko": ["마지막 클라우드 업로드", "아직 없음", "마지막 시도에 실패했습니다 (X)",
+                   "마지막 시도에 실패했습니다 (HTTP 503, X)"],
+            "es": ["Última subida a la nube", "Todavía no", "El último intento falló (X)",
+                   "El último intento falló (HTTP 503, X)"],
+        ]
+        for (language, words) in expected {
             LocaleOverrideStore.shared.set(language)
-            for (key, text) in [
-                ("settings.last_upload", L10n.settings.lastUpload),
-                ("settings.last_upload_never", L10n.settings.lastUploadNever),
-                ("settings.last_upload_failed", L10n.settings.lastUploadFailed("X")),
-                ("settings.last_upload_failed_http", L10n.settings.lastUploadFailedHTTP(503, "X")),
-            ] {
-                XCTAssertFalse(text.isEmpty, "\(language) \(key)")
-                XCTAssertNotEqual(text, key, "\(language): raw key")
-            }
-            XCTAssertTrue(L10n.settings.lastUploadFailedHTTP(503, "X").contains("503"), language)
-            XCTAssertTrue(L10n.settings.lastUploadFailedHTTP(503, "X").contains("X"), language)
-            XCTAssertTrue(L10n.settings.lastUploadFailed("X").contains("X"), language)
+            XCTAssertEqual([L10n.settings.lastUpload, L10n.settings.lastUploadNever,
+                            L10n.settings.lastUploadFailed("X"), L10n.settings.lastUploadFailedHTTP(503, "X")],
+                           words, language)
         }
     }
 
@@ -147,12 +186,17 @@ final class CloudUploadStatusTests: XCTestCase {
                       "the row shows outside a signed-in account")
     }
 
-    /// The status belongs to the account it was recorded for.
-    func testASignOutOrAnotherAccountForgetsIt() throws {
-        let auth = try String(contentsOf: Self.appRoot.appendingPathComponent(
-            "CLIPulseCore/Sources/CLIPulseCore/AuthManager.swift"), encoding: .utf8)
-        let signedOut = try XCTUnwrap(auth.range(of: "func applySignedOutState() {"))
-        XCTAssertTrue(auth[signedOut.upperBound...].prefix(200).contains("CloudUploadStatusStore.shared.reset()"))
-        XCTAssertTrue(auth.contains("if !userId.isEmpty, userId != session.userId { CloudUploadStatusStore.shared.reset() }"))
+    /// The status belongs to the account it was recorded for: a sign-out
+    /// forgets it.
+    func testASignOutForgetsIt() {
+        let store = CloudUploadStatusStore.shared
+        store.record(.uploaded(rows: 1, status: 200, afterTokenRefresh: false), at: Self.t0)
+        XCTAssertNotNil(store.status.lastSuccess, "control: there was something to forget")
+        let state = AppState(
+            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            defaults: UploadOutcomeTests.freshDefaults(),
+            performLaunchSetup: false)
+        state.applySignedOutState()
+        XCTAssertEqual(store.status, CloudUploadStatus())
     }
 }

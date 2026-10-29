@@ -333,8 +333,10 @@ final class UploadOutcomeTracker {
             ?? (defaults === UserDefaults.standard ? .shared : CloudUploadStatusStore(defaults: defaults))
     }
 
-    func record(_ outcome: UploadOutcome, route: UploadRoute) {
-        statusStore.record(outcome, at: now())
+    /// `statusGeneration`: `statusStore.generation` as the refresh started
+    /// (`CloudUploadStatusStore.generation`).
+    func record(_ outcome: UploadOutcome, route: UploadRoute, statusGeneration: Int? = nil) {
+        statusStore.record(outcome, at: now(), generation: statusGeneration)
         switch outcome.kind {
         case .success, .finished: failuresInARow = 0
         case .failure: failuresInARow += 1

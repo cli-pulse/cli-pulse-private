@@ -687,6 +687,9 @@ extension AppState {
             await completeAuthenticatedSignIn(session)
             isLoading = false
         case .unavailable:
+            // 1.60: no account on this launch, so no "Last cloud upload" of
+            // one; the next sign-in may be another account.
+            CloudUploadStatusStore.shared.reset()
             // iter19 (2026-04-29): pre-iter19 this was just `break`,
             // which left the AppState init's default
             // `selectedTab = .overview` intact. For a cold launch with

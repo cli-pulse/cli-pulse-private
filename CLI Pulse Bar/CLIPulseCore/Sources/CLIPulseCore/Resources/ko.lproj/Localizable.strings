@@ -129,8 +129,8 @@
 "settings.connected" = "연결됨";
 "settings.last_upload" = "마지막 클라우드 업로드";
 "settings.last_upload_never" = "아직 없음";
-"settings.last_upload_failed" = "최근 시도 실패 (%@)";
-"settings.last_upload_failed_http" = "최근 시도 실패 (HTTP %1$d, %2$@)";
+"settings.last_upload_failed" = "마지막 시도에 실패했습니다 (%@)";
+"settings.last_upload_failed_http" = "마지막 시도에 실패했습니다 (HTTP %1$d, %2$@)";
 "settings.disconnected" = "연결 안 됨";
 "settings.paired" = "동기화됨";
 "settings.not_paired" = "미동기화";
