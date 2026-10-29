@@ -1814,8 +1814,6 @@
 "provider_config.source_api" = "API";
 "provider_config.source_auto" = "自動";
 "provider_config.source_cli" = "CLI";
-"provider_config.source_local" = "本機";
-"provider_config.source_merged" = "雲端 + 本機";
 "provider_config.source_oauth" = "OAuth";
 "provider_config.source_web" = "網頁";
 "providers.plan_multiple_accounts" = "多個帳號";

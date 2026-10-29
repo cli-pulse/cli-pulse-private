@@ -336,11 +336,14 @@ struct WebhookEventFilterDisclosure: View {
                     // between them: translated labels do not fit one row at
                     // the popover's width, and a chip squeezed to fit broke
                     // "デバイスオフライン" mid-word.
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    // 1.60 (C14): each label sits above its chips. In a 70 pt
+                    // column beside them, "Severidades" and "Tipos de alerta"
+                    // broke across lines (the refresh cadence's label moved
+                    // above its picker for the same reason).
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(L10n.integrations.filterSeverities)
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
-                            .frame(width: 70, alignment: .leading)
                         WebhookChipFlowLayout(spacing: 4) {
                             ForEach(WebhookEventFilter.severityChips(for: filter), id: \.self) { severity in
                                 filterChip(
@@ -354,11 +357,10 @@ struct WebhookEventFilterDisclosure: View {
                         }
                     }
 
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(L10n.integrations.filterTypes)
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
-                            .frame(width: 70, alignment: .leading)
                         WebhookChipFlowLayout(spacing: 4) {
                             ForEach(WebhookEventFilter.typeChips(for: filter), id: \.self) { type in
                                 filterChip(label: WebhookEventFilter.typeLabel(type), isSelected: filter.types.contains(type)) {
@@ -421,8 +423,7 @@ struct WebhookEventFilterDisclosure: View {
 
 /// Lays chips left to right and starts a new row when the next one would not
 /// fit, so each chip keeps its ideal size. Takes the width it is offered and is
-/// as tall as its rows; its first text baseline is the first chip's, so a label
-/// beside it lines up with the first row.
+/// as tall as its rows. Its label sits above it (1.60, C14).
 private struct WebhookChipFlowLayout: Layout {
     var spacing: CGFloat = 4
 
@@ -438,12 +439,6 @@ private struct WebhookChipFlowLayout: Layout {
             subviews[index].place(at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
                                   proposal: .unspecified)
         }
-    }
-
-    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
-                           subviews: Subviews, cache: inout ()) -> CGFloat? {
-        guard guide == .firstTextBaseline, let first = subviews.first else { return nil }
-        return bounds.minY + first.dimensions(in: .unspecified)[.firstTextBaseline]
     }
 
     private func arrange(width: CGFloat?, subviews: Subviews) -> (origins: [CGPoint], usedWidth: CGFloat, height: CGFloat) {

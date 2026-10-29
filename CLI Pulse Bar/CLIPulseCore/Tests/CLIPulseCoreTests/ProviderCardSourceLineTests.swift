@@ -37,8 +37,8 @@ final class ProviderCardSourceLineTests: XCTestCase {
             XCTAssertNotEqual(line, L10n.providers.sourceLabel(source.localizedName),
                               "\(source): the old line, which does not say it is the quota's source")
             XCTAssertFalse(line.contains(UsageDataScope.allDevices.label), "\(source): \(line)")
-            // Never "local" for this Mac, alone or merged: the scope's name.
-            XCTAssertFalse(line.contains(L10n.providerConfig.sourceLocal), "\(source): \(line)")
+            // Never "local" (本地) for this Mac, alone or merged: the scope's name.
+            XCTAssertFalse(line.contains("本地"), "\(source): \(line)")
         }
         // This Mac is the scope's own name for it, one string.
         XCTAssertTrue(ProviderCardUsage.sourceLineText(.local, cardShowsQuota: true)
@@ -52,6 +52,32 @@ final class ProviderCardSourceLineTests: XCTestCase {
                        "Fuente de la cuota: Nube + este Mac")
         LocaleOverrideStore.shared.set("zh-Hant")
         XCTAssertEqual(ProviderCardUsage.sourceLineText(.local, cardShowsQuota: true), "配額來源：這台 Mac")
+    }
+
+    /// 1.60 (C26): the provider editor's Data source picker names a source
+    /// as the card does: this Mac is "This Mac" there too (Cursor's local
+    /// source), not "Local".
+    func testThePickerCallsThisMacWhatTheCardCallsIt() {
+        let expected: [String: (String, String)] = [
+            "en": ("This Mac", "Cloud + this Mac"),
+            "zh-Hans": ("这台 Mac", "云端 + 这台 Mac"),
+            "zh-Hant": ("這台 Mac", "雲端 + 這台 Mac"),
+            "ja": ("この Mac", "クラウド + この Mac"),
+            "ko": ("이 Mac", "클라우드 + 이 Mac"),
+            "es": ("Este Mac", "Nube + este Mac"),
+        ]
+        for (language, names) in expected {
+            LocaleOverrideStore.shared.set(language)
+            XCTAssertEqual(SourceType.local.localizedName, names.0, language)
+            XCTAssertEqual(SourceType.merged.localizedName, names.1, language)
+            XCTAssertEqual(SourceType.local.localizedName, UsageDataScope.thisMac.label, language)
+            for source in SourceType.allCases {
+                XCTAssertEqual(ProviderCardUsage.sourceName(source), source.localizedName,
+                               "\(language) \(source): the card and the picker name it differently")
+            }
+        }
+        // The picker that offers it: Cursor's.
+        XCTAssertTrue(ProviderRegistry.descriptor(for: .cursor).supportedSources.contains(.local))
     }
 
     /// A card with no quota does not say "Quota source": beside "No quota

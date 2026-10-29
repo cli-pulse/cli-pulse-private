@@ -265,17 +265,12 @@ public struct ProviderCardUsage: Sendable, Equatable {
         return cardShowsQuota ? L10n.providerCard.quotaSource(name) : L10n.providers.sourceLabel(name)
     }
 
-    /// The card's name for a source. This Mac is called by the usage scope's
-    /// own name for it, "This Mac", rather than "Local", in the merged
-    /// source too ("Cloud + this Mac"), so two cards side by side do not call
-    /// one Mac two things. The other sources keep the names the provider
-    /// editor's Data source picker gives them.
+    /// The card's name for a source: the name the provider editor's Data
+    /// source picker gives it (`SourceType.localizedName`), which since 1.60
+    /// calls this Mac by the usage scope's own name for it, "This Mac", in
+    /// the merged source too ("Cloud + this Mac").
     public static func sourceName(_ source: SourceType) -> String {
-        switch source {
-        case .local: return L10n.providerPanel.scopeThisMac
-        case .merged: return L10n.providerCard.sourceMergedThisMac
-        case .auto, .web, .cli, .oauth, .api: return source.localizedName
-        }
+        source.localizedName
     }
 
     /// v1.58: whether the card shows a quota whose source the line can name:

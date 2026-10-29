@@ -1827,8 +1827,6 @@
 "provider_config.source_api" = "API";
 "provider_config.source_auto" = "自動";
 "provider_config.source_cli" = "CLI";
-"provider_config.source_local" = "ローカル";
-"provider_config.source_merged" = "クラウド + ローカル";
 "provider_config.source_oauth" = "OAuth";
 "provider_config.source_web" = "Web";
 "providers.plan_multiple_accounts" = "複数アカウント";

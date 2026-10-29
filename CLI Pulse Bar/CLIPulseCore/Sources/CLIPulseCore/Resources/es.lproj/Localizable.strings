@@ -1797,8 +1797,6 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "provider_config.source_api" = "API";
 "provider_config.source_auto" = "Automático";
 "provider_config.source_cli" = "CLI";
-"provider_config.source_local" = "Local";
-"provider_config.source_merged" = "Nube + local";
 "provider_config.source_oauth" = "OAuth";
 "provider_config.source_web" = "Web";
 "providers.plan_multiple_accounts" = "Varias cuentas";

@@ -1814,8 +1814,6 @@
 "provider_config.source_api" = "API";
 "provider_config.source_auto" = "自动";
 "provider_config.source_cli" = "CLI";
-"provider_config.source_local" = "本地";
-"provider_config.source_merged" = "云端 + 本地";
 "provider_config.source_oauth" = "OAuth";
 "provider_config.source_web" = "网页";
 "providers.plan_multiple_accounts" = "多个账户";

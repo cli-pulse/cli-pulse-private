@@ -2191,8 +2191,6 @@ public enum L10n {
         public static var sourceCLI: String { tr("provider_config.source_cli") }
         public static var sourceOAuth: String { tr("provider_config.source_oauth") }
         public static var sourceAPI: String { tr("provider_config.source_api") }
-        public static var sourceLocal: String { tr("provider_config.source_local") }
-        public static var sourceMerged: String { tr("provider_config.source_merged") }
         public static var cookieSourceAutomatic: String { tr("provider_config.cookie_source_automatic") }
         public static var cookieSourceManual: String { tr("provider_config.cookie_source_manual") }
         public static func errorGeminiTokenRefreshFailed(_ status: Int) -> String {
