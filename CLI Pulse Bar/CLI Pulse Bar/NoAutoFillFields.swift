@@ -58,6 +58,9 @@ struct NoAutoFillTextField: NSViewRepresentable {
     /// One line that scrolls, as a SwiftUI `TextField` is, instead of wrapping
     /// onto a second line. Off for the multi-word fields that already use this.
     var singleLine = false
+    /// Return in the field, as a SwiftUI `TextField`'s `.onSubmit`. nil: Return
+    /// does what an `NSTextField` does on its own (1.60).
+    var onSubmit: (() -> Void)? = nil
 
     func makeNSView(context: Context) -> NSTextField {
         let field = NSTextField()
@@ -102,6 +105,16 @@ struct NoAutoFillTextField: NSViewRepresentable {
         func controlTextDidChange(_ obj: Notification) {
             guard let field = obj.object as? NSTextField else { return }
             parent.text = field.stringValue
+        }
+        /// Return runs `onSubmit`, with the binding already holding what is
+        /// in the field.
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            guard commandSelector == #selector(NSResponder.insertNewline(_:)), let onSubmit = parent.onSubmit else {
+                return false
+            }
+            if parent.text != control.stringValue { parent.text = control.stringValue }
+            onSubmit()
+            return true
         }
     }
 }
