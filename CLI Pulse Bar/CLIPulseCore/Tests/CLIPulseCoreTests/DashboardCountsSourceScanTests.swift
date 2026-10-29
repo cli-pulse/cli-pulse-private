@@ -43,6 +43,14 @@ final class DashboardCountsSourceScanTests: XCTestCase {
         #"\b(?:data|snapshot)\.activeSessions\b(?!\s*\()"#,
     ].map { try! NSRegularExpression(pattern: $0) }
 
+    /// Where the payload is decoded (the widgets and Siri), any
+    /// `.activeSessions` property read but the entry's recount is the frozen
+    /// figure, whatever the payload is called there.
+    static let payloadReaderRoots = ["CLI Pulse Bar/CLI Pulse Widgets/", "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/"]
+    static let payloadReaderPatterns: [NSRegularExpression] = [
+        #"(?<!entry)\.activeSessions\b(?!\s*\()"#,
+    ].map { try! NSRegularExpression(pattern: $0) }
+
     struct Allowed: Hashable {
         let file: String
         let code: String
@@ -82,34 +90,84 @@ final class DashboardCountsSourceScanTests: XCTestCase {
             "As above: the same figure, spoken.",
     ]
 
-    /// A string literal with no interpolation in it: a catalog key such as
-    /// "dashboard.active_sessions" names the figure without reading it.
-    private static let plainStringLiteral = try! NSRegularExpression(pattern: #""(?:[^"\\]|\\[^(])*""#)
+    /// `line` with the text of each string literal that has no interpolation
+    /// removed: a catalog key such as "dashboard.active_sessions" names the
+    /// figure without reading it. A literal with `\(` keeps its text, so the
+    /// code in its interpolations is still scanned. Walked character by
+    /// character, so the code between two literals is never taken for one.
+    static func withoutPlainLiterals(_ line: String) -> String {
+        var out = ""
+        var index = line.startIndex
+        while index < line.endIndex {
+            guard line[index] == "\"" else {
+                out.append(line[index])
+                index = line.index(after: index)
+                continue
+            }
+            // A literal: find its closing quote, stepping over escapes and
+            // over the parentheses of interpolations (which may hold quotes).
+            var cursor = line.index(after: index)
+            var interpolated = false
+            var depth = 0
+            while cursor < line.endIndex {
+                let character = line[cursor]
+                if depth == 0 && character == "\\" {
+                    let next = line.index(after: cursor)
+                    if next < line.endIndex && line[next] == "(" {
+                        interpolated = true
+                        depth = 1
+                        cursor = line.index(after: next)
+                        continue
+                    }
+                    cursor = next < line.endIndex ? line.index(after: next) : next
+                    continue
+                }
+                if depth > 0 {
+                    if character == "(" { depth += 1 }
+                    if character == ")" { depth -= 1 }
+                    cursor = line.index(after: cursor)
+                    continue
+                }
+                if character == "\"" { break }
+                cursor = line.index(after: cursor)
+            }
+            let end = cursor < line.endIndex ? line.index(after: cursor) : cursor
+            out += interpolated ? String(line[index..<end]) : "\"\""
+            index = end
+        }
+        return out
+    }
 
     /// The code lines in `source` that read a figure, comments removed and
     /// whitespace trimmed. Same known gap as `HostNameSourceScanTests`: a line
     /// is cut at its first `//`.
-    static func reads(in source: String) -> [String] {
-        source.split(separator: "\n", omittingEmptySubsequences: false).compactMap { raw in
+    static func reads(in source: String, payloadReader: Bool = false) -> [String] {
+        let checks = patterns + (payloadReader ? payloadReaderPatterns : [])
+        return source.split(separator: "\n", omittingEmptySubsequences: false).compactMap { raw in
             var line = Substring(raw)
             if let comment = line.range(of: "//") { line = line[..<comment.lowerBound] }
             let code = line.trimmingCharacters(in: .whitespaces)
             guard !code.isEmpty else { return nil }
-            let stripped = plainStringLiteral.stringByReplacingMatches(
-                in: code, range: NSRange(code.startIndex..., in: code), withTemplate: #""""#)
+            let stripped = withoutPlainLiterals(code)
             let range = NSRange(stripped.startIndex..., in: stripped)
-            return patterns.contains { $0.firstMatch(in: stripped, range: range) != nil } ? code : nil
+            return checks.contains { $0.firstMatch(in: stripped, range: range) != nil } ? code : nil
         }
     }
 
     /// Every read not on the allowlist, and every allowlist entry that no
     /// longer matches a read (a stale entry would allow its next occupant).
+    /// An entry allows one line: a second identical line in the same file is
+    /// a new read.
     static func problems(found: [Allowed]) -> [String] {
         var problems: [String] = []
-        for read in found where allowlist[read] == nil {
-            problems.append("not allowed: \(read.file): \(read.code)")
+        var seen: [Allowed: Int] = [:]
+        for read in found {
+            seen[read, default: 0] += 1
+            if allowlist[read] == nil || seen[read]! > 1 {
+                problems.append("not allowed: \(read.file): \(read.code)")
+            }
         }
-        for entry in allowlist.keys where !found.contains(entry) {
+        for entry in allowlist.keys where seen[entry] == nil {
             problems.append("stale allowlist entry: \(entry.file): \(entry.code)")
         }
         return problems.sorted()
@@ -129,7 +187,8 @@ final class DashboardCountsSourceScanTests: XCTestCase {
                 files += 1
                 let source = try String(contentsOf: file, encoding: .utf8)
                 let relative = String(file.path.dropFirst(repoRoot.path.count + 1))
-                found += reads(in: source).map { Allowed(file: relative, code: $0) }
+                let payloadReader = payloadReaderRoots.contains { relative.hasPrefix($0) }
+                found += reads(in: source, payloadReader: payloadReader).map { Allowed(file: relative, code: $0) }
             }
         }
         return (found, files)
@@ -158,6 +217,8 @@ final class DashboardCountsSourceScanTests: XCTestCase {
         sessions: snapshot.activeSessions(at: Date()),
         Text(L10n.dashboard.activeSessions)
         public static var activeSessions: String { tr("dashboard.active_sessions") }
+        let s = "\\(name): " + String(dash.online_devices) + " devices"
+        let t = "\\(a.count) \\("x") " + "\\(dash.active_sessions)"
         """
         XCTAssertEqual(Self.reads(in: source), [
             "value: DisplayFormat.count(dash.active_sessions),",
@@ -165,7 +226,22 @@ final class DashboardCountsSourceScanTests: XCTestCase {
             #"csv += row([esc(L10n.pdf.activeSessions), "\(d.active_sessions)"])"#,
             "Text(L10n.watch.sessionsCount(entry.data.activeSessions))",
             "sessions: snapshot.activeSessions,",
+            #"let s = "\(name): " + String(dash.online_devices) + " devices""#,
+            #"let t = "\(a.count) \("x") " + "\(dash.active_sessions)""#,
         ])
+        // Where the payload is decoded, any name for it.
+        let widget = """
+        let d = WidgetStorage.load()
+        Text("\\(d.activeSessions)")
+        Text("\\(entry.activeSessions)")
+        L10n.intents.activeSessions(entry.activeSessions)
+        """
+        XCTAssertEqual(Self.reads(in: widget, payloadReader: true), [#"Text("\(d.activeSessions)")"#])
+        XCTAssertEqual(Self.reads(in: widget), [], "only where the payload is decoded")
+        // A second identical read in a file is not covered by the entry for the first.
+        let allowed = Array(Self.allowlist.keys)
+        XCTAssertEqual(Self.problems(found: allowed + [allowed[0]]),
+                       ["not allowed: \(allowed[0].file): \(allowed[0].code)"])
         // A read added to a real source, outside the allowlist, is reported.
         let added = Allowed(file: "CLI Pulse Bar/CLI Pulse Bar/OverviewTab.swift",
                             code: "value: DisplayFormat.count(dash.active_sessions),")
@@ -193,6 +269,15 @@ final class DashboardCountsSourceScanTests: XCTestCase {
             XCTAssertTrue(source.contains("DashboardCounts.activeSessions("),
                           "\(reader) does not count the sessions again")
         }
+        // ...at the time it shows the figure: the entry's date, Siri's now.
+        let widget = try String(contentsOf: Self.repoRoot.appendingPathComponent(
+            "CLI Pulse Bar/CLI Pulse Widgets/WidgetDataProvider.swift"), encoding: .utf8)
+        XCTAssertTrue(widget.contains("published: data.activeSessions, lastActiveAt: data.activeSessionLastActiveAt, now: date)"),
+                      "the widget does not count at its entry's date")
+        let siri = try String(contentsOf: Self.repoRoot.appendingPathComponent(
+            "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/CLIPulseIntentCache.swift"), encoding: .utf8)
+        XCTAssertTrue(siri.contains("published: activeSessions, lastActiveAt: activeSessionLastActiveAt, now: now)"),
+                      "Siri does not count at the time it runs")
         // Every widget and Siri figure goes through the recount.
         for (reader, uses) in [
             ("CLI Pulse Bar/CLI Pulse Widgets/LockScreenWidget.swift", 2),

@@ -75,6 +75,16 @@ public struct DashboardCounts: Equatable, Sendable {
         }
     }
 
+    /// The moments after `now`, up to `end`, at which the count of
+    /// `lastActiveAt` drops: a second after each time leaves the window,
+    /// oldest first. A widget puts a timeline entry at each, so the figure it
+    /// shows falls when the session stops counting, not at its next
+    /// five-minute entry.
+    public static func countDrops(lastActiveAt: [Date]?, after now: Date, until end: Date) -> [Date] {
+        let drops = (lastActiveAt ?? []).map { $0.addingTimeInterval(sessionActiveWindow + 1) }
+        return Array(Set(drops.filter { $0 > now && $0 <= end })).sorted()
+    }
+
     /// The figure a widget or Siri shows at `now`: counted again from the
     /// times the app published, or, when it published none (a payload from
     /// before 1.60, or Demo, which never refreshes), the figure it published.
@@ -124,14 +134,17 @@ public extension DeviceRecord {
 }
 
 public extension WatchDeviceSummary {
-    /// `DashboardCounts.isOnline`.
+    /// `DashboardCounts.isOnline`. An iPhone from before 1.60 sends no
+    /// `lastSyncAt`; the stored status then stands, as it did.
     func isOnline(now: Date) -> Bool {
-        DashboardCounts.isOnline(status: status, lastSeenAt: lastSyncAt, now: now)
+        guard lastSyncAt != nil else { return deviceStatus == .online }
+        return DashboardCounts.isOnline(status: status, lastSeenAt: lastSyncAt, now: now)
     }
 
-    /// `DashboardCounts.displayStatus`.
+    /// `DashboardCounts.displayStatus`, with the same fallback.
     func displayStatus(now: Date) -> String {
-        DashboardCounts.displayStatus(status: status, lastSeenAt: lastSyncAt, now: now)
+        guard lastSyncAt != nil else { return status }
+        return DashboardCounts.displayStatus(status: status, lastSeenAt: lastSyncAt, now: now)
     }
 }
 

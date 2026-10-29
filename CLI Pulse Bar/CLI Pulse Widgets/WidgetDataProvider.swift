@@ -146,11 +146,15 @@ struct CLIPulseTimelineProvider: TimelineProvider {
         // of one. WidgetKit will pick the most relevant one to render based
         // on the relevance score, and the staleness label rendered inside
         // the widget keeps reading sensibly as the entry timestamps advance.
-        let entries: [CLIPulseEntry] = (0..<3).map { offset in
-            let entryDate = Calendar.current.date(byAdding: .minute, value: offset * 5, to: now) ?? now.addingTimeInterval(TimeInterval(offset * 300))
-            return CLIPulseEntry(date: entryDate, data: data)
-        }
         let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: now) ?? now.addingTimeInterval(900)
+        var dates: [Date] = (0..<3).map { offset in
+            Calendar.current.date(byAdding: .minute, value: offset * 5, to: now) ?? now.addingTimeInterval(TimeInterval(offset * 300))
+        }
+        // 1.60 (59-05): and one where each session stops counting
+        // (`CLIPulseEntry.activeSessions`), so the figure drops then rather
+        // than at the next five-minute entry.
+        dates += DashboardCounts.countDrops(lastActiveAt: data.activeSessionLastActiveAt, after: now, until: nextUpdate)
+        let entries = Array(Set(dates)).sorted().map { CLIPulseEntry(date: $0, data: data) }
         let timeline = Timeline(entries: entries, policy: .after(nextUpdate))
         completion(timeline)
     }

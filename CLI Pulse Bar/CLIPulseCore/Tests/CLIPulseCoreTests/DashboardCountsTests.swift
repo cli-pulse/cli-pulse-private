@@ -3,9 +3,11 @@
 // show them (`DashboardCounts`).
 //
 // The acceptance case: a widget drawn 301 s after the app published one
-// running session shows 0. Reading the payload's frozen figure shows 1 there,
-// which is what `testAWidgetDrawn301SecondsAfterThePublishCountsNoSession`
-// exists to catch.
+// running session shows 0. A count that reads the payload's frozen figure
+// shows it still; `testAWidgetDrawn301SecondsAfterThePublishCountsNoSession`
+// decodes the published payload and counts it through the function the
+// widgets and Siri call (`DashboardCountsSourceScanTests` checks that they
+// call it, with the entry's date and Siri's time).
 
 import Foundation
 #if canImport(PDFKit) && !os(watchOS)
@@ -83,6 +85,23 @@ final class DashboardCountsTests: XCTestCase {
         ]
         XCTAssertEqual(DashboardCounts.activeSessionTimes(rows, now: Self.t0),
                        [Self.t0.addingTimeInterval(-120), Self.t0])
+    }
+
+    /// The widget's timeline gets an entry where each session stops
+    /// counting, inside its horizon only.
+    func testTheCountDropsASecondAfterEachTimeLeavesTheWindow() {
+        let times = [Self.t0, Self.t0.addingTimeInterval(-60), Self.t0, Self.t0.addingTimeInterval(-2000)]
+        let drops = DashboardCounts.countDrops(lastActiveAt: times, after: Self.t0,
+                                               until: Self.t0.addingTimeInterval(900))
+        XCTAssertEqual(drops, [Self.t0.addingTimeInterval(241), Self.t0.addingTimeInterval(301)])
+        for drop in drops {
+            XCTAssertLessThan(DashboardCounts.activeSessions(lastActiveAt: times, now: drop),
+                              DashboardCounts.activeSessions(lastActiveAt: times, now: drop.addingTimeInterval(-1)),
+                              "the entry at \(drop) shows no drop")
+        }
+        XCTAssertEqual(DashboardCounts.countDrops(lastActiveAt: nil, after: Self.t0, until: Self.t0.addingTimeInterval(900)), [])
+        XCTAssertEqual(DashboardCounts.countDrops(lastActiveAt: times, after: Self.t0, until: Self.t0.addingTimeInterval(250)),
+                       [Self.t0.addingTimeInterval(241)], "a drop past the horizon is the next timeline's")
     }
 
     /// A payload without times (one from before 1.60, or Demo's) keeps its
@@ -195,7 +214,10 @@ final class DashboardCountsTests: XCTestCase {
         let old = #"{"id":"a","name":"Mac","status":"Online"}"#
         let decoded = try JSONDecoder().decode(WatchDeviceSummary.self, from: Data(old.utf8))
         XCTAssertNil(decoded.lastSyncAt)
-        XCTAssertFalse(decoded.isOnline(now: Self.t0), "no time, so not known to be online")
+        // An iPhone from before 1.60 sends no time: the stored status stands,
+        // as it did, rather than every machine turning grey.
+        XCTAssertTrue(decoded.isOnline(now: Self.t0))
+        XCTAssertEqual(decoded.displayStatus(now: Self.t0), "Online")
     }
 
     // MARK: - The Mac: no more raising the figure to the list

@@ -202,7 +202,8 @@ public enum SessionFreshnessLegend {
 /// Sessions tab, which keeps a row only while its producer keeps rewriting it
 /// (`SessionFreshnessTierClassifier.processFreshnessWindow`), lists none.
 /// The iPhone and iPad list every device's sessions, so the rows they list
-/// are the count. The Mac, the Watch and the widgets keep the dashboard's.
+/// are the count. Since 1.60 every surface that shows the figure counts it
+/// this way, through `DashboardCounts`.
 public enum SessionListCount {
     public static func active(_ sessions: [SessionRecord], now: Date) -> Int {
         sessions.reduce(0) { count, session in

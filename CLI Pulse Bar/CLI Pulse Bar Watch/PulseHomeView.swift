@@ -20,8 +20,10 @@ struct PulseHomeView: View {
         WatchPulseFormat.activityLevel(activeSessions: activeSessions)
     }
 
-    /// 1.60 (59-05): the Live page's running rows, counted now
-    /// (`DashboardCounts`), not the dashboard's figure from the last refresh.
+    /// 1.60 (59-05): the sessions the iPhone's Sessions tab lists under
+    /// Active, counted now (`DashboardCounts`), not the dashboard's figure
+    /// from the last refresh. (The Live page lists rows by their stored
+    /// status, as it did; it can show a Running row this has stopped counting.)
     private var activeSessions: Int {
         DashboardCounts.activeSessions(state.sessions, now: state.sessionsClock())
     }
