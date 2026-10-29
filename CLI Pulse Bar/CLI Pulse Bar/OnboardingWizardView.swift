@@ -542,12 +542,15 @@ struct OnboardingWizardView: View {
                 .buttonStyle(.plain)
                 .font(.caption)
             } else if usePasswordLogin {
-                TextField(
-                    L10n.login.emailPlaceholder,
-                    text: $email
+                NoAutoFillTextField(
+                    placeholder: L10n.login.emailPlaceholder,
+                    text: $email,
+                    voiceOverLabel: L10n.settings.email,
+                    fontSize: 13,
+                    singleLine: true,
+                    onSubmit: signInWithPassword
                 )
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(signInWithPassword)
+                .frame(maxWidth: .infinity, minHeight: 22)
 
                 SecureField(
                     L10n.auth.passwordPlaceholder,
@@ -575,12 +578,15 @@ struct OnboardingWizardView: View {
                 .buttonStyle(.plain)
                 .font(.caption)
             } else {
-                TextField(
-                    L10n.login.emailPlaceholder,
-                    text: $email
+                NoAutoFillTextField(
+                    placeholder: L10n.login.emailPlaceholder,
+                    text: $email,
+                    voiceOverLabel: L10n.settings.email,
+                    fontSize: 13,
+                    singleLine: true,
+                    onSubmit: sendCode
                 )
-                .textFieldStyle(.roundedBorder)
-                .onSubmit(sendCode)
+                .frame(maxWidth: .infinity, minHeight: 22)
 
                 Button(L10n.auth.sendCode, action: sendCode)
                     .buttonStyle(.borderedProminent)
@@ -1529,10 +1535,15 @@ struct LegacyOnboardingWizardView: View {
 
     private var emailCodeForm: some View {
         VStack(spacing: 8) {
-            TextField(L10n.settings.email, text: $email)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 260)
-                .onSubmit { sendCode() }
+            NoAutoFillTextField(
+                placeholder: L10n.settings.email,
+                text: $email,
+                voiceOverLabel: L10n.settings.email,
+                fontSize: 13,
+                singleLine: true,
+                onSubmit: { sendCode() }
+            )
+            .frame(width: 260).frame(minHeight: 22)
 
             Button {
                 sendCode()
@@ -1559,10 +1570,15 @@ struct LegacyOnboardingWizardView: View {
 
     private var passwordForm: some View {
         VStack(spacing: 8) {
-            TextField(L10n.settings.email, text: $email)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 260)
-                .onSubmit { signInWithPassword() }
+            NoAutoFillTextField(
+                placeholder: L10n.settings.email,
+                text: $email,
+                voiceOverLabel: L10n.settings.email,
+                fontSize: 13,
+                singleLine: true,
+                onSubmit: { signInWithPassword() }
+            )
+            .frame(width: 260).frame(minHeight: 22)
 
             SecureField(L10n.auth.passwordPlaceholder, text: $password)
                 .textFieldStyle(.roundedBorder)
