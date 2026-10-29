@@ -79,12 +79,15 @@ final class OnboardingEmailFieldAutoFillTests: XCTestCase {
         let emailFields = calls(of: "NoAutoFillTextField(", in: wizard).filter { $0.contains("text: $email") }
         func submitting(_ action: String) -> Int {
             emailFields.filter {
-                $0.contains("onSubmit: \(action)\n") || $0.contains("onSubmit: \(action)\r")
-                    || $0.contains("onSubmit: { \(action)() }")
+                $0.range(of: #"onSubmit:\s*(\{\s*)?"# + action + #"\b"#, options: .regularExpression) != nil
             }.count
         }
         XCTAssertEqual(submitting("sendCode"), 2, "the email-code forms send the code on Return")
         XCTAssertEqual(submitting("signInWithPassword"), 2, "the password forms sign in on Return")
+        // The size they had: the agent-setup wizard's fill the width, the
+        // first-run wizard's are 260 pt, both at least a field's height.
+        XCTAssertEqual(wizard.components(separatedBy: ".frame(maxWidth: .infinity, minHeight: 22)").count - 1, 2)
+        XCTAssertEqual(wizard.components(separatedBy: ".frame(width: 260, minHeight: 22)").count - 1, 2)
         for field in emailFields {
             XCTAssertTrue(field.contains("voiceOverLabel: L10n.settings.email"), "VoiceOver read the SwiftUI field's title")
             XCTAssertTrue(field.contains("singleLine: true"), "a SwiftUI field scrolls, it does not wrap")
@@ -99,7 +102,15 @@ final class OnboardingEmailFieldAutoFillTests: XCTestCase {
         let start = try XCTUnwrap(file.range(of: "struct NoAutoFillTextField"))
         let component = String(file[start.lowerBound...])
         XCTAssertTrue(component.contains("var onSubmit: (() -> Void)? = nil"))
-        let hook = try XCTUnwrap(component.range(of: "doCommandBy commandSelector: Selector) -> Bool {"))
+        // The coordinator is the field's delegate, and holds the current
+        // view (so the current closure) after every update.
+        XCTAssertTrue(component.contains("field.delegate = context.coordinator"))
+        let update = try XCTUnwrap(component.range(of: "func updateNSView"))
+        let makeCoordinator = try XCTUnwrap(component.range(of: "func makeCoordinator", range: update.upperBound..<component.endIndex))
+        XCTAssertTrue(component[update.upperBound..<makeCoordinator.lowerBound].contains("context.coordinator.parent = self"))
+        // The exact delegate method: a near miss only warns, and never runs.
+        let hook = try XCTUnwrap(component.range(
+            of: "func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {"))
         let body = String(component[hook.upperBound...].prefix(400))
         XCTAssertTrue(body.contains("#selector(NSResponder.insertNewline(_:))"), body)
         XCTAssertTrue(body.contains("let onSubmit = parent.onSubmit"), body)
