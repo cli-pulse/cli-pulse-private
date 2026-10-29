@@ -87,7 +87,7 @@ final class OnboardingEmailFieldAutoFillTests: XCTestCase {
         // The size they had: the agent-setup wizard's fill the width, the
         // first-run wizard's are 260 pt, both at least a field's height.
         XCTAssertEqual(wizard.components(separatedBy: ".frame(maxWidth: .infinity, minHeight: 22)").count - 1, 2)
-        XCTAssertEqual(wizard.components(separatedBy: ".frame(width: 260, minHeight: 22)").count - 1, 2)
+        XCTAssertEqual(wizard.components(separatedBy: ".frame(width: 260).frame(minHeight: 22)").count - 1, 2)
         for field in emailFields {
             XCTAssertTrue(field.contains("voiceOverLabel: L10n.settings.email"), "VoiceOver read the SwiftUI field's title")
             XCTAssertTrue(field.contains("singleLine: true"), "a SwiftUI field scrolls, it does not wrap")

@@ -1543,7 +1543,7 @@ struct LegacyOnboardingWizardView: View {
                 singleLine: true,
                 onSubmit: { sendCode() }
             )
-            .frame(width: 260, minHeight: 22)
+            .frame(width: 260).frame(minHeight: 22)
 
             Button {
                 sendCode()
@@ -1578,7 +1578,7 @@ struct LegacyOnboardingWizardView: View {
                 singleLine: true,
                 onSubmit: { signInWithPassword() }
             )
-            .frame(width: 260, minHeight: 22)
+            .frame(width: 260).frame(minHeight: 22)
 
             SecureField(L10n.auth.passwordPlaceholder, text: $password)
                 .textFieldStyle(.roundedBorder)
