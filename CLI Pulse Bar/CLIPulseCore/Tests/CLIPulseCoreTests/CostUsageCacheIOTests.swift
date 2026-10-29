@@ -230,7 +230,7 @@ final class CostUsageCacheIOTests: XCTestCase {
         try! JSONSerialization.data(withJSONObject: payload).write(to: url)
     }
 
-    func testCurrentCodexRulesVersionIsNine() {
+    func testCurrentCodexRulesVersionIsTen() {
         // 5 — 1.56: Codex files count on their own (subagents included), a file
         // of one thread is a copy when its events lie within another's (nested
         // spans), the cumulative baseline only rises, a child's copied history
@@ -242,9 +242,11 @@ final class CostUsageCacheIOTests: XCTestCase {
         // the Claude version: a bump should be a visible diff.
         // 9 — 1.59.1 (N1): the sessions Codex archives as `.jsonl.zst` are
         // read, so the Codex history rebuild runs again and finds them.
-        XCTAssertEqual(costUsageCodexCacheRulesVersion, 9)
-        XCTAssertEqual(CostUsageCacheRules.version(forProvider: "codex"), 9)
-        XCTAssertEqual(CostUsageCacheRules.version(forProvider: "Codex"), 9)
+        // 10 — 1.60 (A4, A5): Fast turns at the Fast rate, free Auto-review
+        // at $0, and slot 4 (requests with no rate) on every Codex row.
+        XCTAssertEqual(costUsageCodexCacheRulesVersion, 10)
+        XCTAssertEqual(CostUsageCacheRules.version(forProvider: "codex"), 10)
+        XCTAssertEqual(CostUsageCacheRules.version(forProvider: "Codex"), 10)
         XCTAssertEqual(CostUsageCacheRules.version(forProvider: "claude"), costUsageCachePricingVersion)
     }
 

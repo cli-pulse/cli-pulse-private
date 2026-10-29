@@ -480,7 +480,9 @@ final class CodexPricingTableTests: XCTestCase {
         XCTAssertFalse(saved.days.isEmpty, "the fixture must reach the cache, or this checks nothing")
         for (day, models) in saved.days {
             for (model, packed) in models {
-                XCTAssertEqual(packed.count, 4, "\(day) \(model): a Codex row stores tokens and their cost")
+                // 1.60: slot 4 counts the row's requests that had no rate.
+                XCTAssertEqual(packed.count, 5, "\(day) \(model): a Codex row stores tokens, their cost and its unpriced requests")
+                XCTAssertEqual(packed.count > 4 ? packed[4] : -1, 0, "\(day) \(model): every request was priced")
                 let costNanos = packed.count > 3 ? packed[3] : -1
                 XCTAssertEqual(Double(costNanos) / 1e9, 1_000 * 4e-6, accuracy: 1e-12, "\(day) \(model)")
             }

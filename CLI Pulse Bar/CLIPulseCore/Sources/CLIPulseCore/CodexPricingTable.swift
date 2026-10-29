@@ -25,13 +25,25 @@
 //     `requestCostUSD` are ours. The scanner prices each `token_count` event
 //     as it reads it, and an event's counted tokens are not always exactly one
 //     request; see those functions.
-//   * Not ported: models.dev lookups, the custom-pricing overlay, API Fast
-//     (priority) multipliers, and the pricing fingerprint. On Fast: the
-//     rollout JSONL this app reads does not carry a request's service tier.
-//     Upstream finds Fast turns in the Codex CLI's trace database (the
-//     `feedback_log_body` column of its `logs` table) and charges them 2x
-//     (2.5x for gpt-5.5), so on a day with Fast turns upstream's cost is
-//     higher than this one.
+//   * Not ported: models.dev lookups, the custom-pricing overlay and the
+//     pricing fingerprint.
+//   * Fast (priority) turns (1.60, A4): upstream 0.82.0's
+//     `codexAPIFastMultiplier` and `codexPriorityCostUSD`. The rollout does
+//     carry the tier now — current Codex writes an `event_msg` of type
+//     `thread_settings_applied` whose `thread_settings.service_tier` is
+//     "priority" for Fast — and upstream reads it there
+//     (`threadSettingsApplied`, latched per turn at `task_started`). Upstream
+//     also searches the Codex CLI's trace database for older Fast turns; that
+//     is not ported, so a Fast turn from a Codex that did not write the
+//     setting is priced at standard rates. `fastMultipliers` adds rows for
+//     the three GPT-6 models that are ours, and charges Fast above 272K
+//     where OpenAI's page lists a long-context Fast rate (all the GPT-5.6 and
+//     GPT-6 rows); upstream charges it only for `gpt-6-astra`.
+//   * Free Auto-review (1.60, A5): upstream 0.82.0 (#4452, #4453). A
+//     `codex-auto-review` request from 2026-10-06T07:00:00Z in a session
+//     whose own session_meta has a non-blank `creator_account_id` (created
+//     signed in with ChatGPT) is priced at $0. Any other `codex-auto-review`
+//     request has no rate, as before.
 //
 // ─── MIT License (full notice required by upstream) ───────────────
 //
@@ -314,6 +326,53 @@ public enum CodexPricingTable {
         else { return nil }
         return aliases[String(name[..<dateSuffix.lowerBound])]
     }
+
+    // MARK: - Fast (priority) turns
+
+    /// What a Fast turn costs, as a multiple of the standard rate, per row.
+    ///
+    /// Source: https://developers.openai.com/api/docs/pricing, checked
+    /// 2026-10-29 ("Priority processing was renamed Fast mode on July 30,
+    /// 2026"). Every Fast rate there is the standard one times 2, except
+    /// gpt-5.5's, which is 2.5x ($12.50 / $1.25 / $75 against $5 / $0.50 /
+    /// $30). Upstream's `codexAPIFastMultiplier` lists the same numbers for
+    /// the rows it has; `gpt-6-sol`, `gpt-6-luna` and `gpt-6.1-sol` are ours.
+    /// A row not listed here is priced at standard rates on a Fast turn.
+    public static let fastMultipliers: [String: Double] = [
+        "gpt-5.4": 2, "gpt-5.4-mini": 2,
+        "gpt-5.5": 2.5,
+        "gpt-5.6-sol": 2, "gpt-5.6-terra": 2, "gpt-5.6-luna": 2,
+        "gpt-6-astra": 2, "gpt-6-sol": 2, "gpt-6-luna": 2, "gpt-6.1-sol": 2,
+    ]
+
+    /// Rows with a long-context Fast rate on OpenAI's page (twice their
+    /// long-context standard rate). For the others (`gpt-5.4`, `gpt-5.5`,
+    /// `gpt-5.4-mini`) the page lists none: a Fast request over 272K input
+    /// is priced at standard rates, as upstream does.
+    public static let fastLongContextRows: Set<String> = [
+        "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+        "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-6.1-sol",
+    ]
+
+    /// The multiple a Fast request on row `key` with `requestInputTokens`
+    /// input is charged at; nil when it is charged at standard rates.
+    public static func fastMultiplier(forKey key: String, requestInputTokens: Int) -> Double? {
+        guard let multiplier = fastMultipliers[key] else { return nil }
+        if requestInputTokens > longContextThreshold, !fastLongContextRows.contains(key) { return nil }
+        return multiplier
+    }
+
+    // MARK: - Free Auto-review
+
+    /// The model Codex writes for an Auto-review safety check.
+    public static let autoReviewModel = "codex-auto-review"
+
+    /// From when Auto-review is free for a session created signed in with
+    /// ChatGPT: 2026-10-06 00:00 US Pacific. OpenAI's Help Center says
+    /// Auto-review checks are free and do not count toward plan limits when
+    /// signed in with ChatGPT, without a date; upstream takes the reported
+    /// October 6 announcement, and so does this.
+    public static let autoReviewFreeSince = Date(timeIntervalSince1970: 1_791_270_000)
 
     // MARK: - Lookup
 

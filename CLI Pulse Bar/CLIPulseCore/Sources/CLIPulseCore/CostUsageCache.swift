@@ -76,6 +76,7 @@ import Foundation
 ///       fingerprint of the table next to this number.
 ///   8 — not used for Claude. It is the Codex cache's (1.56, P0-1b).
 ///   9 — not used for Claude. It is the Codex cache's (1.59.1, N1).
+///  10 — not used for Claude. It is the Codex cache's (1.60, A4/A5).
 let costUsageCachePricingVersion: Int = 7
 
 /// Cache-rules version for the Codex cache (`codex-v2.json`). Bump it when
@@ -127,7 +128,16 @@ let costUsageCachePricingVersion: Int = 7
 ///       sessions were partly archived by then took the figure of the part
 ///       still in `.jsonl` (a day with none left kept its old figure). The
 ///       bump makes it read those days again, archives included.
-let costUsageCodexCacheRulesVersion: Int = 9
+///  10 — 1.60 (A4, A5): a turn on the Fast (priority) tier is priced at the
+///       Fast rate (`CodexPricingTable.fastMultipliers`), from the setting the
+///       rollout records (`thread_settings_applied`), carried across
+///       incremental reads in `CostUsageCodexFileState`; and a
+///       `codex-auto-review` request from 2026-10-06 in a session created
+///       signed in with ChatGPT is priced at $0 instead of having no rate. A
+///       Codex day × model row gains slot 4, the number of its requests that
+///       had no rate. A cache written under 9 holds Fast turns at standard
+///       rates and every Auto-review request unpriced.
+let costUsageCodexCacheRulesVersion: Int = 10
 
 enum CostUsageCacheRules {
     /// The rules version a cache for `provider` must carry to be trusted.
@@ -347,6 +357,22 @@ struct CostUsageCodexFileState: Codable, Equatable {
     var inheritedReference: CostUsageCodexTotals?
     /// Such a child has counted tokens. nil for not yet.
     var openingSettled: Bool?
+    /// 1.60 (A4): the `service_tier` of the last `thread_settings_applied`
+    /// read ("priority" is Fast). nil until one has been read. Kept so an
+    /// incremental read knows the setting written before its offset.
+    var serviceTier: String?
+    /// 1.60 (A4): the tier the current turn runs on — `serviceTier` as it was
+    /// at the last `task_started`, as upstream latches it. Its token counts
+    /// are priced at this tier, including those an incremental read reaches.
+    var turnServiceTier: String?
+    /// 1.60 (A4): a turn has started and made no request yet, so a setting
+    /// applied now is the one its requests run at. nil for no.
+    var turnAwaitsRequest: Bool?
+    /// 1.60 (A5): the file's own session_meta (its first line) has a
+    /// non-blank `creator_account_id`: the session was created signed in
+    /// with ChatGPT, which makes its Auto-review requests free. nil for no,
+    /// or not known (a first line that could not be read).
+    var hasCreatorAccountId: Bool?
 
     /// A subagent rollout without a history ordinal. Where its own history
     /// starts is decided from the whole file (`CodexTokenAccountant` rule 5),
