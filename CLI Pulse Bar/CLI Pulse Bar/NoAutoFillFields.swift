@@ -46,21 +46,33 @@ struct NoAutoFillSecureField: NSViewRepresentable {
 }
 
 /// Plain text field with AutoFill suppressed. Used alongside `NoAutoFillSecureField`
-/// so the pair is not misread as a username/password form.
+/// so the pair is not misread as a username/password form, and for the sign-in
+/// email fields, which take AutoFill out of the path altogether.
 struct NoAutoFillTextField: NSViewRepresentable {
     let placeholder: String
     @Binding var text: String
+    /// What VoiceOver reads. A SwiftUI `TextField` takes it from its title; an
+    /// `NSTextField` only has a placeholder, which is not its label.
+    var voiceOverLabel: String? = nil
+    var fontSize: CGFloat = 10
+    /// One line that scrolls, as a SwiftUI `TextField` is, instead of wrapping
+    /// onto a second line. Off for the multi-word fields that already use this.
+    var singleLine = false
 
     func makeNSView(context: Context) -> NSTextField {
         let field = NSTextField()
-        field.placeholderString = placeholder
         field.contentType = nil
         field.isAutomaticTextCompletionEnabled = false
-        field.font = .systemFont(ofSize: 10)
         field.bezelStyle = .roundedBezel
         field.isBordered = true
         field.focusRingType = .default
         field.delegate = context.coordinator
+        if singleLine {
+            field.cell?.usesSingleLineMode = true
+            field.cell?.isScrollable = true
+            field.lineBreakMode = .byTruncatingTail
+        }
+        apply(to: field)
         return field
     }
 
@@ -69,6 +81,17 @@ struct NoAutoFillTextField: NSViewRepresentable {
         if nsView.stringValue != text {
             nsView.stringValue = text
         }
+        // The settings tab redraws in place when the language changes, keeping
+        // what was typed; the placeholder and label must follow.
+        apply(to: nsView)
+    }
+
+    private func apply(to field: NSTextField) {
+        if field.placeholderString != placeholder { field.placeholderString = placeholder }
+        if let voiceOverLabel, field.accessibilityLabel() != voiceOverLabel {
+            field.setAccessibilityLabel(voiceOverLabel)
+        }
+        if field.font?.pointSize != fontSize { field.font = .systemFont(ofSize: fontSize) }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
