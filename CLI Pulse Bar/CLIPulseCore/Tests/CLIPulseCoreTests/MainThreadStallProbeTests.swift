@@ -9,8 +9,9 @@
 //      through a started SDK (which attaches a stack the event must not have).
 //   4. The watchdog on real threads against the real main thread: a sleeping
 //      one, a busy one, a suspended one, one that stays responsive, one that a
-//      debugger holds, and a run-loop read that never returns. Margins are
-//      generous and nothing asserts an upper bound on a time.
+//      debugger holds, and a run-loop read that never returns. Each stall
+//      lasts until the watchdog has done what the test waits for; nothing
+//      asserts an upper bound on a time.
 //
 // macOS-gated: the probe is.
 
@@ -263,15 +264,68 @@ final class SentryStallReporterTests: XCTestCase {
 }
 
 // MARK: - 4. The watchdog on real threads
+//
+// No test here holds the main thread for a fixed time and hopes the watchdog
+// looked at it meanwhile: on a loaded CI runner the watchdog can run late, and
+// a stall that ended before the looks were taken gave a thread that was
+// running again (#715's failure: a menu-tracking stall seen as `running`, so
+// unexplained, so both slots' outcomes shifted). Instead a stall lasts until
+// the watchdog has done what the test waits for: filed its report, asked the
+// debugger check, or gone round its loop enough times that the stall must
+// have crossed the threshold and been handled. The only clocks left are
+// deadlines that end a test that would otherwise hang.
 
 private final class RecordingStallReporter: StallReporter, @unchecked Sendable {
     private let lock = NSLock()
     private var stored: [StallReport] = []
+    private let arrived = DispatchSemaphore(value: 0)
     var reports: [StallReport] { lock.lock(); defer { lock.unlock() }; return stored }
-    func report(_ report: StallReport) { lock.lock(); stored.append(report); lock.unlock() }
+    var count: Int { lock.lock(); defer { lock.unlock() }; return stored.count }
+
+    func report(_ report: StallReport) {
+        lock.lock(); stored.append(report); lock.unlock()
+        arrived.signal()
+    }
+
+    /// Parks the calling thread in a semaphore wait (to the kernel: waiting,
+    /// not running) until a report not yet waited for has been filed. False
+    /// after `timeout`.
+    func waitForNextReport(timeout: TimeInterval = 15) -> Bool {
+        arrived.wait(timeout: .now() + timeout) == .success
+    }
+}
+
+/// A counter a `@Sendable` closure can bump.
+private final class StallTestCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored = 0
+    var value: Int { lock.lock(); defer { lock.unlock() }; return stored }
+    func increment() { lock.lock(); stored += 1; lock.unlock() }
+}
+
+/// Run-loop mode reads, counted by the phase of the test they happened in.
+private final class PhasedModeReads: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current = 0
+    private var counts: [Int: Int] = [:]
+    var phase: Int {
+        get { lock.lock(); defer { lock.unlock() }; return current }
+        set { lock.lock(); current = newValue; lock.unlock() }
+    }
+    var readsByPhase: [Int: Int] { lock.lock(); defer { lock.unlock() }; return counts }
+
+    /// Phase 1 is menu tracking; any other phase is no mode at all.
+    func read() -> String? {
+        lock.lock(); defer { lock.unlock() }
+        counts[current, default: 0] += 1
+        return current == 1 ? "NSEventTrackingRunLoopMode" : nil
+    }
 }
 
 final class MainThreadStallProbeTests: XCTestCase {
+
+    private static let pingInterval: TimeInterval = 0.1
+    private static let threshold: TimeInterval = 0.5
 
     private var probes: [MainThreadStallProbe] = []
 
@@ -281,22 +335,23 @@ final class MainThreadStallProbeTests: XCTestCase {
         super.tearDown()
     }
 
-    /// Short thresholds so a test stalls the main thread for about two
-    /// seconds, and a slack so wide that a slow runner does not make the
+    /// A short threshold, so a stall is seen within about a second on a quiet
+    /// machine (each test holds main until the watchdog is done, however long
+    /// that takes), and a slack so wide that a slow runner does not make the
     /// watchdog look asleep.
     private func makeProbe(
         reporter: RecordingStallReporter,
-        threshold: TimeInterval = 0.5,
-        traced: Bool = false,
+        threshold: TimeInterval = MainThreadStallProbeTests.threshold,
+        traced: (@Sendable () -> Bool)? = nil,
         modeReader: RunLoopModeReader = RunLoopModeReader(timeout: 1)
     ) -> MainThreadStallProbe {
         var dependencies = MainThreadStallProbe.Dependencies()
         dependencies.reporter = reporter
         dependencies.channel = { .devid }
-        dependencies.isBeingTraced = { traced }
+        dependencies.isBeingTraced = traced ?? { false }
         dependencies.modeReader = modeReader
         let probe = MainThreadStallProbe(
-            configuration: .init(pingInterval: 0.1, threshold: threshold, oversleepSlack: 30),
+            configuration: .init(pingInterval: Self.pingInterval, threshold: threshold, oversleepSlack: 30),
             dependencies: dependencies,
             sampleLooks: 3,
             sampleGap: 0.1)
@@ -317,11 +372,44 @@ final class MainThreadStallProbeTests: XCTestCase {
         }
     }
 
-    private func busySpin(_ seconds: TimeInterval) {
-        let end = MainThreadStallProbe.systemUptime() + seconds
-        var x = 0.0
-        while MainThreadStallProbe.systemUptime() < end { x += sin(x) + 1 }
-        XCTAssertFalse(x.isNaN)
+    /// Lets main answer until the watchdog has seen the answer, so a stall
+    /// episode is over and the next stall is a new one. Main runs its queue
+    /// (the outstanding ping) first; the watchdog takes the answer on its next
+    /// wait, at the latest one loop later, so three loops are plenty.
+    private func answerUntilTheEpisodeEnds(_ probe: MainThreadStallProbe) {
+        spinMainRunLoop(0.05)
+        let target = probe.tickCount + 3
+        waitSpinning(limit: 15) { probe.tickCount >= target }
+        XCTAssertGreaterThanOrEqual(probe.tickCount, target, "the watchdog stopped going round its loop")
+    }
+
+    /// How many watchdog loops, counted from the moment main stops answering,
+    /// guarantee that the stall has crossed `threshold` and been handled.
+    ///   * The ping the stall is measured from is posted at the start of the
+    ///     third loop at the latest. The loop under way may have timed out on
+    ///     a ping that main then answered; the next loop takes that late answer
+    ///     at once and posts nothing; the one after it posts a fresh ping.
+    ///   * From that ping on, every loop waits out a whole ping interval on a
+    ///     ping that is never answered, so `threshold / pingInterval` loops
+    ///     cross the threshold.
+    ///   * The loop that crosses it handles the stall before the next one
+    ///     counts, so one more loop means the handling is over.
+    /// Two more on top, for rounding.
+    private func loopsToCrossAndHandle(_ threshold: TimeInterval) -> Int {
+        3 + Int((threshold / Self.pingInterval).rounded(.up)) + 1 + 2
+    }
+
+    /// Holds the main thread (it answers nothing) until the watchdog has gone
+    /// round its loop `loops` more times. False if that took longer than
+    /// `limit`.
+    private func holdMain(until probe: MainThreadStallProbe, hasLooped loops: Int, limit: TimeInterval = 15) -> Bool {
+        let target = probe.tickCount + loops
+        let deadline = MainThreadStallProbe.systemUptime() + limit
+        while probe.tickCount < target {
+            if MainThreadStallProbe.systemUptime() > deadline { return false }
+            usleep(2_000)
+        }
+        return true
     }
 
     private func mainThreadID() -> UInt64 {
@@ -339,17 +427,18 @@ final class MainThreadStallProbeTests: XCTestCase {
         probe.start()
         XCTAssertTrue(probe.isRunning)
         spinMainRunLoop(0.4)   // answered pings, so the stall starts later
-        XCTAssertEqual(reporter.reports.count, 0, "nothing is reported while main answers")
+        XCTAssertEqual(reporter.count, 0, "nothing is reported while main answers")
 
-        Thread.sleep(forTimeInterval: 2)
+        // Main parks in a semaphore wait until the report is filed, so every
+        // look the watchdog takes, however late, finds it waiting.
+        XCTAssertTrue(reporter.waitForNextReport(), "the stall was never reported")
 
-        waitSpinning { !reporter.reports.isEmpty }
-        spinMainRunLoop(0.5)   // an episode ends with an answer; nothing more may come
-        XCTAssertEqual(reporter.reports.count, 1)
-        let report = try? XCTUnwrap(reporter.reports.first)
+        answerUntilTheEpisodeEnds(probe)   // an episode ends with an answer; nothing more may come
+        XCTAssertEqual(reporter.count, 1)
+        let report = reporter.reports.first
         XCTAssertEqual(report?.runState, .waiting)
         XCTAssertEqual(report?.suspendCount, 0)
-        XCTAssertGreaterThanOrEqual(report?.stall ?? 0, 0.5)
+        XCTAssertGreaterThanOrEqual(report?.stall ?? 0, Self.threshold)
         XCTAssertEqual(report?.channel, .devid)
         XCTAssertNotEqual(report?.runLoopMode, .unreadable, "nothing held the run loop's lock")
     }
@@ -361,7 +450,7 @@ final class MainThreadStallProbeTests: XCTestCase {
         // Answering all the way, for longer than the threshold.
         spinMainRunLoop(2.5)
         XCTAssertGreaterThan(probe.tickCount, 5, "control: the watchdog did run")
-        XCTAssertEqual(reporter.reports.count, 0)
+        XCTAssertEqual(reporter.count, 0)
     }
 
     func testABusyMainThreadIsRunningAndTheThreadSampledIsTheMainThread() {
@@ -371,12 +460,18 @@ final class MainThreadStallProbeTests: XCTestCase {
         makeProbe(reporter: reporter).start()
         spinMainRunLoop(0.3)
 
-        busySpin(1.5)
+        // Busy until the report is filed, so the looks all fall inside the spin.
+        let deadline = MainThreadStallProbe.systemUptime() + 15
+        var x = 0.0
+        while reporter.count == 0 && MainThreadStallProbe.systemUptime() < deadline { x += sin(x) + 1 }
+        XCTAssertFalse(x.isNaN)
 
-        waitSpinning { !reporter.reports.isEmpty }
         let report = reporter.reports.first
+        XCTAssertNotNil(report, "the busy stall was never reported")
         XCTAssertEqual(report?.runState, .running)
-        XCTAssertGreaterThanOrEqual(report?.cpuMilliseconds ?? 0, 20,
+        // A sleeping thread uses none; a spinning one uses most of the 200 ms
+        // the looks span, unless the runner starves it, so the bar is low.
+        XCTAssertGreaterThanOrEqual(report?.cpuMilliseconds ?? 0, 5,
                                     "a spinning thread uses the processor while we look")
         // The same sampler, asked directly, names the main thread's own id.
         let direct = sampler?.sample()
@@ -407,17 +502,29 @@ final class MainThreadStallProbeTests: XCTestCase {
         makeProbe(reporter: reporter).start()
         spinMainRunLoop(0.3)
 
-        // A thread of ours suspends main while main waits on a semaphore (so it
-        // holds no lock), keeps it suspended, and resumes it. After the
-        // suspension it calls nothing but usleep and thread_resume: anything
-        // that allocates could wait for a lock main held when it stopped.
+        // A thread of ours suspends main once main waits on a semaphore (so it
+        // holds no lock), keeps it suspended until the report is filed (or 15 s
+        // pass), and resumes it. While main is suspended it calls nothing but
+        // usleep, the reporter's own lock and thread_resume: anything that
+        // allocates could wait for a lock main held when it stopped.
         let ready = DispatchSemaphore(value: 0)
         let resumed = DispatchSemaphore(value: 0)
+        let look = MainThreadSampler(port: port, looks: 1, gap: 0)
         let suspender = Foundation.Thread {
             ready.wait()
-            usleep(300_000)               // main is parked in `resumed.wait` by now
+            // Main is on its way to `resumed.wait`: suspend it once it is
+            // parked there, not after a fixed time.
+            var polled = 0
+            while look.sample().runState != .waiting && polled < 15_000 {
+                usleep(1_000)
+                polled += 1
+            }
             thread_suspend(port)
-            usleep(2_500_000)
+            var waited = 0
+            while reporter.count == 0 && waited < 15_000 {
+                usleep(10_000)
+                waited += 10
+            }
             thread_resume(port)
             resumed.signal()
         }
@@ -425,7 +532,6 @@ final class MainThreadStallProbeTests: XCTestCase {
         ready.signal()
         resumed.wait()
 
-        waitSpinning { !reporter.reports.isEmpty }
         let report = reporter.reports.first
         XCTAssertNotNil(report, "a suspended main thread must still be reported, and the watchdog must not hang on it")
         XCTAssertGreaterThanOrEqual(report?.suspendCount ?? 0, 1)
@@ -434,24 +540,18 @@ final class MainThreadStallProbeTests: XCTestCase {
 
     func testADebuggedProcessReportsNothing() {
         let reporter = RecordingStallReporter()
-        let asked = NSLock()
-        var askedCount = 0
-        var dependencies = MainThreadStallProbe.Dependencies()
-        dependencies.reporter = reporter
-        dependencies.isBeingTraced = { asked.lock(); askedCount += 1; asked.unlock(); return true }
-        let probe = MainThreadStallProbe(
-            configuration: .init(pingInterval: 0.1, threshold: 0.5, oversleepSlack: 30),
-            dependencies: dependencies)
-        probes.append(probe)
+        let asked = StallTestCounter()
+        let probe = makeProbe(reporter: reporter, traced: { asked.increment(); return true })
         probe.start()
         spinMainRunLoop(0.3)
 
-        Thread.sleep(forTimeInterval: 1.5)
+        // Held until the stall reaches the debugger check.
+        let deadline = MainThreadStallProbe.systemUptime() + 15
+        while asked.value == 0 && MainThreadStallProbe.systemUptime() < deadline { usleep(2_000) }
 
-        spinMainRunLoop(0.6)
-        asked.lock(); let count = askedCount; asked.unlock()
-        XCTAssertGreaterThan(count, 0, "control: the stall reached the debugger check")
-        XCTAssertEqual(reporter.reports.count, 0, "a debugger stops the main thread on purpose")
+        answerUntilTheEpisodeEnds(probe)
+        XCTAssertGreaterThan(asked.value, 0, "control: the stall reached the debugger check")
+        XCTAssertEqual(reporter.count, 0, "a debugger stops the main thread on purpose")
     }
 
     func testAModeReadThatNeverReturnsStillGivesAReportAndTheWatchdogKeepsGoing() {
@@ -463,9 +563,8 @@ final class MainThreadStallProbeTests: XCTestCase {
         probe.start()
         spinMainRunLoop(0.3)
 
-        Thread.sleep(forTimeInterval: 2)
+        XCTAssertTrue(reporter.waitForNextReport(), "the stall was never reported")
 
-        waitSpinning { !reporter.reports.isEmpty }
         forever.signal()
         XCTAssertEqual(reporter.reports.first?.runLoopMode, .unreadable)
         XCTAssertTrue(probe.isAlive)
@@ -494,24 +593,38 @@ final class MainThreadStallProbeTests: XCTestCase {
 
     func testOnceBothSlotsAreSpentAStallIsNotEvenLookedAt() {
         // The first stall is seen in menu tracking, the second in no mode; the
-        // third must cost no looks and no run-loop read.
-        let reads = NSLock()
-        var readCount = 0
+        // third must cost no looks and no run-loop read. A longer threshold
+        // than the other tests: a stray stall (main starved while it should be
+        // answering) would take a slot this test counts on.
+        let threshold: TimeInterval = 1
+        let reads = PhasedModeReads()
         var reader = RunLoopModeReader(timeout: 5)
-        reader.copyCurrentMode = {
-            reads.lock(); readCount += 1; let n = readCount; reads.unlock()
-            return n == 1 ? "NSEventTrackingRunLoopMode" : nil
-        }
+        reader.copyCurrentMode = { reads.read() }
         let reporter = RecordingStallReporter()
-        makeProbe(reporter: reporter, threshold: 0.3, modeReader: reader).start()
-        for _ in 0..<3 {
-            spinMainRunLoop(0.3)
-            Thread.sleep(forTimeInterval: 1.0)
-        }
-        spinMainRunLoop(0.3)
-        reads.lock(); let total = readCount; reads.unlock()
+        let probe = makeProbe(reporter: reporter, threshold: threshold, modeReader: reader)
+        probe.start()
+        answerUntilTheEpisodeEnds(probe)
+
+        // 1 and 2: main parks until the report is filed, so the looks find it
+        // waiting and the first stall is the explained one.
+        reads.phase = 1
+        XCTAssertTrue(reporter.waitForNextReport(), "the menu-tracking stall was never reported")
+        answerUntilTheEpisodeEnds(probe)
+
+        reads.phase = 2
+        XCTAssertTrue(reporter.waitForNextReport(), "the second stall was never reported")
+        answerUntilTheEpisodeEnds(probe)
+
+        // 3: nothing to wait for (that is the point), so main is held until
+        // the watchdog must have crossed the threshold and handled the stall.
+        reads.phase = 3
+        XCTAssertTrue(holdMain(until: probe, hasLooped: loopsToCrossAndHandle(threshold)),
+                      "the watchdog stopped going round its loop")
+        answerUntilTheEpisodeEnds(probe)
+
         XCTAssertEqual(reporter.reports.map(\.explained), [true, false])
-        XCTAssertEqual(total, 2, "the third stall was looked at although both slots were spent")
+        XCTAssertEqual(reads.readsByPhase, [1: 1, 2: 1],
+                       "the third stall was looked at although both slots were spent")
     }
 
     func testAMachInfoCallForAnUnreadableThreadGivesAnUnknownStateNotACrash() {
