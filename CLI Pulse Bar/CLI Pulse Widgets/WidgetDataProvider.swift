@@ -23,6 +23,11 @@ struct WidgetData: Codable {
     /// has neither, and costs show in dollars as that app did here.
     var displayCurrency: String? = nil
     var fxRate: Double? = nil
+    /// 1.60: when each session counted in `activeSessions` was last active
+    /// (`PublishedWidgetData.activeSessionLastActiveAt`), so an entry counts
+    /// again at its own date (`CLIPulseEntry.activeSessions`). Nil in a payload
+    /// from before it, and in Demo's.
+    var activeSessionLastActiveAt: [Date]? = nil
 
     static let empty = WidgetData(
         totalUsageToday: 0,
@@ -154,6 +159,14 @@ struct CLIPulseTimelineProvider: TimelineProvider {
 struct CLIPulseEntry: TimelineEntry {
     let date: Date
     let data: WidgetData
+
+    /// The sessions active at this entry's date (1.60, 59-05). The payload's
+    /// own figure was counted when the app published it; an entry drawn
+    /// five or ten minutes later counted a session that had ended since.
+    var activeSessions: Int {
+        DashboardCounts.activeSessions(
+            published: data.activeSessions, lastActiveAt: data.activeSessionLastActiveAt, now: date)
+    }
 
     // v1.21 D6: relevance scoring for iOS 17+ Smart Stack. The widget rises
     // in the stack when (a) there are unresolved alerts, or (b) the highest-

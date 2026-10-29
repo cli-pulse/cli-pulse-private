@@ -31,6 +31,11 @@ public struct WatchDeviceSummary: Codable, Identifiable, Sendable, Equatable {
     public let fanBoostActive: Bool?
     public let fanBoostTargetRpm: Int?
     public let sensorsUpdatedAt: String?
+    /// 1.60: when the device was last seen (`DeviceRecord.last_sync_at`, the
+    /// cloud's `last_seen_at`), so the card can say Offline once it has not
+    /// been seen for `DashboardCounts.deviceOnlineGrace`. Optional: an iPhone
+    /// from before 1.60 sends none, and the card then shows the stored status.
+    public var lastSyncAt: String? = nil
 
     public var deviceStatus: DeviceStatus? { DeviceStatus(rawValue: status) }
 
@@ -61,6 +66,7 @@ public struct WatchDeviceSummary: Codable, Identifiable, Sendable, Equatable {
         fanBoostActive = d.fan_boost_active
         fanBoostTargetRpm = d.fan_boost_target_rpm
         sensorsUpdatedAt = d.sensors_updated_at
+        lastSyncAt = d.last_sync_at
     }
 
     // Memberwise init for tests / previews.
@@ -71,7 +77,7 @@ public struct WatchDeviceSummary: Codable, Identifiable, Sendable, Equatable {
                 uptimeSeconds: Int? = nil, loadAvg1m: Double? = nil, memoryPressure: String? = nil,
                 diskFreeBytes: Int? = nil, diskTotalBytes: Int? = nil,
                 lpmOn: Bool? = nil, fanBoostActive: Bool? = nil, fanBoostTargetRpm: Int? = nil,
-                sensorsUpdatedAt: String? = nil) {
+                sensorsUpdatedAt: String? = nil, lastSyncAt: String? = nil) {
         self.id = id; self.name = name; self.status = status
         self.cpuUsage = cpuUsage; self.memoryUsage = memoryUsage; self.cpuTempC = cpuTempC
         self.fanRpm = fanRpm; self.thermalState = thermalState; self.batteryChargePct = batteryChargePct
@@ -80,6 +86,7 @@ public struct WatchDeviceSummary: Codable, Identifiable, Sendable, Equatable {
         self.diskFreeBytes = diskFreeBytes; self.diskTotalBytes = diskTotalBytes
         self.lpmOn = lpmOn; self.fanBoostActive = fanBoostActive; self.fanBoostTargetRpm = fanBoostTargetRpm
         self.sensorsUpdatedAt = sensorsUpdatedAt
+        self.lastSyncAt = lastSyncAt
     }
 }
 

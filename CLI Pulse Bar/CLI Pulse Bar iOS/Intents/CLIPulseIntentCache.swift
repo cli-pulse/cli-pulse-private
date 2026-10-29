@@ -1,3 +1,4 @@
+import CLIPulseCore
 import Foundation
 
 /// Shared App Group cache reader for AppIntents.
@@ -37,6 +38,16 @@ enum CLIPulseIntentCache {
         let unresolvedAlerts: Int
         let providers: [CachedProvider]
         let lastUpdated: Date
+        /// 1.60: when each counted session was last active
+        /// (`PublishedWidgetData.activeSessionLastActiveAt`).
+        var activeSessionLastActiveAt: [Date]? = nil
+
+        /// The sessions active at `now`, counted again from the times the
+        /// app published (59-05): Siri can answer long after the publish.
+        func activeSessions(at now: Date) -> Int {
+            DashboardCounts.activeSessions(
+                published: activeSessions, lastActiveAt: activeSessionLastActiveAt, now: now)
+        }
     }
 
     static func load() -> Snapshot? {

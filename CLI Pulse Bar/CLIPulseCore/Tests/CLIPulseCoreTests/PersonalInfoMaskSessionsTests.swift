@@ -374,7 +374,8 @@ final class PersonalInfoMaskSessionsTests: XCTestCase {
     func testTheCostReportShowsNoProjectWithTheSwitchOn() {
         func report(_ hide: Bool) -> String {
             ExportService.costReportCSV(
-                dashboard: nil, providers: [], sessions: exportSessions, hidePersonalInfo: hide,
+                dashboard: nil, counts: DashboardCounts(activeSessions: 0, onlineDevices: 0),
+                providers: [], sessions: exportSessions, hidePersonalInfo: hide,
                 projectNumbers: hide ? numbers : .none)
         }
         XCTAssertEqual(leaks(report(true)), [])
@@ -403,7 +404,8 @@ final class PersonalInfoMaskSessionsTests: XCTestCase {
                 .appendingPathComponent("\(UUID().uuidString)-privacy.pdf")
             defer { try? FileManager.default.removeItem(at: url) }
             let written = PDFReportGenerator.generateReport(
-                dashboard: nil, providers: [], sessions: exportSessions, dailyUsage: [], costForecast: nil,
+                dashboard: nil, counts: DashboardCounts(activeSessions: 0, onlineDevices: 0),
+                providers: [], sessions: exportSessions, dailyUsage: [], costForecast: nil,
                 hidePersonalInfo: hide, projectNumbers: hide ? numbers : .none, destinationURL: url)
             let document = try XCTUnwrap(written.flatMap(PDFDocument.init(url:)))
             return try XCTUnwrap(document.string)

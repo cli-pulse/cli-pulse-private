@@ -822,8 +822,7 @@ extension AppState {
     /// legend and Running count, the iPhone's Overview tile and the iPad
     /// sidebar.
     public func sessionsClock(now: Date = Date()) -> Date {
-        guard isDemoMode, let lastRefresh else { return now }
-        return min(now, lastRefresh.addingTimeInterval(DemoDataProvider.refreshAge))
+        SessionsClock.at(now, demoRefresh: isDemoMode ? lastRefresh : nil)
     }
 
     public func enterDemoMode() {

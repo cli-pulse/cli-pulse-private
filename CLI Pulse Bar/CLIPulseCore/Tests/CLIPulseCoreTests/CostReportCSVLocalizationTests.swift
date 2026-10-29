@@ -45,7 +45,9 @@ final class CostReportCSVLocalizationTests: XCTestCase {
                 status: "Running", total_usage: 100, estimated_cost: 0.05,
                 cost_status: "normal", requests: 10, error_count: 0),
         ]
-        return ExportService.costReportCSV(dashboard: dashboard, providers: providers,
+        return ExportService.costReportCSV(dashboard: dashboard,
+                                           counts: DashboardCounts(activeSessions: 4, onlineDevices: 2),
+                                           providers: providers,
                                            sessions: sessions, hidePersonalInfo: false, projectNumbers: .none,
                                            generatedAt: generatedAt)
     }

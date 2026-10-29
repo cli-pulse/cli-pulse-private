@@ -951,9 +951,9 @@ final class DemoMatchesProductionTests: XCTestCase {
     /// and whose last activity is within 300 seconds (v0.87, in production
     /// since 2026-10-26; before it there was no time window), and every
     /// unresolved row of public.alerts. The
-    /// cloud route passes both through: it raises the sessions figure only to
-    /// the rows it lists, never lowers it, and leaves the alerts figure as the
-    /// server sent it. helper_sync turns a session 'Ended' only ten minutes
+    /// cloud route passes both through as the server sent them; since 1.60
+    /// (59-05) the session tiles count the listed rows themselves
+    /// (`DashboardCounts`) instead of showing the figure. helper_sync turns a session 'Ended' only ten minutes
     /// after its process is gone, so a row the Sessions tab no longer lists
     /// still counts until then; and the quota alert is the app's own, raised
     /// as it refreshes and never uploaded (the app only reads and updates
@@ -966,10 +966,10 @@ final class DemoMatchesProductionTests: XCTestCase {
         let demo = DemoDataProvider.generate()
         XCTAssertEqual(demo.dashboard.active_sessions, demo.sessions.filter { $0.status == "Running" }.count,
                        "the Sessions tile leaves out a row dashboard_summary counts")
-        XCTAssertGreaterThanOrEqual(
+        XCTAssertEqual(
+            DashboardCounts.activeSessions(demo.sessions, now: demo.refreshedAt.addingTimeInterval(DemoDataProvider.refreshAge)),
             demo.dashboard.active_sessions,
-            SessionFreshnessFilter.filterCurrent(demo.sessions, now: demo.refreshedAt).count,
-            "the cloud route would raise the Sessions tile to the rows it lists")
+            "the Sessions tile, which counts Demo's rows at Demo's clock, disagrees with dashboard_summary's figure")
         let cloudRows = demo.alerts.filter { !$0.id.hasPrefix("quota-") }
         XCTAssertEqual(demo.dashboard.unresolved_alerts, cloudRows.filter { !$0.is_resolved }.count,
                        "the Alerts tile counts an alert the cloud does not hold")
@@ -1008,10 +1008,10 @@ final class DemoMatchesProductionTests: XCTestCase {
         let refresh = Self.codeOnly(try String(
             contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/DataRefreshManager.swift"),
             encoding: .utf8))
-        XCTAssertTrue(refresh.contains("guard mergedSessions.count > dashboardData.active_sessions else { return dashboardData }"),
-                      "the cloud route changes the Sessions tile another way")
-        XCTAssertTrue(refresh.contains("unresolved_alerts: dashboardData.unresolved_alerts,"),
-                      "the cloud route changes the Alerts tile")
+        XCTAssertTrue(refresh.contains("dashboard: dashboardData,"),
+                      "the cloud route no longer passes the server's dashboard (the Alerts tile's figure among it) on as it came")
+        XCTAssertFalse(refresh.contains("active_sessions: mergedSessions.count"),
+                       "the cloud route raises the dashboard's session figure to the rows it lists again")
         // ...and no alert row written by the app: every alerts request is the
         // list's read or an update of one row by id.
         let api = Self.codeOnly(try String(

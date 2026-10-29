@@ -72,6 +72,7 @@ public enum PDFReportGenerator {
     /// Returns the file URL on success, nil on failure.
     public static func generateReport(
         dashboard: DashboardSummary?,
+        counts: DashboardCounts,
         providers: [ProviderUsage],
         sessions: [SessionRecord],
         dailyUsage: [DailyUsage],
@@ -137,8 +138,9 @@ public enum PDFReportGenerator {
             let summaryItems: [(String, String)] = [
                 (L10n.pdf.todayUsage, formatTokens(d.total_usage_today)),
                 (L10n.pdf.todayEstimatedCost, CostFormatter.format(d.total_estimated_cost_today)),
-                (L10n.pdf.activeSessions, "\(d.active_sessions)"),
-                (L10n.pdf.onlineDevices, "\(d.online_devices)"),
+                // 1.60 (59-05): counted from the rows as the report is made.
+                (L10n.pdf.activeSessions, "\(counts.activeSessions)"),
+                (L10n.pdf.onlineDevices, "\(counts.onlineDevices)"),
                 (L10n.pdf.unresolvedAlerts, "\(d.unresolved_alerts)"),
             ]
 

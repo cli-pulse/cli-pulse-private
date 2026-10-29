@@ -125,8 +125,8 @@ struct UsageOverviewWidgetView: View {
                 Spacer()
 
                 HStack(spacing: 8) {
-                    WidgetMiniStat(icon: "terminal", value: "\(entry.data.activeSessions)",
-                                   accessibilityText: L10n.intents.activeSessions(entry.data.activeSessions),
+                    WidgetMiniStat(icon: "terminal", value: "\(entry.activeSessions)",
+                                   accessibilityText: L10n.intents.activeSessions(entry.activeSessions),
                                    color: .blue)
                     if entry.data.unresolvedAlerts > 0 {
                         WidgetMiniStat(icon: "bell.badge", value: "\(entry.data.unresolvedAlerts)",
@@ -202,7 +202,7 @@ struct UsageOverviewWidgetView: View {
             HStack(spacing: 0) {
                 WidgetMetricBox(title: L10n.widget.usageTitle, value: formatUsage(entry.data.totalUsageToday))
                 WidgetMetricBox(title: L10n.dashboard.costToday, value: formatCost(entry.data.totalCostToday), color: .green)
-                WidgetMetricBox(title: L10n.tab.sessions, value: "\(entry.data.activeSessions)")
+                WidgetMetricBox(title: L10n.tab.sessions, value: "\(entry.activeSessions)")
                 WidgetMetricBox(title: L10n.tab.alerts, value: "\(entry.data.unresolvedAlerts)", color: entry.data.unresolvedAlerts > 0 ? .red : .primary)
             }
 
