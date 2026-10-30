@@ -1042,6 +1042,10 @@ public final class AppState: ObservableObject {
 
     public let api: APIClient
     let authManager: AuthManager
+    /// 1.60: the next try of a cold-launch restore that could not reach the
+    /// server (`applyDeferredSessionRestore`), and how many have been made.
+    var deferredSessionRestoreTask: Task<Void, Never>?
+    var deferredSessionRestoreAttempts = 0
     let dataRefreshManager: DataRefreshManager
     private let providerConfigDefaults: UserDefaults
     /// The app group the LoginItem helper reads (`HelperIPC.suiteName`): the
