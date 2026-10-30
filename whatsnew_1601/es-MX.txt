@@ -1,0 +1,7 @@
+Los recuentos de sesiones del Resumen, los widgets, Siri y el Apple Watch se mantienen al día, y «Ocultar información personal» también oculta los nombres de los dispositivos.
+
+• CLI Pulse ya no cierra tu sesión al volver a abrirse después de estar cerrado un tiempo, ni al abrirse sin conexión de red o sin poder comunicarse con el servidor. Ahora renueva tu sesión, o la conserva y vuelve a intentarlo hasta que el servidor responda (mientras tanto, muestra «Servidor fuera de línea»). Solo se cierra tu sesión si el servidor deja de aceptarla.
+
+• La cifra de Sesiones del Resumen, los widgets, Siri, el Apple Watch y las exportaciones ahora se calcula en el momento en que se muestra, a partir de las sesiones que figuran como activas. Antes quedaba fija en la última actualización, así que un widget podía seguir mostrando una sesión que ya había terminado. La cifra de Dispositivos del Resumen cuenta los dispositivos vistos en los últimos 30 minutos, y el Apple Watch solo muestra un dispositivo como en línea si se vio en ese tiempo.
+
+• «Ocultar información personal», en Ajustes, ahora también oculta los nombres de los dispositivos. En las tarjetas de dispositivos, en las sesiones y alertas, y en el Apple Watch, un dispositivo aparece como «Dispositivo 1», «Dispositivo 2», etc., o como «Dispositivo oculto». El texto bajo el interruptor ahora indica qué se oculta y qué no.

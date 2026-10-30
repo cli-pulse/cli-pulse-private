@@ -1,0 +1,17 @@
+Los recuentos de sesiones y dispositivos se mantienen al día, «Ocultar información personal» también oculta los nombres de los dispositivos, Ajustes muestra cuándo este Mac subió datos a tu cuenta por última vez y los turnos de Codex en modo Fast se calculan con la tarifa Fast.
+
+• CLI Pulse ya no cierra tu sesión al volver a abrirse después de estar cerrado un tiempo, ni al abrirse sin conexión de red o sin poder comunicarse con el servidor. Ahora renueva tu sesión, o la conserva y vuelve a intentarlo hasta que el servidor responda (mientras tanto, muestra «Servidor fuera de línea»). Solo se cierra tu sesión si el servidor deja de aceptarla.
+
+• Las cifras de Sesiones y Dispositivos del Resumen y de las exportaciones ahora se calculan en el momento en que se muestran. Sesiones son las sesiones que la pestaña Sesiones muestra como activas, y Dispositivos son los dispositivos vistos en los últimos 30 minutos. Antes quedaban fijas en la última actualización, y la cifra de Sesiones podía seguir igual después de que terminara una sesión.
+
+• «Ocultar información personal», en Ajustes › Avanzado, ahora también oculta los nombres de los dispositivos. El dispositivo de una sesión o de una alerta aparece como «Dispositivo 1», «Dispositivo 2», etc., o como «Dispositivo oculto».
+
+• Ajustes › General tiene una nueva fila, «Última subida a la nube», bajo Estado de sincronización mientras tienes la sesión iniciada. Muestra cuándo llegó a tu cuenta por última vez el uso de este Mac y, si el último intento falló, cuándo falló y, si lo hubo, el estado HTTP.
+
+• Codex: los turnos que Codex registra en modo Fast ahora se calculan con la tarifa Fast, normalmente el doble de la tarifa estándar (2,5 veces para gpt-5.5). Las solicitudes de Auto-review de sesiones iniciadas con tu cuenta de ChatGPT se calculan a $0 desde el 6 de octubre de 2026. Si usas el modo Fast, tus estimaciones de costo de Codex pueden ser más altas que antes. Después de instalar esta versión, la primera actualización reconstruye una vez tu historial de Codex, en segundo plano.
+
+• Al editar un proveedor, el selector Fuente de datos ahora llama a este Mac «Este Mac» y a la fuente combinada «Nube + este Mac», como la tarjeta del proveedor.
+
+• Los avisos de la ventana de la barra de menús ahora muestran su mensaje en el color de texto normal, más fácil de leer en el modo claro, y tienen un botón de cerrar más grande.
+
+• Los campos Correo para iniciar sesión, en Ajustes y en el asistente de primer uso, ya no ofrecen el Autorrelleno de contraseñas.
