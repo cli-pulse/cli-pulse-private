@@ -87,7 +87,7 @@ public final class AuthManager {
 
         // 1.60: never replace a session the client already holds — a refresh a
         // concurrent request completed is newer than this Keychain read, and
-        // its predecessor's refresh token is already spent.
+        // its predecessor's refresh token is already spent. Nil: not ours.
         let restoringEpoch = await api.adoptStoredSession(
             accessToken: accessToken,
             refreshToken: refreshToken
@@ -110,7 +110,10 @@ public final class AuthManager {
             // while signed out would send it (local mode sends nothing). A
             // session installed while this restore was out (a sign-in) is not
             // this restore's to touch: `takeSession` leaves it alone.
-            guard let held = await api.takeSession(ifEpoch: restoringEpoch) else {
+            guard
+                let restoringEpoch,
+                let held = await api.takeSession(ifEpoch: restoringEpoch)
+            else {
                 return .deferred
             }
             // A refused refresh leaves no refresh token behind (the client
@@ -724,7 +727,8 @@ extension AppState {
         // 1.60: a restore can now be retried while the sign-in screen is up
         // (`.deferred`). A sign-in that finished while it was out owns the
         // session; this answer is about the one it replaced.
-        guard !isAuthenticated else { return }
+        // The same for Demo or local mode chosen while it was out.
+        guard !isAuthenticated, !isDemoMode, !isLocalMode else { return }
         switch result {
         case .demoMode:
             break
@@ -805,10 +809,11 @@ extension AppState {
     }
 
     /// Seconds before deferred restore attempt `attempt` (1-based): 5 s,
-    /// doubling, at most 5 min.
+    /// doubling, at most a minute. Each try is one `GET /auth/v1/user`, and
+    /// the user is looking at the sign-in screen until one gets through.
     nonisolated static func deferredSessionRestoreDelay(attempt: Int) -> TimeInterval {
         let exponent = Double(max(0, min(attempt - 1, 16)))
-        return min(300, 5 * pow(2, exponent))
+        return min(60, 5 * pow(2, exponent))
     }
 
     private func scheduleDeferredSessionRestore() {

@@ -486,9 +486,16 @@ public actor APIClient {
     /// last refresh) could never refresh, and the restore signed the user out.
     /// Any other 403 is a real refusal (a permission, a policy) and is not
     /// retried: refreshing would only rotate the refresh token for nothing.
+    ///
+    /// Also a rejection: 403 `session_not_found` / `user_not_found`, which
+    /// GoTrue sends for an unexpired token whose session or user is gone (a
+    /// sign-out everywhere, a deleted account). The refresh then gets the
+    /// definitive refusal that ends the session; without it, that token would
+    /// read as "no answer" and the app would retry it until it expired.
     static func isRejectedAccessToken(status: Int, body: String) -> Bool {
         if status == 401 { return true }
-        return status == 403 && ServerErrorReason.serverCode(in: body) == "bad_jwt"
+        guard status == 403, let code = ServerErrorReason.serverCode(in: body) else { return false }
+        return ["bad_jwt", "session_not_found", "user_not_found"].contains(code)
     }
 
     /// Whether the refresh endpoint refused the session itself, so no later
@@ -568,17 +575,19 @@ public actor APIClient {
     /// Install the session read from the Keychain at launch, unless this client
     /// already holds one. The client is the Keychain's only writer during a
     /// session (`onTokenRefreshed` persists every rotation), so a session it
-    /// holds is at least as new as anything read before it: a refresh that a
-    /// concurrent request completed must not be replaced by the tokens it
-    /// rotated away from, whose refresh token the server has already spent.
+    /// holds is at least as new as anything read before it — a refresh that a
+    /// concurrent request completed, or a sign-in still finishing — and must
+    /// not be replaced by an older read whose refresh token may be spent.
     ///
-    /// Returns the session's epoch, for `takeSession(ifEpoch:)`.
+    /// Returns the installed session's epoch, for `takeSession(ifEpoch:)`, or
+    /// nil when the client already held a session: that one belongs to
+    /// whoever installed it, and the caller must not take it out.
     @discardableResult
     public func adoptStoredSession(
         accessToken storedAccess: String,
         refreshToken storedRefresh: String?
-    ) -> UInt64 {
-        guard accessToken == nil else { return sessionEpoch }
+    ) -> UInt64? {
+        guard accessToken == nil else { return nil }
         updateToken(storedAccess)
         refreshToken = storedRefresh
         return sessionEpoch
@@ -589,9 +598,16 @@ public actor APIClient {
     /// still the session `epoch` named. Nil when a different session has been
     /// installed or removed since (a sign-in, a sign-out), which the caller
     /// must leave alone. Refresh rotations do not change the epoch.
+    ///
+    /// A refresh still out (another request's) is waited for first: taken out
+    /// from under it, its new tokens would be dropped by the stale guard in
+    /// `performRefresh` and the spent refresh token handed back instead.
     public func takeSession(
         ifEpoch epoch: UInt64
-    ) -> (accessToken: String?, refreshToken: String?)? {
+    ) async -> (accessToken: String?, refreshToken: String?)? {
+        if let refresh = inFlightRefresh {
+            _ = try? await refresh.value
+        }
         guard sessionEpoch == epoch else { return nil }
         let held = (accessToken: accessToken, refreshToken: refreshToken)
         if accessToken != nil || refreshToken != nil || userId != nil {

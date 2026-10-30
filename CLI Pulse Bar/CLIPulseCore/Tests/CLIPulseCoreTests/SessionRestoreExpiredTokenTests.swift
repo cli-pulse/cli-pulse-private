@@ -49,7 +49,7 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
             default: return .status(500)
             }
         }
-        let (auth, api, persisted) = await Self.make(access: "access-old", refresh: "refresh-1")
+        let (auth, api, persisted) = await Self.make()
 
         let result = await auth.restoreSession(isDemoMode: false, accessToken: "access-old", refreshToken: "refresh-1")
 
@@ -77,7 +77,7 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
             default: return .status(500)
             }
         }
-        let (auth, _, persisted) = await Self.make(access: expired, refresh: "refresh-1")
+        let (auth, _, persisted) = await Self.make()
 
         let result = await auth.restoreSession(isDemoMode: false, accessToken: expired, refreshToken: "refresh-1")
 
@@ -97,7 +97,7 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
             default: return .status(500)
             }
         }
-        let (auth, _, _) = await Self.make(access: fresh, refresh: "refresh-1")
+        let (auth, _, _) = await Self.make()
 
         let result = await auth.restoreSession(isDemoMode: false, accessToken: fresh, refreshToken: "refresh-1")
 
@@ -116,7 +116,7 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
             default: return .status(500)
             }
         }
-        let (auth, api, persisted) = await Self.make(access: "access-old", refresh: "refresh-1")
+        let (auth, api, persisted) = await Self.make()
 
         let result = await auth.restoreSession(isDemoMode: false, accessToken: "access-old", refreshToken: "refresh-1")
 
@@ -158,7 +158,7 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
         for code in [URLError.Code.notConnectedToInternet, .timedOut, .cannotFindHost] {
             SessionRestoreStub.reset()
             SessionRestoreStub.respond { _ in .fail(URLError(code)) }
-            let (auth, api, persisted) = await Self.make(access: "access-old", refresh: "refresh-1")
+            let (auth, api, persisted) = await Self.make()
 
             let result = await auth.restoreSession(isDemoMode: false, accessToken: "access-old", refreshToken: "refresh-1")
 
@@ -176,7 +176,7 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
         SessionRestoreStub.respond { request in
             request.url?.path == Self.userPath ? .status(503, "<html>Service Unavailable</html>") : .status(500)
         }
-        let (auth, _, persisted) = await Self.make(access: "access-old", refresh: "refresh-1")
+        let (auth, _, persisted) = await Self.make()
 
         let result = await auth.restoreSession(isDemoMode: false, accessToken: "access-old", refreshToken: "refresh-1")
 
@@ -195,7 +195,7 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
             default: return .status(500)
             }
         }
-        let (auth, _, persisted) = await Self.make(access: "access-old", refresh: "refresh-1")
+        let (auth, _, persisted) = await Self.make()
 
         let result = await auth.restoreSession(isDemoMode: false, accessToken: "access-old", refreshToken: "refresh-1")
 
@@ -212,7 +212,7 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
             default: return .status(500)
             }
         }
-        let (auth, _, persisted) = await Self.make(access: "access-old", refresh: "refresh-1")
+        let (auth, _, persisted) = await Self.make()
 
         let result = await auth.restoreSession(isDemoMode: false, accessToken: "access-old", refreshToken: "refresh-1")
 
@@ -230,7 +230,7 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
             default: return .status(500)
             }
         }
-        let (auth, _, persisted) = await Self.make(access: "access-old", refresh: "refresh-1")
+        let (auth, _, persisted) = await Self.make()
 
         let result = await auth.restoreSession(isDemoMode: false, accessToken: "access-old", refreshToken: "refresh-1")
 
@@ -242,6 +242,8 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
     func test_which_responses_reject_the_access_token() {
         XCTAssertTrue(APIClient.isRejectedAccessToken(status: 401, body: ""))
         XCTAssertTrue(APIClient.isRejectedAccessToken(status: 403, body: Self.badJWT))
+        XCTAssertTrue(APIClient.isRejectedAccessToken(status: 403, body: #"{"error_code":"session_not_found"}"#))
+        XCTAssertTrue(APIClient.isRejectedAccessToken(status: 403, body: #"{"error_code":"user_not_found"}"#))
         XCTAssertFalse(APIClient.isRejectedAccessToken(status: 403, body: #"{"error_code":"not_admin"}"#))
         XCTAssertFalse(APIClient.isRejectedAccessToken(status: 403, body: "<html>Forbidden</html>"))
         XCTAssertFalse(APIClient.isRejectedAccessToken(status: 400, body: Self.badJWT))
@@ -263,7 +265,7 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
             default: return .status(500)
             }
         }
-        let (auth, _, persisted) = await Self.make(access: "access-new", refresh: "refresh-2")
+        let (auth, _, persisted) = await Self.make(holding: ("access-new", "refresh-2"))
 
         let result = await auth.restoreSession(isDemoMode: false, accessToken: "access-old", refreshToken: "refresh-1")
 
@@ -275,35 +277,37 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
 
     /// The race seen on iOS 1.59: `get_user_tier` gets a 401 and refreshes
     /// while the restore's `/auth/v1/user` gets its 403. The restore joins
-    /// that refresh (or sees its result) instead of discarding it, and
-    /// exactly one refresh request goes out.
+    /// that refresh, or sees its result if it lands first (this test does not
+    /// pin which; the next one pins the second order), instead of discarding
+    /// it, and exactly one refresh request goes out.
     func test_a_refresh_a_concurrent_request_started_is_joined_not_discarded() async throws {
+        let userSent = expectation(description: "the restore's /auth/v1/user is out")
         let refreshArrived = expectation(description: "the tier request's refresh reached the server")
-        let userRejected = expectation(description: "the restore's /auth/v1/user got its 403")
         SessionRestoreStub.respond { request in
             switch (request.url?.path, Self.bearer(request)) {
+            case (Self.userPath, "access-old"):
+                userSent.fulfill()
+                return .held(403, Self.badJWT)
             case (Self.tierPath, "access-old"): return .status(401, #"{"code":"PGRST303","message":"JWT expired"}"#)
             case (Self.tierPath, "access-new"): return .status(200, #"{"tier":"free"}"#)
             case (Self.tokenPath, _):
                 refreshArrived.fulfill()
                 return .held(200, Self.rotated)
-            case (Self.userPath, "access-old"):
-                userRejected.fulfill()
-                return .status(403, Self.badJWT)
             case (Self.userPath, "access-new"): return .status(200, Self.user)
             case (Self.profilesPath, "access-new"): return .status(200, Self.profiles)
             default: return .status(500)
             }
         }
-        let (auth, api, persisted) = await Self.make(access: "access-old", refresh: "refresh-1")
+        let (auth, api, persisted) = await Self.make()
 
-        let tier = Task { await api.serverTier() }
-        await fulfillment(of: [refreshArrived], timeout: 5)
         let restore = Task {
             await auth.restoreSession(isDemoMode: false, accessToken: "access-old", refreshToken: "refresh-1")
         }
-        await fulfillment(of: [userRejected], timeout: 5)
-        SessionRestoreStub.releaseHeld()
+        await fulfillment(of: [userSent], timeout: 5)
+        let tier = Task { await api.serverTier() }
+        await fulfillment(of: [refreshArrived], timeout: 5)
+        SessionRestoreStub.releaseHeld(path: Self.userPath)   // the 403, while the refresh is out
+        SessionRestoreStub.releaseHeld(path: Self.tokenPath)
         let result = await restore.value
         let tierResult = await tier.value
 
@@ -335,7 +339,7 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
             default: return .status(500)
             }
         }
-        let (auth, api, persisted) = await Self.make(access: "access-old", refresh: "refresh-1")
+        let (auth, api, persisted) = await Self.make()
 
         let restore = Task {
             await auth.restoreSession(isDemoMode: false, accessToken: "access-old", refreshToken: "refresh-1")
@@ -365,7 +369,7 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
             default: return .status(500)
             }
         }
-        let (auth, api, persisted) = await Self.make(access: "access-old", refresh: "refresh-1")
+        let (auth, api, persisted) = await Self.make()
 
         let restore = Task {
             await auth.restoreSession(isDemoMode: false, accessToken: "access-old", refreshToken: "refresh-1")
@@ -382,6 +386,74 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
         XCTAssertEqual(access, "access-other")
         XCTAssertEqual(refresh, "refresh-other")
         XCTAssertNil(persisted.last, "the restore wrote nothing over the new session")
+    }
+
+    /// A restore that fails for no-answer reasons while another request's
+    /// refresh is out must not take the session from under that refresh: its
+    /// new tokens would be dropped and the spent refresh token kept.
+    ///
+    /// The 0.3 s wait can only make this test miss the bug, never fail it
+    /// falsely: it gives the broken order (take first) time to finish.
+    func test_a_failed_restore_waits_for_a_refresh_still_out_and_keeps_its_tokens() async throws {
+        let profilesSent = expectation(description: "the restore's profile read is out")
+        let refreshArrived = expectation(description: "the tier request's refresh reached the server")
+        SessionRestoreStub.respond { request in
+            switch (request.url?.path, Self.bearer(request)) {
+            case (Self.userPath, "access-old"): return .status(200, Self.user)
+            case (Self.profilesPath, _):
+                profilesSent.fulfill()
+                return .held(500, "{}")
+            case (Self.tierPath, "access-old"): return .status(401, #"{"code":"PGRST303","message":"JWT expired"}"#)
+            case (Self.tierPath, "access-new"): return .status(200, #"{"tier":"free"}"#)
+            case (Self.tokenPath, _):
+                refreshArrived.fulfill()
+                return .held(200, Self.rotated)
+            default: return .status(500)
+            }
+        }
+        let (auth, api, persisted) = await Self.make()
+
+        let restoreDone = expectation(description: "restore returned")
+        let restore = Task {
+            let result = await auth.restoreSession(isDemoMode: false, accessToken: "access-old", refreshToken: "refresh-1")
+            restoreDone.fulfill()
+            return result
+        }
+        await fulfillment(of: [profilesSent], timeout: 5)
+        let tier = Task { await api.serverTier() }
+        await fulfillment(of: [refreshArrived], timeout: 5)
+        SessionRestoreStub.releaseHeld(path: Self.profilesPath)
+        _ = await XCTWaiter().fulfillment(of: [restoreDone], timeout: 0.3)
+        SessionRestoreStub.releaseHeld(path: Self.tokenPath)
+        let result = await restore.value
+        _ = await tier.value
+
+        guard case .deferred = result else { return XCTFail("expected .deferred, got \(result)") }
+        XCTAssertEqual(persisted.last, .init("access-new", "refresh-2"),
+                       "the refresh's tokens are kept, not the spent refresh-1")
+        XCTAssertFalse(persisted.didDelete)
+    }
+
+    /// An unexpired token whose session is gone (signed out everywhere): GoTrue
+    /// answers 403 `session_not_found`. The refresh gets the refusal, and the
+    /// restore signs out instead of retrying a dead token.
+    func test_a_token_whose_session_is_gone_ends_in_a_sign_out() async throws {
+        SessionRestoreStub.respond { request in
+            switch request.url?.path {
+            case Self.userPath:
+                return .status(403, #"{"code":403,"error_code":"session_not_found","msg":"Session from session_id claim in JWT does not exist"}"#)
+            case Self.tokenPath:
+                return .status(400, #"{"code":400,"error_code":"session_not_found","msg":"Session not found"}"#)
+            default: return .status(500)
+            }
+        }
+        let (auth, _, persisted) = await Self.make()
+
+        let result = await auth.restoreSession(isDemoMode: false, accessToken: "access-old", refreshToken: "refresh-1")
+
+        guard case .failed = result else { return XCTFail("expected .failed, got \(result)") }
+        XCTAssertEqual(SessionRestoreStub.paths(), [Self.userPath, Self.tokenPath])
+        XCTAssertTrue(persisted.didDelete)
     }
 
     // MARK: - The app side of `.deferred`
@@ -438,12 +510,13 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
         XCTAssertNil(state.deferredSessionRestoreTask, "nothing left to retry")
     }
 
-    func test_the_retry_backs_off_to_five_minutes() {
+    func test_the_retry_backs_off_to_a_minute() {
         XCTAssertEqual(AppState.deferredSessionRestoreDelay(attempt: 1), 5)
         XCTAssertEqual(AppState.deferredSessionRestoreDelay(attempt: 2), 10)
         XCTAssertEqual(AppState.deferredSessionRestoreDelay(attempt: 3), 20)
-        XCTAssertEqual(AppState.deferredSessionRestoreDelay(attempt: 7), 300)
-        XCTAssertEqual(AppState.deferredSessionRestoreDelay(attempt: 1_000), 300)
+        XCTAssertEqual(AppState.deferredSessionRestoreDelay(attempt: 4), 40)
+        XCTAssertEqual(AppState.deferredSessionRestoreDelay(attempt: 5), 60)
+        XCTAssertEqual(AppState.deferredSessionRestoreDelay(attempt: 1_000), 60)
     }
 
     // MARK: - The other Supabase Auth paths
@@ -457,7 +530,7 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
             default: return .status(500)
             }
         }
-        let (_, api, _) = await Self.make(access: "access-old", refresh: "refresh-1")
+        let (_, api, _) = await Self.make(holding: ("access-old", "refresh-1"))
 
         let identities = try await api.userIdentities()
 
@@ -470,7 +543,7 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
     /// rethrown as `tokenExpired`, which signs out.
     func test_delete_account_with_a_5xx_refresh_is_not_a_session_expiry() async throws {
         SessionRestoreStub.respond { _ in .status(503, "{}") }
-        let (_, api, _) = await Self.make(access: "access-old", refresh: "refresh-1")
+        let (_, api, _) = await Self.make(holding: ("access-old", "refresh-1"))
 
         do {
             try await api.deleteAccount()
@@ -508,15 +581,16 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
         var didDelete: Bool { lock.lock(); defer { lock.unlock() }; return writes.contains { $0.access.isEmpty } }
     }
 
-    /// An `AuthManager` over a stubbed `APIClient` that already holds the
-    /// given session, wired like `AppState` does: rotations and the restore's
-    /// own writes both land in `persisted`.
+    /// An `AuthManager` over a stubbed `APIClient`, wired like `AppState` does:
+    /// rotations and the restore's own writes both land in `persisted`. By
+    /// default the client starts empty, as at a cold launch, and the restore
+    /// installs the session it is handed; `holding` pre-installs one.
     @MainActor
-    private static func make(access: String, refresh: String?) async -> (AuthManager, APIClient, Persisted) {
+    private static func make(holding: (access: String, refresh: String?)? = nil) async -> (AuthManager, APIClient, Persisted) {
         let persisted = Persisted()
-        let api = APIClient(token: access, supabaseURL: "https://stub.cli-pulse.test",
+        let api = APIClient(token: holding?.access, supabaseURL: "https://stub.cli-pulse.test",
                             supabaseAnonKey: "anon", session: SessionRestoreStub.session())
-        await api.updateRefreshToken(refresh)
+        if let holding { await api.updateRefreshToken(holding.refresh) }
         await api.setTokenRefreshHandler { persisted.record($0, $1) }
         let auth = AuthManager(api: api) { persisted.record($0, $1) }
         return (auth, api, persisted)
@@ -555,7 +629,7 @@ final class SessionRestoreStub: URLProtocol {
 
     nonisolated(unsafe) private static var responder: Responder?
     nonisolated(unsafe) private static var recorded: [URLRequest] = []
-    nonisolated(unsafe) private static var held: [(CFRunLoop, () -> Void)] = []
+    nonisolated(unsafe) private static var held: [(path: String, runLoop: CFRunLoop, deliver: () -> Void)] = []
     private static let lock = NSLock()
 
     static func session() -> URLSession {
@@ -576,14 +650,24 @@ final class SessionRestoreStub: URLProtocol {
         held = []
     }
 
-    static func releaseHeld() {
-        lock.lock()
-        let pending = held
-        held = []
-        lock.unlock()
-        for (runLoop, deliver) in pending {
-            CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue, deliver)
-            CFRunLoopWakeUp(runLoop)
+    /// Deliver the held answers — all of them, or only those for `path`.
+    ///
+    /// A responder fulfils its expectation before `startLoading` files the
+    /// held answer, so the caller can get here first; wait (on the test's
+    /// thread, never CFNetwork's) until there is something to release.
+    static func releaseHeld(path: String? = nil) {
+        let deadline = Date().addingTimeInterval(5)
+        var pending: [(path: String, runLoop: CFRunLoop, deliver: () -> Void)] = []
+        while pending.isEmpty, Date() < deadline {
+            lock.lock()
+            pending = held.filter { path == nil || $0.path == path }
+            held.removeAll { path == nil || $0.path == path }
+            lock.unlock()
+            if pending.isEmpty { usleep(1_000) }
+        }
+        for entry in pending {
+            CFRunLoopPerformBlock(entry.runLoop, CFRunLoopMode.commonModes.rawValue, entry.deliver)
+            CFRunLoopWakeUp(entry.runLoop)
         }
     }
 
@@ -646,7 +730,7 @@ final class SessionRestoreStub: URLProtocol {
         case .held(let status, let body):
             let runLoop = CFRunLoopGetCurrent()!
             Self.lock.lock()
-            Self.held.append((runLoop, { [weak self] in self?.deliver(status: status, body: body) }))
+            Self.held.append((copy.url?.path ?? "", runLoop, { [weak self] in self?.deliver(status: status, body: body) }))
             Self.lock.unlock()
         }
     }

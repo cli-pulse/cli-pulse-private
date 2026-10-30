@@ -99,6 +99,27 @@ final class WatchSessionBoundaryTests: XCTestCase {
             deletionPolicy.lowerBound,
             "a stale restore must not delete a newer session's credentials"
         )
+
+        // 1.60: `me()` refreshes an expired token now, so a restore that fails
+        // after that refresh must keep the rotated pair (the old refresh token
+        // is spent), and only while its transition is still current.
+        let keepRotated = try XCTUnwrap(
+            restoreSection.range(of: "await candidateAPI.getRefreshToken()"),
+            "a failed restore must keep the tokens its refresh rotated in"
+        )
+        let rotatedSave = try XCTUnwrap(
+            restoreSection.range(
+                of: "KeychainHelper.save(key: \"cli_pulse_refresh_token\", value: rotatedRefresh)"
+            )
+        )
+        let leaseRecheck = try XCTUnwrap(
+            restoreSection.range(
+                of: "if authTransitionGate.canCommit(lease)",
+                range: keepRotated.upperBound..<rotatedSave.lowerBound
+            ),
+            "the rotated pair is saved only for the current transition"
+        )
+        XCTAssertLessThan(leaseRecheck.lowerBound, rotatedSave.lowerBound)
     }
 
     func testLogoutInvalidatesPendingOTPTransition() {
