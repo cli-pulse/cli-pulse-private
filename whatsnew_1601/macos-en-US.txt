@@ -1,0 +1,17 @@
+Session and device counts now stay current, "Hide personal information" also hides device names, Settings shows when this Mac last uploaded to your account, and Codex turns in Fast mode are priced at the Fast rate.
+
+• CLI Pulse no longer signs you out when it starts again after being closed for a while, or when it starts without a network connection or cannot reach the server. It renews your sign-in, or keeps it and tries again until the server answers, showing "Server Offline" until then. You are signed out only if the server no longer accepts your sign-in.
+
+• The Sessions and Devices figures on the Overview and in exports are now counted at the moment they are shown. Sessions are the sessions the Sessions tab lists as active, and Devices are the devices seen in the last 30 minutes. They used to be fixed at the last refresh, and the Sessions figure could stay up after a session had ended.
+
+• "Hide personal information" in Settings › Advanced now also hides device names. The device of a session or an alert is shown as "Device 1", "Device 2" and so on, or as "Hidden device".
+
+• Settings › General has a new "Last cloud upload" row under Sync Status while you are signed in. It shows when this Mac's usage last reached your account and, if the last attempt failed, when it failed and, if there was one, the HTTP status.
+
+• Codex: turns that Codex records as Fast mode are now priced at the Fast rate, usually twice the standard rate (2.5 times for gpt-5.5). Auto-review requests from sessions started while signed in with ChatGPT are priced at $0 from October 6, 2026. If you use Fast mode, your Codex cost estimates may be higher than before. After you update, the first refresh rebuilds your Codex history once, in the background.
+
+• When you edit a provider, the Data source picker now calls this Mac "This Mac" and the combined source "Cloud + this Mac", as the provider card does.
+
+• Banners in the menu bar window now show their message in the regular text color, which is easier to read in light mode, and have a larger close button.
+
+• The Email fields for signing in, in Settings and in first-run setup, no longer offer Password AutoFill.
