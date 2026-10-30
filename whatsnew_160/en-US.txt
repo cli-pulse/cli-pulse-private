@@ -1,0 +1,5 @@
+Session counts on the Overview, the widgets, Siri and Apple Watch now stay current, and "Hide personal information" also hides device names.
+
+• The Sessions figure on the Overview, the widgets, Siri and Apple Watch, and in exports, is now counted at the moment it is shown, from the sessions listed as active. It used to be fixed at the last refresh, so a widget could go on showing a session that had ended. The Devices figure on the Overview counts the devices seen in the last 30 minutes, and Apple Watch shows a device as online only if it was seen in that time.
+
+• "Hide personal information" in Settings now also hides device names. On device cards, on sessions and alerts, and on Apple Watch, a device is shown as "Device 1", "Device 2" and so on, or as "Hidden device". The line under the switch now says what is hidden and what is not.
