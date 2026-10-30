@@ -686,10 +686,10 @@ public final class WatchAppState: ObservableObject {
             return
         }
         isLoading = true
+        // Validate/refresh the stored credentials in an isolated actor.
+        // Only the newest transition may install the result into `api`.
+        let candidateAPI = APIClient(token: token)
         do {
-            // Validate/refresh the stored credentials in an isolated actor.
-            // Only the newest transition may install the result into `api`.
-            let candidateAPI = APIClient(token: token)
             await candidateAPI.updateRefreshToken(
                 refreshToken
             )
@@ -715,6 +715,21 @@ public final class WatchAppState: ObservableObject {
                 KeychainHelper.delete(
                     key: "cli_pulse_refresh_token"
                 )
+            } else {
+                // 1.60: `me()` now refreshes an expired token (Supabase
+                // Auth's 403 `bad_jwt`). If that refresh succeeded and a
+                // later step failed (offline, 5xx), the server has spent the
+                // refresh token the Keychain still holds; keep the rotated
+                // pair, or the next launch is refused and signed out.
+                let rotatedAccess = await candidateAPI.getToken()
+                let rotatedRefresh = await candidateAPI.getRefreshToken()
+                if authTransitionGate.canCommit(lease),
+                   let rotatedAccess, !rotatedAccess.isEmpty,
+                   let rotatedRefresh, !rotatedRefresh.isEmpty,
+                   rotatedRefresh != refreshToken {
+                    KeychainHelper.save(key: "cli_pulse_token", value: rotatedAccess)
+                    KeychainHelper.save(key: "cli_pulse_refresh_token", value: rotatedRefresh)
+                }
             }
             lastError = error.localizedDescription
         }

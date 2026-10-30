@@ -73,8 +73,8 @@ final class SignedOutLandingTests: XCTestCase {
     /// so a signed-out tab there is only what the user meets after signing in
     /// or tapping Try Demo; neither sets it again. With `.settings` every
     /// iPhone, and since 1.55 every iPad (its split view now follows
-    /// `selectedTab`), opened on Settings after signing in. Both signed-out
-    /// writes go through the one rule; the only `.settings` left is the Mac's
+    /// `selectedTab`), opened on Settings after signing in. Every signed-out
+    /// write goes through the one rule; the only `.settings` left is the Mac's
     /// cold-launch landing.
     func testIOSLandsOnTheOverview() throws {
         XCTAssertEqual(AppState.signedOutLandingTab(onMacOS: false), .overview)
@@ -91,8 +91,8 @@ final class SignedOutLandingTests: XCTestCase {
             .components(separatedBy: "\n")
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
             .joined(separator: "\n")
-        XCTAssertEqual(code.components(separatedBy: "selectedTab = Self.signedOutLandingTab").count - 1, 2,
-                       "applySignedOutState and restoreSession's iOS branch both use the rule")
+        XCTAssertEqual(code.components(separatedBy: "selectedTab = Self.signedOutLandingTab").count - 1, 3,
+                       "applySignedOutState, restoreSession's iOS branch and the deferred restore (1.60) all use the rule")
         let settingsWrites = code.components(separatedBy: "selectedTab = .settings").count - 1
         XCTAssertEqual(settingsWrites, 1, "a signed-out write to .settings outside the rule")
         let macOnly = try XCTUnwrap(code.range(of: "func applyColdLaunchLanding"))

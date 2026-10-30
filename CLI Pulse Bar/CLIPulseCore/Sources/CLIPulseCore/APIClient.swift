@@ -141,6 +141,10 @@ public actor APIClient {
     /// alone is not sufficient to preserve the user's latest toggle.
     private var highestProviderAccountStatusRevision: UInt64 = 0
     private var authorizationGeneration: UInt64 = 0
+    /// Changes when a session is installed or removed (sign-in, restore,
+    /// sign-out, `updateToken` with a different token), never on a refresh
+    /// rotation of the same session. See `takeSession(ifEpoch:)`.
+    private var sessionEpoch: UInt64 = 0
     private var externalAuthorizationTransitionGeneration: UInt64 = 0
     /// The exact lease whose refresh token was rejected and compare-cleared.
     /// Kept only until DataRefreshManager consumes the expiry or a different
@@ -213,6 +217,7 @@ public actor APIClient {
     public func updateToken(_ token: String?) {
         if accessToken != token {
             authorizationGeneration &+= 1
+            sessionEpoch &+= 1
             pendingExpiredAuthorizationLease = nil
         }
         self.accessToken = token
@@ -309,6 +314,7 @@ public actor APIClient {
         if accessToken != nil || refreshToken != nil || userId != nil {
             authorizationGeneration &+= 1
         }
+        sessionEpoch &+= 1
         pendingExpiredAuthorizationLease = nil
         accessToken = nil
         refreshToken = nil
@@ -348,6 +354,7 @@ public actor APIClient {
         // A successful sign-in is a new authorization session even when a
         // test/stub happens to return the same token text.
         authorizationGeneration &+= 1
+        sessionEpoch &+= 1
         pendingExpiredAuthorizationLease = nil
         self.accessToken = accessToken
         self.userId = userID
@@ -412,8 +419,19 @@ public actor APIClient {
         request.httpBody = try encoder.encode(RefreshTokenRequest(refresh_token: currentRefreshToken))
 
         let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            // Refresh failed. Compare-and-clear: only wipe tokens if the stored
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        guard (200...299).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            // 1.60: only a refusal ends the session. Up to 1.60.0 every non-2xx
+            // here cleared the tokens, so a 5xx or a 429 from the auth server
+            // signed the user out exactly as a dead refresh token does. Those
+            // are "no answer": keep the session and report the status.
+            guard Self.isDefinitiveRefreshRejection(status: http.statusCode, body: body) else {
+                throw Self.httpFailure(status: http.statusCode, body: body)
+            }
+            // Refused. Compare-and-clear: only wipe tokens if the stored
             // refresh token is still the one we used — never clobber tokens a
             // concurrent successful refresh already rotated in (NEW-H5).
             if self.refreshToken == currentRefreshToken {
@@ -455,6 +473,154 @@ public actor APIClient {
         return (newAccess, newRefresh)
     }
 
+    // MARK: - Rejected access tokens (1.60)
+
+    /// Whether a response says the access token it carried is no longer
+    /// accepted, so a refresh and one retry can succeed.
+    ///
+    /// PostgREST answers an expired token with 401. Supabase Auth does not: on
+    /// `/auth/v1/user` it answers **403** `bad_jwt` ("token has invalid claims:
+    /// token is expired"), and every expired token it was sent in the logs got
+    /// exactly that. Up to 1.60.0 `me()` refreshed on 401 only, so a cold launch
+    /// whose stored token had expired (any relaunch more than an hour after the
+    /// last refresh) could never refresh, and the restore signed the user out.
+    /// Any other 403 is a real refusal (a permission, a policy) and is not
+    /// retried: refreshing would only rotate the refresh token for nothing.
+    ///
+    /// Also a rejection: 403 `session_not_found` / `user_not_found`, which
+    /// GoTrue sends for an unexpired token whose session or user is gone (a
+    /// sign-out everywhere, a deleted account). The refresh then gets the
+    /// definitive refusal that ends the session; without it, that token would
+    /// read as "no answer" and the app would retry it until it expired.
+    static func isRejectedAccessToken(status: Int, body: String) -> Bool {
+        if status == 401 { return true }
+        guard status == 403, let code = ServerErrorReason.serverCode(in: body) else { return false }
+        return ["bad_jwt", "session_not_found", "user_not_found"].contains(code)
+    }
+
+    /// Whether the refresh endpoint refused the session itself, so no later
+    /// attempt can succeed and the tokens should go.
+    ///
+    /// A refusal is the auth server answering a 4xx in JSON: GoTrue's session
+    /// codes (`refresh_token_not_found`, `refresh_token_already_used`,
+    /// `session_not_found` — what `ServerErrorReason` reads as
+    /// `.sessionExpired`), a deleted or banned user, the older
+    /// `{"error":"invalid_grant"}` body, or any other JSON 4xx it sends for a
+    /// token it will not take. Not a refusal: a 5xx, a 429 or 408, and a
+    /// non-JSON page (a proxy's or a firewall's, not GoTrue's) — the server
+    /// failing to answer, which up to 1.60.0 signed the user out as well.
+    static func isDefinitiveRefreshRejection(status: Int, body: String) -> Bool {
+        guard (400...499).contains(status), status != 408, status != 429 else { return false }
+        guard let data = body.data(using: .utf8) else { return false }
+        return (try? JSONSerialization.jsonObject(with: data)) is [String: Any]
+    }
+
+    /// The `exp` claim of a JWT, read WITHOUT checking its signature. Used for
+    /// one decision only: whether sending the token is pointless because it
+    /// has already expired. Nil for anything that is not a readable JWT.
+    static func jwtExpiry(_ token: String) -> Date? {
+        let parts = token.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 3 else { return nil }
+        var base64 = String(parts[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while base64.count % 4 != 0 { base64 += "=" }
+        guard
+            let data = Data(base64Encoded: base64),
+            let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+            let exp = (object["exp"] as? NSNumber)?.doubleValue
+        else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: exp)
+    }
+
+    /// Send a request authorized by the user's access token to Supabase Auth
+    /// (`/auth/v1/user…`), refreshing once if the token is rejected.
+    ///
+    /// - A token whose `exp` has already passed is refreshed before it is sent,
+    ///   saving the server a 403 on every cold launch.
+    /// - A rejected token (`isRejectedAccessToken`) is refreshed once and the
+    ///   request is sent once more. If another request's refresh replaced the
+    ///   token while this one was out, the new token is used without a second
+    ///   refresh: Supabase rotates the refresh token on each use, so refreshing
+    ///   again would only spend it.
+    ///
+    /// `makeRequest` receives the token to send (nil when there is none).
+    private func sendAuthorizedAuthRequest(
+        _ makeRequest: (String?) throws -> URLRequest
+    ) async throws -> (Data, HTTPURLResponse?) {
+        if refreshToken != nil,
+           let token = accessToken,
+           let expiry = Self.jwtExpiry(token),
+           expiry <= Date() {
+            _ = try await refreshAccessToken()
+        }
+        let sentToken = accessToken
+        let (data, response) = try await session.data(for: makeRequest(sentToken))
+        let http = response as? HTTPURLResponse
+        guard
+            let status = http?.statusCode,
+            Self.isRejectedAccessToken(status: status, body: String(data: data, encoding: .utf8) ?? "")
+        else {
+            return (data, http)
+        }
+        if accessToken == sentToken {
+            _ = try await refreshAccessToken()
+        }
+        let (retryData, retryResponse) = try await session.data(for: makeRequest(accessToken))
+        return (retryData, retryResponse as? HTTPURLResponse)
+    }
+
+    /// Install the session read from the Keychain at launch, unless this client
+    /// already holds one. The client is the Keychain's only writer during a
+    /// session (`onTokenRefreshed` persists every rotation), so a session it
+    /// holds is at least as new as anything read before it — a refresh that a
+    /// concurrent request completed, or a sign-in still finishing — and must
+    /// not be replaced by an older read whose refresh token may be spent.
+    ///
+    /// Returns the installed session's epoch, for `takeSession(ifEpoch:)`, or
+    /// nil when the client already held a session: that one belongs to
+    /// whoever installed it, and the caller must not take it out.
+    @discardableResult
+    public func adoptStoredSession(
+        accessToken storedAccess: String,
+        refreshToken storedRefresh: String?
+    ) -> UInt64? {
+        guard accessToken == nil else { return nil }
+        updateToken(storedAccess)
+        refreshToken = storedRefresh
+        return sessionEpoch
+    }
+
+    /// Remove the session from this client and return its tokens as they are
+    /// now (rotated, if a refresh succeeded on the way) — but only if it is
+    /// still the session `epoch` named. Nil when a different session has been
+    /// installed or removed since (a sign-in, a sign-out), which the caller
+    /// must leave alone. Refresh rotations do not change the epoch.
+    ///
+    /// A refresh still out (another request's) is waited for first: taken out
+    /// from under it, its new tokens would be dropped by the stale guard in
+    /// `performRefresh` and the spent refresh token handed back instead.
+    public func takeSession(
+        ifEpoch epoch: UInt64
+    ) async -> (accessToken: String?, refreshToken: String?)? {
+        if let refresh = inFlightRefresh {
+            _ = try? await refresh.value
+        }
+        guard sessionEpoch == epoch else { return nil }
+        let held = (accessToken: accessToken, refreshToken: refreshToken)
+        if accessToken != nil || refreshToken != nil || userId != nil {
+            authorizationGeneration &+= 1
+        }
+        pendingExpiredAuthorizationLease = nil
+        accessToken = nil
+        refreshToken = nil
+        userId = nil
+        sessionEpoch &+= 1
+        return held
+    }
+
     // MARK: - Sign Out (server-side token revocation)
 
     public func signOutServer(
@@ -470,6 +636,7 @@ public actor APIClient {
             if accessToken != nil || refreshToken != nil || userId != nil {
                 authorizationGeneration &+= 1
             }
+            sessionEpoch &+= 1
             pendingExpiredAuthorizationLease = nil
             self.accessToken = nil
             self.refreshToken = nil
@@ -1043,21 +1210,19 @@ public actor APIClient {
         )
     }
 
-    public func me(retried: Bool = false) async throws -> AuthResponse {
+    public func me() async throws -> AuthResponse {
         guard let url = URL(string: "\(supabaseURL)/auth/v1/user") else { throw APIError.invalidResponse }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
-        let (data, response) = try await session.data(for: request)
-        let http = response as? HTTPURLResponse
-        // Handle 401 by attempting token refresh (once only)
-        if http?.statusCode == 401, !retried {
-            _ = try await refreshAccessToken()
-            return try await me(retried: true)
+        let anonKey = supabaseAnonKey
+        // Refreshes once on a rejected token — 401, or Supabase Auth's 403
+        // `bad_jwt` for an expired one (see `isRejectedAccessToken`).
+        let (data, http) = try await sendAuthorizedAuthRequest { token in
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+            if let token {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+            return request
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
             throw Self.httpFailure(status: http?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
@@ -1813,8 +1978,8 @@ public actor APIClient {
     ///
     /// iter11 hotfix (2026-04-29): the iter10 version of the eager refresh
     /// used `try?`, swallowing tokenExpired failures. `refreshAccessToken`
-    /// nils both `accessToken` and `refreshToken` on failure (intentional —
-    /// session is dead), so swallowing meant the RPC then ran without
+    /// nils both `accessToken` and `refreshToken` when the server refuses the
+    /// refresh (intentional — session is dead), so swallowing meant the RPC then ran without
     /// Authorization, the server returned 4xx, AppState reported failure
     /// and "preserved the session" — but the in-memory tokens were already
     /// nil. The user ended up with a UI that looked signed in while the
@@ -1828,16 +1993,14 @@ public actor APIClient {
         // happy path replaces the access token with a fresh one before the
         // delete RPC runs, ruling out the stale-JWT silent-failure mode.
         if refreshToken != nil {
-            do {
-                _ = try await refreshAccessToken()
-            } catch {
-                // Refresh failed → session is dead and `refreshAccessToken`
-                // has already nil'd `accessToken` / `refreshToken`. Don't
-                // try to push the RPC through with no auth header — bail
-                // out with the tokenExpired marker so the caller can put
-                // the UI back into a coherent signed-out state.
-                throw APIError.tokenExpired
-            }
+            // Any failure stops the delete: the RPC is never pushed through
+            // without a fresh token. Only a refusal (`tokenExpired`, after
+            // which `refreshAccessToken` has nil'd both tokens) means the
+            // session is dead and the caller signs out. 1.60: a refresh that
+            // got no answer (offline, 5xx) keeps the session now, so it
+            // propagates as itself and the user can retry signed in — before,
+            // every failure was rethrown as `tokenExpired` and signed them out.
+            _ = try await refreshAccessToken()
         }
 
         guard let url = URL(string: "\(supabaseURL)/rest/v1/rpc/delete_user_account") else {
@@ -2121,14 +2284,18 @@ public actor APIClient {
     /// Fetch the current user's linked identities (provider, email, identity_id).
     public func userIdentities() async throws -> [UserIdentity] {
         guard let url = URL(string: "\(supabaseURL)/auth/v1/user") else { throw APIError.invalidResponse }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
-        guard let token = accessToken else { throw APIError.tokenExpired }
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+        guard accessToken != nil else { throw APIError.tokenExpired }
+        let anonKey = supabaseAnonKey
+        let (data, response) = try await sendAuthorizedAuthRequest { token in
+            guard let token else { throw APIError.tokenExpired }
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            return request
+        }
+        guard let http = response, (200...299).contains(http.statusCode) else {
+            throw Self.httpFailure(status: response?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
         let user = try decode(SupabaseUserWithIdentities.self, from: data)
         return (user.identities ?? []).compactMap { raw in
@@ -2164,15 +2331,18 @@ public actor APIClient {
             URLQueryItem(name: "skip_http_redirect", value: "true"),
         ]
         guard let url = components?.url else { throw APIError.invalidResponse }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
-        guard let token = accessToken else { throw APIError.tokenExpired }
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+        guard accessToken != nil else { throw APIError.tokenExpired }
+        let anonKey = supabaseAnonKey
+        let (data, response) = try await sendAuthorizedAuthRequest { token in
+            guard let token else { throw APIError.tokenExpired }
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            return request
+        }
+        guard let http = response, (200...299).contains(http.statusCode) else {
+            throw Self.httpFailure(status: response?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
         struct AuthorizeResponse: Decodable { let url: String }
         let payload = try decode(AuthorizeResponse.self, from: data)
@@ -2247,18 +2417,22 @@ public actor APIClient {
 
     /// Unlink a given identity from the current user.
     public func unlinkIdentity(identityId: String) async throws {
-        guard let token = accessToken else { throw APIError.tokenExpired }
+        guard accessToken != nil else { throw APIError.tokenExpired }
         let encodedID = Self.sanitizeParam(identityId)
         guard let url = URL(string: "\(supabaseURL)/auth/v1/user/identities/\(encodedID)") else {
             throw APIError.invalidResponse
         }
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+        let anonKey = supabaseAnonKey
+        let (data, response) = try await sendAuthorizedAuthRequest { token in
+            guard let token else { throw APIError.tokenExpired }
+            var request = URLRequest(url: url)
+            request.httpMethod = "DELETE"
+            request.setValue(anonKey, forHTTPHeaderField: "apikey")
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            return request
+        }
+        guard let http = response, (200...299).contains(http.statusCode) else {
+            throw Self.httpFailure(status: response?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
     }
 

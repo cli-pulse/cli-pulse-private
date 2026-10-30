@@ -30,7 +30,11 @@ public enum RestoreSessionResult {
     case demoMode
     case restored(AuthSessionState)
     case unavailable
+    /// The server refused the session: the tokens are deleted.
     case failed
+    /// The session could not be checked (offline, a timeout, a 5xx, a failed
+    /// profile read). The tokens are kept, and the restore is tried again.
+    case deferred
 }
 
 @MainActor
@@ -81,19 +85,58 @@ public final class AuthManager {
             return .unavailable
         }
 
-        await api.updateToken(accessToken)
-        await api.updateRefreshToken(refreshToken)
+        // 1.60: never replace a session the client already holds — a refresh a
+        // concurrent request completed is newer than this Keychain read, and
+        // its predecessor's refresh token is already spent. Nil: not ours.
+        let restoringEpoch = await api.adoptStoredSession(
+            accessToken: accessToken,
+            refreshToken: refreshToken
+        )
 
         do {
+            // `me()` refreshes an expired token (Supabase Auth's 403 `bad_jwt`)
+            // and retries once.
             let response = try await api.me()
             storeAuthTokens(access: response.access_token, refresh: response.refresh_token)
             return .restored(authSessionState(from: response))
         } catch {
+            // Up to 1.60.0 this deleted both tokens on ANY error: an expired
+            // access token (which `me()` never refreshed), but also a launch
+            // with no network yet, a timeout, a 5xx, a failed profile read.
+            // Only the refresh endpoint refusing the session ends it now.
+            //
+            // Either way the client lets go of the session: the app is not
+            // signed in until `me()` succeeds, and a client holding a token
+            // while signed out would send it (local mode sends nothing). A
+            // session installed while this restore was out (a sign-in) is not
+            // this restore's to touch: `takeSession` leaves it alone.
+            guard
+                let restoringEpoch,
+                let held = await api.takeSession(ifEpoch: restoringEpoch)
+            else {
+                return .deferred
+            }
+            // A refused refresh leaves no refresh token behind (the client
+            // compare-and-clears it), so one that is still held is a newer
+            // rotation that another request's refresh brought in. Keep it.
+            guard Self.isSessionRefusal(error), held.refreshToken == nil else {
+                // Kept where the next try reads it, as rotated on the way.
+                if let access = held.accessToken, !access.isEmpty {
+                    storeAuthTokens(access: access, refresh: held.refreshToken)
+                }
+                return .deferred
+            }
             storeAuthTokens(access: "", refresh: nil)
-            await api.updateToken(nil)
-            await api.updateRefreshToken(nil)
             return .failed
         }
+    }
+
+    /// Whether a restore failure means the server refused the session, as
+    /// opposed to the server not being reached or not answering. `me()` throws
+    /// `tokenExpired` only when the refresh endpoint refused the refresh token
+    /// (`APIClient.isDefinitiveRefreshRejection`) or there was none to send.
+    nonisolated static func isSessionRefusal(_ error: Error) -> Bool {
+        (error as? APIError) == .tokenExpired
     }
 
     public func signOut(currentAccessToken: String) async {
@@ -672,13 +715,23 @@ extension AppState {
     #endif
 
     public func restoreSession() async {
-        switch await authManager.restoreSession(
+        let result = await authManager.restoreSession(
             isDemoMode: isDemoMode,
             accessToken: storedToken,
             refreshToken: storedRefreshToken
-        ) {
-        case .demoMode:
+        )
+        if case .demoMode = result {
             enterDemoMode()
+            return
+        }
+        // 1.60: a restore can now be retried while the sign-in screen is up
+        // (`.deferred`). A sign-in that finished while it was out owns the
+        // session; this answer is about the one it replaced.
+        // The same for Demo or local mode chosen while it was out.
+        guard !isAuthenticated, !isDemoMode, !isLocalMode else { return }
+        switch result {
+        case .demoMode:
+            break
         case .restored(let session):
             isLoading = true
             // Reuse the same post-auth helper the active sign-in paths
@@ -730,7 +783,69 @@ extension AppState {
             #endif
         case .failed:
             applySignedOutState()
+        case .deferred:
+            applyDeferredSessionRestore()
         }
+    }
+
+    /// 1.60: a cold launch that could not check its session — no network yet,
+    /// a timeout, a 5xx. The tokens are kept (`AuthManager.restoreSession`)
+    /// and the restore is tried again until the server answers.
+    ///
+    /// Deliberately NOT signed in: `isAuthenticated` stays false until `me()`
+    /// has confirmed the account, because nothing here knows whose account it
+    /// is — no user id, no pairing — and every account-scoped path keys on
+    /// that. The screen is the sign-in screen with "Server Offline" on it,
+    /// and it turns into the dashboard by itself when a retry gets through.
+    /// Signing in by hand meanwhile works and ends the retries.
+    ///
+    /// Deliberately NOT `applySignedOutState()` either: that tells the helper
+    /// the account signed out, and the account has not.
+    func applyDeferredSessionRestore() {
+        serverOnline = false
+        lastError = L10n.dashboard.serverOffline
+        selectedTab = Self.signedOutLandingTab
+        scheduleDeferredSessionRestore()
+    }
+
+    /// Seconds before deferred restore attempt `attempt` (1-based): 5 s,
+    /// doubling, at most a minute. Each try is one `GET /auth/v1/user`, and
+    /// the user is looking at the sign-in screen until one gets through.
+    nonisolated static func deferredSessionRestoreDelay(attempt: Int) -> TimeInterval {
+        let exponent = Double(max(0, min(attempt - 1, 16)))
+        return min(60, 5 * pow(2, exponent))
+    }
+
+    private func scheduleDeferredSessionRestore() {
+        deferredSessionRestoreAttempts += 1
+        let delay = Self.deferredSessionRestoreDelay(attempt: deferredSessionRestoreAttempts)
+        deferredSessionRestoreTask?.cancel()
+        deferredSessionRestoreTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled, let self else { return }
+            // Let go of the handle before restoring: a successful restore
+            // cancels any pending retry, and cancelling THIS task would cancel
+            // the sign-in work (`refreshAll`) that runs inside it.
+            self.deferredSessionRestoreTask = nil
+            // Something else decided meanwhile: a sign-in, Demo, local mode,
+            // or a sign-out that deleted the tokens.
+            guard
+                !self.isAuthenticated,
+                !self.isDemoMode,
+                !self.isLocalMode,
+                !self.storedToken.isEmpty
+            else {
+                self.deferredSessionRestoreAttempts = 0
+                return
+            }
+            await self.restoreSession()
+        }
+    }
+
+    func cancelDeferredSessionRestore() {
+        deferredSessionRestoreTask?.cancel()
+        deferredSessionRestoreTask = nil
+        deferredSessionRestoreAttempts = 0
     }
 
     var storedRefreshToken: String? {
@@ -758,6 +873,8 @@ extension AppState {
     // ObservableObject). The LHS assignments below now route through
     // AppState's computed forwarders to the child.
     func applyAuthenticatedState(_ session: AuthSessionState) {
+        // Signed in, by a restore or by hand: no deferred restore is owed.
+        cancelDeferredSessionRestore()
         // Another account without a sign-out in between: the webhook filter
         // on screen is the previous account's (see `applySignedOutState`).
         if userId != session.userId { resetWebhookEventFilter() }
@@ -855,6 +972,7 @@ extension AppState {
     }
 
     func applySignedOutState() {
+        cancelDeferredSessionRestore()
         // 1.60: "Last cloud upload" belongs to the account signed out of.
         CloudUploadStatusStore.shared.reset()
         isLoading = false
