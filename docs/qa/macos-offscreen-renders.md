@@ -11,13 +11,15 @@ the screen of whoever is using the Mac while it runs.
 1. Build the QA app (`CLIPulse QA` scheme, `Debug QA` configuration):
 
    ```bash
-   xcodebuild build \
+   scripts/lib/build_env.sh xcodebuild build \
      -project "CLI Pulse Bar/CLI Pulse Bar.xcodeproj" \
      -scheme "CLIPulse QA" -configuration "Debug QA" \
      -destination platform=macOS -derivedDataPath build/qa
    ```
 
-   A local Xcode build rewrites
+   `scripts/lib/build_env.sh` takes the Swift packages from a shared checkout
+   resolved once (AGENTS.md, "Swift packages for local builds"). A plain
+   `xcodebuild build` rewrites
    `CLI Pulse Bar/CLI Pulse Bar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`;
    restore it before committing.
 
