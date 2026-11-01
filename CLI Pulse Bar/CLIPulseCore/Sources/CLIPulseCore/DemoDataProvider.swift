@@ -829,6 +829,8 @@ extension AppState {
         isDemoMode = true
         isAuthenticated = true
         isPaired = true
+        // 1.61 (B5): Demo's devices and rows are Demo's, none of this Mac's.
+        thisMacDevice = nil
         // Demo reads nothing on this Mac, so the helper reads nothing either.
         recordAccountForHelper()
         // Shown as the Settings account title, the heading of every localized

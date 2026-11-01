@@ -62,11 +62,11 @@ final class PersonalInfoMaskThisMacTests: XCTestCase {
         }
     }
 
-    /// The local route's list is this Mac's own row, named by its host name:
-    /// that is the number, and nothing comes after it.
+    /// The local route's list is this Mac's own row, id "local", named by its
+    /// host name: that is the number, and nothing comes after it.
     func testTheLocalRoutesOwnRowKeepsItsNumber() {
         let numbers = DeviceNameNumbers.devices(
-            [(id: "local", name: Self.host)], thisDevice: .init(hostName: Self.host, id: nil))
+            [(id: "local", name: Self.host)], thisDevice: .init(hostName: Self.host, id: "local"))
         XCTAssertEqual(Self.shown(Self.host, numbers), "设备 1")
     }
 
@@ -77,6 +77,11 @@ final class PersonalInfoMaskThisMacTests: XCTestCase {
             Self.devices, thisDevice: .init(hostName: "lab-server-01", id: "a-1"))
         XCTAssertEqual(Self.shown("lab-server-01", clash), "隐藏的设备")
         XCTAssertEqual(Self.shown("Studio Mac", clash), "设备 1", "this Mac's listed name is unaffected")
+
+        // Not paired: the same rule, not the other device's number.
+        let unpaired = DeviceNameNumbers.devices(
+            Self.devices, thisDevice: .init(hostName: "lab-server-01", id: nil))
+        XCTAssertEqual(Self.shown("lab-server-01", unpaired), "隐藏的设备")
 
         let shared = DeviceNameNumbers.devices(
             Self.devices + [(id: "d-4", name: Self.host), (id: "e-5", name: Self.host)],
@@ -150,7 +155,35 @@ final class PersonalInfoMaskThisMacTests: XCTestCase {
 
         let host = await HostIdentity.shared.hostName()
         XCTAssertTrue(state.thisMacDevice?.hostName == host, "the host name this Mac's rows carry")
-        XCTAssertNil(state.thisMacDevice?.id, "this runtime pairs nothing")
+
+        // Signed out, nothing is put back.
+        state.thisMacDevice = nil
+        state.isAuthenticated = false
+        await state.refreshAll()
+        XCTAssertNil(state.thisMacDevice)
+    }
+
+    /// On the local route (signed in without a paired account, or local
+    /// mode) this Mac is the list's own row.
+    @MainActor
+    func testOnTheLocalRouteThisMacIsItsOwnRow() {
+        let state = Self.isolatedState()
+        state.isAuthenticated = true             // an account no device is paired to
+        state.isPaired = false
+        XCTAssertEqual(state.refreshRoute, .localOnly)
+        state.refreshThisMacDevice(hostName: Self.host)
+        XCTAssertEqual(state.thisMacDevice, .init(hostName: Self.host, id: "local"))
+    }
+
+    /// Entering Demo forgets this Mac: Demo's rows are Demo's.
+    @MainActor
+    func testEnteringDemoForgetsThisMac() {
+        let state = Self.isolatedState()
+        state.thisMacPairedDeviceId = "a-1"
+        state.refreshThisMacDevice(hostName: Self.host)
+        XCTAssertNotNil(state.thisMacDevice)
+        state.enterDemoMode()
+        XCTAssertNil(state.thisMacDevice)
     }
 
     /// A sign-out forgets which device this Mac was: the next account's
@@ -158,7 +191,7 @@ final class PersonalInfoMaskThisMacTests: XCTestCase {
     /// tokens, and the production one's are this Mac's own.)
     @MainActor
     func testASignOutForgetsWhichDeviceThisMacWas() {
-        let state = AppState()
+        let state = Self.isolatedState()
         state.thisMacPairedDeviceId = "a-1"
         state.refreshThisMacDevice(hostName: Self.host)
         XCTAssertEqual(state.thisMacDevice?.id, "a-1")
@@ -166,6 +199,16 @@ final class PersonalInfoMaskThisMacTests: XCTestCase {
         state.applySignedOutState()
         XCTAssertNil(state.thisMacDevice)
         XCTAssertNil(state.thisMacPairedDeviceId)
+    }
+
+    /// The testing runtime, with its own defaults: Demo is persisted, and
+    /// must not leak into the test process's standard defaults.
+    @MainActor
+    private static func isolatedState() -> AppState {
+        AppState(
+            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            defaults: UploadOutcomeTests.freshDefaults(),
+            performLaunchSetup: false)
     }
 
     private static func record(_ device: (id: String, name: String)) -> DeviceRecord {

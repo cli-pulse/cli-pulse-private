@@ -65,12 +65,13 @@ public struct DeviceNameNumbers: Sendable, Equatable {
     /// name two of them share says nothing about which one is meant, so it
     /// gets no number; nor does a blank one.
     ///
-    /// `thisDevice`: this Mac's host name gets this Mac's number, by its id.
-    /// A Mac the list does not have (not paired to the account, or removed
-    /// from it) is numbered after the list, unless the list already names
-    /// the host name (the local route's own row is this Mac, by that name).
-    /// A host name the list gives to another device says nothing about which
-    /// one is meant, so it gets no number.
+    /// `thisDevice`: this Mac's host name gets this Mac's number, by its id
+    /// (the local route's own row is this Mac, id "local"). A Mac the list
+    /// does not have (not paired to the account, or removed from it) is
+    /// numbered after the list. A host name the list gives to another device
+    /// says nothing about which one is meant, so it gets no number: on this
+    /// Mac that device's rows read "Hidden device" too, where the iPhone,
+    /// which has no host name to match, still numbers them.
     public static func devices(
         _ devices: [(id: String, name: String)],
         thisDevice: ThisDevice? = nil
@@ -89,14 +90,11 @@ public struct DeviceNameNumbers: Sendable, Equatable {
         if let thisDevice {
             let host = thisDevice.hostName.trimmingCharacters(in: .whitespacesAndNewlines)
             if !host.isEmpty, !shared.contains(host) {
-                if let mine = thisDevice.id.flatMap({ byID[$0] }) {
-                    if let listed = numbers[host], listed != mine {
-                        numbers[host] = nil
-                    } else {
-                        numbers[host] = mine
-                    }
-                } else if numbers[host] == nil {
-                    numbers[host] = ordered.count + 1
+                let mine = thisDevice.id.flatMap { byID[$0] }
+                if let listed = numbers[host], listed != mine {
+                    numbers[host] = nil
+                } else {
+                    numbers[host] = mine ?? ordered.count + 1
                 }
             }
         }

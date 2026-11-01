@@ -68,9 +68,10 @@ public final class AppState: ObservableObject {
     @Published public var sessions: [SessionRecord] = []
     @Published public var devices: [DeviceRecord] = []
     /// 1.61 (B5): this Mac's host name, which names its own session rows, and
-    /// its id in `devices`, so "Hide personal information" numbers those rows
-    /// as this Mac (`deviceNameNumbers`). Set after each refresh on a Mac;
-    /// nil elsewhere.
+    /// the id its helper is paired as (or the local route's "local"), so "Hide
+    /// personal information" numbers those rows as this Mac
+    /// (`deviceNameNumbers`). Set after each refresh on a Mac; nil elsewhere,
+    /// signed out and in Demo.
     @Published public internal(set) var thisMacDevice: DeviceNameNumbers.ThisDevice?
     /// 1.61 (B5): the device this Mac's helper is paired as for the signed-in
     /// account, as `refreshThisMacPairing` last read it.

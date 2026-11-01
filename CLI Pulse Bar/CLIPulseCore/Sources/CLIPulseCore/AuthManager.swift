@@ -517,9 +517,11 @@ extension AppState {
 
     /// 1.61 (B5): this Mac as "Hide personal information" numbers it: the host
     /// name its own rows carry, and its id in the account's list (from the
-    /// last `refreshThisMacPairing`). Demo shows no rows of this Mac's.
+    /// last `refreshThisMacPairing`; on the local route, its own row's).
+    /// Demo shows no rows of this Mac's.
     func refreshThisMacDevice(hostName: String) {
-        let next = isDemoMode ? nil : DeviceNameNumbers.ThisDevice(hostName: hostName, id: thisMacPairedDeviceId)
+        let id = thisMacPairedDeviceId ?? (refreshRoute == .localOnly ? "local" : nil)
+        let next = isDemoMode ? nil : DeviceNameNumbers.ThisDevice(hostName: hostName, id: id)
         if thisMacDevice != next { thisMacDevice = next }
     }
     #endif
