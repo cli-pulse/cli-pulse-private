@@ -387,7 +387,7 @@ final class LockedKeychainTests: XCTestCase {
 
         let app = try Self.code("CLIPulseCore/Sources/CLIPulseCore/AppState.swift")
         let launch = try Self.section(app, from: "if runtime.capabilities.allowsCloudSessionRestore {", to: "await restoreSession()")
-        let ios = try Self.section(launch, from: "#if os(iOS)", to: "#endif")
+        let ios = try Self.section(String(launch), from: "#if os(iOS)", to: "#endif")
         XCTAssertTrue(ios.contains("observeProtectedData()"))
         XCTAssertNotNil(ios.range(of: #"setRotationPersistenceCheck \{\s*await MainActor\.run \{ UIApplication\.shared\.isProtectedDataAvailable \}"#,
                                   options: .regularExpression), "asked live, not cached")
@@ -398,7 +398,7 @@ final class LockedKeychainTests: XCTestCase {
         let answer = try Self.section(phone, from: "func credentialAnswer(", to: "private func currentIdentity()")
         XCTAssertTrue(answer.contains("await state.refreshSessionForWatch()"))
         XCTAssertFalse(answer.contains("state.api.refreshAccessToken()"))
-        let restoring = try Self.section(answer, from: "phoneState = .restoring", to: "return WatchCredentialRelay.answer")
+        let restoring = try Self.section(String(answer), from: "phoneState = .restoring", to: "return WatchCredentialRelay.answer")
         XCTAssertNotNil(restoring.range(of: #"\n\s*state\.restoreSessionIfIdle\(\)"#, options: .regularExpression))
         let handlers = try Self.section(phone, from: "extension PhoneSessionManager: WCSessionDelegate", to: "private struct SendableReply")
         let timed = handlers.components(separatedBy: "\n").filter {
