@@ -123,7 +123,10 @@ final class WatchRelayGapsTests: XCTestCase {
 
         let renew = try Self.section(watch, from: "private func renewFromPhone(", to: "switch WatchCredentialRelay.watchAction(")
         let usable = try XCTUnwrap(renew.range(of: "WatchCredentialRelay.usableDelivered("))
-        let ask = try XCTUnwrap(renew.range(of: "requestCurrentCredentials(userID: userID, heldToken: held)"))
+        let ask = try XCTUnwrap(renew.range(of: "requestCurrentCredentials("))
+        XCTAssertTrue(renew.contains("heldToken: held,"))
+        XCTAssertTrue(renew.contains("isCurrent: { [weak self] in self?.authTransitionGate.canCommit(lease) ?? false }"),
+                      "no question queued for a session that ended while it waited")
         XCTAssertLessThan(usable.lowerBound, ask.lowerBound, "a kept token is tried before asking")
 
         let signOut = try Self.section(watch, from: "func signOut() {", to: "let revokesOnServer")
@@ -147,6 +150,8 @@ final class WatchRelayGapsTests: XCTestCase {
         let manager = try Self.code("CLI Pulse Bar Watch/WatchSessionManager.swift")
         let request = try Self.section(manager, from: "func requestCurrentCredentials(", to: "func cancelQueuedCredentialRequests()")
         XCTAssertTrue(request.contains("if let reply, reply != .unavailable { return reply }"))
+        XCTAssertNotNil(request.range(of: #"guard await isCurrent\(\) else \{ return \.unavailable \}\s*queueCredentialsRequest"#,
+                                      options: .regularExpression))
         XCTAssertTrue(request.contains("WatchCredentialRelay.request(userID: userID, heldToken: heldToken)"))
         let activation = try Self.section(manager, from: "activationDidCompleteWith activationState", to: "// Load any previously persisted data")
         XCTAssertTrue(activation.contains("NotificationCenter.default.post(name: .watchPhoneBecameReachable"))

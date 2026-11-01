@@ -560,8 +560,15 @@ extension WatchSessionManager {
     /// this returns `.unavailable`.
     ///
     /// `heldToken` (1.61): the token the Watch holds now; only its fingerprint
-    /// is sent (`WatchCredentialRelay.request`).
-    func requestCurrentCredentials(userID: String, heldToken: String? = nil) async -> WatchCredentialRelay.Answer {
+    /// is sent (`WatchCredentialRelay.request`). `isCurrent` (1.61): whether
+    /// the session asking is still the Watch's; a question is never queued
+    /// for one that ended while its reply was awaited (up to 20 s), since the
+    /// cancel on that transition has already run.
+    func requestCurrentCredentials(
+        userID: String,
+        heldToken: String? = nil,
+        isCurrent: @MainActor () -> Bool = { true }
+    ) async -> WatchCredentialRelay.Answer {
         guard WCSession.isSupported() else { return .unavailable }
         let session = WCSession.default
         guard session.activationState == .activated else { return .unavailable }
@@ -582,6 +589,7 @@ extension WatchSessionManager {
             // also leaves the question queued, so the answer comes when it can.
             if let reply, reply != .unavailable { return reply }
         }
+        guard await isCurrent() else { return .unavailable }
         queueCredentialsRequest(request, on: session)
         return .unavailable
     }

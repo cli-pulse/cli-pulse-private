@@ -911,7 +911,11 @@ public final class WatchAppState: ObservableObject {
         }
         // The fingerprint of the token held tells an iPhone holding the same
         // one to refresh rather than hand it back (1.61).
-        let answer = await WatchSessionManager.shared.requestCurrentCredentials(userID: userID, heldToken: held)
+        let answer = await WatchSessionManager.shared.requestCurrentCredentials(
+            userID: userID,
+            heldToken: held,
+            isCurrent: { [weak self] in self?.authTransitionGate.canCommit(lease) ?? false }
+        )
         // Acted on only while the session asked about is still this Watch's.
         let stillOurs = authTransitionGate.canCommit(lease)
         switch WatchCredentialRelay.watchAction(for: answer, currentUserID: userID) {
