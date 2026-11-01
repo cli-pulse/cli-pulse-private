@@ -424,10 +424,10 @@ extension WatchSessionManager: WCSessionDelegate {
         DispatchQueue.main.async {
             self.isPhoneReachable = session.isReachable
             // 1.61 (B1): a launch's restore asks the iPhone before this session
-            // is active, and gets no answer; it asks again now.
-            if session.isReachable {
-                NotificationCenter.default.post(name: .watchPhoneBecameReachable, object: nil)
-            }
+            // is active, and gets no answer; it asks again now. Reachable or
+            // not: an iPhone out of reach gets the question queued, instead of
+            // nothing until the next refresh tick.
+            NotificationCenter.default.post(name: .watchPhoneBecameReachable, object: nil)
         }
         // Load any previously persisted data on activation
         DispatchQueue.main.async {
@@ -558,11 +558,14 @@ extension WatchSessionManager {
     /// with no reply in time) the question is queued for the iPhone, whose
     /// answer arrives later as a transfer (`.watchDidReceiveCredentials`), and
     /// this returns `.unavailable`.
-    func requestCurrentCredentials(userID: String) async -> WatchCredentialRelay.Answer {
+    ///
+    /// `heldToken` (1.61): the token the Watch holds now; only its fingerprint
+    /// is sent (`WatchCredentialRelay.request`).
+    func requestCurrentCredentials(userID: String, heldToken: String? = nil) async -> WatchCredentialRelay.Answer {
         guard WCSession.isSupported() else { return .unavailable }
         let session = WCSession.default
         guard session.activationState == .activated else { return .unavailable }
-        let request = WatchCredentialRelay.request(userID: userID)
+        let request = WatchCredentialRelay.request(userID: userID, heldToken: heldToken)
         if session.isReachable {
             let reply: WatchCredentialRelay.Answer? = await withCheckedContinuation { continuation in
                 let once = ResumeOnce(continuation)
@@ -575,10 +578,23 @@ extension WatchSessionManager {
                     once.resume(nil)
                 }
             }
-            if let reply { return reply }
+            // 1.61: "no answer now" (an iPhone still restoring, or locked)
+            // also leaves the question queued, so the answer comes when it can.
+            if let reply, reply != .unavailable { return reply }
         }
         queueCredentialsRequest(request, on: session)
         return .unavailable
+    }
+
+    /// 1.61: cancels the questions still queued for the iPhone. Called on every
+    /// auth transition: an answer to a question about the session it ended
+    /// must not reach the next one.
+    func cancelQueuedCredentialRequests() {
+        guard WCSession.isSupported() else { return }
+        for transfer in WCSession.default.outstandingUserInfoTransfers
+        where WatchCredentialRelay.requestedUserID(in: transfer.userInfo) != nil {
+            transfer.cancel()
+        }
     }
 
     /// One queued question per account at a time: the iPhone's answer is the

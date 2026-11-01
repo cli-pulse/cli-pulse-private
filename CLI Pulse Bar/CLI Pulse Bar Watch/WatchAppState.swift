@@ -80,6 +80,11 @@ public final class WatchAppState: ObservableObject {
     /// tokens stay, the last data shows as stale, and the Watch asks again
     /// when the iPhone can be reached or sends a token.
     private(set) var awaitingPhoneCredentials = false
+    /// 1.61: the newest access token the iPhone delivered that no session here
+    /// could take yet (it arrived while a restore was out, as queued transfers
+    /// do right after launch). Adopted once that account's session from the
+    /// iPhone is in, and used before asking the iPhone again.
+    private var deliveredPhoneToken: (token: String, userID: String)?
     // v1.41: fetch devices() every 2nd refresh (tick 0, 2, 4…) to save watch
     // battery — machine health changes slowly and rides the WC fallback anyway.
     private var refreshTickCount = 0
@@ -321,6 +326,10 @@ public final class WatchAppState: ObservableObject {
     func signOut() {
         let lease = authTransitionGate.beginTransition()
         otpRequestGeneration &+= 1
+        // 1.61: nothing the iPhone delivered for the session left is kept, and
+        // no question queued for it is answered into the next one.
+        deliveredPhoneToken = nil
+        WatchSessionManager.shared.cancelQueuedCredentialRequests()
         // 1.61 (B1): a session from the iPhone is the iPhone's to revoke (its
         // sign-out does). Revoking it from here would sign the iPhone out.
         // The stored record first: a restore or a sign-in still in flight has
@@ -372,6 +381,10 @@ public final class WatchAppState: ObservableObject {
     ) async -> WatchAuthTransitionLease? {
         let lease = authTransitionGate.beginTransition()
         otpRequestGeneration &+= 1
+        // 1.61: a question queued for the session this transition ends must
+        // not be answered into the next one (an iPhone's "signed out" for it
+        // would end a session signed in here meanwhile).
+        WatchSessionManager.shared.cancelQueuedCredentialRequests()
         stopRefreshLoop()
         refreshGate.authDidChange()
         if kind.clearsPersistedCredentials {
@@ -440,7 +453,7 @@ public final class WatchAppState: ObservableObject {
                     lease.generation,
                 renewer: source.renewsItself
                     ? nil
-                    : makePhoneRenewer(userID: normalizedIdentity.userID, lease: lease)
+                    : makePhoneRenewer(userID: normalizedIdentity.userID, lease: lease, client: api)
             )
         guard
             installed,
@@ -790,7 +803,7 @@ public final class WatchAppState: ObservableObject {
         do {
             if source == .phone, let record {
                 await candidateAPI.setSessionRenewer(
-                    makePhoneRenewer(userID: record.userID, lease: lease)
+                    makePhoneRenewer(userID: record.userID, lease: lease, client: candidateAPI)
                 )
             } else {
                 await candidateAPI.updateRefreshToken(
@@ -806,6 +819,7 @@ public final class WatchAppState: ObservableObject {
             ) else {
                 return
             }
+            await adoptDeliveredPhoneToken()
             await refreshAll()
         } catch {
             guard authTransitionGate.canCommit(lease) else {
@@ -863,15 +877,39 @@ public final class WatchAppState: ObservableObject {
     /// `lease` is the auth transition that installed the session: an answer
     /// that arrives after another one (a sign-out, a new sign-in, even of the
     /// same account) is acted on by nobody.
-    private func makePhoneRenewer(userID: String, lease: WatchAuthTransitionLease) -> APIClient.SessionRenewer {
-        { [weak self] in
+    /// `client` (1.61): the client whose session this renews, for the token it
+    /// holds now.
+    private func makePhoneRenewer(
+        userID: String,
+        lease: WatchAuthTransitionLease,
+        client: APIClient
+    ) -> APIClient.SessionRenewer {
+        { [weak self, weak client] in
             guard let self else { throw WatchCredentialRelayError.waitingForPhone }
-            return try await self.renewFromPhone(userID: userID, lease: lease)
+            let held = await client?.getToken()
+            return try await self.renewFromPhone(userID: userID, lease: lease, holding: held)
         }
     }
 
-    private func renewFromPhone(userID: String, lease: WatchAuthTransitionLease) async throws -> String {
-        let answer = await WatchSessionManager.shared.requestCurrentCredentials(userID: userID)
+    private func renewFromPhone(
+        userID: String,
+        lease: WatchAuthTransitionLease,
+        holding held: String?
+    ) async throws -> String {
+        // 1.61: a newer token the iPhone already delivered, before asking again.
+        if authTransitionGate.canCommit(lease),
+           let kept = WatchCredentialRelay.usableDelivered(
+               deliveredPhoneToken.flatMap { WatchCredentialRelay.sameUser($0.userID, userID) ? $0.token : nil },
+               userID: userID,
+               holding: held
+           ) {
+            KeychainHelper.save(key: "cli_pulse_token", value: kept)
+            awaitingPhoneCredentials = false
+            return kept
+        }
+        // The fingerprint of the token held tells an iPhone holding the same
+        // one to refresh rather than hand it back (1.61).
+        let answer = await WatchSessionManager.shared.requestCurrentCredentials(userID: userID, heldToken: held)
         // Acted on only while the session asked about is still this Watch's.
         let stillOurs = authTransitionGate.canCommit(lease)
         switch WatchCredentialRelay.watchAction(for: answer, currentUserID: userID) {
@@ -894,6 +932,15 @@ public final class WatchAppState: ObservableObject {
     /// An access token the iPhone sent for its session (a refresh there, or
     /// its answer to a queued request). A session waiting for it refreshes.
     private func adoptPhoneAccessToken(_ token: String, for identity: WatchSessionIdentity) async {
+        // 1.61: no session from the iPhone is in yet (a launch's restore is
+        // still out): keep the token for it rather than drop it.
+        if !isAuthenticated {
+            let kept = deliveredPhoneToken.flatMap { WatchCredentialRelay.sameUser($0.userID, identity.userID) ? $0.token : nil }
+            if let newest = WatchCredentialRelay.newerDelivered(token, than: kept, userID: identity.userID) {
+                deliveredPhoneToken = (newest, identity.userID)
+            }
+            return
+        }
         guard
             isAuthenticated,
             sessionSource == .phone,
@@ -908,6 +955,24 @@ public final class WatchAppState: ObservableObject {
             awaitingPhoneCredentials = false
             await refreshAll()
         }
+    }
+
+    /// 1.61: a token the iPhone delivered before this account's session from
+    /// the iPhone was in, adopted now (only if it expires later than the one
+    /// held). True when one was.
+    @discardableResult
+    private func adoptDeliveredPhoneToken() async -> Bool {
+        guard
+            isAuthenticated, sessionSource == .phone,
+            let delivered = deliveredPhoneToken,
+            WatchCredentialRelay.sameUser(delivered.userID, currentUserID)
+        else { return false }
+        deliveredPhoneToken = nil
+        guard await api.adoptRenewedAccessToken(delivered.token), isAuthenticated, sessionSource == .phone else {
+            return false
+        }
+        KeychainHelper.save(key: "cli_pulse_token", value: delivered.token)
+        return true
     }
 
     /// A restore of a session from the iPhone that could not be checked:
@@ -937,6 +1002,12 @@ public final class WatchAppState: ObservableObject {
         awaitingPhoneCredentials = (error as? WatchCredentialRelayError) == .waitingForPhone
         lastError = error.localizedDescription
         isLoading = false
+        // 1.61: a token the iPhone delivered while this restore was out.
+        if await adoptDeliveredPhoneToken() {
+            awaitingPhoneCredentials = false
+            await refreshAll()
+            return
+        }
         // The iPhone may have become reachable while this restore was out, and
         // its notice found nothing waiting yet: ask now.
         if awaitingPhoneCredentials, WatchSessionManager.shared.isPhoneReachable {

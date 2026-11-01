@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 // MARK: - 1.61 (B1): one refresher per session
 //
@@ -131,8 +132,31 @@ public enum WatchCredentialRelay {
 
     // MARK: Request
 
-    public static func request(userID: String) -> [String: Any] {
-        [requestKey: true, userIDKey: userID]
+    /// `heldToken` (1.61): the access token the Watch holds now. Only its
+    /// fingerprint goes into the request. An iPhone whose current token is
+    /// that one knows the Watch has it already, most likely because the server
+    /// refused it, and refreshes instead of handing it back
+    /// (`phoneRenewal(…, watchHoldsIt:)`).
+    public static func request(userID: String, heldToken: String? = nil) -> [String: Any] {
+        var request: [String: Any] = [requestKey: true, userIDKey: userID]
+        if let heldToken, !heldToken.isEmpty {
+            request[heldTokenKey] = fingerprint(heldToken)
+        }
+        return request
+    }
+
+    static let heldTokenKey = "held_token_fingerprint"
+
+    /// 1.61: the fingerprint of the token the Watch said it holds, if any.
+    public static func heldTokenFingerprint(in message: [String: Any]) -> String? {
+        guard message[requestKey] as? Bool == true else { return nil }
+        return message[heldTokenKey] as? String
+    }
+
+    /// 1.61: a token's fingerprint, to tell whether two sides hold the same
+    /// one without sending it back (the first 16 bytes of its SHA-256, hex).
+    public static func fingerprint(_ token: String) -> String {
+        SHA256.hash(data: Data(token.utf8)).prefix(16).map { String(format: "%02x", $0) }.joined()
     }
 
     /// The account a request asks about, or nil when the message is not a
@@ -181,16 +205,53 @@ public enum WatchCredentialRelay {
     /// never refreshes for the Watch. It hands over a token still valid, and
     /// otherwise answers nothing until it is unlocked. A token whose expiry
     /// cannot be read is sent as it is.
+    ///
+    /// `watchHoldsIt` (1.61): the Watch asked while holding this very token.
+    /// Handing it back would only send the Watch round again (a 401 loop that
+    /// woke the iPhone every tick), so it is refreshed, or, locked, no answer.
     public static func phoneRenewal(
         accessToken: String,
         now: Date = Date(),
         canPersist: Bool,
-        margin: TimeInterval = 300
+        margin: TimeInterval = 300,
+        watchHoldsIt: Bool = false
     ) -> PhoneRenewal {
+        if watchHoldsIt { return canPersist ? .renewFirst : .noAnswer }
         guard let expiry = APIClient.jwtExpiry(accessToken) else { return .sendAsIs }
         if expiry.timeIntervalSince(now) > margin { return .sendAsIs }
         if canPersist { return .renewFirst }
         return expiry > now ? .sendAsIs : .noAnswer
+    }
+
+    // MARK: Tokens the iPhone delivered (1.61)
+
+    /// Of the token the Watch kept from the iPhone and one just delivered, the
+    /// one to keep for `userID`: never another account's, and never one that
+    /// expires earlier (queued transfers arrive out of order).
+    public static func newerDelivered(_ incoming: String, than kept: String?, userID: String) -> String? {
+        guard !incoming.isEmpty, tokenBelongs(incoming, to: userID) else { return kept }
+        guard let kept, tokenBelongs(kept, to: userID) else { return incoming }
+        guard let new = APIClient.jwtExpiry(incoming), let old = APIClient.jwtExpiry(kept) else { return incoming }
+        return new > old ? incoming : kept
+    }
+
+    /// A kept token the Watch can use instead of asking the iPhone: this
+    /// account's, valid for at least `margin` more seconds, and not the one it
+    /// holds (that one is why it is asking).
+    public static func usableDelivered(
+        _ kept: String?,
+        userID: String,
+        holding held: String?,
+        now: Date = Date(),
+        margin: TimeInterval = 60
+    ) -> String? {
+        guard
+            let kept, !kept.isEmpty, kept != held,
+            tokenBelongs(kept, to: userID),
+            let expiry = APIClient.jwtExpiry(kept),
+            expiry.timeIntervalSince(now) > margin
+        else { return nil }
+        return kept
     }
 
     /// Whether a token can be this account's: its `sub` is the account, or it

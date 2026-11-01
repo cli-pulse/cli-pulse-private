@@ -241,7 +241,11 @@ final class PhoneSessionManager: NSObject, ObservableObject {
     /// own token has expired or is about to: this iPhone is the only side that
     /// refreshes a session it gave the Watch.
     @MainActor
-    func credentialAnswer(requestedUserID: String) async -> WatchCredentialRelay.Answer {
+    ///
+    /// `heldFingerprint` (1.61): the fingerprint of the token the Watch holds.
+    /// When it is this iPhone's current token, handing it back would only send
+    /// the Watch round again: it is refreshed first.
+    func credentialAnswer(requestedUserID: String, heldFingerprint: String? = nil) async -> WatchCredentialRelay.Answer {
         guard let state = appState else { return .unavailable }
         let phoneState: WatchCredentialRelay.PhoneState
         let userID = state.userId
@@ -250,7 +254,8 @@ final class PhoneSessionManager: NSObject, ObservableObject {
             var current = token
             switch WatchCredentialRelay.phoneRenewal(
                 accessToken: token,
-                canPersist: UIApplication.shared.isProtectedDataAvailable
+                canPersist: UIApplication.shared.isProtectedDataAvailable,
+                watchHoldsIt: heldFingerprint == WatchCredentialRelay.fingerprint(token)
             ) {
             case .sendAsIs:
                 break
@@ -544,6 +549,7 @@ extension PhoneSessionManager: WCSessionDelegate {
             replyHandler([:])
             return
         }
+        let held = WatchCredentialRelay.heldTokenFingerprint(in: message)
         let reply = SendableReply(replyHandler)
         Task { @MainActor in
             // 1.61: the Watch's question can wake or launch this app in the
@@ -551,7 +557,7 @@ extension PhoneSessionManager: WCSessionDelegate {
             // before iOS suspends the app.
             let backgroundTime = BackgroundTime("Watch credentials")
             defer { backgroundTime.end() }
-            let answer = await self.credentialAnswer(requestedUserID: requested)
+            let answer = await self.credentialAnswer(requestedUserID: requested, heldFingerprint: held)
             reply.send(WatchCredentialRelay.message(for: answer, identity: self.currentIdentity()))
         }
     }
@@ -561,10 +567,11 @@ extension PhoneSessionManager: WCSessionDelegate {
     /// its sign-out, which ends the Watch's session from it.
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
         guard let requested = WatchCredentialRelay.requestedUserID(in: userInfo) else { return }
+        let held = WatchCredentialRelay.heldTokenFingerprint(in: userInfo)
         Task { @MainActor in
             let backgroundTime = BackgroundTime("Watch credentials")
             defer { backgroundTime.end() }
-            let answer = await self.credentialAnswer(requestedUserID: requested)
+            let answer = await self.credentialAnswer(requestedUserID: requested, heldFingerprint: held)
             switch answer {
             case .accessToken:
                 self.sendCredentialsToWatch(answer)
