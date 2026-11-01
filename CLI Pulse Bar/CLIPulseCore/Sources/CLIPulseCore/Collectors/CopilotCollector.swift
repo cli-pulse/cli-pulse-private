@@ -64,6 +64,9 @@ public struct CopilotCollector: ProviderCollector, Sendable {
 
     struct CopilotUsage: Sendable {
         let plan: String
+        /// 1.61 (P2): `access_type_sku`. `subscription_ended` comes with no
+        /// quota snapshots (upstream CodexBar #4851).
+        var accessTypeSKU: String? = nil
         let quotaResetDate: String?
         let premiumEntitlement: Double?
         let premiumRemaining: Double?
@@ -78,44 +81,63 @@ public struct CopilotCollector: ProviderCollector, Sendable {
             throw CollectorError.parseFailed("Copilot: invalid JSON")
         }
         let plan = json["copilotPlan"] as? String ?? json["copilot_plan"] as? String ?? "unknown"
+        let accessTypeSKU = json["access_type_sku"] as? String ?? json["accessTypeSku"] as? String
         let resetDate = json["quotaResetDate"] as? String ?? json["quota_reset_date"] as? String
         let snapshots = json["quotaSnapshots"] as? [String: Any]
             ?? json["quota_snapshots"] as? [String: Any] ?? [:]
 
-        func extract(_ key: String) -> (Double?, Double?, Double?) {
-            guard let s = snapshots[key] as? [String: Any] else { return (nil, nil, nil) }
+        // 1.61: the API names the snapshot `premium_interactions` (upstream
+        // CodexBar's CodingKeys); only the camelCase spelling was read, so a
+        // real account never got its Premium bar.
+        func extract(_ keys: String...) -> (Double?, Double?, Double?) {
+            guard let s = keys.lazy.compactMap({ snapshots[$0] as? [String: Any] }).first else { return (nil, nil, nil) }
             return ((s["entitlement"] as? NSNumber)?.doubleValue,
                     (s["remaining"] as? NSNumber)?.doubleValue,
                     (s["percentRemaining"] as? NSNumber)?.doubleValue
                         ?? (s["percent_remaining"] as? NSNumber)?.doubleValue)
         }
 
-        let (pe, pr, pp) = extract("premiumInteractions")
+        let (pe, pr, pp) = extract("premiumInteractions", "premium_interactions")
         let (ce, cr, cp) = extract("chat")
 
-        return CopilotUsage(plan: plan, quotaResetDate: resetDate,
+        return CopilotUsage(plan: plan, accessTypeSKU: accessTypeSKU, quotaResetDate: resetDate,
                             premiumEntitlement: pe, premiumRemaining: pr, premiumPercentRemaining: pp,
                             chatEntitlement: ce, chatRemaining: cr, chatPercentRemaining: cp)
     }
 
+    /// The SKU an account has once its Copilot subscription has ended.
+    static let subscriptionEndedSKU = "subscription_ended"
+
     func buildResult(_ c: CopilotUsage) -> CollectorResult {
         var tiers: [TierDTO] = []
+
+        // 1.61 (P3): the reset as a timestamp every reader parses (a bare date
+        // was kept as it came, and nothing downstream read it), and the
+        // calendar month it ends as the window.
+        let resetDate = CopilotQuotaWindow.parseResetDate(c.quotaResetDate)
+        let resetTime = resetDate.map { ISO8601DateFormatter().string(from: $0) } ?? c.quotaResetDate
+        let windowMinutes = resetDate.flatMap(CopilotQuotaWindow.minutes(endingAt:))
 
         if let ent = c.premiumEntitlement, ent > 0 {
             let remaining = c.premiumRemaining ?? (c.premiumPercentRemaining.map { $0 / 100.0 * ent } ?? ent)
             tiers.append(TierDTO(name: "Premium", quota: Int(ent), remaining: Int(remaining),
-                                 reset_time: c.quotaResetDate))
+                                 reset_time: resetTime, windowMinutes: windowMinutes))
         }
         if let ent = c.chatEntitlement, ent > 0 {
             let remaining = c.chatRemaining ?? (c.chatPercentRemaining.map { $0 / 100.0 * ent } ?? ent)
             tiers.append(TierDTO(name: "Chat", quota: Int(ent), remaining: Int(remaining),
-                                 reset_time: c.quotaResetDate))
+                                 reset_time: resetTime, windowMinutes: windowMinutes))
         }
 
         let overallQuota = c.premiumEntitlement.map { Int($0) }
         let overallRemaining = c.premiumRemaining.map { Int($0) }
         let statusText: String
-        if let pct = c.premiumPercentRemaining {
+        if tiers.isEmpty,
+           c.accessTypeSKU?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == Self.subscriptionEndedSKU {
+            // 1.61 (P2): an ended subscription has no quotas; it read
+            // "Operational" with no bars, a confident wrong label.
+            statusText = CollectorStatusText.copilotSubscriptionEnded
+        } else if let pct = c.premiumPercentRemaining {
             statusText = "\(Int(100 - pct))% used"
         } else {
             statusText = "Operational"
@@ -128,7 +150,7 @@ public struct CopilotCollector: ProviderCollector, Sendable {
             estimated_cost_today: 0, estimated_cost_week: 0,
             cost_status_today: "Unavailable", cost_status_week: "Unavailable",
             quota: overallQuota, remaining: overallRemaining,
-            plan_type: c.plan.capitalized, reset_time: c.quotaResetDate, tiers: tiers,
+            plan_type: c.plan.capitalized, reset_time: resetTime, tiers: tiers,
             status_text: statusText, trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(display_name: "GitHub Copilot", category: "ide",
                                        supports_exact_cost: false, supports_quota: true))

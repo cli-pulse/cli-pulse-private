@@ -178,7 +178,8 @@ public enum UsagePaceText {
     }
 
     static func sessionPace(provider: ProviderKind, window: RateWindow, now: Date) -> UsagePace? {
-        guard provider == .codex || provider == .claude else { return nil }
+        // 1.61 (P3): Copilot too, now that its monthly windows carry a length.
+        guard provider == .codex || provider == .claude || provider == .copilot else { return nil }
         guard window.remainingPercent > 0 else { return nil }
         // No assumed length (upstream defaults to 300 minutes here): a window
         // of unknown length gets no pace, rather than a 5-hour one.

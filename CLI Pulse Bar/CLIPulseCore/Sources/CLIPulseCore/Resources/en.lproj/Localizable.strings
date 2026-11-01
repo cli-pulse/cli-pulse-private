@@ -2094,6 +2094,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "status_text.no_venice_balance" = "No Venice API balance available";
 "status_text.auto_top_up" = "auto top-up";
 "status_text.plan_expired" = "plan expired";
+"status_text.copilot_subscription_ended" = "Copilot subscription ended";
 "status_text.overdue_invoices" = "⚠︎ overdue invoices";
 "status_text.deployment" = "Deployment: %@";
 "status_text.model" = "Model: %@";

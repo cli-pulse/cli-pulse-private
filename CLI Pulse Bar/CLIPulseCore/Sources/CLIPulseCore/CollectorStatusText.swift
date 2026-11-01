@@ -165,6 +165,8 @@ public enum CollectorStatusText {
     public static let noVeniceBalance = "No Venice API balance available"
     public static let autoTopUp = "auto top-up"
     public static let planExpired = "plan expired"
+    /// 1.61 (P2): Copilot, `access_type_sku: subscription_ended`.
+    public static let copilotSubscriptionEnded = "Copilot subscription ended"
     public static let overdueInvoices = "⚠︎ overdue invoices"
 
     public static func deployment(_ name: String) -> String { "Deployment: \(name)" }
@@ -270,6 +272,7 @@ public enum CollectorStatusText {
         Rule(#"No Venice API balance available"#) { _ in L10n.statusText.noVeniceBalance },
         Rule(#"auto top-up"#) { _ in L10n.statusText.autoTopUp },
         Rule(#"plan expired"#) { _ in L10n.statusText.planExpired },
+        Rule(#"Copilot subscription ended"#) { _ in L10n.statusText.copilotSubscriptionEnded },
         Rule(#"⚠︎ overdue invoices"#) { _ in L10n.statusText.overdueInvoices },
         Rule(#"Deployment: (.+)"#) { c in L10n.statusText.deployment(c[0]) },
         Rule(#"Model: (.+)"#) { c in L10n.statusText.model(c[0]) },

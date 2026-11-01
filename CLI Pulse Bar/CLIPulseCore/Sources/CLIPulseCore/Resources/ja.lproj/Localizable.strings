@@ -2095,6 +2095,7 @@
 "status_text.no_venice_balance" = "利用できる Venice API 残高がありません";
 "status_text.auto_top_up" = "自動チャージ";
 "status_text.plan_expired" = "プラン期限切れ";
+"status_text.copilot_subscription_ended" = "Copilot のサブスクリプション終了";
 "status_text.overdue_invoices" = "⚠︎ 支払期限切れの請求書あり";
 "status_text.deployment" = "デプロイ: %@";
 "status_text.model" = "モデル: %@";

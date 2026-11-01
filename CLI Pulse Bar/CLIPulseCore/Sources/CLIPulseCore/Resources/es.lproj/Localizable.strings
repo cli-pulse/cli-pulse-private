@@ -2065,6 +2065,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "status_text.no_venice_balance" = "No hay saldo de API de Venice disponible";
 "status_text.auto_top_up" = "recarga automática";
 "status_text.plan_expired" = "plan caducado";
+"status_text.copilot_subscription_ended" = "Suscripción de Copilot finalizada";
 "status_text.overdue_invoices" = "⚠︎ facturas vencidas";
 "status_text.deployment" = "Implementación: %@";
 "status_text.model" = "Modelo: %@";

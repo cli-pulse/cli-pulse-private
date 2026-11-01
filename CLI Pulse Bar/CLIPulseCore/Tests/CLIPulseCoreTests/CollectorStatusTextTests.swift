@@ -89,6 +89,7 @@ final class CollectorStatusTextTests: XCTestCase {
         S.noVeniceBalance,
         S.autoTopUp,
         S.planExpired,
+        S.copilotSubscriptionEnded,
         S.overdueInvoices,
         S.deployment("gpt-4o"),
         S.model("gpt-4o-2024-08-06"),
