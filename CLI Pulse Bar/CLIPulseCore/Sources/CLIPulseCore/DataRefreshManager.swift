@@ -1063,6 +1063,14 @@ internal final class DataRefreshManager {
         return refreshOwedWhenLoadingEnds
     }
 
+    #if os(macOS)
+    /// 1.61 (B5): this Mac's host name, the one its own session rows carry
+    /// (cached by `HostIdentity`; only a launch's first read waits).
+    func thisMacHostName() async -> String {
+        await hostIdentity.hostName()
+    }
+    #endif
+
     func cancelInFlightRefresh() {
         refreshTask?.cancel()
         refreshTask = nil
@@ -2614,6 +2622,13 @@ extension AppState {
         // That is what lets Settings show — and clear — "this Mac is no longer
         // paired" without being reopened.
         refreshThisMacPairing()
+        // 1.61 (B5): the host name this Mac's rows carry (`HostIdentity`'s
+        // cached one, which the refresh used too). Not signed out: there are
+        // no rows then, and a sign-out cleared it.
+        if !isDemoMode, isAuthenticated || isLocalMode {
+            let hostName = await dataRefreshManager.thisMacHostName()
+            if !isDemoMode, isAuthenticated || isLocalMode { refreshThisMacDevice(hostName: hostName) }
+        }
         #endif
         // Let platform bridges (notably iOS's PhoneSessionManager) forward the
         // freshly-loaded snapshot to the Apple Watch via WCSession. No userInfo

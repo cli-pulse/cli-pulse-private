@@ -233,7 +233,7 @@ final class RefreshAfterSessionRestoreTests: XCTestCase {
         return state
     }
 
-    private static let refreshOnlyRuntime = CLIPulseRuntimeEnvironment(
+    static let refreshOnlyRuntime = CLIPulseRuntimeEnvironment(
         channel: .production,
         bundleIdentifier: "test.refresh-after-session-restore",
         fixedUserHome: nil,

@@ -391,6 +391,16 @@ expect 1 "this iPhone's own name shown fails"
 new_tree; view 'Text(Host.current().localizedName ?? "Mac")'
 expect 1 "this Mac's own name shown fails"
 
+new_tree; view 'Label(ProcessInfo.processInfo.hostName, systemImage: "desktopcomputer")'
+expect 1 "this Mac's host name shown fails"
+
+new_tree; view 'Task { name = await HostIdentity.shared.hostName() }
+Text(name)'
+expect 1 "this Mac's host name shown through HostIdentity fails"
+
+new_tree; view 'Task { name = await state.dataRefreshManager.thisMacHostName() }'
+expect 1 "this Mac's host name shown through the refresh manager fails"
+
 new_tree; view 'Text(mode.localizedName)
 Text(ProviderDisplay.displayName(for: p))'
 expect 0 "an enum's localizedName and a provider's display name are not device names"
