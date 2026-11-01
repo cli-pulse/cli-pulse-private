@@ -27,6 +27,9 @@ final class PhoneSessionManager: NSObject, ObservableObject {
     /// sent because the session was still activating.
     private var pendingCredentialsPayload: [String: Any]?
     private var activeIdentity: WatchSessionIdentity?
+    /// 1.61: when this iPhone last refreshed its session
+    /// (`WatchCredentialRelay.phoneRenewal(…, refreshedAt:)`).
+    private var lastRotationAt: Date?
     private let pendingLock = NSLock()
     private static let epochKey =
         "cli_pulse_phone_watch_session_epoch"
@@ -123,6 +126,7 @@ final class PhoneSessionManager: NSObject, ObservableObject {
     /// this iPhone spends). Posted from the API client's actor.
     @objc private func handleDidRotateAccessToken(_ notification: Notification) {
         guard let token = notification.userInfo?["access_token"] as? String, !token.isEmpty else { return }
+        pendingLock.lock(); lastRotationAt = Date(); pendingLock.unlock()
         sendCredentialsToWatch(.accessToken(token, userID: ""))
     }
 
@@ -255,7 +259,8 @@ final class PhoneSessionManager: NSObject, ObservableObject {
             switch WatchCredentialRelay.phoneRenewal(
                 accessToken: token,
                 canPersist: UIApplication.shared.isProtectedDataAvailable,
-                watchHoldsIt: heldFingerprint == WatchCredentialRelay.fingerprint(token)
+                watchHoldsIt: heldFingerprint == WatchCredentialRelay.fingerprint(token),
+                refreshedAt: { pendingLock.lock(); defer { pendingLock.unlock() }; return lastRotationAt }()
             ) {
             case .sendAsIs:
                 break

@@ -47,6 +47,20 @@ final class WatchRelayGapsTests: XCTestCase {
                        "control: a Watch holding another token gets this one")
     }
 
+    /// Several of the Watch's requests went out with the old token; the first
+    /// question got the new one. The later questions, holding the new one,
+    /// must not each rotate it again.
+    func test_a_token_refreshed_just_now_is_not_refreshed_again_for_the_watch() {
+        let fresh = Self.jwt(sub: Self.userA, expiresIn: 3_600)
+        let now = Date()
+        XCTAssertEqual(WatchCredentialRelay.phoneRenewal(accessToken: fresh, now: now, canPersist: true,
+                                                         watchHoldsIt: true, refreshedAt: now.addingTimeInterval(-10)),
+                       .sendAsIs)
+        XCTAssertEqual(WatchCredentialRelay.phoneRenewal(accessToken: fresh, now: now, canPersist: true,
+                                                         watchHoldsIt: true, refreshedAt: now.addingTimeInterval(-120)),
+                       .renewFirst)
+    }
+
     // MARK: - A token delivered before the session is in
 
     func test_the_newest_delivered_token_is_kept_and_only_for_its_account() {
@@ -61,6 +75,25 @@ final class WatchRelayGapsTests: XCTestCase {
         XCTAssertEqual(WatchCredentialRelay.newerDelivered(foreign, than: older, userID: Self.userA), older,
                        "another account's token is never kept")
         XCTAssertNil(WatchCredentialRelay.newerDelivered(foreign, than: nil, userID: Self.userA))
+    }
+
+    func test_the_delivered_token_keeper() {
+        let older = Self.jwt(sub: Self.userA, expiresIn: 1_000)
+        let newer = Self.jwt(sub: Self.userA, expiresIn: 3_000)
+        let foreign = Self.jwt(sub: Self.userB, expiresIn: 9_000)
+        var kept = WatchCredentialRelay.DeliveredToken()
+
+        kept.offer(newer, userID: Self.userA)
+        kept.offer(older, userID: Self.userA)
+        XCTAssertEqual(kept.token(for: Self.userA), newer, "a late transfer does not replace a newer token")
+        kept.offer(foreign, userID: Self.userA)
+        XCTAssertEqual(kept.token(for: Self.userA), newer, "a token whose sub is another account is refused")
+        XCTAssertNil(kept.token(for: Self.userB))
+        kept.offer(foreign, userID: Self.userB)
+        XCTAssertEqual(kept.token(for: Self.userB), foreign, "another account's own token replaces it")
+        XCTAssertNil(kept.token(for: Self.userA))
+        kept.clear()
+        XCTAssertNil(kept.token(for: Self.userB))
     }
 
     func test_a_kept_token_is_used_instead_of_asking_only_when_it_can_work() {
@@ -80,9 +113,8 @@ final class WatchRelayGapsTests: XCTestCase {
     func test_the_watch_keeps_a_token_delivered_while_restoring_and_adopts_it_after() throws {
         let watch = try Self.code("CLI Pulse Bar Watch/WatchAppState.swift")
         let adopt = try Self.section(watch, from: "private func adoptPhoneAccessToken(", to: "guard\n            isAuthenticated,")
-        XCTAssertTrue(adopt.contains("if !isAuthenticated {"))
-        XCTAssertTrue(adopt.contains("WatchCredentialRelay.newerDelivered(token, than: kept, userID: identity.userID)"))
-        XCTAssertTrue(adopt.contains("deliveredPhoneToken = (newest, identity.userID)"))
+        XCTAssertNotNil(adopt.range(of: #"if !isAuthenticated \{\s*deliveredPhoneToken\.offer\(token, userID: identity\.userID\)\s*return"#,
+                                    options: .regularExpression))
 
         let restore = try Self.section(watch, from: "let response = try await candidateAPI.me()", to: "} catch {")
         XCTAssertNotNil(restore.range(of: #"await adoptDeliveredPhoneToken\(\)\s*await refreshAll\(\)"#, options: .regularExpression))
@@ -95,7 +127,7 @@ final class WatchRelayGapsTests: XCTestCase {
         XCTAssertLessThan(usable.lowerBound, ask.lowerBound, "a kept token is tried before asking")
 
         let signOut = try Self.section(watch, from: "func signOut() {", to: "let revokesOnServer")
-        XCTAssertTrue(signOut.contains("deliveredPhoneToken = nil"))
+        XCTAssertTrue(signOut.contains("deliveredPhoneToken.clear()"))
     }
 
     func test_queued_questions_are_cancelled_on_every_auth_transition() throws {
@@ -125,6 +157,9 @@ final class WatchRelayGapsTests: XCTestCase {
         let phone = try Self.code("CLI Pulse Bar iOS/PhoneSessionManager.swift")
         let answer = try Self.section(phone, from: "func credentialAnswer(", to: "private func currentIdentity()")
         XCTAssertTrue(answer.contains("watchHoldsIt: heldFingerprint == WatchCredentialRelay.fingerprint(token)"))
+        XCTAssertTrue(answer.contains("return lastRotationAt"), "a token refreshed just now is not refreshed again")
+        let rotation = try Self.section(phone, from: "func handleDidRotateAccessToken(", to: "sendCredentialsToWatch(")
+        XCTAssertTrue(rotation.contains("lastRotationAt = Date()"))
         let handlers = try Self.section(phone, from: "extension PhoneSessionManager: WCSessionDelegate", to: "private struct SendableReply")
         XCTAssertEqual(handlers.components(separatedBy: "heldFingerprint: held)").count - 1, 2, "both handlers pass it on")
     }

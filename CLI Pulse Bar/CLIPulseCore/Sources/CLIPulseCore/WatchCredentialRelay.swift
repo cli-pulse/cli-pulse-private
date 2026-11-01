@@ -209,21 +209,61 @@ public enum WatchCredentialRelay {
     /// `watchHoldsIt` (1.61): the Watch asked while holding this very token.
     /// Handing it back would only send the Watch round again (a 401 loop that
     /// woke the iPhone every tick), so it is refreshed, or, locked, no answer.
+    /// Not when this iPhone refreshed within `heldTokenRefreshSpacing`
+    /// (`refreshedAt`): the Watch's question then most likely comes from a
+    /// request that went out with the previous token, and a refresh per such
+    /// question would chain one rotation after another.
     public static func phoneRenewal(
         accessToken: String,
         now: Date = Date(),
         canPersist: Bool,
         margin: TimeInterval = 300,
-        watchHoldsIt: Bool = false
+        watchHoldsIt: Bool = false,
+        refreshedAt: Date? = nil
     ) -> PhoneRenewal {
-        if watchHoldsIt { return canPersist ? .renewFirst : .noAnswer }
+        let refreshedJustNow = refreshedAt.map { now.timeIntervalSince($0) < heldTokenRefreshSpacing } ?? false
+        if watchHoldsIt, !refreshedJustNow { return canPersist ? .renewFirst : .noAnswer }
         guard let expiry = APIClient.jwtExpiry(accessToken) else { return .sendAsIs }
         if expiry.timeIntervalSince(now) > margin { return .sendAsIs }
         if canPersist { return .renewFirst }
         return expiry > now ? .sendAsIs : .noAnswer
     }
 
+    /// 1.61: see `phoneRenewal(…, refreshedAt:)`.
+    public static let heldTokenRefreshSpacing: TimeInterval = 60
+
     // MARK: Tokens the iPhone delivered (1.61)
+
+    /// The newest token the iPhone delivered that the Watch could not take yet
+    /// (a launch's restore still out), for one account.
+    public struct DeliveredToken: Equatable, Sendable {
+        public private(set) var token: String?
+        public private(set) var userID: String?
+
+        public init() {}
+
+        /// Keep `token` if it is `userID`'s and newer than the one kept for
+        /// that account; a token for another account replaces only a token
+        /// kept for no one.
+        public mutating func offer(_ token: String, userID: String) {
+            let kept = self.userID.flatMap { WatchCredentialRelay.sameUser($0, userID) ? self.token : nil }
+            if let newest = WatchCredentialRelay.newerDelivered(token, than: kept, userID: userID), newest != kept {
+                self.token = newest
+                self.userID = userID
+            }
+        }
+
+        /// The kept token, if it is `userID`'s.
+        public func token(for userID: String) -> String? {
+            guard let token, let owner = self.userID, WatchCredentialRelay.sameUser(owner, userID) else { return nil }
+            return token
+        }
+
+        public mutating func clear() {
+            token = nil
+            userID = nil
+        }
+    }
 
     /// Of the token the Watch kept from the iPhone and one just delivered, the
     /// one to keep for `userID`: never another account's, and never one that
