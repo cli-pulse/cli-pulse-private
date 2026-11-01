@@ -350,27 +350,24 @@ final class LockedKeychainTests: XCTestCase {
     /// The unlock (or the next foreground) refreshes a signed-in app whose
     /// last refresh failed, such as one postponed while locked.
     func test_the_unlock_refreshes_a_signed_in_app_whose_last_refresh_failed() async throws {
-        SessionRestoreStub.respond { request in
-            switch request.url?.path {
-            case Self.userPath: return .status(200, Self.user)
-            case Self.profilesPath: return .status(200, Self.profiles)
-            default: return .status(500)
-            }
-        }
-        let (state, _) = await Self.makeState()
-        defer { state.stopRefreshLoop() }
-        AppState.persistAuthTokens(access: "access-old", refresh: "refresh-1")
-        await state.restoreSession()
-        state.stopRefreshLoop()
-        await state.dataRefreshManager.refreshTask?.value
-        let before = state.dataRefreshManager.refreshTask
-        state.lastError = "a refresh failed"
+        SessionRestoreStub.respond { _ in .status(500) }
+        let api = APIClient(token: "access", supabaseURL: "https://stub.cli-pulse.test",
+                            supabaseAnonKey: "anon", session: SessionRestoreStub.session())
+        let state = AppState(
+            runtimeEnvironment: RefreshAfterSessionRestoreTests.refreshOnlyRuntime,
+            defaults: UploadOutcomeTests.freshDefaults(),
+            api: api,
+            performLaunchSetup: false)
+        state.isAuthenticated = true
+        state.isPaired = true
 
         state.protectedDataDidBecomeAvailable()
+        XCTAssertNil(state.dataRefreshManager.refreshTask, "control: nothing failed, nothing requested")
 
-        XCTAssertNotNil(state.dataRefreshManager.refreshTask)
-        XCTAssertNotEqual(state.dataRefreshManager.refreshTask, before, "a refresh was requested")
-        await state.dataRefreshManager.refreshTask?.value
+        state.lastError = "a refresh failed"
+        state.protectedDataDidBecomeAvailable()
+        let task = try XCTUnwrap(state.dataRefreshManager.refreshTask, "a refresh was requested")
+        await task.value
     }
 
     // MARK: - The wiring the app targets cannot test
