@@ -507,7 +507,10 @@ final class WatchCredentialRelayWiringTests: XCTestCase {
         XCTAssertFalse(auth.contains("\"refresh_token\""), "the iPhone's refresh token never goes to the Watch")
 
         let app = try Self.code("CLIPulseCore/Sources/CLIPulseCore/AppState.swift")
-        let handler = try Self.section(app, from: "await api.setTokenRefreshHandler {", to: "await restoreSession()")
+        let installed = try Self.section(app, from: "await api.setTokenRefreshHandler {", to: "await restoreSession()")
+        XCTAssertTrue(installed.contains("Self.persistRotatedTokens("))
+        let auth2 = try Self.code("CLIPulseCore/Sources/CLIPulseCore/AuthManager.swift")
+        let handler = try Self.section(auth2, from: "static func persistRotatedTokens(", to: "static func persistAuthTokens(")
         XCTAssertTrue(handler.contains("name: .cliPulseDidRotateAccessToken"))
         XCTAssertFalse(handler.contains("\"refresh_token\""), "the rotation notice carries no refresh token")
     }

@@ -380,7 +380,8 @@ final class SessionRestoreExpiredTokenTests: XCTestCase {
         SessionRestoreStub.releaseHeld()
         let result = await restore.value
 
-        guard case .deferred = result else { return XCTFail("expected .deferred, got \(result)") }
+        // 1.61: the answer is about a session the client no longer holds.
+        guard case .superseded = result else { return XCTFail("expected .superseded, got \(result)") }
         let access = await api.getToken()
         let refresh = await api.getRefreshToken()
         XCTAssertEqual(access, "access-other")

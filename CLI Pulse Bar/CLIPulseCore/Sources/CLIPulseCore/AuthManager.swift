@@ -43,6 +43,13 @@ public enum RestoreSessionResult {
     /// The session could not be checked (offline, a timeout, a 5xx, a failed
     /// profile read). The tokens are kept, and the restore is tried again.
     case deferred
+    /// 1.61: the user signed in or out, or chose Demo or local mode, while the
+    /// restore was out. Its answer is about a session the app has left: the
+    /// restore wrote nothing itself, and the app ignores it. (A refresh on the
+    /// way still wrote its rotation, unless a sign-out had fenced it: the
+    /// Keychain session is then still a good one, and Demo or local mode keep
+    /// it for later.)
+    case superseded
 }
 
 @MainActor
@@ -84,7 +91,19 @@ public final class AuthManager {
         OTPFlowState(otpSent: false, otpEmail: "", lastError: nil)
     }
 
-    public func restoreSession(isDemoMode: Bool, accessToken: String, refreshToken: String?) async -> RestoreSessionResult {
+    /// `isCurrent` (1.61): whether the app still wants this answer, asked
+    /// after every wait and right before each Keychain write. False once the
+    /// user signed in or out, or chose Demo or local mode, while the restore
+    /// was out (`AppState.sessionGeneration`): the answer is then about a
+    /// session the app has left, and writing its tokens would bring back a
+    /// session the user signed out of, or replace the one they signed in to.
+    public func restoreSession(
+        isDemoMode: Bool,
+        accessToken: String,
+        refreshToken: String?,
+        signOutFence: UInt64? = nil,
+        isCurrent: () -> Bool = { true }
+    ) async -> RestoreSessionResult {
         if isDemoMode {
             return .demoMode
         }
@@ -95,16 +114,31 @@ public final class AuthManager {
 
         // 1.60: never replace a session the client already holds — a refresh a
         // concurrent request completed is newer than this Keychain read, and
-        // its predecessor's refresh token is already spent. Nil: not ours.
-        let restoringEpoch = await api.adoptStoredSession(
+        // its predecessor's refresh token is already spent.
+        let adoption = await api.adoptStoredSession(
             accessToken: accessToken,
-            refreshToken: refreshToken
+            refreshToken: refreshToken,
+            fenceAtStart: signOutFence
         )
+        // 1.61: a session this restore installed and no longer answers for
+        // goes back out of the client, unless a sign-in or sign-out has
+        // already replaced or removed it (`takeSession` checks both): a client
+        // holding a token the app is not signed in with would send it.
+        func letGo() async -> RestoreSessionResult {
+            if adoption.installed { _ = await api.takeSession(ifEpoch: adoption.epoch) }
+            return .superseded
+        }
 
         do {
             // `me()` refreshes an expired token (Supabase Auth's 403 `bad_jwt`)
-            // and retries once.
+            // and retries once. It throws if a sign-in or sign-out replaced
+            // the session while it was out.
             let response = try await api.me()
+            // 1.61: the answer counts only for the session it is about, still
+            // held, with no sign-out since, and only if the app still wants it.
+            guard isCurrent(), await api.holdsSession(epoch: adoption.epoch), isCurrent() else {
+                return await letGo()
+            }
             storeAuthTokens(access: response.access_token, refresh: response.refresh_token)
             return .restored(authSessionState(from: response))
         } catch {
@@ -117,12 +151,15 @@ public final class AuthManager {
             // signed in until `me()` succeeds, and a client holding a token
             // while signed out would send it (local mode sends nothing). A
             // session installed while this restore was out (a sign-in) is not
-            // this restore's to touch: `takeSession` leaves it alone.
+            // this restore's to touch: `takeSession` leaves it alone, and so
+            // does a sign-out's (1.61): its tokens are the sign-out's to delete.
+            guard isCurrent() else { return await letGo() }
+            guard adoption.installed else { return .deferred }
             guard
-                let restoringEpoch,
-                let held = await api.takeSession(ifEpoch: restoringEpoch)
+                let held = await api.takeSession(ifEpoch: adoption.epoch),
+                isCurrent()
             else {
-                return .deferred
+                return .superseded
             }
             // A refused refresh leaves no refresh token behind (the client
             // compare-and-clears it), so one that is still held is a newer
@@ -149,12 +186,16 @@ public final class AuthManager {
 
     public func signOut(currentAccessToken: String) async {
         // Attempt server-side token revocation
-        await api.signOutServer(
+        let removed = await api.signOutServer(
             expectedAccessToken: currentAccessToken
         )
-        // Only clear tokens if they haven't been replaced by a new sign-in
+        // Only clear tokens if they haven't been replaced by a new sign-in.
+        // 1.61: the session the client removed is the one signed out of, even
+        // when a refresh rotated it (and wrote the new pair) after the app
+        // read `currentAccessToken`.
         let storedToken = KeychainHelper.load(key: AppState.tokenKeychainKey)
-        if storedToken == nil || storedToken == currentAccessToken || storedToken?.isEmpty == true {
+        if storedToken == nil || storedToken == currentAccessToken || storedToken?.isEmpty == true
+            || (removed != nil && storedToken == removed) {
             storeAuthTokens(access: "", refresh: nil)
         }
     }
@@ -449,6 +490,8 @@ extension AppState {
             } else {
                 pairingError = L10n.onboarding.helperNotConnectedYet
             }
+        } catch is CancellationError {
+            // 1.61: a sign-in or sign-out replaced the session while it was out.
         } catch {
             pairingError = error.localizedDescription
         }
@@ -532,6 +575,10 @@ extension AppState {
     #endif
 
     public func signOut() {
+        // 1.61: before anything else, and before this reaches the API client:
+        // a refresh already out (a session restore's, say) may land first, and
+        // must neither keep nor write the tokens of the session being left.
+        api.fenceCurrentSession()
         stopRefreshLoop()
         dataRefreshManager.cancelInFlightRefresh()
         // Best-effort: drop the user's APNs token from app_push_tokens so
@@ -654,6 +701,8 @@ extension AppState {
         // local mode therefore got a working app once and a signed-out
         // shell every launch after. See `resolveColdLaunchLanding`.
         defaults.set(true, forKey: Self.localModeEnabledKey)
+        // 1.61: local mode is a choice of its own; a restore still out is not.
+        beginSessionGeneration()
         isLocalMode = true
         // The helper may now read for the app after a yes, and uploads nothing.
         recordAccountForHelper()
@@ -738,10 +787,16 @@ extension AppState {
     public func restoreSession() async {
         // 1.61 (B3): when this try went out, for the spacing of the next.
         deferredSessionRestoreLastStartedAt = deferredSessionRestoreClock()
+        // 1.61: the session this try answers for. A sign-in, a sign-out, Demo
+        // or local mode while it is out ends it (`sessionGeneration`).
+        let generation = sessionGeneration
+        let fence = api.signOutFenceValue
         let result = await authManager.restoreSession(
             isDemoMode: isDemoMode,
             accessToken: storedToken,
-            refreshToken: storedRefreshToken
+            refreshToken: storedRefreshToken,
+            signOutFence: fence,
+            isCurrent: { [weak self] in self?.sessionGeneration == generation }
         )
         if case .demoMode = result {
             enterDemoMode()
@@ -750,10 +805,13 @@ extension AppState {
         // 1.60: a restore can now be retried while the sign-in screen is up
         // (`.deferred`). A sign-in that finished while it was out owns the
         // session; this answer is about the one it replaced.
-        // The same for Demo or local mode chosen while it was out.
+        // The same for Demo or local mode chosen while it was out, and (1.61)
+        // for a sign-out: signed out, the app is none of the three, and up to
+        // 1.61 a try still out then signed it back in.
+        guard sessionGeneration == generation else { return }
         guard !isAuthenticated, !isDemoMode, !isLocalMode else { return }
         switch result {
-        case .demoMode:
+        case .demoMode, .superseded:
             break
         case .restored(let session):
             isLoading = true
@@ -983,6 +1041,20 @@ extension AppState {
         KeychainHelper.load(key: AuthManager.refreshTokenKeychainKey)
     }
 
+    /// What the API client does with each rotation of the signed-in session
+    /// (`setTokenRefreshHandler`): keeps it, and tells the paired Watch.
+    nonisolated static func persistRotatedTokens(access: String, refresh: String) {
+        persistAuthTokens(access: access, refresh: refresh)
+        // 1.61 (B1): the iPhone sends the paired Watch each access token its
+        // refreshes produce; the Watch never refreshes a session it got from
+        // the iPhone itself.
+        NotificationCenter.default.post(
+            name: .cliPulseDidRotateAccessToken,
+            object: nil,
+            userInfo: ["access_token": access]
+        )
+    }
+
     nonisolated static func persistAuthTokens(access: String, refresh: String?) {
         if access.isEmpty {
             KeychainHelper.delete(key: Self.tokenKeychainKey)
@@ -1004,6 +1076,8 @@ extension AppState {
     // ObservableObject). The LHS assignments below now route through
     // AppState's computed forwarders to the child.
     func applyAuthenticatedState(_ session: AuthSessionState) {
+        // 1.61: a session of its own; a restore still out answers for an older one.
+        beginSessionGeneration()
         // Signed in, by a restore or by hand: no deferred restore is owed.
         cancelDeferredSessionRestore()
         // Another account without a sign-out in between: the webhook filter
@@ -1103,6 +1177,8 @@ extension AppState {
     }
 
     func applySignedOutState() {
+        // 1.61: no session; a restore still out answers for the one left.
+        beginSessionGeneration()
         cancelDeferredSessionRestore()
         // 1.60: "Last cloud upload" belongs to the account signed out of.
         CloudUploadStatusStore.shared.reset()

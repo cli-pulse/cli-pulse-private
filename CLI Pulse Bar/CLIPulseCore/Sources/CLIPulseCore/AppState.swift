@@ -1063,6 +1063,17 @@ public final class AppState: ObservableObject {
     /// server (`applyDeferredSessionRestore`), and how many have been made.
     var deferredSessionRestoreTask: Task<Void, Never>?
     var deferredSessionRestoreAttempts = 0
+    /// 1.61: which session the app is in. Every sign-in, sign-out and switch
+    /// to Demo or local mode moves it on. A session restore answers for the
+    /// generation it started in, and its answer is dropped once that
+    /// generation is over (`restoreSession()`). Tokens a refresh handed it on
+    /// the way are dropped too after a sign-out (`APIClient.fenceCurrentSession`)
+    /// or a sign-in (the client's stale-refresh guard); after Demo or local
+    /// mode they are kept, since the Keychain session is still good. Before this a try still out when the user signed
+    /// out (leaving Demo, say) found an app that was neither signed in, in
+    /// Demo nor in local mode, and signed it back in.
+    private(set) var sessionGeneration: UInt64 = 0
+    func beginSessionGeneration() { sessionGeneration &+= 1 }
     /// 1.61 (B3): when the sleeping retry is due (`deferredSessionRestoreClock`).
     var deferredSessionRestoreDueAt: TimeInterval?
     /// 1.61 (B3): a deferred restore is out now; triggers meanwhile are noted
@@ -1256,18 +1267,7 @@ public final class AppState: ObservableObject {
 
             Task {
                 await api.setTokenRefreshHandler { newAccess, newRefresh in
-                    Self.persistAuthTokens(
-                        access: newAccess,
-                        refresh: newRefresh
-                    )
-                    // 1.61 (B1): the iPhone sends the paired Watch each access
-                    // token its refreshes produce; the Watch never refreshes a
-                    // session it got from the iPhone itself.
-                    NotificationCenter.default.post(
-                        name: .cliPulseDidRotateAccessToken,
-                        object: nil,
-                        userInfo: ["access_token": newAccess]
-                    )
+                    Self.persistRotatedTokens(access: newAccess, refresh: newRefresh)
                 }
                 await restoreSession()
             }
