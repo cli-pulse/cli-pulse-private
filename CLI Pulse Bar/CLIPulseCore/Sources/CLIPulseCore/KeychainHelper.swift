@@ -88,6 +88,66 @@ public enum KeychainHelper {
 
     private static let isRunningUnderXCTest = NSClassFromString("XCTestCase") != nil
 
+    /// 1.61: the in-memory store behaves as a locked iPhone's Keychain does for
+    /// `WhenUnlocked` items: reads find nothing readable, writes and deletes
+    /// fail. `lockedKeysForTesting` locks only the keys it names. Honoured only
+    /// under XCTest.
+    nonisolated(unsafe) public static var lockedForTesting = false
+    nonisolated(unsafe) public static var lockedKeysForTesting: Set<String> = []
+
+    private static func isLockedForTesting(_ key: String) -> Bool {
+        lockedForTesting || lockedKeysForTesting.contains(key)
+    }
+
+    /// 1.61: what a read found. `load` reports all but `.value` as nil.
+    public enum Read: Equatable, Sendable {
+        case value(String)
+        /// `errSecItemNotFound`: there is no such item.
+        case absent
+        /// `errSecInteractionNotAllowed`: there may be one, but the device (an
+        /// iPhone; a Mac whose login keychain is locked) is locked.
+        case locked
+        /// Any other failure, which up to 1.61 every reader took for "none",
+        /// and still does: only a lock is worth waiting for.
+        case failed
+    }
+
+    public static func read(key: String, accessGroup: String? = nil) -> Read {
+        if isRunningUnderXCTest {
+            if isLockedForTesting(key) { return .locked }
+            return inMemoryStoreForTesting[testStoreKey(key, accessGroup)].map(Read.value) ?? .absent
+        }
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        if let group = accessGroup {
+            query[kSecAttrAccessGroup as String] = group
+        }
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        return read(status: status, data: item as? Data)
+    }
+
+    /// The outcome of a read, from its status and data. Separate so the
+    /// mapping can be tested without a Keychain.
+    static func read(status: OSStatus, data: Data?) -> Read {
+        switch status {
+        case errSecSuccess:
+            guard let data, let value = String(data: data, encoding: .utf8) else { return .failed }
+            return .value(value)
+        case errSecItemNotFound:
+            return .absent
+        case errSecInteractionNotAllowed:
+            return .locked
+        default:
+            return .failed
+        }
+    }
+
     private static func testStoreKey(_ key: String, _ accessGroup: String?) -> String {
         "\(accessGroup ?? "-")|\(key)"
     }
@@ -125,6 +185,7 @@ public enum KeychainHelper {
             return false
         }
         if isRunningUnderXCTest {
+            if isLockedForTesting(key) { return false }
             inMemoryStoreForTesting[testStoreKey(key, accessGroup)] = value
             return true
         }
@@ -186,6 +247,7 @@ public enum KeychainHelper {
             query[kSecAttrAccessGroup as String] = group
         }
         if isRunningUnderXCTest {
+            if isLockedForTesting(key) { return nil }
             return inMemoryStoreForTesting[testStoreKey(key, accessGroup)]
         }
         var item: CFTypeRef?
@@ -199,6 +261,7 @@ public enum KeychainHelper {
     /// `WhenUnlocked` item as missing). True only for `errSecItemNotFound`.
     public static func isAbsent(key: String, accessGroup: String? = nil) -> Bool {
         if isRunningUnderXCTest {
+            if isLockedForTesting(key) { return false }
             return inMemoryStoreForTesting[testStoreKey(key, accessGroup)] == nil
         }
         var query: [String: Any] = [
@@ -227,6 +290,7 @@ public enum KeychainHelper {
             query[kSecAttrAccessGroup as String] = group
         }
         if isRunningUnderXCTest {
+            if isLockedForTesting(key) { return false }
             inMemoryStoreForTesting[testStoreKey(key, accessGroup)] = nil
             return true
         }

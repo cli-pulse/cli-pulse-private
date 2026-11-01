@@ -957,6 +957,11 @@ internal final class DataRefreshManager {
             }
             callbacks.handleTokenExpired(error.localizedDescription)
             outcome = .sessionExpired
+        } catch is SessionRefreshPostponed {
+            // 1.61: the token needs a refresh and the iPhone is locked, so the
+            // new tokens could not be written. Nothing to show; the next
+            // refresh after it is unlocked brings the data.
+            outcome = .cancelled
         } catch {
             callbacks.setLastError(error.localizedDescription)
             outcome = Self.cloudReadOutcome(error)
@@ -2603,6 +2608,14 @@ extension AppState {
         guard runtimeEnvironment.capabilities.allowsLiveCollection else {
             return
         }
+        // 1.61: nothing to do while locked: a token refresh could not be
+        // written, and nobody is looking. The unlock runs it.
+        guard isProtectedDataAvailable() else {
+            refreshOwedAfterUnlock = true
+            return
+        }
+        // 1.61: a pair the Keychain refused earlier gets another chance first.
+        saveUnsavedSessionTokens()
         await dataRefreshManager.refreshAll(context: refreshContext(), callbacks: refreshCallbacks())
         #if os(macOS)
         // Reconcile user-controlled account lifecycle after the visible

@@ -258,25 +258,32 @@ final class PhoneSessionManager: NSObject, ObservableObject {
                 return .unavailable
             case .renewFirst:
                 // A failed refresh is no answer: the Watch keeps its session
-                // and asks again. A refusal ends this iPhone's own session on
-                // its next refresh, and its sign-out then reaches the Watch.
-                guard let renewed = try? await state.api.refreshAccessToken() else {
+                // and asks again. A refusal signs this iPhone out at once
+                // (1.61, `refreshSessionForWatch`), and its sign-out then
+                // reaches the Watch.
+                guard let renewed = await state.refreshSessionForWatch() else {
                     return .unavailable
                 }
-                current = renewed.accessToken
+                current = renewed
             }
             // The account may have changed while the refresh was out.
             guard state.isAuthenticated, state.userId == userID else { return .unavailable }
             phoneState = .signedIn(userID: userID, accessToken: current)
         } else if UIApplication.shared.isProtectedDataAvailable,
-                  KeychainHelper.isAbsent(key: "cli_pulse_token") {
+                  state.storedSessionIsAbsent {
             // Signed out only when the Keychain answers that it holds no
-            // session: a locked iPhone reads every item as missing.
+            // session (`errSecItemNotFound`): a locked iPhone reads every item
+            // as missing. 1.61: and a session the Keychain could not take yet
+            // (`SessionTokenStore`) counts as held.
             phoneState = .signedOut
         } else {
             // Demo with a session kept for later, a restore still out, or a
             // locked iPhone whose Keychain cannot be read.
             phoneState = .restoring
+            // 1.61: and if no restore is out (one that found the Keychain
+            // locked, say), one starts now, so the Watch's next question finds
+            // this iPhone signed in.
+            state.restoreSessionIfIdle()
         }
         return WatchCredentialRelay.answer(for: phoneState, requestedUserID: requestedUserID)
     }
@@ -539,6 +546,11 @@ extension PhoneSessionManager: WCSessionDelegate {
         }
         let reply = SendableReply(replyHandler)
         Task { @MainActor in
+            // 1.61: the Watch's question can wake or launch this app in the
+            // background; a refresh it makes must be written and answered
+            // before iOS suspends the app.
+            let backgroundTime = BackgroundTime("Watch credentials")
+            defer { backgroundTime.end() }
             let answer = await self.credentialAnswer(requestedUserID: requested)
             reply.send(WatchCredentialRelay.message(for: answer, identity: self.currentIdentity()))
         }
@@ -550,6 +562,8 @@ extension PhoneSessionManager: WCSessionDelegate {
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
         guard let requested = WatchCredentialRelay.requestedUserID(in: userInfo) else { return }
         Task { @MainActor in
+            let backgroundTime = BackgroundTime("Watch credentials")
+            defer { backgroundTime.end() }
             let answer = await self.credentialAnswer(requestedUserID: requested)
             switch answer {
             case .accessToken:

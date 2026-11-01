@@ -1,4 +1,7 @@
 import Foundation
+#if os(iOS)
+import UIKit
+#endif
 import SwiftUI
 import UserNotifications
 import Combine
@@ -904,10 +907,52 @@ public final class AppState: ObservableObject {
     // MARK: - Settings - General
     nonisolated static let tokenKeychainKey = "cli_pulse_token"
 
+    /// The stored access token: the one the Keychain could not take yet, if
+    /// any (1.61, `SessionTokenStore`), else the Keychain's.
     public var storedToken: String {
-        get { KeychainHelper.load(key: Self.tokenKeychainKey) ?? "" }
+        get { Self.loadStoredAccessToken() ?? "" }
         set { Self.persistAuthTokens(access: newValue, refresh: storedRefreshToken) }
     }
+
+    nonisolated static func loadStoredAccessToken() -> String? {
+        if let unsaved = SessionTokenStore.shared.unsavedPair {
+            return unsaved.access.isEmpty ? nil : unsaved.access
+        }
+        return KeychainHelper.load(key: tokenKeychainKey)
+    }
+
+    /// 1.61: whether there is a stored session, there is none, or the Keychain
+    /// cannot say because it is locked. Up to 1.61 a locked read was taken for
+    /// "none": an iPhone launched in the background while locked (a Watch's
+    /// `sendMessage` does that) restored nothing and stayed signed out.
+    var storedTokenRead: KeychainHelper.Read {
+        if let unsaved = SessionTokenStore.shared.unsavedPair {
+            return unsaved.access.isEmpty ? .absent : .value(unsaved.access)
+        }
+        switch lockAware(KeychainHelper.read(key: Self.tokenKeychainKey)) {
+        case .value(let token) where token.isEmpty: return .absent
+        case let read: return read
+        }
+    }
+
+    var storedRefreshTokenRead: KeychainHelper.Read {
+        if let unsaved = SessionTokenStore.shared.unsavedPair {
+            return unsaved.refresh.map { $0.isEmpty ? .absent : .value($0) } ?? .absent
+        }
+        return lockAware(KeychainHelper.read(key: AuthManager.refreshTokenKeychainKey))
+    }
+
+    /// 1.61: while protected data is unavailable nothing the Keychain answers
+    /// but a value is believed: whatever status a locked device returns for a
+    /// `WhenUnlocked` item, it is a lock, not proof that there is no session.
+    private func lockAware(_ read: KeychainHelper.Read) -> KeychainHelper.Read {
+        if case .value = read { return read }
+        return isProtectedDataAvailable() ? read : .locked
+    }
+
+    /// 1.61: the Keychain says it holds no session (not merely that it cannot
+    /// be read), and nothing waits to be written to it.
+    public var storedSessionIsAbsent: Bool { storedTokenRead == .absent }
 
     /// Refresh cadence in seconds. `0` = the v1.40 "Adaptive" mode (2–30 min by
     /// menu-open recency / LPM / thermal). Fresh installs default to Adaptive
@@ -1074,6 +1119,31 @@ public final class AppState: ObservableObject {
     /// Demo nor in local mode, and signed it back in.
     private(set) var sessionGeneration: UInt64 = 0
     func beginSessionGeneration() { sessionGeneration &+= 1 }
+    /// 1.61: a session restore is out (`restoreSession()`), however it started.
+    var sessionRestoresInFlight = 0
+    /// 1.61: the restore `restoreSessionIfIdle()` started. Kept so a test can
+    /// wait for it.
+    var idleSessionRestoreTask: Task<Void, Never>?
+    /// 1.61: the launch's restore is scheduled but has not started yet (its
+    /// task first installs the API client's handlers). `restoreSessionIfIdle`
+    /// must not start a second one meanwhile.
+    var launchRestorePending = false
+    /// 1.61: whether this device's protected data (the Keychain items written
+    /// `WhenUnlocked`) can be read and written now. Live on iOS; a seam for
+    /// tests; always true elsewhere.
+    var isProtectedDataAvailable: @MainActor () -> Bool = {
+        #if os(iOS)
+        UIApplication.shared.isProtectedDataAvailable
+        #else
+        true
+        #endif
+    }
+    /// 1.61: a refresh was skipped while protected data was unavailable; the
+    /// unlock runs it.
+    var refreshOwedAfterUnlock = false
+    #if os(iOS)
+    var protectedDataObservers: [NSObjectProtocol] = []
+    #endif
     /// 1.61 (B3): when the sleeping retry is due (`deferredSessionRestoreClock`).
     var deferredSessionRestoreDueAt: TimeInterval?
     /// 1.61 (B3): a deferred restore is out now; triggers meanwhile are noted
@@ -1265,10 +1335,25 @@ public final class AppState: ObservableObject {
             }
             defaults.removeObject(forKey: "cli_pulse_token")
 
+            launchRestorePending = true
             Task {
                 await api.setTokenRefreshHandler { newAccess, newRefresh in
                     Self.persistRotatedTokens(access: newAccess, refresh: newRefresh)
                 }
+                #if os(iOS)
+                observeProtectedData()
+                // 1.61: no refresh while its new tokens could not be written,
+                // asked live each time (a cached flag misses a lock or an
+                // unlock that happened while the app was suspended); and the
+                // app asks iOS for time to write them.
+                await api.setRotationPersistenceCheck {
+                    await MainActor.run { UIApplication.shared.isProtectedDataAvailable }
+                }
+                await api.setRefreshBackgroundTime {
+                    let time = await MainActor.run { BackgroundTime("Token refresh") }
+                    return { Task { @MainActor in time.end() } }
+                }
+                #endif
                 await restoreSession()
             }
         }

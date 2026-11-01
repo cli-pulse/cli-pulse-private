@@ -111,6 +111,12 @@ public struct APIAuthorizationLease: Equatable, Sendable {
     fileprivate let userID: String?
 }
 
+/// 1.61: a refresh not attempted because its new tokens could not be written
+/// now (a locked iPhone). Not a refusal: the session is kept.
+public struct SessionRefreshPostponed: Error, Equatable {
+    public init() {}
+}
+
 /// 1.61: a count of the app's sign-outs that any thread can read and advance
 /// without waiting for the API client's actor (`fenceCurrentSession()`).
 final class SignOutFence: @unchecked Sendable {
@@ -187,6 +193,26 @@ public actor APIClient {
     /// (`WatchCredentialRelay`). Belongs to one session: installing or
     /// removing a session clears it.
     private var sessionRenewer: SessionRenewer?
+
+    /// 1.61: whether a refresh's new tokens could be written now. Refreshing
+    /// spends the refresh token on the server; on a locked iPhone the new pair
+    /// could not reach the Keychain, which would keep the spent one for the
+    /// next launch. Nil: always.
+    private var rotationPersistenceCheck: (@Sendable () async -> Bool)?
+
+    public func setRotationPersistenceCheck(_ check: (@Sendable () async -> Bool)?) {
+        rotationPersistenceCheck = check
+    }
+
+    /// 1.61: asks the system for time to finish a refresh (iOS: a background
+    /// task), returning what ends it. A refresh the server has rotated must
+    /// also be written before the app is suspended.
+    public typealias BackgroundTimeRequest = @Sendable () async -> (@Sendable () -> Void)
+    private var refreshBackgroundTime: BackgroundTimeRequest?
+
+    public func setRefreshBackgroundTime(_ request: BackgroundTimeRequest?) {
+        refreshBackgroundTime = request
+    }
 
     /// Whether an expired or refused access token can be renewed at all.
     private var canRenewSession: Bool { refreshToken != nil || sessionRenewer != nil }
@@ -511,6 +537,15 @@ public actor APIClient {
         guard let currentRefreshToken = refreshToken else {
             throw APIError.tokenExpired
         }
+        // 1.61: no answer for now, never a refusal: the session is kept, and
+        // the refresh happens once the device is unlocked.
+        if let check = rotationPersistenceCheck, !(await check()) {
+            throw SessionRefreshPostponed()
+        }
+        let endBackgroundTime = await refreshBackgroundTime?()
+        defer { endBackgroundTime?() }
+        // 1.61: the two waits above let a sign-out or another refresh in.
+        guard self.refreshToken == currentRefreshToken, !isSessionFenced else { throw CancellationError() }
         guard let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=refresh_token") else {
             throw APIError.invalidResponse
         }
@@ -3727,11 +3762,18 @@ public actor APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         applyHeaders(&request)
+        // 1.61: no second refresh when another request's refresh already
+        // rotated this session's token while it was out (as
+        // `sendAuthorizedAuthRequest` does): a renewal on the Watch asks the
+        // iPhone, and each extra one could wake it. A different session
+        // (a sign-in or sign-out meanwhile) is handled as before.
+        let sentToken = accessToken
+        let sentEpoch = sessionEpoch
         let (data, response) = try await dataWithRetry(for: request)
         let http = response as? HTTPURLResponse
         // Auto-retry on 401 with token refresh
         if http?.statusCode == 401, !retried {
-            _ = try await refreshAccessToken()
+            if accessToken == sentToken || sessionEpoch != sentEpoch { _ = try await refreshAccessToken() }
             return try await restGet(path, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -3749,10 +3791,17 @@ public actor APIClient {
         request.httpMethod = "PATCH"
         applyHeaders(&request)
         request.httpBody = try encoder.encode(body)
+        // 1.61: no second refresh when another request's refresh already
+        // rotated this session's token while it was out (as
+        // `sendAuthorizedAuthRequest` does): a renewal on the Watch asks the
+        // iPhone, and each extra one could wake it. A different session
+        // (a sign-in or sign-out meanwhile) is handled as before.
+        let sentToken = accessToken
+        let sentEpoch = sessionEpoch
         let (data, response) = try await dataWithRetry(for: request)
         let http = response as? HTTPURLResponse
         if http?.statusCode == 401, !retried {
-            _ = try await refreshAccessToken()
+            if accessToken == sentToken || sessionEpoch != sentEpoch { _ = try await refreshAccessToken() }
             return try await restPatch(path, body: body, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -3793,10 +3842,17 @@ public actor APIClient {
             request.setValue(value, forHTTPHeaderField: key)
         }
         request.httpBody = try encoder.encode(body)
+        // 1.61: no second refresh when another request's refresh already
+        // rotated this session's token while it was out (as
+        // `sendAuthorizedAuthRequest` does): a renewal on the Watch asks the
+        // iPhone, and each extra one could wake it. A different session
+        // (a sign-in or sign-out meanwhile) is handled as before.
+        let sentToken = accessToken
+        let sentEpoch = sessionEpoch
         let (data, response) = try await dataWithRetry(for: request)
         let http = response as? HTTPURLResponse
         if http?.statusCode == 401, !retried {
-            _ = try await refreshAccessToken()
+            if accessToken == sentToken || sessionEpoch != sentEpoch { _ = try await refreshAccessToken() }
             return try await restPost(path, body: body, extraHeaders: extraHeaders, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -3818,10 +3874,17 @@ public actor APIClient {
         request.httpMethod = "POST"
         applyHeaders(&request)
         request.httpBody = try encoder.encode(EmptyBody())
+        // 1.61: no second refresh when another request's refresh already
+        // rotated this session's token while it was out (as
+        // `sendAuthorizedAuthRequest` does): a renewal on the Watch asks the
+        // iPhone, and each extra one could wake it. A different session
+        // (a sign-in or sign-out meanwhile) is handled as before.
+        let sentToken = accessToken
+        let sentEpoch = sessionEpoch
         let (data, response) = try await dataWithRetry(for: request)
         let http = response as? HTTPURLResponse
         if http?.statusCode == 401, !retried {
-            _ = try await refreshAccessToken()
+            if accessToken == sentToken || sessionEpoch != sentEpoch { _ = try await refreshAccessToken() }
             return try await rpcRaw(function, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -3871,6 +3934,13 @@ public actor APIClient {
         request.httpMethod = "POST"
         applyHeaders(&request)
         request.httpBody = try encoder.encode(params)
+        // 1.61: no second refresh when another request's refresh already
+        // rotated this session's token while it was out (as
+        // `sendAuthorizedAuthRequest` does): a renewal on the Watch asks the
+        // iPhone, and each extra one could wake it. A different session
+        // (a sign-in or sign-out meanwhile) is handled as before.
+        let sentToken = accessToken
+        let sentEpoch = sessionEpoch
         let (data, response) = try await dataWithRetry(
             for: request,
             authorizationLease: requiredAuthorizationLease
@@ -3880,7 +3950,7 @@ public actor APIClient {
             try ensureAuthorizationLeaseIsCurrent(
                 requiredAuthorizationLease
             )
-            _ = try await refreshAccessToken()
+            if accessToken == sentToken || sessionEpoch != sentEpoch { _ = try await refreshAccessToken() }
             try ensureAuthorizationLeaseIsCurrent(
                 requiredAuthorizationLease
             )
