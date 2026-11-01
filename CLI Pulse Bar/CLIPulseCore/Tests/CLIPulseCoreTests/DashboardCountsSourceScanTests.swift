@@ -82,12 +82,9 @@ final class DashboardCountsSourceScanTests: XCTestCase {
                 code: "published: data.activeSessions, lastActiveAt: data.activeSessionLastActiveAt, now: date)"):
             "The widgets' one read: counted again at the entry's date; the figure only when no times came.",
         Allowed(file: "CLI Pulse Bar/CLI Pulse Bar Watch/PulseHomeView.swift",
-                code: #"value: "\(dash.online_devices)","#):
-            "The Watch holds only the devices that report machine health (WatchDeviceTrim, at most four), "
-            + "so it cannot count them; dashboard_summary's figure is windowed (1800 s) since v0.87.",
-        Allowed(file: "CLI Pulse Bar/CLI Pulse Bar Watch/PulseHomeView.swift",
-                code: "accessibilityText: L10n.watch.devicesCount(dash.online_devices)"):
-            "As above: the same figure, spoken.",
+                code: "dashboardFigure: dash.online_devices, dashboardAt: state.lastRefresh, now: state.sessionsClock())"):
+            "1.61 (B4): the Watch counts its Devices chip from every device's presence; the server's figure "
+            + "only when no list has arrived (an iPhone before 1.61, before the Watch's first device fetch).",
     ]
 
     /// `line` with the text of each string literal that has no interpolation

@@ -228,21 +228,53 @@ struct WatchMetricRow: View {
     let icon: String
     var valueColor: Color = .primary
 
+    /// 1.61 (C27): label and value on one line when both fit whole. When they
+    /// do not (a long label in ja or es, a long project or device name), the
+    /// value goes under the label instead of either being cut: the label
+    /// truncates only if it alone is wider than the row, and the value wraps.
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 18)
-                .accessibilityHidden(true) // decorative; label+value carry it
-            Text(label)
-                .font(.caption)
-            Spacer()
-            Text(value)
-                .font(.caption.weight(.bold).monospacedDigit())
-                .foregroundStyle(valueColor)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                iconView
+                Text(label)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .layoutPriority(0)
+                Spacer(minLength: 4)
+                valueText
+                    .lineLimit(1)
+                    .layoutPriority(1)
+            }
+            HStack(alignment: .top, spacing: 8) {
+                iconView
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(label)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    valueText
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private var valueText: Text {
+        Text(value)
+            .font(.caption.weight(.bold).monospacedDigit())
+            .foregroundStyle(valueColor)
+    }
+
+    private var iconView: some View {
+        Image(systemName: icon)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(width: 18)
+            .accessibilityHidden(true) // decorative; label+value carry it
     }
 }
 

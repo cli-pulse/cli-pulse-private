@@ -22,10 +22,20 @@ struct PulseHomeView: View {
 
     /// 1.60 (59-05): the sessions the iPhone's Sessions tab lists under
     /// Active, counted now (`DashboardCounts`), not the dashboard's figure
-    /// from the last refresh. (The Live page lists rows by their stored
-    /// status, as it did; it can show a Running row this has stopped counting.)
+    /// from the last refresh. Since 1.61 (B4) the Live page lists the same
+    /// rows (`WatchLivePage`), so the chip and the page agree.
     private var activeSessions: Int {
         DashboardCounts.activeSessions(state.sessions, now: state.sessionsClock())
+    }
+
+    /// 1.61 (B4): the account's online devices, counted by the Watch on the
+    /// same rule and clock (`DashboardCounts`), from every device's status and
+    /// last-seen time. The server's figure only when no list has arrived (an
+    /// iPhone before 1.61, before the Watch's own first device fetch).
+    private func onlineDevices(_ dash: DashboardSummary) -> Int {
+        DashboardCounts.watchOnlineDevices(
+            presence: state.devicePresence, presenceAt: state.devicePresenceAt,
+            dashboardFigure: dash.online_devices, dashboardAt: state.lastRefresh, now: state.sessionsClock())
     }
 
     private var visibleProviders: [ProviderUsage] {
@@ -301,7 +311,8 @@ struct PulseHomeView: View {
     // MARK: - Stat chips
 
     private func chips(_ dash: DashboardSummary) -> some View {
-        HStack(spacing: 6) {
+        let devicesOnline = onlineDevices(dash)
+        return HStack(spacing: 6) {
             StatChip(
                 icon: "terminal",
                 value: "\(activeSessions)",
@@ -311,9 +322,9 @@ struct PulseHomeView: View {
             )
             StatChip(
                 icon: "desktopcomputer",
-                value: "\(dash.online_devices)",
+                value: "\(devicesOnline)",
                 tint: .cyan,
-                accessibilityText: L10n.watch.devicesCount(dash.online_devices)
+                accessibilityText: L10n.watch.devicesCount(devicesOnline)
             )
             if dash.unresolved_alerts > 0 {
                 StatChip(

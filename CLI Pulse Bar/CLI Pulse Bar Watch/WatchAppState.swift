@@ -22,6 +22,12 @@ public final class WatchAppState: ObservableObject {
     @Published var alerts: [AlertRecord] = []
     // v1.41 Mobile Machine: trimmed, read-only device-health summaries (≤4).
     @Published var devices: [WatchDeviceSummary] = []
+    /// 1.61 (B4): every device's status and last-seen time, from the Watch's
+    /// own device fetch or the iPhone's snapshot (`WatchDevicePresence`). Nil
+    /// until either has arrived.
+    @Published var devicePresence: [WatchDevicePresence]?
+    /// When `devicePresence` was obtained (the fetch, or the iPhone's push).
+    @Published var devicePresenceAt: Date?
 
     // MARK: - Cost
     @Published var costSummary = CostSummary()
@@ -510,6 +516,8 @@ public final class WatchAppState: ObservableObject {
         sessions = []
         alerts = []
         devices = []
+        devicePresence = nil
+        devicePresenceAt = nil
         fetchedDeviceNumbers = nil
         costSummary = CostSummary()
         isLoading = false
@@ -538,6 +546,13 @@ public final class WatchAppState: ObservableObject {
     /// refresh is shown at, so Demo's rows do not age out while it is open.
     func sessionsClock(now: Date = Date()) -> Date {
         SessionsClock.at(now, demoRefresh: (isDemoMode || currentUserID == "demo") ? lastRefresh : nil)
+    }
+
+    /// 1.61 (B4): the Live page's sections at `clock` (`sessionsClock()`,
+    /// read once by the caller), `WatchLivePage`: `live` is the figure the
+    /// Pulse chip shows.
+    func liveSections(at clock: Date) -> (live: [SessionRecord], recent: [SessionRecord]) {
+        WatchLivePage.sections(sessions, now: clock)
     }
 
     // MARK: - Provider Helpers
@@ -633,10 +648,12 @@ public final class WatchAppState: ObservableObject {
             let fetchedAlerts = try await alertTask
             var fetchedDevices: [WatchDeviceSummary]?
             var fetchedNumbers: DeviceNameNumbers?
+            var fetchedPresence: [WatchDevicePresence]?
             if fetchDevices, let rawDevices = try? await api.devices() {
                 fetchedDevices =
                     WatchDeviceTrim.summaries(from: rawDevices)
                 fetchedNumbers = .devices(rawDevices)
+                fetchedPresence = WatchDevicePresence.list(from: rawDevices)
             }
 
             guard refreshGate.canCommit(
@@ -665,6 +682,8 @@ public final class WatchAppState: ObservableObject {
             if let fetchedDevices {
                 devices = fetchedDevices
                 fetchedDeviceNumbers = fetchedNumbers
+                devicePresence = fetchedPresence
+                devicePresenceAt = Date()
             }
             serverOnline = true
             lastRefresh = Date()
@@ -718,6 +737,8 @@ public final class WatchAppState: ObservableObject {
         sessions = demo.sessions
         alerts = demo.alerts
         devices = demo.devices
+        devicePresence = demo.devicePresence
+        devicePresenceAt = demo.refreshedAt
         serverOnline = true
         lastRefresh = demo.refreshedAt
         isLoading = false
@@ -965,6 +986,11 @@ public final class WatchAppState: ObservableObject {
                 sessionManager.lastReceivedAlerts
             devices =
                 sessionManager.lastReceivedDevices
+            // An iPhone before 1.61 sends none; the Watch's own list stays.
+            if let presence = sessionManager.lastReceivedDevicePresence {
+                devicePresence = presence
+                devicePresenceAt = sessionManager.lastSyncDate
+            }
             lastRefresh =
                 sessionManager.lastSyncDate
                     ?? lastRefresh
@@ -994,6 +1020,10 @@ public final class WatchAppState: ObservableObject {
         }
         if !sessionManager.lastReceivedDevices.isEmpty, overwrite || devices.isEmpty {
             devices = sessionManager.lastReceivedDevices
+        }
+        if devicePresence == nil, let presence = sessionManager.lastReceivedDevicePresence {
+            devicePresence = presence
+            devicePresenceAt = sessionManager.lastSyncDate
         }
     }
 

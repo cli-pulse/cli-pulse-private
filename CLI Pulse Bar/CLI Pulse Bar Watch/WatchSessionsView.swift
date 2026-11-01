@@ -1,10 +1,18 @@
 import SwiftUI
 import CLIPulseCore
 
-/// Live (sessions) page. Running sessions are featured as cards (provider
-/// colour bar + project + provider·duration + a small activity spark);
-/// non-running sessions are dimmed compact rows below. Drill-down to the
-/// detail view is preserved.
+/// Live (sessions) page. Sessions the iPhone's Sessions tab lists under
+/// Active are featured as cards (provider colour bar + project +
+/// provider·duration); ones it lists under Recent are dimmed compact rows
+/// below. Drill-down to the detail view is preserved.
+///
+/// 1.61 (B4, 59-09): the rows are classified as the iPhone and the Mac
+/// classify them (`WatchLivePage`, `SessionFreshnessTierClassifier`) at the
+/// Watch's `sessionsClock`, not by each row's stored status: the cloud keeps a
+/// row "Running" until its device syncs again, so a Mac asleep with AI tools
+/// open left them here. The header's count is the Pulse chip's figure. The
+/// decorative activity spark is gone (C6): it drew bars from the session's id,
+/// not from any activity.
 ///
 /// A process-scan row (`SessionRecord.hasProcessHeuristicMetrics`, every
 /// session in the cloud today) shows no usage, cost or requests, as on the
@@ -15,21 +23,16 @@ import CLIPulseCore
 struct WatchSessionsView: View {
     @EnvironmentObject var state: WatchAppState
 
-    private var runningSessions: [SessionRecord] {
-        state.sessions.filter { $0.status.caseInsensitiveCompare("running") == .orderedSame }
-    }
-
-    private var otherSessions: [SessionRecord] {
-        state.sessions.filter { $0.status.caseInsensitiveCompare("running") != .orderedSame }
-    }
-
     var body: some View {
-        ScrollView {
+        // One clock for the sections and the rows' badges.
+        let now = state.sessionsClock()
+        let sections = state.liveSections(at: now)
+        return ScrollView {
             LazyVStack(spacing: 8) {
-                header
+                header(liveCount: sections.live.count)
 
-                if !state.sessions.isEmpty {
-                    ForEach(runningSessions) { session in
+                if !sections.live.isEmpty || !sections.recent.isEmpty {
+                    ForEach(sections.live) { session in
                         NavigationLink {
                             WatchSessionDetailView(session: session, showCost: state.showCost,
                                                    deviceNumbers: state.deviceNameNumbers)
@@ -38,12 +41,12 @@ struct WatchSessionsView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    ForEach(otherSessions) { session in
+                    ForEach(sections.recent) { session in
                         NavigationLink {
                             WatchSessionDetailView(session: session, showCost: state.showCost,
                                                    deviceNumbers: state.deviceNameNumbers)
                         } label: {
-                            SessionCompactRow(session: session)
+                            SessionCompactRow(session: session, now: now)
                         }
                         .buttonStyle(.plain)
                     }
@@ -63,14 +66,14 @@ struct WatchSessionsView: View {
         .refreshable { await state.refreshAll() }
     }
 
-    private var header: some View {
+    private func header(liveCount: Int) -> some View {
         HStack(spacing: 5) {
             LiveDot(size: 7)
             Text(L10n.watch.live)
                 .font(.system(size: 13, weight: .semibold))
             Spacer()
-            if !runningSessions.isEmpty {
-                Text(L10n.sessions.countRunning(runningSessions.count))
+            if liveCount > 0 {
+                Text(L10n.sessions.countRunning(liveCount))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -118,13 +121,10 @@ struct SessionCard: View {
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
 
-                HStack(spacing: 6) {
-                    Text("\(session.provider) · \(RelativeTime.format(session.started_at))")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    ActivitySpark(seed: Self.stableSeed(session.id), color: color)
-                }
+                Text("\(session.provider) · \(RelativeTime.format(session.started_at))")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
 
                 // The iPhone row's gate: a scan row's figures are runtime.
                 if !session.hasProcessHeuristicMetrics {
@@ -148,18 +148,15 @@ struct SessionCard: View {
         .background(WatchTheme.cardFillStrong, in: RoundedRectangle(cornerRadius: WatchTheme.cardRadius))
         .accessibilityElement(children: .combine)
     }
-
-    /// Launch-stable seed from the session id (UTF-8 byte sum) so the
-    /// decorative spark is consistent per session and varies between them.
-    static func stableSeed(_ id: String) -> Int {
-        id.utf8.reduce(0) { $0 &+ Int($1) }
-    }
 }
 
-// MARK: - Non-running session row (dimmed)
+// MARK: - Recent session row (dimmed)
 
 struct SessionCompactRow: View {
     let session: SessionRecord
+    /// The Live page's clock: the row's badge is its tier there ("Recent"), as
+    /// on the iPhone, not its stored status.
+    let now: Date
     /// v1.58 (P1-6): "Hide personal information", the iPhone's choice
     /// (`PersonalInfoMask.adoptPhoneChoice`): the title and project are
     /// masked. No project numbers: the Watch has no scan.
@@ -179,7 +176,7 @@ struct SessionCompactRow: View {
 
             Spacer(minLength: 4)
 
-            StatusBadge(text: L10n.status.localized(session.status), color: PulseTheme.statusColor(session.status))
+            StatusBadge(text: SessionFreshnessTierClassifier.classify(session, now: now).badge, color: .secondary)
                 .scaleEffect(0.82)
 
             // The iPhone row's gate: a scan row's figures are runtime.
@@ -194,38 +191,6 @@ struct SessionCompactRow: View {
         .background(WatchTheme.cardFill, in: RoundedRectangle(cornerRadius: WatchTheme.cardRadius))
         .opacity(0.7)
         .accessibilityElement(children: .combine)
-    }
-}
-
-// MARK: - Activity spark (decorative)
-
-/// A small bar-spark motif beside a running session. Heights are derived
-/// deterministically from `seed` — this is a *decorative* texture, not a
-/// time series (SessionRecord carries no per-session trend), so it is
-/// hidden from VoiceOver.
-struct ActivitySpark: View {
-    let seed: Int
-    let color: Color
-    var bars: Int = 5
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 2) {
-            ForEach(0..<bars, id: \.self) { i in
-                Capsule()
-                    .fill(color)
-                    .frame(width: 3, height: barHeight(i))
-            }
-        }
-        .frame(height: 13, alignment: .bottom)
-        .accessibilityHidden(true)
-    }
-
-    private func barHeight(_ i: Int) -> CGFloat {
-        // Constant kept under Int32.max — watchOS is arm64_32 (32-bit Int),
-        // where a larger literal would overflow at compile time. `&*`/`&+`
-        // wrap safely; this is decorative so exact values don't matter.
-        let h = abs((seed &* 1_103_515_245 &+ i &* 40_503) % 9) // 0...8
-        return CGFloat(5 + h) // 5...13
     }
 }
 

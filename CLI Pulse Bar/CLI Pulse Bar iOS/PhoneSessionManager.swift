@@ -163,7 +163,7 @@ final class PhoneSessionManager: NSObject, ObservableObject {
             return
         }
         activeIdentity = identity
-        var payload: [String: Any] = [
+        let payload: [String: Any] = [
             "cli_pulse_auth": true,
             "access_token": accessToken,
             "user_id": identity.userID,
@@ -395,6 +395,12 @@ final class PhoneSessionManager: NSObject, ObservableObject {
         let deviceSummaries = WatchDeviceTrim.summaries(from: devices)
         if let data = try? encoder.encode(deviceSummaries) {
             context["devices"] = data
+        }
+        // 1.61 (B4): every device's status and last-seen time, so the Watch
+        // counts the online ones itself (its Devices chip) rather than showing
+        // the server's figure. A few bytes a device.
+        if let data = try? encoder.encode(WatchDevicePresence.list(from: devices)) {
+            context[WatchDevicePresence.contextKey] = data
         }
         // The Watch cannot read this app's defaults or fetch rates, and without
         // these showed every cost in dollars whatever the user chose.

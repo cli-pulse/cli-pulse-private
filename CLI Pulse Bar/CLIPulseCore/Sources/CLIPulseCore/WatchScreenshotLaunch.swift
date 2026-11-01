@@ -163,6 +163,9 @@ public enum WatchScreenshotLaunch {
         public let sessions: [SessionRecord]
         public let alerts: [AlertRecord]
         public let devices: [WatchDeviceSummary]
+        /// 1.61 (B4): every device's status and last-seen time, as the iPhone
+        /// sends them, for the Devices chip.
+        public let devicePresence: [WatchDevicePresence]
         /// Demo's one refresh (`DemoDataProvider.refreshAge` ago), shown as
         /// the last one.
         public let refreshedAt: Date
@@ -203,6 +206,7 @@ public enum WatchScreenshotLaunch {
             sessions: newestFirst(demo.sessions) { $0.last_active_at },
             alerts: demo.alerts,
             devices: WatchDeviceTrim.summaries(from: newestFirst(demo.devices) { $0.last_sync_at ?? "" }),
+            devicePresence: WatchDevicePresence.list(from: newestFirst(demo.devices) { $0.last_sync_at ?? "" }),
             refreshedAt: demo.refreshedAt
         )
     }

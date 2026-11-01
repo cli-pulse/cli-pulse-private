@@ -12,6 +12,9 @@ final class WatchSessionManager: NSObject, ObservableObject {
     @Published var lastReceivedSessions: [SessionRecord] = []
     @Published var lastReceivedAlerts: [AlertRecord] = []
     @Published var lastReceivedDevices: [WatchDeviceSummary] = []   // v1.41 Mobile Machine
+    /// 1.61 (B4): every device's status and last-seen time, for the Devices
+    /// chip. Nil when the iPhone (before 1.61) sent none.
+    @Published var lastReceivedDevicePresence: [WatchDevicePresence]?
     @Published var isPhoneReachable = false
     @Published var lastSyncDate: Date?
     @Published private(set) var lastReceivedIdentity:
@@ -28,6 +31,7 @@ final class WatchSessionManager: NSObject, ObservableObject {
     private let sessionsKey = "cli_pulse_watch_sessions"
     private let alertsKey = "cli_pulse_watch_alerts"
     private let devicesKey = "cli_pulse_watch_devices"
+    private let devicePresenceKey = "cli_pulse_watch_device_presence"
     private let ownerKey = "cli_pulse_watch_context_owner"
     private let epochKey = "cli_pulse_watch_context_epoch"
     private static let highestEpochKey =
@@ -119,6 +123,11 @@ final class WatchSessionManager: NSObject, ObservableObject {
         if let data = try? encoder.encode(lastReceivedDevices) {
             UserDefaults.standard.set(data, forKey: devicesKey)
         }
+        if let presence = lastReceivedDevicePresence, let data = try? encoder.encode(presence) {
+            UserDefaults.standard.set(data, forKey: devicePresenceKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: devicePresenceKey)
+        }
         UserDefaults.standard.set(
             identity.userID,
             forKey: ownerKey
@@ -181,6 +190,8 @@ final class WatchSessionManager: NSObject, ObservableObject {
         } else {
             lastReceivedDevices = []
         }
+        lastReceivedDevicePresence = UserDefaults.standard.data(forKey: devicePresenceKey)
+            .flatMap { try? decoder.decode([WatchDevicePresence].self, from: $0) }
     }
 
     @MainActor
@@ -190,6 +201,7 @@ final class WatchSessionManager: NSObject, ObservableObject {
         lastReceivedSessions = []
         lastReceivedAlerts = []
         lastReceivedDevices = []
+        lastReceivedDevicePresence = nil
         lastSyncDate = nil
         lastReceivedIdentity = nil
         pendingAuthToken = nil
@@ -206,6 +218,7 @@ final class WatchSessionManager: NSObject, ObservableObject {
             sessionsKey,
             alertsKey,
             devicesKey,
+            devicePresenceKey,
             ownerKey,
             epochKey,
         ] {
@@ -354,6 +367,9 @@ final class WatchSessionManager: NSObject, ObservableObject {
         else {
             return
         }
+        // Optional: an iPhone before 1.61 sends none.
+        let devicePresence = (context[WatchDevicePresence.contextKey] as? Data)
+            .flatMap { try? decoder.decode([WatchDevicePresence].self, from: $0) }
         // Read out here: the context dictionary is not Sendable.
         let currencyCode = context[CurrencyConverter.contextCurrencyKey] as? String
         let fxRate = context[CurrencyConverter.contextRateKey] as? Double
@@ -379,6 +395,7 @@ final class WatchSessionManager: NSObject, ObservableObject {
             self.lastReceivedSessions = sessions
             self.lastReceivedAlerts = alerts
             self.lastReceivedDevices = devices
+            self.lastReceivedDevicePresence = devicePresence
             self.lastSyncDate = Date()
             self.persistData()
             // Let WatchAppState re-apply fallback data into its @Published
