@@ -194,6 +194,25 @@ public enum KeychainHelper {
         return String(data: data, encoding: .utf8)
     }
 
+    /// 1.61 (B1): whether the Keychain says there is no such item, as opposed
+    /// to `load` returning nil for any failure (a locked device reads every
+    /// `WhenUnlocked` item as missing). True only for `errSecItemNotFound`.
+    public static func isAbsent(key: String, accessGroup: String? = nil) -> Bool {
+        if isRunningUnderXCTest {
+            return inMemoryStoreForTesting[testStoreKey(key, accessGroup)] == nil
+        }
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        if let group = accessGroup {
+            query[kSecAttrAccessGroup as String] = group
+        }
+        return SecItemCopyMatching(query as CFDictionary, nil) == errSecItemNotFound
+    }
+
     @discardableResult
     public static func delete(
         key: String,

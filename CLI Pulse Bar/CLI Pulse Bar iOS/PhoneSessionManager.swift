@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import WatchConnectivity
 import CLIPulseCore
 
@@ -22,6 +23,9 @@ final class PhoneSessionManager: NSObject, ObservableObject {
     private var pendingAuthPayload: [String: Any]?
     private var pendingContext: [String: Any]?
     private var pendingLogoutPayload: [String: Any]?
+    /// 1.61 (B1): the newest access token a refresh here produced, not yet
+    /// sent because the session was still activating.
+    private var pendingCredentialsPayload: [String: Any]?
     private var activeIdentity: WatchSessionIdentity?
     private let pendingLock = NSLock()
     private static let epochKey =
@@ -44,6 +48,8 @@ final class PhoneSessionManager: NSObject, ObservableObject {
                                                 name: .displayCurrencyDidChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handleHidePersonalInfoDidChange(_:)),
                                                 name: .hidePersonalInfoDidChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleDidRotateAccessToken(_:)),
+                                                name: .cliPulseDidRotateAccessToken, object: nil)
     }
 
     /// Activate the WCSession if supported (iPhone only).
@@ -66,7 +72,6 @@ final class PhoneSessionManager: NSObject, ObservableObject {
         }
         sendAuthToWatch(
             accessToken: token,
-            refreshToken: info["refresh_token"] as? String,
             userID: userID,
             email: info["email"] as? String ?? "",
             name: info["name"] as? String ?? ""
@@ -112,6 +117,15 @@ final class PhoneSessionManager: NSObject, ObservableObject {
         }
     }
 
+    /// 1.61 (B1): each refresh here rotates the session's tokens. The Watch
+    /// renews a session it got from this iPhone only through this iPhone, so
+    /// it gets every new access token (never the refresh token, which only
+    /// this iPhone spends). Posted from the API client's actor.
+    @objc private func handleDidRotateAccessToken(_ notification: Notification) {
+        guard let token = notification.userInfo?["access_token"] as? String, !token.isEmpty else { return }
+        sendCredentialsToWatch(.accessToken(token, userID: ""))
+    }
+
     @MainActor
     private func forwardSnapshot(of state: AppState) {
         sendDashboardToWatch(
@@ -127,11 +141,15 @@ final class PhoneSessionManager: NSObject, ObservableObject {
 
     // MARK: - Send Auth to Watch
 
-    /// Transfer auth tokens to the watch after successful login.
+    /// Transfer the access token to the watch after successful login.
     /// Uses `transferUserInfo` for guaranteed delivery (queued, survives app exit).
+    ///
+    /// 1.61 (B1): never the refresh token. This iPhone is the only side that
+    /// refreshes the session; the Watch asks it for each new access token. A
+    /// Watch from before 1.61 refreshed with the refresh token sent here and
+    /// spent this iPhone's, which signed one of them out.
     func sendAuthToWatch(
         accessToken: String,
-        refreshToken: String?,
         userID: String,
         email: String,
         name: String
@@ -153,9 +171,6 @@ final class PhoneSessionManager: NSObject, ObservableObject {
             "email": email,
             "name": name,
         ]
-        if let rt = refreshToken {
-            payload["refresh_token"] = rt
-        }
         let canSend =
             WCSession.default.activationState == .activated
             && WCSession.default.isPaired
@@ -163,6 +178,7 @@ final class PhoneSessionManager: NSObject, ObservableObject {
             pendingAuthPayload = nil
             pendingLogoutPayload = nil
             pendingContext = nil
+            pendingCredentialsPayload = nil
             pendingLock.unlock()
             WCSession.default.transferUserInfo(payload)
         } else {
@@ -171,8 +187,104 @@ final class PhoneSessionManager: NSObject, ObservableObject {
             pendingAuthPayload = payload
             pendingLogoutPayload = nil
             pendingContext = nil
+            pendingCredentialsPayload = nil
             pendingLock.unlock()
         }
+    }
+
+    /// 1.61 (B1): an answer about this iPhone's session, queued for the Watch
+    /// (`WatchCredentialRelay`). An access token goes only under the identity
+    /// the Watch got with this iPhone's sign-in, and only if it is that
+    /// account's; with no identity (no sign-in was sent), nothing goes.
+    func sendCredentialsToWatch(_ answer: WatchCredentialRelay.Answer) {
+        guard WCSession.isSupported() else { return }
+        pendingLock.lock()
+        guard let identity = activeIdentity else {
+            pendingLock.unlock()
+            return
+        }
+        let resolved: WatchCredentialRelay.Answer
+        if case let .accessToken(token, _) = answer {
+            // A rotation is posted for any session this iPhone's client holds;
+            // one that is not the Watch's account (a sign-in still finishing)
+            // stays here.
+            guard WatchCredentialRelay.tokenBelongs(token, to: identity.userID) else {
+                pendingLock.unlock()
+                return
+            }
+            resolved = .accessToken(token, userID: identity.userID)
+        } else {
+            resolved = answer
+        }
+        let payload = WatchCredentialRelay.message(for: resolved, identity: identity)
+        let canSend =
+            WCSession.default.activationState == .activated
+            && WCSession.default.isPaired
+        if canSend {
+            pendingCredentialsPayload = nil
+            pendingLock.unlock()
+            // Only the newest token matters: older ones still queued (the
+            // Watch app has not run since) go.
+            for transfer in WCSession.default.outstandingUserInfoTransfers
+            where transfer.userInfo[WatchCredentialRelay.answerKey] as? Bool == true {
+                transfer.cancel()
+            }
+            WCSession.default.transferUserInfo(payload)
+        } else {
+            pendingCredentialsPayload = payload
+            pendingLock.unlock()
+        }
+    }
+
+    /// 1.61 (B1): what this iPhone answers a Watch asking for the current
+    /// access token of `requestedUserID`'s session. Refreshes first when its
+    /// own token has expired or is about to: this iPhone is the only side that
+    /// refreshes a session it gave the Watch.
+    @MainActor
+    func credentialAnswer(requestedUserID: String) async -> WatchCredentialRelay.Answer {
+        guard let state = appState else { return .unavailable }
+        let phoneState: WatchCredentialRelay.PhoneState
+        let userID = state.userId
+        if !state.isDemoMode, state.isAuthenticated, !userID.isEmpty,
+           let token = await state.api.getToken(), !token.isEmpty {
+            var current = token
+            switch WatchCredentialRelay.phoneRenewal(
+                accessToken: token,
+                canPersist: UIApplication.shared.isProtectedDataAvailable
+            ) {
+            case .sendAsIs:
+                break
+            case .noAnswer:
+                return .unavailable
+            case .renewFirst:
+                // A failed refresh is no answer: the Watch keeps its session
+                // and asks again. A refusal ends this iPhone's own session on
+                // its next refresh, and its sign-out then reaches the Watch.
+                guard let renewed = try? await state.api.refreshAccessToken() else {
+                    return .unavailable
+                }
+                current = renewed.accessToken
+            }
+            // The account may have changed while the refresh was out.
+            guard state.isAuthenticated, state.userId == userID else { return .unavailable }
+            phoneState = .signedIn(userID: userID, accessToken: current)
+        } else if UIApplication.shared.isProtectedDataAvailable,
+                  KeychainHelper.isAbsent(key: "cli_pulse_token") {
+            // Signed out only when the Keychain answers that it holds no
+            // session: a locked iPhone reads every item as missing.
+            phoneState = .signedOut
+        } else {
+            // Demo with a session kept for later, a restore still out, or a
+            // locked iPhone whose Keychain cannot be read.
+            phoneState = .restoring
+        }
+        return WatchCredentialRelay.answer(for: phoneState, requestedUserID: requestedUserID)
+    }
+
+    private func currentIdentity() -> WatchSessionIdentity? {
+        pendingLock.lock()
+        defer { pendingLock.unlock() }
+        return activeIdentity
     }
 
     /// Send logout signal to watch.
@@ -219,6 +331,7 @@ final class PhoneSessionManager: NSObject, ObservableObject {
         ]
         pendingAuthPayload = nil
         pendingContext = nil
+        pendingCredentialsPayload = nil
         let canSend =
             WCSession.default.activationState == .activated
             && WCSession.default.isPaired
@@ -316,9 +429,11 @@ final class PhoneSessionManager: NSObject, ObservableObject {
         let auth = pendingAuthPayload
         let ctx = pendingContext
         let logout = pendingLogoutPayload
+        let credentials = pendingCredentialsPayload
         pendingAuthPayload = nil
         pendingContext = nil
         pendingLogoutPayload = nil
+        pendingCredentialsPayload = nil
         pendingLock.unlock()
 
         guard WCSession.default.activationState == .activated,
@@ -326,8 +441,14 @@ final class PhoneSessionManager: NSObject, ObservableObject {
 
         if let logout {
             WCSession.default.transferUserInfo(logout)
-        } else if let auth {
-            WCSession.default.transferUserInfo(auth)
+        } else {
+            if let auth {
+                WCSession.default.transferUserInfo(auth)
+            }
+            // After the sign-in it renews: queued transfers arrive in order.
+            if let credentials {
+                WCSession.default.transferUserInfo(credentials)
+            }
         }
         if let ctx {
             try? WCSession.default.updateApplicationContext(ctx)
@@ -398,4 +519,48 @@ extension PhoneSessionManager: WCSessionDelegate {
             self.isWatchReachable = session.isReachable
         }
     }
+
+    /// 1.61 (B1): the Watch asks for the current access token while this
+    /// iPhone can be reached, and waits for the reply.
+    func session(
+        _ session: WCSession,
+        didReceiveMessage message: [String: Any],
+        replyHandler: @escaping ([String: Any]) -> Void
+    ) {
+        guard let requested = WatchCredentialRelay.requestedUserID(in: message) else {
+            replyHandler([:])
+            return
+        }
+        let reply = SendableReply(replyHandler)
+        Task { @MainActor in
+            let answer = await self.credentialAnswer(requestedUserID: requested)
+            reply.send(WatchCredentialRelay.message(for: answer, identity: self.currentIdentity()))
+        }
+    }
+
+    /// 1.61 (B1): the same question queued while this iPhone could not be
+    /// reached. The answer goes back the same way. A signed-out iPhone sends
+    /// its sign-out, which ends the Watch's session from it.
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        guard let requested = WatchCredentialRelay.requestedUserID(in: userInfo) else { return }
+        Task { @MainActor in
+            let answer = await self.credentialAnswer(requestedUserID: requested)
+            switch answer {
+            case .accessToken:
+                self.sendCredentialsToWatch(answer)
+            case .signedOut:
+                self.sendLogoutToWatch(userID: requested.isEmpty ? nil : requested)
+            case .unavailable:
+                break   // the Watch asks again; this iPhone's next refresh also sends one
+            }
+        }
+    }
+}
+
+/// WatchConnectivity's reply handler, carried into the Task that computes the
+/// answer. WatchConnectivity calls it once, from any thread.
+private struct SendableReply: @unchecked Sendable {
+    let handler: ([String: Any]) -> Void
+    init(_ handler: @escaping ([String: Any]) -> Void) { self.handler = handler }
+    func send(_ message: [String: Any]) { handler(message) }
 }

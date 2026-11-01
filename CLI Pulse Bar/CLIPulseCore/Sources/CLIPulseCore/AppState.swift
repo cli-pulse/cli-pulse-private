@@ -1260,6 +1260,14 @@ public final class AppState: ObservableObject {
                         access: newAccess,
                         refresh: newRefresh
                     )
+                    // 1.61 (B1): the iPhone sends the paired Watch each access
+                    // token its refreshes produce; the Watch never refreshes a
+                    // session it got from the iPhone itself.
+                    NotificationCenter.default.post(
+                        name: .cliPulseDidRotateAccessToken,
+                        object: nil,
+                        userInfo: ["access_token": newAccess]
+                    )
                 }
                 await restoreSession()
             }

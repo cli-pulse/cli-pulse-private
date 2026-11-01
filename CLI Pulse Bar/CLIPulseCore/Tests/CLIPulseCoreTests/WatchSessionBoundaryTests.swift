@@ -77,9 +77,12 @@ final class WatchSessionBoundaryTests: XCTestCase {
             restoreSection.contains("kind: .sessionRestore"),
             "restore must preserve Keychain until validation completes"
         )
+        // 1.61 (B1): through `WatchCredentialRelay.restoreFailureAction`,
+        // which applies the policy to the Watch's own session and never ends
+        // a session from the iPhone.
         XCTAssertTrue(
             restoreSection.contains(
-                "WatchSessionRestoreCredentialPolicy"
+                "WatchCredentialRelay.restoreFailureAction("
             ),
             "restore failures must classify explicit auth rejection"
         )
@@ -91,7 +94,7 @@ final class WatchSessionBoundaryTests: XCTestCase {
         )
         let deletionPolicy = try XCTUnwrap(
             restoreSection.range(
-                of: "WatchSessionRestoreCredentialPolicy"
+                of: "WatchCredentialRelay.restoreFailureAction("
             )
         )
         XCTAssertLessThan(

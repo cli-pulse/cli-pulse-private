@@ -14,6 +14,11 @@ public extension Notification.Name {
     /// iOS WCSession bridge) can forward the freshly-loaded dashboard state to
     /// the paired Apple Watch. No userInfo — observers pull from AppState.
     static let cliPulseDidRefresh = Notification.Name("cliPulseDidRefresh")
+    /// 1.61 (B1): posted after each successful token refresh (a rotation of
+    /// the signed-in session), from the API client's actor. UserInfo:
+    /// `access_token`, the new one. Never the refresh token. The iPhone
+    /// forwards it to the paired Watch.
+    static let cliPulseDidRotateAccessToken = Notification.Name("cliPulseDidRotateAccessToken")
 }
 
 public struct AuthSessionState {

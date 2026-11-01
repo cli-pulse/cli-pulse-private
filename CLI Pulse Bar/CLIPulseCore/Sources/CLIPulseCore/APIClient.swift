@@ -160,6 +160,20 @@ public actor APIClient {
     /// Set by AppState to persist rotated tokens to Keychain.
     public var onTokenRefreshed: (@Sendable (String, String) -> Void)?
 
+    /// 1.61 (B1): who renews a session this client does not own. Returns a new
+    /// access token, or throws (and the session is kept: the renewer decides
+    /// whether its answer ends the session).
+    public typealias SessionRenewer = @Sendable () async throws -> String
+
+    /// Set for the Watch's session that came from the iPhone: the iPhone owns
+    /// its refresh token, so a refresh asks the iPhone instead of the server
+    /// (`WatchCredentialRelay`). Belongs to one session: installing or
+    /// removing a session clears it.
+    private var sessionRenewer: SessionRenewer?
+
+    /// Whether an expired or refused access token can be renewed at all.
+    private var canRenewSession: Bool { refreshToken != nil || sessionRenewer != nil }
+
     public init(
         token: String? = nil,
         supabaseURL: String? = nil,
@@ -318,18 +332,23 @@ public actor APIClient {
         pendingExpiredAuthorizationLease = nil
         accessToken = nil
         refreshToken = nil
+        sessionRenewer = nil
         userId = nil
         return true
     }
 
     /// Atomically install an externally authenticated session only when its
     /// transition is still current.
+    ///
+    /// `renewer` (1.61, B1): a session someone else renews (the Watch's from
+    /// the iPhone) is installed with its renewer and without a refresh token.
     @discardableResult
     public func installExternalAuthenticatedSession(
         accessToken: String,
         refreshToken: String?,
         userID: String,
-        transitionGeneration: UInt64
+        transitionGeneration: UInt64,
+        renewer: SessionRenewer? = nil
     ) -> Bool {
         guard
             transitionGeneration
@@ -343,7 +362,36 @@ public actor APIClient {
             accessToken: accessToken,
             userID: userID
         )
-        self.refreshToken = refreshToken
+        if let renewer {
+            self.refreshToken = nil
+            self.sessionRenewer = renewer
+        } else {
+            self.refreshToken = refreshToken
+        }
+        return true
+    }
+
+    /// 1.61 (B1): a session that a renewer renews, for a client that checks it
+    /// before it is installed (the Watch's restore). Clears the refresh token.
+    public func setSessionRenewer(_ renewer: SessionRenewer?) {
+        sessionRenewer = renewer
+        if renewer != nil { refreshToken = nil }
+    }
+
+    /// 1.61 (B1): a new access token for the session this client holds,
+    /// renewed elsewhere (the iPhone's refresh, sent to the Watch). The same
+    /// session, as after a refresh: no new authorization generation. Ignored
+    /// when the client holds no session or is not renewed elsewhere, and for
+    /// a token that expires no later than the one held: queued transfers can
+    /// arrive after a newer token came by reply.
+    @discardableResult
+    public func adoptRenewedAccessToken(_ token: String) -> Bool {
+        guard sessionRenewer != nil, let held = accessToken, !token.isEmpty, token != held else { return false }
+        if let newExpiry = Self.jwtExpiry(token), let heldExpiry = Self.jwtExpiry(held), newExpiry <= heldExpiry {
+            return false
+        }
+        accessToken = token
+        pendingExpiredAuthorizationLease = nil
         return true
     }
 
@@ -356,6 +404,7 @@ public actor APIClient {
         authorizationGeneration &+= 1
         sessionEpoch &+= 1
         pendingExpiredAuthorizationLease = nil
+        sessionRenewer = nil
         self.accessToken = accessToken
         self.userId = userID
     }
@@ -406,6 +455,9 @@ public actor APIClient {
     }
 
     private func performRefresh() async throws -> (accessToken: String, refreshToken: String) {
+        if let renewer = sessionRenewer {
+            return try await performRenewal(with: renewer)
+        }
         guard let currentRefreshToken = refreshToken else {
             throw APIError.tokenExpired
         }
@@ -473,6 +525,23 @@ public actor APIClient {
         return (newAccess, newRefresh)
     }
 
+    /// 1.61 (B1): a session renewed elsewhere. No request to the auth server:
+    /// the renewer's answer is the new access token. Its errors are passed on
+    /// and the session is kept as it is, so a renewer that cannot be reached
+    /// never signs anyone out. A result that arrives after the session changed
+    /// is returned to its caller and installed nowhere.
+    private func performRenewal(with renewer: SessionRenewer) async throws -> (accessToken: String, refreshToken: String) {
+        let epoch = sessionEpoch
+        let newAccess = try await renewer()
+        guard !newAccess.isEmpty else { throw APIError.invalidResponse }
+        guard sessionEpoch == epoch, sessionRenewer != nil, accessToken != nil else {
+            return (newAccess, "")
+        }
+        accessToken = newAccess
+        pendingExpiredAuthorizationLease = nil
+        return (newAccess, "")
+    }
+
     // MARK: - Rejected access tokens (1.60)
 
     /// Whether a response says the access token it carried is no longer
@@ -519,20 +588,26 @@ public actor APIClient {
     /// one decision only: whether sending the token is pointless because it
     /// has already expired. Nil for anything that is not a readable JWT.
     static func jwtExpiry(_ token: String) -> Date? {
+        guard let exp = (jwtClaims(token)?["exp"] as? NSNumber)?.doubleValue else { return nil }
+        return Date(timeIntervalSince1970: exp)
+    }
+
+    /// 1.61 (B1): the `sub` claim (the user id) of a JWT, read WITHOUT checking
+    /// its signature, to keep a token from being handed to the wrong account.
+    /// Nil for anything that is not a readable JWT.
+    static func jwtSubject(_ token: String) -> String? {
+        jwtClaims(token)?["sub"] as? String
+    }
+
+    private static func jwtClaims(_ token: String) -> [String: Any]? {
         let parts = token.split(separator: ".", omittingEmptySubsequences: false)
         guard parts.count == 3 else { return nil }
         var base64 = String(parts[1])
             .replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")
         while base64.count % 4 != 0 { base64 += "=" }
-        guard
-            let data = Data(base64Encoded: base64),
-            let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-            let exp = (object["exp"] as? NSNumber)?.doubleValue
-        else {
-            return nil
-        }
-        return Date(timeIntervalSince1970: exp)
+        guard let data = Data(base64Encoded: base64) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
 
     /// Send a request authorized by the user's access token to Supabase Auth
@@ -550,7 +625,7 @@ public actor APIClient {
     private func sendAuthorizedAuthRequest(
         _ makeRequest: (String?) throws -> URLRequest
     ) async throws -> (Data, HTTPURLResponse?) {
-        if refreshToken != nil,
+        if canRenewSession,
            let token = accessToken,
            let expiry = Self.jwtExpiry(token),
            expiry <= Date() {
@@ -616,6 +691,7 @@ public actor APIClient {
         pendingExpiredAuthorizationLease = nil
         accessToken = nil
         refreshToken = nil
+        sessionRenewer = nil
         userId = nil
         sessionEpoch &+= 1
         return held
@@ -640,6 +716,7 @@ public actor APIClient {
             pendingExpiredAuthorizationLease = nil
             self.accessToken = nil
             self.refreshToken = nil
+            self.sessionRenewer = nil
             self.userId = nil
         }
 

@@ -735,6 +735,7 @@
 "watch.stale_updated" = "古いデータ · 更新 %@";
 "watch.tightest_account" = "残量最少: %@";
 "watch.unread" = "未読";
+"watch.waiting_for_phone" = "iPhone がサインインを更新するのを待っています。iPhone で CLI Pulse を開いてください。";
 "widget.alerts_summary" = "アラート %d 件 • CLI Pulse";
 "widget.percent_left" = "%@ 残り %d%%";
 "widget.quota_fallback" = "クォータ";

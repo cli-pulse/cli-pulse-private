@@ -45,13 +45,11 @@ struct WatchLoginView: View {
                            let identity =
                                sessionManager.lastReceivedIdentity {
                             Button {
-                                let refresh = sessionManager.pendingRefreshToken
                                 let email = sessionManager.pendingAuthEmail ?? ""
                                 let name = sessionManager.pendingAuthName ?? ""
                                 Task {
                                     await state.applyWatchAuth(
                                         token: token,
-                                        refreshToken: refresh,
                                         identity: identity,
                                         email: email,
                                         name: name
