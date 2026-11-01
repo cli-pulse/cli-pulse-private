@@ -119,7 +119,13 @@ public final class AppState: ObservableObject {
             if !selectedTab.isVisible { selectedTab = .overview }
         }
     }
-    @Published public var isLoading = false
+    @Published public var isLoading = false {
+        didSet {
+            // 1.61 (B2): a sign-in or session restore let go of the flag.
+            guard oldValue, !isLoading else { return }
+            runRefreshOwedWhenLoadingEnds()
+        }
+    }
     @Published public var lastError: String?
     @Published public var tierLimitWarning: String?
     /// Count of providers the tier-migration just auto-disabled.

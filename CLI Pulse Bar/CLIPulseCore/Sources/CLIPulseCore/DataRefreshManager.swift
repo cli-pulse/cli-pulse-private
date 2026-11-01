@@ -299,7 +299,14 @@ internal final class DataRefreshManager {
     private let uptime: () -> TimeInterval
     nonisolated static func systemUptime() -> TimeInterval { ProcessInfo.processInfo.systemUptime }
     private var refreshTimer: Timer?
-    private var refreshTask: Task<Void, Never>?
+    /// Internal read for tests: they await the refresh a request started.
+    private(set) var refreshTask: Task<Void, Never>?
+    /// 1.61 (B2): a refresh was skipped behind an `isLoading` that no refresh
+    /// of this manager set (`loadingSince == nil`): a sign-in or session
+    /// restore holding the flag for its spinner. That holder owes one refresh
+    /// when it lets go (`takeRefreshOwedWhenLoadingEnds`). A refresh skipped
+    /// behind another refresh owes nothing: the one in flight brings the data.
+    private var refreshOwedWhenLoadingEnds = false
 
     // v1.40 PR-8: adaptive refresh cadence. When `isAdaptive`, the timer is a
     // self-rescheduling one-shot whose delay is recomputed each tick from the
@@ -425,7 +432,12 @@ internal final class DataRefreshManager {
 
     /// The skip when a refresh is still in flight, with how long it has been.
     private func refreshInFlight() -> UploadOutcome {
-        .refreshInFlight(
+        // 1.61 (B2): no refresh of ours is in flight, so nothing behind this
+        // flag will bring the data. A cold launch's restore holds it across
+        // `completeAuthenticatedSignIn`, whose own `refreshAll()` lands here,
+        // and until now the first upload waited for the next timer tick.
+        if loadingSince == nil { refreshOwedWhenLoadingEnds = true }
+        return .refreshInFlight(
             seconds: loadingSince.map { max(0, Int(uptime() - $0)) }
         )
     }
@@ -1038,6 +1050,16 @@ internal final class DataRefreshManager {
             self.helperSyncObserver = nil
         }
         #endif
+    }
+
+    /// 1.61 (B2): whether a refresh was skipped behind a loading flag that a
+    /// sign-in or session restore held, and so is owed now that it has been
+    /// let go. Answers yes once per skip window: several skips behind the
+    /// same holder (its own `refreshAll()`, a timer tick, the helper's sync
+    /// notice) come out as one refresh.
+    func takeRefreshOwedWhenLoadingEnds() -> Bool {
+        defer { refreshOwedWhenLoadingEnds = false }
+        return refreshOwedWhenLoadingEnds
     }
 
     func cancelInFlightRefresh() {
@@ -2619,6 +2641,23 @@ extension AppState {
     @MainActor
     public func requestManualRefresh() {
         requestRefresh(.userInitiated)
+    }
+
+    /// 1.61 (B2): the refresh a sign-in or cold-launch session restore owes
+    /// once it lets go of `isLoading`.
+    ///
+    /// Each holds the flag across `completeAuthenticatedSignIn`, so that
+    /// helper's own `refreshAll()` was always skipped as `refresh_in_flight`,
+    /// as was any timer tick, helper sync notice or screen's refresh that came
+    /// in meanwhile. On a Mac whose menu was not opened, the first upload after
+    /// launch then waited for the next scheduled refresh, up to 30 minutes.
+    ///
+    /// One refresh however many were skipped, and none when nothing was: a
+    /// refresh that ran after the flag was let go needs no second one. None
+    /// either when the holder ended with nothing to refresh (signed out, Demo).
+    func runRefreshOwedWhenLoadingEnds() {
+        guard dataRefreshManager.takeRefreshOwedWhenLoadingEnds(), refreshRoute != .noOp else { return }
+        requestRefresh()
     }
 
     @MainActor
