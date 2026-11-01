@@ -102,7 +102,11 @@ public extension ProviderUsage {
     ///   inferred from its name, and for the session-lane names from how far
     ///   away its reset is. A tier whose length is neither stored nor
     ///   inferable that way gets no pace.
-    /// * Anything else: nil. The engine paces Codex and Claude only.
+    /// * Copilot (1.61, P3): the headline is the Premium quota's monthly
+    ///   window; its tier's length, or for a tier written before 1.61 (no
+    ///   length stored) the calendar month ending at the reset
+    ///   (`CopilotQuotaWindow`).
+    /// * Anything else: nil. The engine paces Codex, Claude and Copilot only.
     func paceWindowMinutes(resetsAt: Date, now: Date = .init()) -> Int? {
         switch providerKind {
         case .claude?:
@@ -119,6 +123,13 @@ public extension ProviderUsage {
             let tier = matching.first { $0.role == .primary } ?? matching.first
             guard let minutes = tier?.windowMinutes, minutes > 0 else { return nil }
             return minutes
+        case .copilot?:
+            let tier = tiers.first {
+                guard let reset = $0.reset_time.flatMap(sharedISO8601Parse) else { return false }
+                return abs(reset.timeIntervalSince(resetsAt)) < Self.resetMatchTolerance
+            }
+            if let minutes = tier?.windowMinutes, minutes > 0 { return minutes }
+            return CopilotQuotaWindow.minutes(endingAt: resetsAt)
         default:
             return nil
         }

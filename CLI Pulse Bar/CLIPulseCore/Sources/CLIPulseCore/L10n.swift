@@ -1051,6 +1051,7 @@ public enum L10n {
         public static var noVeniceBalance: String { tr("status_text.no_venice_balance") }
         public static var autoTopUp: String { tr("status_text.auto_top_up") }
         public static var planExpired: String { tr("status_text.plan_expired") }
+        public static var copilotSubscriptionEnded: String { tr("status_text.copilot_subscription_ended") }
         public static var overdueInvoices: String { tr("status_text.overdue_invoices") }
         public static func deployment(_ a0: String) -> String { tr("status_text.deployment", a0) }
         public static func model(_ a0: String) -> String { tr("status_text.model", a0) }

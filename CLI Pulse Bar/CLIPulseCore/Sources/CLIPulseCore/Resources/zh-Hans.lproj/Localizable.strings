@@ -2082,6 +2082,7 @@
 "status_text.no_venice_balance" = "没有可用的 Venice API 余额";
 "status_text.auto_top_up" = "自动充值";
 "status_text.plan_expired" = "方案已过期";
+"status_text.copilot_subscription_ended" = "Copilot 订阅已结束";
 "status_text.overdue_invoices" = "⚠︎ 有逾期账单";
 "status_text.deployment" = "部署：%@";
 "status_text.model" = "模型：%@";
