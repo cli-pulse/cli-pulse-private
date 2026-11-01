@@ -302,10 +302,11 @@ internal final class DataRefreshManager {
     /// Internal read for tests: they await the refresh a request started.
     private(set) var refreshTask: Task<Void, Never>?
     /// 1.61 (B2): a refresh was skipped behind an `isLoading` that no refresh
-    /// of this manager set (`loadingSince == nil`): a sign-in or session
-    /// restore holding the flag for its spinner. That holder owes one refresh
-    /// when it lets go (`takeRefreshOwedWhenLoadingEnds`). A refresh skipped
-    /// behind another refresh owes nothing: the one in flight brings the data.
+    /// of this manager set (`loadingSince == nil`): a sign-in, a session
+    /// restore or pairing holding the flag for its spinner. That holder owes
+    /// one refresh when it lets go (`takeRefreshOwedWhenLoadingEnds`). A skip
+    /// behind one of this manager's own refreshes is left as it was: that
+    /// refresh is the one bringing the data.
     private var refreshOwedWhenLoadingEnds = false
 
     // v1.40 PR-8: adaptive refresh cadence. When `isAdaptive`, the timer is a
@@ -432,8 +433,8 @@ internal final class DataRefreshManager {
 
     /// The skip when a refresh is still in flight, with how long it has been.
     private func refreshInFlight() -> UploadOutcome {
-        // 1.61 (B2): no refresh of ours is in flight, so nothing behind this
-        // flag will bring the data. A cold launch's restore holds it across
+        // 1.61 (B2): the flag is not held by a refresh of ours, so nothing
+        // behind it will bring the data. A cold launch's restore holds it across
         // `completeAuthenticatedSignIn`, whose own `refreshAll()` lands here,
         // and until now the first upload waited for the next timer tick.
         if loadingSince == nil { refreshOwedWhenLoadingEnds = true }
@@ -1065,6 +1066,11 @@ internal final class DataRefreshManager {
     func cancelInFlightRefresh() {
         refreshTask?.cancel()
         refreshTask = nil
+        // 1.61 (B2): a sign-out. What was owed was the session's it ends, and
+        // the cancelled refresh no longer holds the flag (the sign-out clears
+        // it), so a skip behind the next holder is that holder's.
+        refreshOwedWhenLoadingEnds = false
+        loadingSince = nil
     }
 
     func updateRefreshInterval(_ seconds: Int, isAuthenticated: Bool, isLocalMode: Bool = false, onRefreshRequested: @escaping @MainActor () async -> Void) {

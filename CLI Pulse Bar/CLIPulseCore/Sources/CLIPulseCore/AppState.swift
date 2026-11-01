@@ -121,7 +121,9 @@ public final class AppState: ObservableObject {
     }
     @Published public var isLoading = false {
         didSet {
-            // 1.61 (B2): a sign-in or session restore let go of the flag.
+            // 1.61 (B2): whoever held the flag let go of it. Only a holder
+            // that a refresh was skipped behind (a sign-in, a session restore)
+            // owes one; a refresh's own release finds nothing owed.
             guard oldValue, !isLoading else { return }
             runRefreshOwedWhenLoadingEnds()
         }

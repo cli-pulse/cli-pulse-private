@@ -54,15 +54,21 @@ final class RefreshAfterSessionRestoreTests: XCTestCase {
         AppState.persistAuthTokens(access: "access-old", refresh: "refresh-1")
 
         await state.restoreSession()
+        // The restore started the refresh loop. Stopped before anything else
+        // runs, so neither its timer nor a sync notice from a helper running
+        // on this Mac can add a refresh of its own.
+        state.stopRefreshLoop()
 
         XCTAssertTrue(state.isAuthenticated, "restored")
         XCTAssertFalse(state.isLoading)
         XCTAssertEqual(SessionRestoreStub.count(Self.healthPath), 0,
                        "the restore's own refresh was skipped behind it")
-        await state.dataRefreshManager.refreshTask?.value
+        let paid = state.dataRefreshManager.refreshTask
+        await paid?.value
         XCTAssertEqual(SessionRestoreStub.count(Self.healthPath), 1, "one refresh right after the restore")
         await Self.settle()
-        XCTAssertEqual(SessionRestoreStub.count(Self.healthPath), 1, "and only one")
+        XCTAssertEqual(state.dataRefreshManager.refreshTask, paid, "and no other was requested")
+        XCTAssertEqual(SessionRestoreStub.count(Self.healthPath), 1)
     }
 
     // MARK: - The restore is slower than the refresh at launch
@@ -77,11 +83,13 @@ final class RefreshAfterSessionRestoreTests: XCTestCase {
         XCTAssertEqual(SessionRestoreStub.count(Self.healthPath), 0, "skipped behind the restore")
 
         state.isLoading = false                  // the restore ends, signed in
-        await state.dataRefreshManager.refreshTask?.value
+        let paid = state.dataRefreshManager.refreshTask
+        await paid?.value
         XCTAssertEqual(SessionRestoreStub.count(Self.healthPath), 1, "one refresh right after the restore")
 
         await Self.settle()
-        XCTAssertEqual(SessionRestoreStub.count(Self.healthPath), 1, "and only one")
+        XCTAssertEqual(state.dataRefreshManager.refreshTask, paid, "and no other was requested")
+        XCTAssertEqual(SessionRestoreStub.count(Self.healthPath), 1)
     }
 
     /// The restore's own `refreshAll()` and a timer tick or helper notice that
@@ -94,9 +102,11 @@ final class RefreshAfterSessionRestoreTests: XCTestCase {
         await state.refreshAll()
         await state.refreshAll()
         state.isLoading = false
-        await state.dataRefreshManager.refreshTask?.value
+        let paid = state.dataRefreshManager.refreshTask
+        await paid?.value
         await Self.settle()
 
+        XCTAssertEqual(state.dataRefreshManager.refreshTask, paid, "one request")
         XCTAssertEqual(SessionRestoreStub.count(Self.healthPath), 1)
     }
 
@@ -108,13 +118,14 @@ final class RefreshAfterSessionRestoreTests: XCTestCase {
         state.isLoading = true
         await state.refreshAll()
         state.isLoading = false
-        await state.dataRefreshManager.refreshTask?.value
+        let paid = state.dataRefreshManager.refreshTask
+        await paid?.value
 
         state.isLoading = true
         state.isLoading = false
-        await state.dataRefreshManager.refreshTask?.value
         await Self.settle()
 
+        XCTAssertEqual(state.dataRefreshManager.refreshTask, paid, "not requested again")
         XCTAssertEqual(SessionRestoreStub.count(Self.healthPath), 1)
     }
 
@@ -174,6 +185,26 @@ final class RefreshAfterSessionRestoreTests: XCTestCase {
         state.isLoading = false
         await Self.settle()
         XCTAssertNil(state.dataRefreshManager.refreshTask, "the debt went with the session")
+        XCTAssertEqual(SessionRestoreStub.count(Self.healthPath), 0)
+    }
+
+    /// A sign-out while the restore still holds the flag: what was owed was
+    /// that session's, and nothing is refreshed after the sign-out (on an
+    /// iPhone that refresh would send the Watch an empty snapshot after the
+    /// sign-out it was just told about).
+    func test_a_sign_out_while_the_restore_holds_the_flag_cancels_what_was_owed() async {
+        KeychainHelper.inMemoryStoreForTesting = [:]
+        defer { KeychainHelper.inMemoryStoreForTesting = [:] }
+        let state = Self.signedInState()
+
+        state.isLoading = true
+        await state.refreshAll()                 // skipped behind the restore
+        state.signOut()                          // clears the flag, then signs out
+        await Self.settle()
+
+        XCTAssertFalse(state.isLoading)
+        XCTAssertFalse(state.isAuthenticated)
+        XCTAssertNil(state.dataRefreshManager.refreshTask, "nothing requested after the sign-out")
         XCTAssertEqual(SessionRestoreStub.count(Self.healthPath), 0)
     }
 
