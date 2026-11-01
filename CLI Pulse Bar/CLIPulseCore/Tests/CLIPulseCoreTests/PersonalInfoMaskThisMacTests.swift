@@ -39,7 +39,7 @@ final class PersonalInfoMaskThisMacTests: XCTestCase {
     // MARK: - The numbers
 
     func testThisMacsHostNameTakesThisMacsNumber() {
-        let numbers = DeviceNameNumbers.devices(Self.devices, thisDevice: .init(hostName: Self.host, id: "a-1"))
+        let numbers = DeviceNameNumbers.devices(Self.devices, thisDevice: .init(name: Self.host, id: "a-1"))
         XCTAssertEqual(Self.shown(Self.host, numbers), "设备 1", "this Mac's own rows")
         XCTAssertEqual(Self.shown("Studio Mac", numbers), "设备 1", "its rows the cloud sent, by its listed name")
         XCTAssertEqual(numbers.number(forID: "a-1"), 1, "the number its card and managed rows find by id")
@@ -56,7 +56,7 @@ final class PersonalInfoMaskThisMacTests: XCTestCase {
     /// Not paired to the account, or removed from it: after the list.
     func testAMacTheListDoesNotHaveIsNumberedAfterIt() {
         for id in [nil, "z-9"] as [String?] {
-            let numbers = DeviceNameNumbers.devices(Self.devices, thisDevice: .init(hostName: Self.host, id: id))
+            let numbers = DeviceNameNumbers.devices(Self.devices, thisDevice: .init(name: Self.host, id: id))
             XCTAssertEqual(Self.shown(Self.host, numbers), "设备 4", "id \(id ?? "nil")")
             XCTAssertNil(numbers.number(forID: "z-9"))
         }
@@ -66,7 +66,7 @@ final class PersonalInfoMaskThisMacTests: XCTestCase {
     /// host name: that is the number, and nothing comes after it.
     func testTheLocalRoutesOwnRowKeepsItsNumber() {
         let numbers = DeviceNameNumbers.devices(
-            [(id: "local", name: Self.host)], thisDevice: .init(hostName: Self.host, id: "local"))
+            [(id: "local", name: Self.host)], thisDevice: .init(name: Self.host, id: "local"))
         XCTAssertEqual(Self.shown(Self.host, numbers), "设备 1")
     }
 
@@ -74,29 +74,29 @@ final class PersonalInfoMaskThisMacTests: XCTestCase {
     /// one is meant; nor does one two listed devices share.
     func testAHostNameAnotherDeviceHasIsHidden() {
         let clash = DeviceNameNumbers.devices(
-            Self.devices, thisDevice: .init(hostName: "lab-server-01", id: "a-1"))
+            Self.devices, thisDevice: .init(name: "lab-server-01", id: "a-1"))
         XCTAssertEqual(Self.shown("lab-server-01", clash), "隐藏的设备")
         XCTAssertEqual(Self.shown("Studio Mac", clash), "设备 1", "this Mac's listed name is unaffected")
 
         // Not paired: the same rule, not the other device's number.
         let unpaired = DeviceNameNumbers.devices(
-            Self.devices, thisDevice: .init(hostName: "lab-server-01", id: nil))
+            Self.devices, thisDevice: .init(name: "lab-server-01", id: nil))
         XCTAssertEqual(Self.shown("lab-server-01", unpaired), "隐藏的设备")
 
         let shared = DeviceNameNumbers.devices(
             Self.devices + [(id: "d-4", name: Self.host), (id: "e-5", name: Self.host)],
-            thisDevice: .init(hostName: Self.host, id: "a-1"))
+            thisDevice: .init(name: Self.host, id: "a-1"))
         XCTAssertEqual(Self.shown(Self.host, shared), "隐藏的设备")
     }
 
     /// The listed name and the host name being the same is the plain case.
     func testAHostNameEqualToItsListedName() {
-        let numbers = DeviceNameNumbers.devices(Self.devices, thisDevice: .init(hostName: "Studio Mac", id: "a-1"))
+        let numbers = DeviceNameNumbers.devices(Self.devices, thisDevice: .init(name: "Studio Mac", id: "a-1"))
         XCTAssertEqual(Self.shown("Studio Mac", numbers), "设备 1")
     }
 
     func testWithTheSwitchOffTheHostNameShows() {
-        let numbers = DeviceNameNumbers.devices(Self.devices, thisDevice: .init(hostName: Self.host, id: "a-1"))
+        let numbers = DeviceNameNumbers.devices(Self.devices, thisDevice: .init(name: Self.host, id: "a-1"))
         XCTAssertEqual(Self.shown(Self.host, numbers, hide: false), Self.host)
     }
 
@@ -124,7 +124,7 @@ final class PersonalInfoMaskThisMacTests: XCTestCase {
         state.refreshThisMacPairing(helperConfig: Self.pairing(device: "a-1", user: user), readHelperStatus: { nil })
         state.refreshThisMacDevice(hostName: Self.host)
 
-        XCTAssertEqual(state.thisMacDevice, .init(hostName: Self.host, id: "a-1"))
+        XCTAssertEqual(state.thisMacDevice, .init(name: Self.host, id: "a-1"))
         XCTAssertEqual(Self.shown(Self.host, state.deviceNameNumbers), "设备 1")
 
         // Demo shows no rows of this Mac's.
@@ -154,7 +154,7 @@ final class PersonalInfoMaskThisMacTests: XCTestCase {
         await state.refreshAll()
 
         let host = await HostIdentity.shared.hostName()
-        XCTAssertTrue(state.thisMacDevice?.hostName == host, "the host name this Mac's rows carry")
+        XCTAssertTrue(state.thisMacDevice?.name == host, "the host name this Mac's rows carry")
 
         // Signed out, nothing is put back.
         state.thisMacDevice = nil
@@ -172,7 +172,7 @@ final class PersonalInfoMaskThisMacTests: XCTestCase {
         state.isPaired = false
         XCTAssertEqual(state.refreshRoute, .localOnly)
         state.refreshThisMacDevice(hostName: Self.host)
-        XCTAssertEqual(state.thisMacDevice, .init(hostName: Self.host, id: "local"))
+        XCTAssertEqual(state.thisMacDevice, .init(name: Self.host, id: "local"))
     }
 
     /// Entering Demo forgets this Mac: Demo's rows are Demo's.

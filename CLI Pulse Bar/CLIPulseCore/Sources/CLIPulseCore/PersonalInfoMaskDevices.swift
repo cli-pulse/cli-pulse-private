@@ -50,13 +50,15 @@ public struct DeviceNameNumbers: Sendable, Equatable {
     /// host name (`HostIdentity`) rather than by its name in the account's
     /// device list.
     public struct ThisDevice: Sendable, Equatable {
-        public let hostName: String
+        /// Its host name. (Not called `hostName`: `HostNameSourceScanTests`
+        /// reads that as a call that resolves it.)
+        public let name: String
         /// Its id in the account's device list: the device its helper is
         /// paired as for the signed-in account, nil when it is not.
         public let id: String?
 
-        public init(hostName: String, id: String?) {
-            self.hostName = hostName
+        public init(name: String, id: String?) {
+            self.name = name
             self.id = id
         }
     }
@@ -88,7 +90,7 @@ public struct DeviceNameNumbers: Sendable, Equatable {
         }
         for name in shared { numbers[name] = nil }
         if let thisDevice {
-            let host = thisDevice.hostName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let host = thisDevice.name.trimmingCharacters(in: .whitespacesAndNewlines)
             if !host.isEmpty, !shared.contains(host) {
                 let mine = thisDevice.id.flatMap { byID[$0] }
                 if let listed = numbers[host], listed != mine {

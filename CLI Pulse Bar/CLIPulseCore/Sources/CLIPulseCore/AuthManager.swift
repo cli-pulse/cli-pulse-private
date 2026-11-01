@@ -521,7 +521,7 @@ extension AppState {
     /// Demo shows no rows of this Mac's.
     func refreshThisMacDevice(hostName: String) {
         let id = thisMacPairedDeviceId ?? (refreshRoute == .localOnly ? "local" : nil)
-        let next = isDemoMode ? nil : DeviceNameNumbers.ThisDevice(hostName: hostName, id: id)
+        let next = isDemoMode ? nil : DeviceNameNumbers.ThisDevice(name: hostName, id: id)
         if thisMacDevice != next { thisMacDevice = next }
     }
     #endif
