@@ -904,9 +904,32 @@ public final class AppState: ObservableObject {
     // MARK: - Settings - General
     nonisolated static let tokenKeychainKey = "cli_pulse_token"
 
+    /// The stored access token: the one the Keychain could not take yet, if
+    /// any (1.61, `SessionTokenStore`), else the Keychain's.
     public var storedToken: String {
-        get { KeychainHelper.load(key: Self.tokenKeychainKey) ?? "" }
+        get { Self.loadStoredAccessToken() ?? "" }
         set { Self.persistAuthTokens(access: newValue, refresh: storedRefreshToken) }
+    }
+
+    nonisolated static func loadStoredAccessToken() -> String? {
+        if let unsaved = SessionTokenStore.shared.unsavedPair {
+            return unsaved.access.isEmpty ? nil : unsaved.access
+        }
+        return KeychainHelper.load(key: tokenKeychainKey)
+    }
+
+    /// 1.61: whether there is a stored session, there is none, or the Keychain
+    /// cannot say because it is locked. Up to 1.61 a locked read was taken for
+    /// "none": an iPhone launched in the background while locked (a Watch's
+    /// `sendMessage` does that) restored nothing and stayed signed out.
+    var storedTokenRead: KeychainHelper.Read {
+        if let unsaved = SessionTokenStore.shared.unsavedPair {
+            return unsaved.access.isEmpty ? .absent : .value(unsaved.access)
+        }
+        switch KeychainHelper.read(key: Self.tokenKeychainKey) {
+        case .value(let token) where token.isEmpty: return .absent
+        case let read: return read
+        }
     }
 
     /// Refresh cadence in seconds. `0` = the v1.40 "Adaptive" mode (2–30 min by
@@ -1074,6 +1097,14 @@ public final class AppState: ObservableObject {
     /// Demo nor in local mode, and signed it back in.
     private(set) var sessionGeneration: UInt64 = 0
     func beginSessionGeneration() { sessionGeneration &+= 1 }
+    /// 1.61: a session restore is out (`restoreSession()`), however it started.
+    var sessionRestoresInFlight = 0
+    /// 1.61: the restore `restoreSessionIfIdle()` started. Kept so a test can
+    /// wait for it.
+    var idleSessionRestoreTask: Task<Void, Never>?
+    #if os(iOS)
+    var protectedDataObservers: [NSObjectProtocol] = []
+    #endif
     /// 1.61 (B3): when the sleeping retry is due (`deferredSessionRestoreClock`).
     var deferredSessionRestoreDueAt: TimeInterval?
     /// 1.61 (B3): a deferred restore is out now; triggers meanwhile are noted
@@ -1265,10 +1296,15 @@ public final class AppState: ObservableObject {
             }
             defaults.removeObject(forKey: "cli_pulse_token")
 
+            #if os(iOS)
+            observeProtectedData()
+            #endif
             Task {
                 await api.setTokenRefreshHandler { newAccess, newRefresh in
                     Self.persistRotatedTokens(access: newAccess, refresh: newRefresh)
                 }
+                // 1.61: no refresh while its new tokens could not be written.
+                await api.setRotationPersistenceCheck { ProtectedDataState.shared.isAvailable }
                 await restoreSession()
             }
         }

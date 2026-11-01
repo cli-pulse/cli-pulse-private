@@ -88,6 +88,49 @@ public enum KeychainHelper {
 
     private static let isRunningUnderXCTest = NSClassFromString("XCTestCase") != nil
 
+    /// 1.61: the in-memory store behaves as a locked iPhone's Keychain does for
+    /// `WhenUnlocked` items: reads find nothing readable, writes and deletes
+    /// fail. Honoured only under XCTest.
+    nonisolated(unsafe) public static var lockedForTesting = false
+
+    /// 1.61: what a read found. A locked iPhone (and a Mac whose login keychain
+    /// is locked) cannot read its items: that is `.unreadable`, which `load`
+    /// reports as nil, exactly as it reports an item that is not there.
+    public enum Read: Equatable, Sendable {
+        case value(String)
+        case absent
+        case unreadable
+    }
+
+    public static func read(key: String, accessGroup: String? = nil) -> Read {
+        if isRunningUnderXCTest {
+            if lockedForTesting { return .unreadable }
+            return inMemoryStoreForTesting[testStoreKey(key, accessGroup)].map(Read.value) ?? .absent
+        }
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        if let group = accessGroup {
+            query[kSecAttrAccessGroup as String] = group
+        }
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        switch status {
+        case errSecSuccess:
+            guard let data = item as? Data, let value = String(data: data, encoding: .utf8) else { return .unreadable }
+            return .value(value)
+        case errSecItemNotFound:
+            return .absent
+        default:
+            // errSecInteractionNotAllowed (-25308) on a locked device, among others.
+            return .unreadable
+        }
+    }
+
     private static func testStoreKey(_ key: String, _ accessGroup: String?) -> String {
         "\(accessGroup ?? "-")|\(key)"
     }
@@ -125,6 +168,7 @@ public enum KeychainHelper {
             return false
         }
         if isRunningUnderXCTest {
+            if lockedForTesting { return false }
             inMemoryStoreForTesting[testStoreKey(key, accessGroup)] = value
             return true
         }
@@ -186,6 +230,7 @@ public enum KeychainHelper {
             query[kSecAttrAccessGroup as String] = group
         }
         if isRunningUnderXCTest {
+            if lockedForTesting { return nil }
             return inMemoryStoreForTesting[testStoreKey(key, accessGroup)]
         }
         var item: CFTypeRef?
@@ -199,6 +244,7 @@ public enum KeychainHelper {
     /// `WhenUnlocked` item as missing). True only for `errSecItemNotFound`.
     public static func isAbsent(key: String, accessGroup: String? = nil) -> Bool {
         if isRunningUnderXCTest {
+            if lockedForTesting { return false }
             return inMemoryStoreForTesting[testStoreKey(key, accessGroup)] == nil
         }
         var query: [String: Any] = [
@@ -227,6 +273,7 @@ public enum KeychainHelper {
             query[kSecAttrAccessGroup as String] = group
         }
         if isRunningUnderXCTest {
+            if lockedForTesting { return false }
             inMemoryStoreForTesting[testStoreKey(key, accessGroup)] = nil
             return true
         }

@@ -111,6 +111,12 @@ public struct APIAuthorizationLease: Equatable, Sendable {
     fileprivate let userID: String?
 }
 
+/// 1.61: a refresh not attempted because its new tokens could not be written
+/// now (a locked iPhone). Not a refusal: the session is kept.
+public struct SessionRefreshPostponed: Error, Equatable {
+    public init() {}
+}
+
 /// 1.61: a count of the app's sign-outs that any thread can read and advance
 /// without waiting for the API client's actor (`fenceCurrentSession()`).
 final class SignOutFence: @unchecked Sendable {
@@ -187,6 +193,16 @@ public actor APIClient {
     /// (`WatchCredentialRelay`). Belongs to one session: installing or
     /// removing a session clears it.
     private var sessionRenewer: SessionRenewer?
+
+    /// 1.61: whether a refresh's new tokens could be written now. Refreshing
+    /// spends the refresh token on the server; on a locked iPhone the new pair
+    /// could not reach the Keychain, which would keep the spent one for the
+    /// next launch. Nil: always.
+    private var rotationPersistenceCheck: (@Sendable () -> Bool)?
+
+    public func setRotationPersistenceCheck(_ check: (@Sendable () -> Bool)?) {
+        rotationPersistenceCheck = check
+    }
 
     /// Whether an expired or refused access token can be renewed at all.
     private var canRenewSession: Bool { refreshToken != nil || sessionRenewer != nil }
@@ -510,6 +526,11 @@ public actor APIClient {
         }
         guard let currentRefreshToken = refreshToken else {
             throw APIError.tokenExpired
+        }
+        // 1.61: no answer for now, never a refusal: the session is kept, and
+        // the refresh happens once the device is unlocked.
+        if let check = rotationPersistenceCheck, !check() {
+            throw SessionRefreshPostponed()
         }
         guard let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=refresh_token") else {
             throw APIError.invalidResponse

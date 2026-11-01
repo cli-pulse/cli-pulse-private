@@ -2,6 +2,9 @@ import Foundation
 #if os(macOS)
 import AppKit
 #endif
+#if os(iOS)
+import UIKit
+#endif
 
 // MARK: - Auth Notification Names
 
@@ -193,7 +196,7 @@ public final class AuthManager {
         // 1.61: the session the client removed is the one signed out of, even
         // when a refresh rotated it (and wrote the new pair) after the app
         // read `currentAccessToken`.
-        let storedToken = KeychainHelper.load(key: AppState.tokenKeychainKey)
+        let storedToken = AppState.loadStoredAccessToken()
         if storedToken == nil || storedToken == currentAccessToken || storedToken?.isEmpty == true
             || (removed != nil && storedToken == removed) {
             storeAuthTokens(access: "", refresh: nil)
@@ -785,8 +788,23 @@ extension AppState {
     #endif
 
     public func restoreSession() async {
+        sessionRestoresInFlight += 1
+        defer { sessionRestoresInFlight -= 1 }
+        #if os(iOS)
+        // 1.61: a restore that refreshes must also write the new tokens.
+        let backgroundTime = BackgroundTime("Session restore")
+        defer { backgroundTime.end() }
+        #endif
         // 1.61 (B3): when this try went out, for the spacing of the next.
         deferredSessionRestoreLastStartedAt = deferredSessionRestoreClock()
+        // 1.61: a locked Keychain is not an empty one. Deferred until it can be
+        // read (`protectedDataDidBecomeAvailable`), instead of the "never
+        // signed in" landing that kept the app signed out until it was killed.
+        if !isDemoMode, case .unreadable = storedTokenRead {
+            guard !isAuthenticated, !isLocalMode else { return }
+            applyDeferredSessionRestore()
+            return
+        }
         // 1.61: the session this try answers for. A sign-in, a sign-out, Demo
         // or local mode while it is out ends it (`sessionGeneration`).
         let generation = sessionGeneration
@@ -950,7 +968,9 @@ extension AppState {
         deferredSessionRestoreDueAt = nil
         // Something else decided meanwhile: a sign-in, Demo, local mode,
         // or a sign-out that deleted the tokens.
-        guard !isAuthenticated, !isDemoMode, !isLocalMode, !storedToken.isEmpty else {
+        // 1.61: a Keychain that cannot be read (locked) is not one without a
+        // session; the try goes ahead and defers again.
+        guard !isAuthenticated, !isDemoMode, !isLocalMode, storedTokenRead != .absent else {
             cancelDeferredSessionRestore()
             return
         }
@@ -1038,7 +1058,8 @@ extension AppState {
     }
 
     var storedRefreshToken: String? {
-        KeychainHelper.load(key: AuthManager.refreshTokenKeychainKey)
+        if let unsaved = SessionTokenStore.shared.unsavedPair { return unsaved.refresh }
+        return KeychainHelper.load(key: AuthManager.refreshTokenKeychainKey)
     }
 
     /// What the API client does with each rotation of the signed-in session
@@ -1055,20 +1076,93 @@ extension AppState {
         )
     }
 
+    /// Every write of the session's tokens. 1.61: a pair the Keychain refuses
+    /// (a locked iPhone) is kept in memory, read back in its place, and written
+    /// again when it can be (`SessionTokenStore`); up to 1.61 it was dropped,
+    /// and the Keychain kept a refresh token the server had already spent.
     nonisolated static func persistAuthTokens(access: String, refresh: String?) {
-        if access.isEmpty {
-            KeychainHelper.delete(key: Self.tokenKeychainKey)
-        } else {
-            KeychainHelper.save(key: Self.tokenKeychainKey, value: access)
-        }
-
-        if let refresh, !refresh.isEmpty {
-            KeychainHelper.save(key: AuthManager.refreshTokenKeychainKey, value: refresh)
-        } else {
-            KeychainHelper.delete(key: AuthManager.refreshTokenKeychainKey)
-        }
-
+        SessionTokenStore.shared.persist(.init(access: access, refresh: refresh))
         UserDefaults.standard.removeObject(forKey: "cli_pulse_token")
+    }
+
+    /// 1.61: writes a pair the Keychain refused earlier, if there is one.
+    /// Called when protected data comes back, when the app comes to the
+    /// front, and before each refresh.
+    public func saveUnsavedSessionTokens() {
+        SessionTokenStore.shared.retryUnsaved()
+    }
+
+    #if os(iOS)
+    /// 1.61: the iPhone's protected data going and coming back. Registered at
+    /// launch (`init`), on the main queue.
+    func observeProtectedData() {
+        ProtectedDataState.shared.set(available: UIApplication.shared.isProtectedDataAvailable)
+        let center = NotificationCenter.default
+        protectedDataObservers = [
+            center.addObserver(forName: UIApplication.protectedDataWillBecomeUnavailableNotification,
+                               object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.protectedDataWillBecomeUnavailable() }
+            },
+            center.addObserver(forName: UIApplication.protectedDataDidBecomeAvailableNotification,
+                               object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.protectedDataDidBecomeAvailable() }
+            },
+            center.addObserver(forName: UIApplication.willEnterForegroundNotification,
+                               object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.saveUnsavedSessionTokens() }
+            },
+        ]
+    }
+    #endif
+
+    func protectedDataWillBecomeUnavailable() {
+        ProtectedDataState.shared.set(available: false)
+    }
+
+    /// 1.61: the iPhone was unlocked. Tokens a refresh could not write are
+    /// written now, and a restore that could not read the Keychain (or none
+    /// that ran at all) tries again.
+    func protectedDataDidBecomeAvailable() {
+        ProtectedDataState.shared.set(available: true)
+        saveUnsavedSessionTokens()
+        restoreSessionIfIdle()
+    }
+
+    /// 1.61: this iPhone refreshes its own session because the Watch needs a
+    /// token (`PhoneSessionManager.credentialAnswer`). Nil when it could not.
+    ///
+    /// A refusal ends the session here, exactly as a refusal inside a data
+    /// refresh does (`consumeTokenExpiry`, then the token-expired sign-out):
+    /// up to 1.61 the client dropped its tokens and nothing else noticed, so
+    /// the app looked signed in with no token, every later refresh stopped
+    /// silently at the lease, and the Watch was told to wait for good.
+    public func refreshSessionForWatch() async -> String? {
+        guard isAuthenticated, !isDemoMode,
+              let lease = await api.authorizationLease(expectedUserID: userId) else { return nil }
+        do {
+            return try await api.refreshAccessToken().accessToken
+        } catch let error as APIError where error == .tokenExpired {
+            if isAuthenticated, await api.consumeTokenExpiry(for: lease) {
+                refreshCallbacks().handleTokenExpired(error.localizedDescription)
+            }
+            return nil
+        } catch {
+            return nil
+        }
+    }
+
+    /// 1.61: a signed-out app with a session stored and no restore out tries
+    /// one now: the deferred one if it is waiting, else a fresh one. The iPhone
+    /// calls it when it is unlocked and when the Watch asks for a token it
+    /// cannot give.
+    public func restoreSessionIfIdle() {
+        guard !isAuthenticated, !isDemoMode, !isLocalMode, sessionRestoresInFlight == 0 else { return }
+        if deferredSessionRestoreTask != nil || deferredSessionRestoreInFlight {
+            retryDeferredSessionRestoreNow()
+            return
+        }
+        guard case .value = storedTokenRead else { return }
+        idleSessionRestoreTask = Task { [weak self] in await self?.restoreSession() }
     }
 
     // v1.10 P2-3 slice 3: parameter renamed from `authState` to `session` to
