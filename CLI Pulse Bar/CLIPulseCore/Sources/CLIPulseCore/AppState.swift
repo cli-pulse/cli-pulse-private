@@ -1054,6 +1054,28 @@ public final class AppState: ObservableObject {
     /// server (`applyDeferredSessionRestore`), and how many have been made.
     var deferredSessionRestoreTask: Task<Void, Never>?
     var deferredSessionRestoreAttempts = 0
+    /// 1.61 (B3): when the sleeping retry is due (`deferredSessionRestoreClock`).
+    var deferredSessionRestoreDueAt: TimeInterval?
+    /// 1.61 (B3): a deferred restore is out now; triggers meanwhile are noted
+    /// (`deferredSessionRestoreTriggeredInFlight`), not run.
+    var deferredSessionRestoreInFlight = false
+    var deferredSessionRestoreTriggeredInFlight = false
+    /// 1.61 (B3): when the last deferred restore went out, for the spacing
+    /// between two of them (`deferredSessionRestoreMinimumSpacing`).
+    var deferredSessionRestoreLastStartedAt: TimeInterval?
+    /// 1.61 (B3): the retry a trigger started. Never cancelled (it may be the
+    /// one that signs in); kept so a test can wait for it.
+    var deferredSessionRestoreRetryTask: Task<Void, Never>?
+    /// 1.61 (B3): seconds the system has been awake. A seam for tests.
+    var deferredSessionRestoreClock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    /// 1.61 (B3): what watches for the network coming back while a restore is
+    /// deferred, and how one is made. The maker is a seam for tests.
+    var deferredSessionRestoreNetworkMonitor: NetworkReturnWatching?
+    var makeNetworkReturnMonitor: () -> NetworkReturnWatching = { NWPathNetworkReturnMonitor() }
+    #if os(macOS)
+    /// 1.61 (B3): the app coming to the front while a restore is deferred.
+    var deferredSessionRestoreActivationObserver: NSObjectProtocol?
+    #endif
     let dataRefreshManager: DataRefreshManager
     private let providerConfigDefaults: UserDefaults
     /// The app group the LoginItem helper reads (`HelperIPC.suiteName`): the

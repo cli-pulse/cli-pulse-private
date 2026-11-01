@@ -68,6 +68,9 @@ struct CLIPulseApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         handleWidgetRefreshRequest()
+                        // 1.61 (B3): a restore that could not reach the server
+                        // at launch tries now, not at its next backoff tick.
+                        appState.retryDeferredSessionRestoreNow()
                     }
                 }
                 .onOpenURL { url in

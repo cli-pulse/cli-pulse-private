@@ -1,4 +1,7 @@
 import Foundation
+#if os(macOS)
+import AppKit
+#endif
 
 // MARK: - Auth Notification Names
 
@@ -715,6 +718,8 @@ extension AppState {
     #endif
 
     public func restoreSession() async {
+        // 1.61 (B3): when this try went out, for the spacing of the next.
+        deferredSessionRestoreLastStartedAt = deferredSessionRestoreClock()
         let result = await authManager.restoreSession(
             isDemoMode: isDemoMode,
             accessToken: storedToken,
@@ -806,6 +811,7 @@ extension AppState {
         lastError = L10n.dashboard.serverOffline
         selectedTab = Self.signedOutLandingTab
         scheduleDeferredSessionRestore()
+        startDeferredSessionRestoreTriggers()
     }
 
     /// Seconds before deferred restore attempt `attempt` (1-based): 5 s,
@@ -816,10 +822,34 @@ extension AppState {
         return min(60, 5 * pow(2, exponent))
     }
 
+    /// 1.61 (B3): the least time between two tries, however they were set
+    /// off: the backoff's first step. A network that keeps dropping and coming
+    /// back, or an app brought to the front again and again, costs at most
+    /// one `GET /auth/v1/user` per 5 s.
+    nonisolated static let deferredSessionRestoreMinimumSpacing: TimeInterval = 5
+
+    /// 1.61 (B3): triggers this close to the try they find out are the same
+    /// moment told twice (on a Mac, opening the menu also makes the app
+    /// active), not news the try went out too early to see.
+    nonisolated static let deferredSessionRestoreSameMomentWindow: TimeInterval = 1
+
     private func scheduleDeferredSessionRestore() {
         deferredSessionRestoreAttempts += 1
-        let delay = Self.deferredSessionRestoreDelay(attempt: deferredSessionRestoreAttempts)
+        var delay = Self.deferredSessionRestoreDelay(attempt: deferredSessionRestoreAttempts)
+        // 1.61 (B3): the app came to the front, or the network came back,
+        // while the try that just failed was out, so it may have gone out too
+        // early. Once more as soon as the spacing allows, not at the backoff.
+        if deferredSessionRestoreTriggeredInFlight {
+            deferredSessionRestoreTriggeredInFlight = false
+            delay = min(delay, deferredSessionRestoreSpacingWait())
+        }
+        armDeferredSessionRestore(after: delay)
+    }
+
+    /// The sleeping retry, due `delay` seconds from now, in place of any other.
+    private func armDeferredSessionRestore(after delay: TimeInterval) {
         deferredSessionRestoreTask?.cancel()
+        deferredSessionRestoreDueAt = deferredSessionRestoreClock() + delay
         deferredSessionRestoreTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard !Task.isCancelled, let self else { return }
@@ -827,25 +857,108 @@ extension AppState {
             // cancels any pending retry, and cancelling THIS task would cancel
             // the sign-in work (`refreshAll`) that runs inside it.
             self.deferredSessionRestoreTask = nil
-            // Something else decided meanwhile: a sign-in, Demo, local mode,
-            // or a sign-out that deleted the tokens.
-            guard
-                !self.isAuthenticated,
-                !self.isDemoMode,
-                !self.isLocalMode,
-                !self.storedToken.isEmpty
-            else {
-                self.deferredSessionRestoreAttempts = 0
-                return
-            }
-            await self.restoreSession()
+            await self.runDeferredSessionRestore()
         }
+    }
+
+    /// 1.61 (B3): seconds until the spacing allows another try, 0 if it does.
+    private func deferredSessionRestoreSpacingWait() -> TimeInterval {
+        guard let last = deferredSessionRestoreLastStartedAt else { return 0 }
+        return max(0, Self.deferredSessionRestoreMinimumSpacing - (deferredSessionRestoreClock() - last))
+    }
+
+    /// One deferred try, whether the backoff or a trigger set it off.
+    private func runDeferredSessionRestore() async {
+        deferredSessionRestoreInFlight = true
+        defer { deferredSessionRestoreInFlight = false }
+        deferredSessionRestoreDueAt = nil
+        // Something else decided meanwhile: a sign-in, Demo, local mode,
+        // or a sign-out that deleted the tokens.
+        guard !isAuthenticated, !isDemoMode, !isLocalMode, !storedToken.isEmpty else {
+            cancelDeferredSessionRestore()
+            return
+        }
+        await restoreSession()
+        // Not deferred again (restored, refused, or answered after a sign-in,
+        // Demo or local mode): nothing is owed any more, so stop watching.
+        if deferredSessionRestoreTask == nil { cancelDeferredSessionRestore() }
+    }
+
+    /// 1.61 (B3): the app came to the front (macOS: it became active, or its
+    /// menu opened; iOS: its scene became active), or the network came back.
+    /// A deferred restore tries now instead of at its next backoff tick, and
+    /// does nothing otherwise.
+    ///
+    /// No storms: while a try is out, any number of triggers make at most one
+    /// more, as soon as that one fails (none if they came with it, within
+    /// `deferredSessionRestoreSameMomentWindow`); and two tries are never closer than
+    /// `deferredSessionRestoreMinimumSpacing`, so a trigger too soon after the
+    /// last brings the sleeping retry forward to when the spacing allows.
+    /// The backoff counts on: a try a trigger set off that fails schedules the
+    /// next one a backoff step further, as any failed try does.
+    public func retryDeferredSessionRestoreNow() {
+        if deferredSessionRestoreInFlight {
+            let sinceItWentOut = deferredSessionRestoreLastStartedAt.map { deferredSessionRestoreClock() - $0 } ?? .infinity
+            if sinceItWentOut >= Self.deferredSessionRestoreSameMomentWindow {
+                deferredSessionRestoreTriggeredInFlight = true
+            }
+            return
+        }
+        guard deferredSessionRestoreTask != nil, let due = deferredSessionRestoreDueAt else { return }
+        let wait = deferredSessionRestoreSpacingWait()
+        if wait > 0 {
+            if deferredSessionRestoreClock() + wait < due { armDeferredSessionRestore(after: wait) }
+            return
+        }
+        deferredSessionRestoreTask?.cancel()
+        deferredSessionRestoreTask = nil
+        // Claimed now, before the task runs: a second trigger meanwhile is
+        // noted, not a second try.
+        deferredSessionRestoreInFlight = true
+        deferredSessionRestoreRetryTask = Task { [weak self] in
+            await self?.runDeferredSessionRestore()
+        }
+    }
+
+    /// 1.61 (B3): watched only while a restore is deferred. Stopped by
+    /// `cancelDeferredSessionRestore()`: a sign-in, a sign-out, or the next try
+    /// finding that Demo or local mode was chosen meanwhile.
+    private func startDeferredSessionRestoreTriggers() {
+        if deferredSessionRestoreNetworkMonitor == nil {
+            let monitor = makeNetworkReturnMonitor()
+            monitor.start { [weak self] in self?.retryDeferredSessionRestoreNow() }
+            deferredSessionRestoreNetworkMonitor = monitor
+        }
+        #if os(macOS)
+        // The menu opening is `notePopoverActivated()`.
+        if deferredSessionRestoreActivationObserver == nil {
+            deferredSessionRestoreActivationObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.retryDeferredSessionRestoreNow() }
+            }
+        }
+        #endif
+    }
+
+    private func stopDeferredSessionRestoreTriggers() {
+        deferredSessionRestoreNetworkMonitor?.cancel()
+        deferredSessionRestoreNetworkMonitor = nil
+        #if os(macOS)
+        if let observer = deferredSessionRestoreActivationObserver {
+            NotificationCenter.default.removeObserver(observer)
+            deferredSessionRestoreActivationObserver = nil
+        }
+        #endif
     }
 
     func cancelDeferredSessionRestore() {
         deferredSessionRestoreTask?.cancel()
         deferredSessionRestoreTask = nil
         deferredSessionRestoreAttempts = 0
+        deferredSessionRestoreDueAt = nil
+        deferredSessionRestoreTriggeredInFlight = false
+        stopDeferredSessionRestoreTriggers()
     }
 
     var storedRefreshToken: String? {
