@@ -111,6 +111,15 @@ public struct APIAuthorizationLease: Equatable, Sendable {
     fileprivate let userID: String?
 }
 
+/// 1.61: a count of the app's sign-outs that any thread can read and advance
+/// without waiting for the API client's actor (`fenceCurrentSession()`).
+final class SignOutFence: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count: UInt64 = 0
+    var value: UInt64 { lock.lock(); defer { lock.unlock() }; return count }
+    func advance() { lock.lock(); count &+= 1; lock.unlock() }
+}
+
 public actor APIClient {
     private enum AuthorizationLeaseError: LocalizedError {
         case changed
@@ -145,6 +154,14 @@ public actor APIClient {
     /// sign-out, `updateToken` with a different token), never on a refresh
     /// rotation of the same session. See `takeSession(ifEpoch:)`.
     private var sessionEpoch: UInt64 = 0
+    /// 1.61: the app's sign-outs, counted the moment each happens
+    /// (`fenceCurrentSession()`, from the main thread, before the sign-out's
+    /// own work reaches this actor). A session installed before the latest
+    /// one is fenced: its refreshes are neither installed nor persisted, and
+    /// `signOutServer` removes it whatever token it was handed.
+    private nonisolated let signOutFence = SignOutFence()
+    /// `signOutFence` when the current session epoch began.
+    private var sessionFenceMark: UInt64 = 0
     private var externalAuthorizationTransitionGeneration: UInt64 = 0
     /// The exact lease whose refresh token was rejected and compare-cleared.
     /// Kept only until DataRefreshManager consumes the expiry or a different
@@ -228,10 +245,37 @@ public actor APIClient {
         (supabaseURL, supabaseAnonKey)
     }
 
+    /// A new session epoch: a session installed or removed. It is not fenced
+    /// by any sign-out that came before it.
+    private func beginSessionEpoch() {
+        sessionEpoch &+= 1
+        sessionFenceMark = signOutFence.value
+    }
+
+    /// Whether the app signed out after the session held now was installed.
+    private var isSessionFenced: Bool { signOutFence.value != sessionFenceMark }
+
+    /// 1.61: the app is signing out (`AppState.signOut()`), callable from any
+    /// thread and effective at once. The sign-out itself reaches this actor
+    /// later (`signOutServer`), and until then a refresh that was already out,
+    /// a session restore's among them, could land: it would rotate the
+    /// session the user just left, write the new pair to the Keychain, and
+    /// leave `signOutServer` holding a token that no longer matches, so the
+    /// tokens survived the sign-out and the next restore signed back in.
+    public nonisolated func fenceCurrentSession() {
+        signOutFence.advance()
+    }
+
+    /// 1.61: whether the session `epoch` names is still the one held, and no
+    /// sign-out has come since. A restore answers for that session only.
+    public func holdsSession(epoch: UInt64) -> Bool {
+        sessionEpoch == epoch && !isSessionFenced
+    }
+
     public func updateToken(_ token: String?) {
         if accessToken != token {
             authorizationGeneration &+= 1
-            sessionEpoch &+= 1
+            beginSessionEpoch()
             pendingExpiredAuthorizationLease = nil
         }
         self.accessToken = token
@@ -328,7 +372,7 @@ public actor APIClient {
         if accessToken != nil || refreshToken != nil || userId != nil {
             authorizationGeneration &+= 1
         }
-        sessionEpoch &+= 1
+        beginSessionEpoch()
         pendingExpiredAuthorizationLease = nil
         accessToken = nil
         refreshToken = nil
@@ -402,7 +446,7 @@ public actor APIClient {
         // A successful sign-in is a new authorization session even when a
         // test/stub happens to return the same token text.
         authorizationGeneration &+= 1
-        sessionEpoch &+= 1
+        beginSessionEpoch()
         pendingExpiredAuthorizationLease = nil
         sessionRenewer = nil
         self.accessToken = accessToken
@@ -511,7 +555,11 @@ public actor APIClient {
         // already reflects the newer reality. Return what we fetched so the
         // originating caller's retry doesn't spuriously throw, but leave the
         // current auth state untouched.
-        guard self.refreshToken == currentRefreshToken else {
+        //
+        // 1.61: the same for a session the app has signed out of since
+        // (`fenceCurrentSession`), even while this actor still holds it: the
+        // sign-out's own work may not have reached here yet.
+        guard self.refreshToken == currentRefreshToken, !isSessionFenced else {
             return (newAccess, newRefresh)
         }
 
@@ -654,18 +702,19 @@ public actor APIClient {
     /// concurrent request completed, or a sign-in still finishing — and must
     /// not be replaced by an older read whose refresh token may be spent.
     ///
-    /// Returns the installed session's epoch, for `takeSession(ifEpoch:)`, or
-    /// nil when the client already held a session: that one belongs to
-    /// whoever installed it, and the caller must not take it out.
+    /// Returns the epoch of the session the caller now checks, for
+    /// `holdsSession(epoch:)`, and whether this call installed it. Only an
+    /// installed one may be taken out again (`takeSession(ifEpoch:)`): a
+    /// session the client already held belongs to whoever installed it.
     @discardableResult
     public func adoptStoredSession(
         accessToken storedAccess: String,
         refreshToken storedRefresh: String?
-    ) -> UInt64? {
-        guard accessToken == nil else { return nil }
+    ) -> (epoch: UInt64, installed: Bool) {
+        guard accessToken == nil else { return (sessionEpoch, false) }
         updateToken(storedAccess)
         refreshToken = storedRefresh
-        return sessionEpoch
+        return (sessionEpoch, true)
     }
 
     /// Remove the session from this client and return its tokens as they are
@@ -683,7 +732,8 @@ public actor APIClient {
         if let refresh = inFlightRefresh {
             _ = try? await refresh.value
         }
-        guard sessionEpoch == epoch else { return nil }
+        // 1.61: nor one the app has signed out of; the sign-out removes it.
+        guard sessionEpoch == epoch, !isSessionFenced else { return nil }
         let held = (accessToken: accessToken, refreshToken: refreshToken)
         if accessToken != nil || refreshToken != nil || userId != nil {
             authorizationGeneration &+= 1
@@ -693,26 +743,37 @@ public actor APIClient {
         refreshToken = nil
         sessionRenewer = nil
         userId = nil
-        sessionEpoch &+= 1
+        beginSessionEpoch()
         return held
     }
 
     // MARK: - Sign Out (server-side token revocation)
 
+    /// Returns the access token of the session it removed from this client,
+    /// nil when it removed none.
+    @discardableResult
     public func signOutServer(
         expectedAccessToken: String? = nil
-    ) async {
+    ) async -> String? {
         // Always revoke the captured/expected old token, but clear actor state
         // only if it still represents that same session. A delayed logout
         // must never clear a newer account installed while its Task waited.
-        let tokenToRevoke = expectedAccessToken ?? accessToken
+        //
+        // 1.61: a session the app signed out of (`fenceCurrentSession`) is that
+        // same session even when a refresh rotated its token after the app
+        // captured `expectedAccessToken`: removed, and its newest token is the
+        // one revoked (the captured one may have expired). A sign-in after the
+        // sign-out is not fenced, so it is still never touched.
+        var removed: String?
         if expectedAccessToken == nil
             || accessToken == expectedAccessToken
+            || (accessToken != nil && isSessionFenced)
         {
+            removed = accessToken
             if accessToken != nil || refreshToken != nil || userId != nil {
                 authorizationGeneration &+= 1
             }
-            sessionEpoch &+= 1
+            beginSessionEpoch()
             pendingExpiredAuthorizationLease = nil
             self.accessToken = nil
             self.refreshToken = nil
@@ -720,7 +781,8 @@ public actor APIClient {
             self.userId = nil
         }
 
-        guard let tokenToRevoke, let url = URL(string: "\(supabaseURL)/auth/v1/logout") else { return }
+        let tokenToRevoke = removed ?? expectedAccessToken
+        guard let tokenToRevoke, let url = URL(string: "\(supabaseURL)/auth/v1/logout") else { return removed }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
@@ -739,6 +801,7 @@ public actor APIClient {
         } catch {
             apiLogger.warning("supabase logout failed: \(error.localizedDescription, privacy: .public)")
         }
+        return removed
     }
 
     // MARK: - UUID Validation
@@ -1290,6 +1353,11 @@ public actor APIClient {
     public func me() async throws -> AuthResponse {
         guard let url = URL(string: "\(supabaseURL)/auth/v1/user") else { throw APIError.invalidResponse }
         let anonKey = supabaseAnonKey
+        // 1.61: the session this answer is about. A sign-in or sign-out while
+        // it is out installs or removes a session (a refresh rotation does
+        // not); the answer is then about one that is gone, and taking its user
+        // id would give a newer session another account's id.
+        let epoch = sessionEpoch
         // Refreshes once on a rejected token — 401, or Supabase Auth's 403
         // `bad_jwt` for an expired one (see `isRejectedAccessToken`).
         let (data, http) = try await sendAuthorizedAuthRequest { token in
@@ -1306,9 +1374,11 @@ public actor APIClient {
         }
 
         let user = try decode(SupabaseUser.self, from: data)
+        guard sessionEpoch == epoch else { throw CancellationError() }
         updateResolvedUserID(user.id)
 
         let profile = try await fetchProfile(select: "paired,name,email")
+        guard sessionEpoch == epoch else { throw CancellationError() }
         let paired = profile?.paired ?? false
         let name = profile?.name ?? user.user_metadata?.name ?? ""
         let email = profile?.email ?? user.email ?? ""

@@ -826,6 +826,8 @@ extension AppState {
     }
 
     public func enterDemoMode() {
+        // 1.61: Demo is a session of its own; a restore still out is not.
+        beginSessionGeneration()
         isDemoMode = true
         isAuthenticated = true
         isPaired = true
