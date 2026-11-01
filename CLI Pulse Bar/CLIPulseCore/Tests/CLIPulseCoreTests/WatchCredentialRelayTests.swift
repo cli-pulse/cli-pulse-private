@@ -497,12 +497,12 @@ final class WatchCredentialRelayWiringTests: XCTestCase {
         let answer = try Self.section(source, from: "func credentialAnswer(", to: "private func currentIdentity()")
         // The branch that says "signed out" is guarded by both checks.
         XCTAssertNotNil(answer.range(
-            of: #"else if UIApplication\.shared\.isProtectedDataAvailable,\s*KeychainHelper\.isAbsent\(key: "cli_pulse_token"\) \{\s*(//[^\n]*\s*)*phoneState = \.signedOut"#,
+            of: #"else if UIApplication\.shared\.isProtectedDataAvailable,\s*state\.storedSessionIsAbsent \{\s*(//[^\n]*\s*)*phoneState = \.signedOut"#,
             options: .regularExpression),
             "a locked iPhone, or one whose Keychain cannot be read, never says signed out")
         XCTAssertTrue(answer.contains("canPersist: UIApplication.shared.isProtectedDataAvailable"),
                       "a locked iPhone never refreshes for the Watch")
-        XCTAssertTrue(answer.contains("KeychainHelper.isAbsent("), "signed out only when the Keychain says so")
+        XCTAssertTrue(answer.contains("state.storedSessionIsAbsent"), "signed out only when the Keychain says so")
         let auth = try Self.section(source, from: "func sendAuthToWatch(", to: "func sendCredentialsToWatch(")
         XCTAssertFalse(auth.contains("\"refresh_token\""), "the iPhone's refresh token never goes to the Watch")
 

@@ -1,4 +1,7 @@
 import Foundation
+#if os(iOS)
+import UIKit
+#endif
 import SwiftUI
 import UserNotifications
 import Combine
@@ -932,6 +935,17 @@ public final class AppState: ObservableObject {
         }
     }
 
+    var storedRefreshTokenRead: KeychainHelper.Read {
+        if let unsaved = SessionTokenStore.shared.unsavedPair {
+            return unsaved.refresh.map { $0.isEmpty ? .absent : .value($0) } ?? .absent
+        }
+        return KeychainHelper.read(key: AuthManager.refreshTokenKeychainKey)
+    }
+
+    /// 1.61: the Keychain says it holds no session (not merely that it cannot
+    /// be read), and nothing waits to be written to it.
+    public var storedSessionIsAbsent: Bool { storedTokenRead == .absent }
+
     /// Refresh cadence in seconds. `0` = the v1.40 "Adaptive" mode (2–30 min by
     /// menu-open recency / LPM / thermal). Fresh installs default to Adaptive
     /// (see `applyAdaptiveRefreshDefaultIfFreshInstall`); existing users keep
@@ -1296,15 +1310,24 @@ public final class AppState: ObservableObject {
             }
             defaults.removeObject(forKey: "cli_pulse_token")
 
-            #if os(iOS)
-            observeProtectedData()
-            #endif
             Task {
                 await api.setTokenRefreshHandler { newAccess, newRefresh in
                     Self.persistRotatedTokens(access: newAccess, refresh: newRefresh)
                 }
-                // 1.61: no refresh while its new tokens could not be written.
-                await api.setRotationPersistenceCheck { ProtectedDataState.shared.isAvailable }
+                #if os(iOS)
+                observeProtectedData()
+                // 1.61: no refresh while its new tokens could not be written,
+                // asked live each time (a cached flag misses a lock or an
+                // unlock that happened while the app was suspended); and the
+                // app asks iOS for time to write them.
+                await api.setRotationPersistenceCheck {
+                    await MainActor.run { UIApplication.shared.isProtectedDataAvailable }
+                }
+                await api.setRefreshBackgroundTime {
+                    let time = await MainActor.run { BackgroundTime("Token refresh") }
+                    return { Task { @MainActor in time.end() } }
+                }
+                #endif
                 await restoreSession()
             }
         }

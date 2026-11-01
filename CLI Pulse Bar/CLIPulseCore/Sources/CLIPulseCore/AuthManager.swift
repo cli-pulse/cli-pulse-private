@@ -797,22 +797,29 @@ extension AppState {
         #endif
         // 1.61 (B3): when this try went out, for the spacing of the next.
         deferredSessionRestoreLastStartedAt = deferredSessionRestoreClock()
-        // 1.61: a locked Keychain is not an empty one. Deferred until it can be
-        // read (`protectedDataDidBecomeAvailable`), instead of the "never
-        // signed in" landing that kept the app signed out until it was killed.
-        if !isDemoMode, case .unreadable = storedTokenRead {
+        // 1.61: both tokens read once, together. A locked Keychain is not an
+        // empty one: deferred until it can be read
+        // (`protectedDataDidBecomeAvailable`), instead of the "never signed in"
+        // landing that kept the app signed out until it was killed. And a lock
+        // between two reads must not hand the restore a token without its
+        // refresh token, which reads as a refused session and signs out.
+        let accessRead = storedTokenRead
+        let refreshRead = storedRefreshTokenRead
+        if !isDemoMode, accessRead == .locked || refreshRead == .locked {
             guard !isAuthenticated, !isLocalMode else { return }
             applyDeferredSessionRestore()
             return
         }
+        let storedAccess: String = { if case .value(let token) = accessRead { return token }; return "" }()
+        let storedRefresh: String? = { if case .value(let token) = refreshRead { return token }; return nil }()
         // 1.61: the session this try answers for. A sign-in, a sign-out, Demo
         // or local mode while it is out ends it (`sessionGeneration`).
         let generation = sessionGeneration
         let fence = api.signOutFenceValue
         let result = await authManager.restoreSession(
             isDemoMode: isDemoMode,
-            accessToken: storedToken,
-            refreshToken: storedRefreshToken,
+            accessToken: storedAccess,
+            refreshToken: storedRefresh,
             signOutFence: fence,
             isCurrent: { [weak self] in self?.sessionGeneration == generation }
         )
@@ -970,7 +977,9 @@ extension AppState {
         // or a sign-out that deleted the tokens.
         // 1.61: a Keychain that cannot be read (locked) is not one without a
         // session; the try goes ahead and defers again.
-        guard !isAuthenticated, !isDemoMode, !isLocalMode, storedTokenRead != .absent else {
+        let read = storedTokenRead
+        let mayHaveSession: Bool = { if case .value = read { return true }; return read == .locked }()
+        guard !isAuthenticated, !isDemoMode, !isLocalMode, mayHaveSession else {
             cancelDeferredSessionRestore()
             return
         }
@@ -1096,36 +1105,30 @@ extension AppState {
     /// 1.61: the iPhone's protected data going and coming back. Registered at
     /// launch (`init`), on the main queue.
     func observeProtectedData() {
-        ProtectedDataState.shared.set(available: UIApplication.shared.isProtectedDataAvailable)
         let center = NotificationCenter.default
         protectedDataObservers = [
-            center.addObserver(forName: UIApplication.protectedDataWillBecomeUnavailableNotification,
-                               object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.protectedDataWillBecomeUnavailable() }
-            },
             center.addObserver(forName: UIApplication.protectedDataDidBecomeAvailableNotification,
                                object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor in self?.protectedDataDidBecomeAvailable() }
             },
+            // The unlock notice is not delivered to a suspended app; coming to
+            // the front means the iPhone is unlocked as well.
             center.addObserver(forName: UIApplication.willEnterForegroundNotification,
                                object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.saveUnsavedSessionTokens() }
+                Task { @MainActor in self?.protectedDataDidBecomeAvailable() }
             },
         ]
     }
     #endif
 
-    func protectedDataWillBecomeUnavailable() {
-        ProtectedDataState.shared.set(available: false)
-    }
-
-    /// 1.61: the iPhone was unlocked. Tokens a refresh could not write are
-    /// written now, and a restore that could not read the Keychain (or none
-    /// that ran at all) tries again.
+    /// 1.61: the iPhone was unlocked, or the app came to the front. Tokens a
+    /// refresh could not write are written now; a restore that could not read
+    /// the Keychain (or none that ran at all) tries again; and a signed-in app
+    /// whose last refresh failed (one postponed while locked, say) refreshes.
     func protectedDataDidBecomeAvailable() {
-        ProtectedDataState.shared.set(available: true)
         saveUnsavedSessionTokens()
         restoreSessionIfIdle()
+        if isAuthenticated, !isDemoMode, lastError != nil { requestRefresh() }
     }
 
     /// 1.61: this iPhone refreshes its own session because the Watch needs a
@@ -1156,13 +1159,17 @@ extension AppState {
     /// calls it when it is unlocked and when the Watch asks for a token it
     /// cannot give.
     public func restoreSessionIfIdle() {
-        guard !isAuthenticated, !isDemoMode, !isLocalMode, sessionRestoresInFlight == 0 else { return }
+        guard !isAuthenticated, !isDemoMode, !isLocalMode,
+              sessionRestoresInFlight == 0, idleSessionRestoreTask == nil else { return }
         if deferredSessionRestoreTask != nil || deferredSessionRestoreInFlight {
             retryDeferredSessionRestoreNow()
             return
         }
         guard case .value = storedTokenRead else { return }
-        idleSessionRestoreTask = Task { [weak self] in await self?.restoreSession() }
+        idleSessionRestoreTask = Task { [weak self] in
+            await self?.restoreSession()
+            self?.idleSessionRestoreTask = nil
+        }
     }
 
     // v1.10 P2-3 slice 3: parameter renamed from `authState` to `session` to

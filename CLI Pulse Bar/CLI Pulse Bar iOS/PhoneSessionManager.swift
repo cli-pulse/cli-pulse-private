@@ -270,9 +270,11 @@ final class PhoneSessionManager: NSObject, ObservableObject {
             guard state.isAuthenticated, state.userId == userID else { return .unavailable }
             phoneState = .signedIn(userID: userID, accessToken: current)
         } else if UIApplication.shared.isProtectedDataAvailable,
-                  KeychainHelper.isAbsent(key: "cli_pulse_token") {
+                  state.storedSessionIsAbsent {
             // Signed out only when the Keychain answers that it holds no
-            // session: a locked iPhone reads every item as missing.
+            // session (`errSecItemNotFound`): a locked iPhone reads every item
+            // as missing. 1.61: and a session the Keychain could not take yet
+            // (`SessionTokenStore`) counts as held.
             phoneState = .signedOut
         } else {
             // Demo with a session kept for later, a restore still out, or a

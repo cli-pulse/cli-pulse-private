@@ -11,6 +11,7 @@
 // locked one: nothing readable, writes and deletes fail.
 
 import Foundation
+import Security
 import XCTest
 @testable import CLIPulseCore
 
@@ -38,10 +39,16 @@ final class LockedKeychainTests: XCTestCase {
     private static func resetAll() {
         SessionRestoreStub.reset()
         KeychainHelper.lockedForTesting = false
+        KeychainHelper.lockedKeysForTesting = []
         KeychainHelper.inMemoryStoreForTesting = [:]
         SessionTokenStore.shared.resetForTesting()
-        ProtectedDataState.shared.set(available: true)
+        protectedDataAvailable.value = true
     }
+
+    /// What the app's live check answers in these tests (on the iPhone it asks
+    /// `UIApplication.isProtectedDataAvailable` each time).
+    final class Flag: @unchecked Sendable { var value = true }
+    private static let protectedDataAvailable = Flag()
 
     // MARK: - A rotation the locked Keychain refuses
 
@@ -107,7 +114,7 @@ final class LockedKeychainTests: XCTestCase {
         let (_, api) = await Self.makeState()
         await api.updateToken("access-old")
         await api.updateRefreshToken("refresh-1")
-        ProtectedDataState.shared.set(available: false)
+        Self.protectedDataAvailable.value = false
 
         do {
             _ = try await api.refreshAccessToken()
@@ -129,7 +136,7 @@ final class LockedKeychainTests: XCTestCase {
         let (state, _) = await Self.makeState()
         defer { state.cancelDeferredSessionRestore() }
         AppState.persistAuthTokens(access: "access-old", refresh: "refresh-1")
-        ProtectedDataState.shared.set(available: false)
+        Self.protectedDataAvailable.value = false
 
         await state.restoreSession()
 
@@ -265,24 +272,127 @@ final class LockedKeychainTests: XCTestCase {
         XCTAssertEqual(state.storedToken, "")
     }
 
+    // MARK: - Review follow-ups
+
+    func test_only_a_lock_reads_as_locked() {
+        XCTAssertEqual(KeychainHelper.read(status: errSecSuccess, data: Data("t".utf8)), .value("t"))
+        XCTAssertEqual(KeychainHelper.read(status: errSecSuccess, data: nil), .failed)
+        XCTAssertEqual(KeychainHelper.read(status: errSecItemNotFound, data: nil), .absent)
+        XCTAssertEqual(KeychainHelper.read(status: errSecInteractionNotAllowed, data: nil), .locked)
+        XCTAssertEqual(KeychainHelper.read(status: errSecAuthFailed, data: nil), .failed,
+                       "a denied Mac keychain prompt is not waited out")
+        XCTAssertEqual(KeychainHelper.read(status: errSecUserCanceled, data: nil), .failed)
+    }
+
+    /// Only the refresh token can be read as locked (a lock between the two
+    /// reads). The restore must not go ahead with no refresh token: that reads
+    /// as a refused session and signs out for good.
+    func test_a_restore_defers_when_only_the_refresh_token_is_locked() async throws {
+        SessionRestoreStub.respond { request in
+            request.url?.path == Self.userPath ? .status(403, Self.badJWT) : .status(200, Self.rotated)
+        }
+        let (state, _) = await Self.makeState()
+        defer { state.cancelDeferredSessionRestore() }
+        AppState.persistAuthTokens(access: "access-old", refresh: "refresh-1")
+        KeychainHelper.lockedKeysForTesting = [AuthManager.refreshTokenKeychainKey]
+
+        await state.restoreSession()
+        KeychainHelper.lockedKeysForTesting = []
+
+        XCTAssertEqual(SessionRestoreStub.paths(), [], "nothing sent")
+        XCTAssertNotNil(state.deferredSessionRestoreTask, "deferred")
+        XCTAssertEqual(state.storedToken, "access-old", "nothing deleted")
+        XCTAssertEqual(state.storedRefreshToken, "refresh-1")
+    }
+
+    func test_two_asks_in_one_turn_start_one_restore() async throws {
+        SessionRestoreStub.respond { request in
+            switch request.url?.path {
+            case Self.userPath: return .status(200, Self.user)
+            case Self.profilesPath: return .status(200, Self.profiles)
+            default: return .status(500)
+            }
+        }
+        let (state, _) = await Self.makeState()
+        defer { state.stopRefreshLoop() }
+        AppState.persistAuthTokens(access: "access-old", refresh: "refresh-1")
+
+        state.restoreSessionIfIdle()
+        let first = try XCTUnwrap(state.idleSessionRestoreTask)
+        state.restoreSessionIfIdle()
+        XCTAssertEqual(state.idleSessionRestoreTask, first, "the second ask joins the first")
+        await first.value
+        state.stopRefreshLoop()
+
+        XCTAssertEqual(SessionRestoreStub.count(Self.userPath), 1)
+        await state.dataRefreshManager.refreshTask?.value
+    }
+
+    /// Each refresh asks for background time and gives it back, after the new
+    /// pair is written.
+    func test_a_refresh_holds_background_time_until_its_tokens_are_written() async throws {
+        SessionRestoreStub.respond { _ in .status(200, Self.rotated) }
+        let (state, api) = await Self.makeState()
+        let log = Log()
+        await api.setRefreshBackgroundTime {
+            log.add("begin")
+            return { log.add("end, keychain: \(KeychainHelper.load(key: AppState.tokenKeychainKey) ?? "-")") }
+        }
+        await api.updateToken("access-old")
+        await api.updateRefreshToken("refresh-1")
+
+        _ = try await api.refreshAccessToken()
+
+        XCTAssertEqual(log.entries, ["begin", "end, keychain: access-new"])
+        XCTAssertEqual(state.storedToken, "access-new")
+    }
+
+    /// The unlock (or the next foreground) refreshes a signed-in app whose
+    /// last refresh failed, such as one postponed while locked.
+    func test_the_unlock_refreshes_a_signed_in_app_whose_last_refresh_failed() async throws {
+        SessionRestoreStub.respond { request in
+            switch request.url?.path {
+            case Self.userPath: return .status(200, Self.user)
+            case Self.profilesPath: return .status(200, Self.profiles)
+            default: return .status(500)
+            }
+        }
+        let (state, _) = await Self.makeState()
+        defer { state.stopRefreshLoop() }
+        AppState.persistAuthTokens(access: "access-old", refresh: "refresh-1")
+        await state.restoreSession()
+        state.stopRefreshLoop()
+        await state.dataRefreshManager.refreshTask?.value
+        let before = state.dataRefreshManager.refreshTask
+        state.lastError = "a refresh failed"
+
+        state.protectedDataDidBecomeAvailable()
+
+        XCTAssertNotNil(state.dataRefreshManager.refreshTask)
+        XCTAssertNotEqual(state.dataRefreshManager.refreshTask, before, "a refresh was requested")
+        await state.dataRefreshManager.refreshTask?.value
+    }
+
     // MARK: - The wiring the app targets cannot test
 
     func test_the_iphone_wiring() throws {
         let auth = try Self.code("CLIPulseCore/Sources/CLIPulseCore/AuthManager.swift")
         let observe = try Self.section(auth, from: "func observeProtectedData()", to: "#endif")
-        XCTAssertTrue(observe.contains("UIApplication.protectedDataWillBecomeUnavailableNotification"))
-        XCTAssertTrue(observe.contains("protectedDataWillBecomeUnavailable()"))
         XCTAssertTrue(observe.contains("UIApplication.protectedDataDidBecomeAvailableNotification"))
-        XCTAssertTrue(observe.contains("protectedDataDidBecomeAvailable()"))
         XCTAssertTrue(observe.contains("UIApplication.willEnterForegroundNotification"))
-        XCTAssertTrue(observe.contains("ProtectedDataState.shared.set(available: UIApplication.shared.isProtectedDataAvailable)"))
+        XCTAssertEqual(observe.components(separatedBy: "self?.protectedDataDidBecomeAvailable()").count - 1, 2,
+                       "the unlock and the next foreground both write and restore")
         let restore = try Self.section(auth, from: "public func restoreSession() async {", to: "let generation = sessionGeneration")
         XCTAssertTrue(restore.contains("BackgroundTime("), "a background launch's restore asks for time")
 
         let app = try Self.code("CLIPulseCore/Sources/CLIPulseCore/AppState.swift")
         let launch = try Self.section(app, from: "if runtime.capabilities.allowsCloudSessionRestore {", to: "await restoreSession()")
-        XCTAssertNotNil(launch.range(of: #"#if os\(iOS\)\s*observeProtectedData\(\)\s*#endif"#, options: .regularExpression))
-        XCTAssertTrue(launch.contains("await api.setRotationPersistenceCheck { ProtectedDataState.shared.isAvailable }"))
+        let ios = try Self.section(launch, from: "#if os(iOS)", to: "#endif")
+        XCTAssertTrue(ios.contains("observeProtectedData()"))
+        XCTAssertNotNil(ios.range(of: #"setRotationPersistenceCheck \{\s*await MainActor\.run \{ UIApplication\.shared\.isProtectedDataAvailable \}"#,
+                                  options: .regularExpression), "asked live, not cached")
+        XCTAssertTrue(ios.contains("await api.setRefreshBackgroundTime {"))
+        XCTAssertTrue(ios.contains("BackgroundTime(\"Token refresh\")"))
 
         let phone = try Self.code("CLI Pulse Bar iOS/PhoneSessionManager.swift")
         let answer = try Self.section(phone, from: "func credentialAnswer(", to: "private func currentIdentity()")
@@ -301,6 +411,13 @@ final class LockedKeychainTests: XCTestCase {
 
     final class Clock { var now: TimeInterval = 1_000 }
 
+    final class Log: @unchecked Sendable {
+        private let lock = NSLock()
+        private var items: [String] = []
+        func add(_ entry: String) { lock.lock(); items.append(entry); lock.unlock() }
+        var entries: [String] { lock.lock(); defer { lock.unlock() }; return items }
+    }
+
     final class NoNetworkMonitor: NetworkReturnWatching {
         func start(onReturn: @escaping @MainActor () -> Void) {}
         func cancel() {}
@@ -310,7 +427,8 @@ final class LockedKeychainTests: XCTestCase {
         let api = APIClient(supabaseURL: "https://stub.cli-pulse.test", supabaseAnonKey: "anon",
                             session: SessionRestoreStub.session())
         await api.setTokenRefreshHandler { AppState.persistRotatedTokens(access: $0, refresh: $1) }
-        await api.setRotationPersistenceCheck { ProtectedDataState.shared.isAvailable }
+        let flag = protectedDataAvailable
+        await api.setRotationPersistenceCheck { flag.value }
         let state = AppState(
             runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
             defaults: UploadOutcomeTests.freshDefaults(),

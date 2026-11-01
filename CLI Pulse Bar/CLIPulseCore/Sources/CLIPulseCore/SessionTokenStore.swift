@@ -62,39 +62,23 @@ final class SessionTokenStore: @unchecked Sendable {
         lock.lock(); unsaved = nil; lock.unlock()
     }
 
+    /// The refresh token first: a lock between the two writes then leaves the
+    /// new refresh token with an old access token, which only means one more
+    /// refresh, rather than the old, spent refresh token with a new access
+    /// token, which the next launch would be refused on.
     private static func write(_ pair: Pair) -> Bool {
         var wrote = true
-        if pair.access.isEmpty {
-            wrote = KeychainHelper.delete(key: AppState.tokenKeychainKey) && wrote
-        } else {
-            wrote = KeychainHelper.save(key: AppState.tokenKeychainKey, value: pair.access) && wrote
-        }
         if let refresh = pair.refresh, !refresh.isEmpty {
             wrote = KeychainHelper.save(key: AuthManager.refreshTokenKeychainKey, value: refresh) && wrote
         } else {
             wrote = KeychainHelper.delete(key: AuthManager.refreshTokenKeychainKey) && wrote
         }
+        if pair.access.isEmpty {
+            wrote = KeychainHelper.delete(key: AppState.tokenKeychainKey) && wrote
+        } else {
+            wrote = KeychainHelper.save(key: AppState.tokenKeychainKey, value: pair.access) && wrote
+        }
         return wrote
-    }
-}
-
-/// 1.61: whether this device's protected data (the Keychain items the app
-/// writes `WhenUnlocked`) can be read and written now. Always true off iOS.
-/// Set from the main thread (`AppState`'s protected-data observers on iOS) and
-/// read from any thread: the API client asks it before every refresh.
-public final class ProtectedDataState: @unchecked Sendable {
-    public static let shared = ProtectedDataState()
-
-    private let lock = NSLock()
-    private var available = true
-
-    public var isAvailable: Bool {
-        lock.lock(); defer { lock.unlock() }
-        return available
-    }
-
-    public func set(available value: Bool) {
-        lock.lock(); available = value; lock.unlock()
     }
 }
 
@@ -102,6 +86,7 @@ public final class ProtectedDataState: @unchecked Sendable {
 /// 1.61: asks iOS for time to finish auth work the app started in the
 /// background (a Watch's `sendMessage` can wake or launch it): a refresh the
 /// server has rotated must also be written before the app is suspended.
+/// The restore, each token refresh, and the Watch's question handlers.
 @MainActor
 public final class BackgroundTime {
     private var identifier: UIBackgroundTaskIdentifier = .invalid
