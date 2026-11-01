@@ -104,3 +104,83 @@ public enum WatchDeviceTrim {
             .map(WatchDeviceSummary.init(from:))
     }
 }
+
+/// 1.61 (B4, 59-09): what the Watch needs to count the account's online
+/// devices itself, for every device (not only the ones with machine health that
+/// `WatchDeviceTrim` keeps): its stored status and when it was last seen. Sent
+/// by the iPhone with its snapshot and read from the Watch's own device fetch,
+/// so the Devices chip counts on `DashboardCounts`' rule at the Watch's
+/// `sessionsClock`, as the iPhone, the Mac and the widgets do, instead of
+/// showing `dashboard_summary`'s figure from the last refresh.
+public struct WatchDevicePresence: Codable, Sendable, Equatable {
+    /// The iPhone's WatchConnectivity context key. Absent from an iPhone
+    /// before 1.61.
+    public static let contextKey = "device_presence"
+
+    public let status: String
+    public let lastSyncAt: String?
+
+    public init(status: String, lastSyncAt: String?) {
+        self.status = status
+        self.lastSyncAt = lastSyncAt
+    }
+
+    public init(from device: DeviceRecord) {
+        self.init(status: device.status, lastSyncAt: device.last_sync_at)
+    }
+
+    /// The devices stored as Online: no other status can count, so the rest
+    /// would only add bytes to the iPhone's context (an account keeps every
+    /// device it ever paired). An empty list is a count of zero.
+    public static func list(from devices: [DeviceRecord]) -> [WatchDevicePresence] {
+        devices
+            .filter { $0.status.caseInsensitiveCompare(DeviceStatus.online.rawValue) == .orderedSame }
+            .map(WatchDevicePresence.init(from:))
+    }
+}
+
+public extension DashboardCounts {
+    /// The account's online devices among `presence` at `now`
+    /// (`isOnline(status:lastSeenAt:now:)`).
+    static func onlineDevices(_ presence: [WatchDevicePresence], now: Date) -> Int {
+        presence.reduce(0) { $0 + (isOnline(status: $1.status, lastSeenAt: $1.lastSyncAt, now: now) ? 1 : 0) }
+    }
+
+    /// The Watch's Devices chip: counted from the presence list it holds,
+    /// obtained at `presenceAt`. The server's `dashboardFigure` (from the
+    /// refresh at `dashboardAt`) instead when there is no list (an iPhone
+    /// before 1.61 sent the snapshot, and the Watch has not fetched devices
+    /// itself yet), or when the list is older than that refresh by more than
+    /// `deviceOnlineGrace`: the Watch's device fetch kept failing while its
+    /// dashboard did not, and every device in the old list would have aged
+    /// out of the count while the account's devices were still online.
+    static func watchOnlineDevices(
+        presence: [WatchDevicePresence]?,
+        presenceAt: Date?,
+        dashboardFigure: Int,
+        dashboardAt: Date?,
+        now: Date
+    ) -> Int {
+        guard let presence else { return dashboardFigure }
+        if let presenceAt, let dashboardAt, dashboardAt.timeIntervalSince(presenceAt) > deviceOnlineGrace {
+            return dashboardFigure
+        }
+        return onlineDevices(presence, now: now)
+    }
+}
+
+/// 1.61 (B4, 59-09): the Watch's Live page, classified as the iPhone's and the
+/// Mac's Sessions tabs are (`SessionFreshnessTierClassifier`) at the Watch's
+/// `sessionsClock`, instead of by each row's stored status: a row stays
+/// "Running" in the cloud until its device syncs again, so a Mac asleep with
+/// AI tools open kept them on the Live page. `live` is what the Pulse chip
+/// counts (`DashboardCounts.activeSessions`), so the page and the chip agree.
+public enum WatchLivePage {
+    public static func sections(
+        _ sessions: [SessionRecord],
+        now: Date
+    ) -> (live: [SessionRecord], recent: [SessionRecord]) {
+        let parts = SessionFreshnessTierClassifier.partition(sessions, now: now)
+        return (parts.active, parts.recent)
+    }
+}
