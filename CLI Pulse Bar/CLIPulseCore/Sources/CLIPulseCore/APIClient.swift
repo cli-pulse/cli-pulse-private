@@ -3762,15 +3762,18 @@ public actor APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         applyHeaders(&request)
-        // 1.61: refresh only if no other request's refresh replaced this token
-        // while it was out (as `sendAuthorizedAuthRequest` does): a renewal on the
-        // Watch asks the iPhone, and each extra one could wake it.
+        // 1.61: no second refresh when another request's refresh already
+        // rotated this session's token while it was out (as
+        // `sendAuthorizedAuthRequest` does): a renewal on the Watch asks the
+        // iPhone, and each extra one could wake it. A different session
+        // (a sign-in or sign-out meanwhile) is handled as before.
         let sentToken = accessToken
+        let sentEpoch = sessionEpoch
         let (data, response) = try await dataWithRetry(for: request)
         let http = response as? HTTPURLResponse
         // Auto-retry on 401 with token refresh
         if http?.statusCode == 401, !retried {
-            if accessToken == sentToken { _ = try await refreshAccessToken() }
+            if accessToken == sentToken || sessionEpoch != sentEpoch { _ = try await refreshAccessToken() }
             return try await restGet(path, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -3788,14 +3791,17 @@ public actor APIClient {
         request.httpMethod = "PATCH"
         applyHeaders(&request)
         request.httpBody = try encoder.encode(body)
-        // 1.61: refresh only if no other request's refresh replaced this token
-        // while it was out (as `sendAuthorizedAuthRequest` does): a renewal on the
-        // Watch asks the iPhone, and each extra one could wake it.
+        // 1.61: no second refresh when another request's refresh already
+        // rotated this session's token while it was out (as
+        // `sendAuthorizedAuthRequest` does): a renewal on the Watch asks the
+        // iPhone, and each extra one could wake it. A different session
+        // (a sign-in or sign-out meanwhile) is handled as before.
         let sentToken = accessToken
+        let sentEpoch = sessionEpoch
         let (data, response) = try await dataWithRetry(for: request)
         let http = response as? HTTPURLResponse
         if http?.statusCode == 401, !retried {
-            if accessToken == sentToken { _ = try await refreshAccessToken() }
+            if accessToken == sentToken || sessionEpoch != sentEpoch { _ = try await refreshAccessToken() }
             return try await restPatch(path, body: body, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -3836,14 +3842,17 @@ public actor APIClient {
             request.setValue(value, forHTTPHeaderField: key)
         }
         request.httpBody = try encoder.encode(body)
-        // 1.61: refresh only if no other request's refresh replaced this token
-        // while it was out (as `sendAuthorizedAuthRequest` does): a renewal on the
-        // Watch asks the iPhone, and each extra one could wake it.
+        // 1.61: no second refresh when another request's refresh already
+        // rotated this session's token while it was out (as
+        // `sendAuthorizedAuthRequest` does): a renewal on the Watch asks the
+        // iPhone, and each extra one could wake it. A different session
+        // (a sign-in or sign-out meanwhile) is handled as before.
         let sentToken = accessToken
+        let sentEpoch = sessionEpoch
         let (data, response) = try await dataWithRetry(for: request)
         let http = response as? HTTPURLResponse
         if http?.statusCode == 401, !retried {
-            if accessToken == sentToken { _ = try await refreshAccessToken() }
+            if accessToken == sentToken || sessionEpoch != sentEpoch { _ = try await refreshAccessToken() }
             return try await restPost(path, body: body, extraHeaders: extraHeaders, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -3865,14 +3874,17 @@ public actor APIClient {
         request.httpMethod = "POST"
         applyHeaders(&request)
         request.httpBody = try encoder.encode(EmptyBody())
-        // 1.61: refresh only if no other request's refresh replaced this token
-        // while it was out (as `sendAuthorizedAuthRequest` does): a renewal on the
-        // Watch asks the iPhone, and each extra one could wake it.
+        // 1.61: no second refresh when another request's refresh already
+        // rotated this session's token while it was out (as
+        // `sendAuthorizedAuthRequest` does): a renewal on the Watch asks the
+        // iPhone, and each extra one could wake it. A different session
+        // (a sign-in or sign-out meanwhile) is handled as before.
         let sentToken = accessToken
+        let sentEpoch = sessionEpoch
         let (data, response) = try await dataWithRetry(for: request)
         let http = response as? HTTPURLResponse
         if http?.statusCode == 401, !retried {
-            if accessToken == sentToken { _ = try await refreshAccessToken() }
+            if accessToken == sentToken || sessionEpoch != sentEpoch { _ = try await refreshAccessToken() }
             return try await rpcRaw(function, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -3922,10 +3934,13 @@ public actor APIClient {
         request.httpMethod = "POST"
         applyHeaders(&request)
         request.httpBody = try encoder.encode(params)
-        // 1.61: refresh only if no other request's refresh replaced this token
-        // while it was out (as `sendAuthorizedAuthRequest` does): a renewal on the
-        // Watch asks the iPhone, and each extra one could wake it.
+        // 1.61: no second refresh when another request's refresh already
+        // rotated this session's token while it was out (as
+        // `sendAuthorizedAuthRequest` does): a renewal on the Watch asks the
+        // iPhone, and each extra one could wake it. A different session
+        // (a sign-in or sign-out meanwhile) is handled as before.
         let sentToken = accessToken
+        let sentEpoch = sessionEpoch
         let (data, response) = try await dataWithRetry(
             for: request,
             authorizationLease: requiredAuthorizationLease
@@ -3935,7 +3950,7 @@ public actor APIClient {
             try ensureAuthorizationLeaseIsCurrent(
                 requiredAuthorizationLease
             )
-            if accessToken == sentToken { _ = try await refreshAccessToken() }
+            if accessToken == sentToken || sessionEpoch != sentEpoch { _ = try await refreshAccessToken() }
             try ensureAuthorizationLeaseIsCurrent(
                 requiredAuthorizationLease
             )
