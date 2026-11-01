@@ -26,6 +26,16 @@ final class SignOutDuringRestoreTests: XCTestCase {
     private static let userB = #"{"id":"00000000-0000-0000-0000-00000000000b","email":"b@example.test"}"#
     private static let profiles = #"[{"paired":false,"name":"Someone","email":"a@example.test"}]"#
     private static let rotated = #"{"access_token":"access-new","refresh_token":"refresh-2"}"#
+    /// A JWT whose `exp` has passed (an hour ago), so it is refreshed before it is sent.
+    private static let expiredJWT: String = {
+        func b64(_ json: String) -> String {
+            Data(json.utf8).base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")
+        }
+        let exp = Int(Date().addingTimeInterval(-3_600).timeIntervalSince1970)
+        return "\(b64(#"{"alg":"ES256","typ":"JWT"}"#)).\(b64("{\"sub\":\"x\",\"exp\":\(exp)}")).signature"
+    }()
 
     override func setUp() {
         super.setUp()
@@ -67,10 +77,14 @@ final class SignOutDuringRestoreTests: XCTestCase {
         state.signOut()
         SessionRestoreStub.releaseHeld(path: Self.tokenPath)
         // Blocks the main thread, so the sign-out's task cannot reach the API
-        // client before the refresh's answer has been handled off it.
-        Self.blockMainThread { SessionRestoreStub.count(Self.userPath) >= 2 }
+        // client before the refresh's answer has been handled off it. Without
+        // the fence the rotation goes on to a second /auth/v1/user; with it,
+        // nothing more goes out, so the wait ends at its bound. A bound too
+        // short could only make this test miss the bug, never fail falsely.
+        Self.blockMainThread(seconds: 1) { SessionRestoreStub.count(Self.userPath) >= 2 }
         await Self.until { SessionRestoreStub.count(Self.logoutPath) == 1 && state.storedToken.isEmpty }
-        SessionRestoreStub.releaseHeld()
+        // Only the unfenced rotation's request is held.
+        if SessionRestoreStub.count(Self.userPath) >= 2 { SessionRestoreStub.releaseHeld() }
         await restore.value
 
         XCTAssertFalse(state.isAuthenticated, "still signed out")
@@ -158,6 +172,7 @@ final class SignOutDuringRestoreTests: XCTestCase {
         XCTAssertEqual(access, "access-b")
         let lease = await api.authorizationLease(expectedUserID: "00000000-0000-0000-0000-00000000000b")
         XCTAssertNotNil(lease, "the client's session is still B's, not A's")
+        await state.dataRefreshManager.refreshTask?.value
     }
 
     // MARK: - The restore's own gate
@@ -220,6 +235,102 @@ final class SignOutDuringRestoreTests: XCTestCase {
         let access = await api.getToken()
         XCTAssertEqual(access, "access-new")
         XCTAssertEqual(SessionRestoreStub.count(Self.tokenPath), 1)
+        await state.dataRefreshManager.refreshTask?.value
+    }
+
+    // MARK: - The up-front refresh
+
+    /// The stored token is past its `exp`, so the restore refreshes before it
+    /// sends anything; the user signs out while that refresh is out. Its
+    /// rotation is dropped, and the restore does not go on to spend the old
+    /// refresh token a second time.
+    func test_a_sign_out_during_the_up_front_refresh_keeps_nothing_and_refreshes_once() async throws {
+        let refreshArrived = expectation(description: "the up-front refresh reached the server")
+        SessionRestoreStub.respond { request in
+            switch request.url?.path {
+            case Self.tokenPath:
+                if SessionRestoreStub.count(Self.tokenPath) == 1 { refreshArrived.fulfill() }
+                return .held(200, Self.rotated)
+            case Self.userPath: return .status(403, Self.badJWT)
+            case Self.logoutPath: return .status(204, "")
+            default: return .status(500)
+            }
+        }
+        let (state, api) = await Self.makeState()
+        AppState.persistAuthTokens(access: Self.expiredJWT, refresh: "refresh-1")
+
+        let restore = Task { await state.restoreSession() }
+        await fulfillment(of: [refreshArrived], timeout: 5)
+        state.signOut()
+        SessionRestoreStub.releaseHeld(path: Self.tokenPath)
+        await restore.value
+        await Self.until { SessionRestoreStub.count(Self.logoutPath) == 1 && state.storedToken.isEmpty }
+
+        XCTAssertFalse(state.isAuthenticated)
+        XCTAssertEqual(SessionRestoreStub.count(Self.tokenPath), 1, "the spent refresh token is not sent again")
+        XCTAssertEqual(SessionRestoreStub.count(Self.userPath), 0, "nothing sent with the dead token")
+        XCTAssertEqual(state.storedToken, "")
+        XCTAssertNil(state.storedRefreshToken)
+        let access = await api.getToken()
+        XCTAssertNil(access)
+    }
+
+    // MARK: - The fence, directly
+
+    /// The client's session was rotated after the app read its token for the
+    /// sign-out. The sign-out still removes it, and the Keychain copy of the
+    /// rotation goes with it.
+    func test_a_fenced_session_is_signed_out_whatever_token_the_sign_out_was_handed() async throws {
+        SessionRestoreStub.respond { _ in .status(204, "") }
+        let api = APIClient(supabaseURL: "https://stub.cli-pulse.test", supabaseAnonKey: "anon",
+                            session: SessionRestoreStub.session())
+        await api.updateToken("access-rotated")
+        await api.updateRefreshToken("refresh-rotated")
+        AppState.persistAuthTokens(access: "access-rotated", refresh: "refresh-rotated")
+        let auth = AuthManager(api: api, persistTokens: AppState.persistAuthTokens)
+
+        api.fenceCurrentSession()
+        await auth.signOut(currentAccessToken: "access-read-before-the-rotation")
+
+        let access = await api.getToken()
+        let refresh = await api.getRefreshToken()
+        XCTAssertNil(access)
+        XCTAssertNil(refresh)
+        XCTAssertNil(KeychainHelper.load(key: AppState.tokenKeychainKey))
+        XCTAssertNil(KeychainHelper.load(key: AuthManager.refreshTokenKeychainKey))
+        XCTAssertEqual(SessionRestoreStub.authorizations(Self.logoutPath), ["access-rotated"],
+                       "the newest token is the one revoked")
+    }
+
+    /// The guard against the opposite mistake, which would sign people out at
+    /// the next launch: a session signed in after a sign-out is not fenced,
+    /// and its rotations are kept.
+    func test_a_session_signed_in_after_a_sign_out_keeps_its_rotations() async throws {
+        SessionRestoreStub.respond { request in
+            switch request.url?.path {
+            case Self.tokenPath where request.url?.query?.contains("grant_type=password") == true:
+                return .status(200, #"{"access_token":"access-b","refresh_token":"refresh-b","user":\#(Self.userB)}"#)
+            case Self.tokenPath: return .status(200, #"{"access_token":"access-b2","refresh_token":"refresh-b2"}"#)
+            case Self.profilesPath: return .status(200, #"[{"paired":false,"name":"B","email":"b@example.test"}]"#)
+            case Self.logoutPath: return .status(204, "")
+            default: return .status(500)
+            }
+        }
+        let (state, api) = await Self.makeState()
+        defer { state.stopRefreshLoop() }
+        state.enterDemoMode()
+        state.signOut()
+        await state.signInWithPassword(email: "b@example.test", password: "pw")
+        state.stopRefreshLoop()
+        await state.dataRefreshManager.refreshTask?.value
+        XCTAssertTrue(state.isAuthenticated, "control: signed in")
+
+        _ = try await api.refreshAccessToken()
+
+        XCTAssertEqual(state.storedToken, "access-b2", "the rotation is written")
+        XCTAssertEqual(state.storedRefreshToken, "refresh-b2")
+        let access = await api.getToken()
+        XCTAssertEqual(access, "access-b2")
     }
 
     // MARK: - Helpers
@@ -252,7 +363,6 @@ final class SignOutDuringRestoreTests: XCTestCase {
     private static func blockMainThread(seconds: TimeInterval = 5, until condition: () -> Bool) {
         let deadline = Date().addingTimeInterval(seconds)
         while !condition(), Date() < deadline { usleep(1_000) }
-        XCTAssertTrue(condition(), "the condition was never met")
     }
 
     private static func until(seconds: TimeInterval = 5, _ condition: () -> Bool) async {

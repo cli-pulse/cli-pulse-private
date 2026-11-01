@@ -1065,9 +1065,11 @@ public final class AppState: ObservableObject {
     var deferredSessionRestoreAttempts = 0
     /// 1.61: which session the app is in. Every sign-in, sign-out and switch
     /// to Demo or local mode moves it on. A session restore answers for the
-    /// generation it started in, and its answer, and any tokens a refresh
-    /// handed it on the way, are dropped once that generation is over
-    /// (`restoreSession()`). Before this a try still out when the user signed
+    /// generation it started in, and its answer is dropped once that
+    /// generation is over (`restoreSession()`). Tokens a refresh handed it on
+    /// the way are dropped too after a sign-out (`APIClient.fenceCurrentSession`)
+    /// or a sign-in (the client's stale-refresh guard); after Demo or local
+    /// mode they are kept, since the Keychain session is still good. Before this a try still out when the user signed
     /// out (leaving Demo, say) found an app that was neither signed in, in
     /// Demo nor in local mode, and signed it back in.
     private(set) var sessionGeneration: UInt64 = 0

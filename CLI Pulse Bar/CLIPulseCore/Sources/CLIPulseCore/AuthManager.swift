@@ -44,8 +44,11 @@ public enum RestoreSessionResult {
     /// profile read). The tokens are kept, and the restore is tried again.
     case deferred
     /// 1.61: the user signed in or out, or chose Demo or local mode, while the
-    /// restore was out. Its answer is about a session the app has left: it
-    /// wrote nothing, and the app ignores it.
+    /// restore was out. Its answer is about a session the app has left: the
+    /// restore wrote nothing itself, and the app ignores it. (A refresh on the
+    /// way still wrote its rotation, unless a sign-out had fenced it: the
+    /// Keychain session is then still a good one, and Demo or local mode keep
+    /// it for later.)
     case superseded
 }
 
@@ -98,6 +101,7 @@ public final class AuthManager {
         isDemoMode: Bool,
         accessToken: String,
         refreshToken: String?,
+        signOutFence: UInt64? = nil,
         isCurrent: () -> Bool = { true }
     ) async -> RestoreSessionResult {
         if isDemoMode {
@@ -113,8 +117,17 @@ public final class AuthManager {
         // its predecessor's refresh token is already spent.
         let adoption = await api.adoptStoredSession(
             accessToken: accessToken,
-            refreshToken: refreshToken
+            refreshToken: refreshToken,
+            fenceAtStart: signOutFence
         )
+        // 1.61: a session this restore installed and no longer answers for
+        // goes back out of the client, unless a sign-in or sign-out has
+        // already replaced or removed it (`takeSession` checks both): a client
+        // holding a token the app is not signed in with would send it.
+        func letGo() async -> RestoreSessionResult {
+            if adoption.installed { _ = await api.takeSession(ifEpoch: adoption.epoch) }
+            return .superseded
+        }
 
         do {
             // `me()` refreshes an expired token (Supabase Auth's 403 `bad_jwt`)
@@ -124,7 +137,7 @@ public final class AuthManager {
             // 1.61: the answer counts only for the session it is about, still
             // held, with no sign-out since, and only if the app still wants it.
             guard isCurrent(), await api.holdsSession(epoch: adoption.epoch), isCurrent() else {
-                return .superseded
+                return await letGo()
             }
             storeAuthTokens(access: response.access_token, refresh: response.refresh_token)
             return .restored(authSessionState(from: response))
@@ -140,7 +153,7 @@ public final class AuthManager {
             // session installed while this restore was out (a sign-in) is not
             // this restore's to touch: `takeSession` leaves it alone, and so
             // does a sign-out's (1.61): its tokens are the sign-out's to delete.
-            guard isCurrent() else { return .superseded }
+            guard isCurrent() else { return await letGo() }
             guard adoption.installed else { return .deferred }
             guard
                 let held = await api.takeSession(ifEpoch: adoption.epoch),
@@ -477,6 +490,8 @@ extension AppState {
             } else {
                 pairingError = L10n.onboarding.helperNotConnectedYet
             }
+        } catch is CancellationError {
+            // 1.61: a sign-in or sign-out replaced the session while it was out.
         } catch {
             pairingError = error.localizedDescription
         }
@@ -775,10 +790,12 @@ extension AppState {
         // 1.61: the session this try answers for. A sign-in, a sign-out, Demo
         // or local mode while it is out ends it (`sessionGeneration`).
         let generation = sessionGeneration
+        let fence = api.signOutFenceValue
         let result = await authManager.restoreSession(
             isDemoMode: isDemoMode,
             accessToken: storedToken,
             refreshToken: storedRefreshToken,
+            signOutFence: fence,
             isCurrent: { [weak self] in self?.sessionGeneration == generation }
         )
         if case .demoMode = result {

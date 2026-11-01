@@ -157,8 +157,8 @@ public actor APIClient {
     /// 1.61: the app's sign-outs, counted the moment each happens
     /// (`fenceCurrentSession()`, from the main thread, before the sign-out's
     /// own work reaches this actor). A session installed before the latest
-    /// one is fenced: its refreshes are neither installed nor persisted, and
-    /// `signOutServer` removes it whatever token it was handed.
+    /// sign-out is fenced: its refreshes are neither installed nor persisted,
+    /// and `signOutServer` removes it whatever token it was handed.
     private nonisolated let signOutFence = SignOutFence()
     /// `signOutFence` when the current session epoch began.
     private var sessionFenceMark: UInt64 = 0
@@ -265,6 +265,12 @@ public actor APIClient {
     public nonisolated func fenceCurrentSession() {
         signOutFence.advance()
     }
+
+    /// 1.61: the sign-outs so far, read at once from any thread. A restore
+    /// reads it when it starts (`adoptStoredSession(…, fenceAtStart:)`), so a
+    /// sign-out before the restore reached this actor still fences the
+    /// session it installs.
+    public nonisolated var signOutFenceValue: UInt64 { signOutFence.value }
 
     /// 1.61: whether the session `epoch` names is still the one held, and no
     /// sign-out has come since. A restore answers for that session only.
@@ -578,6 +584,9 @@ public actor APIClient {
     /// and the session is kept as it is, so a renewer that cannot be reached
     /// never signs anyone out. A result that arrives after the session changed
     /// is returned to its caller and installed nowhere.
+    ///
+    /// Not fenced (1.61): only the Watch has a renewer, and the Watch never
+    /// calls `fenceCurrentSession()`; its own transitions change the epoch.
     private func performRenewal(with renewer: SessionRenewer) async throws -> (accessToken: String, refreshToken: String) {
         let epoch = sessionEpoch
         let newAccess = try await renewer()
@@ -673,11 +682,16 @@ public actor APIClient {
     private func sendAuthorizedAuthRequest(
         _ makeRequest: (String?) throws -> URLRequest
     ) async throws -> (Data, HTTPURLResponse?) {
+        // 1.61: the session this request is for (a rotation keeps the epoch).
+        let epoch = sessionEpoch
         if canRenewSession,
            let token = accessToken,
            let expiry = Self.jwtExpiry(token),
            expiry <= Date() {
             _ = try await refreshAccessToken()
+            // 1.61: signed out (or replaced) while it was out; its rotation
+            // was dropped, and the session it was for is gone.
+            if isSessionFenced || sessionEpoch != epoch { throw CancellationError() }
         }
         let sentToken = accessToken
         let (data, response) = try await session.data(for: makeRequest(sentToken))
@@ -691,6 +705,7 @@ public actor APIClient {
         if accessToken == sentToken {
             _ = try await refreshAccessToken()
         }
+        if isSessionFenced || sessionEpoch != epoch { throw CancellationError() }
         let (retryData, retryResponse) = try await session.data(for: makeRequest(accessToken))
         return (retryData, retryResponse as? HTTPURLResponse)
     }
@@ -706,14 +721,19 @@ public actor APIClient {
     /// `holdsSession(epoch:)`, and whether this call installed it. Only an
     /// installed one may be taken out again (`takeSession(ifEpoch:)`): a
     /// session the client already held belongs to whoever installed it.
+    ///
+    /// `fenceAtStart` (1.61): `signOutFenceValue` when the caller read the
+    /// stored tokens. A sign-out after that read fences what is installed here.
     @discardableResult
     public func adoptStoredSession(
         accessToken storedAccess: String,
-        refreshToken storedRefresh: String?
+        refreshToken storedRefresh: String?,
+        fenceAtStart: UInt64? = nil
     ) -> (epoch: UInt64, installed: Bool) {
         guard accessToken == nil else { return (sessionEpoch, false) }
         updateToken(storedAccess)
         refreshToken = storedRefresh
+        if let fenceAtStart { sessionFenceMark = fenceAtStart }
         return (sessionEpoch, true)
     }
 
@@ -2511,11 +2531,15 @@ public actor APIClient {
         struct PKCEExchange: Encodable { let auth_code: String; let code_verifier: String }
         request.httpBody = try encoder.encode(PKCEExchange(auth_code: code, code_verifier: codeVerifier))
 
+        // 1.61: the session this link is for. A sign-in or sign-out while the
+        // exchange is out must not get these tokens.
+        let epoch = sessionEpoch
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
         let auth = try decode(SupabaseAuthResponse.self, from: data)
+        guard sessionEpoch == epoch, !isSessionFenced else { throw CancellationError() }
         self.accessToken = auth.access_token
         if let refresh = auth.refresh_token {
             self.refreshToken = refresh
@@ -2549,10 +2573,13 @@ public actor APIClient {
             link_identity: true
         ))
 
+        let epoch = sessionEpoch
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
+        // 1.61: as in `exchangeOAuthCodeForLink`.
+        guard sessionEpoch == epoch, !isSessionFenced else { throw CancellationError() }
         if let auth = try? decode(SupabaseAuthResponse.self, from: data) {
             self.accessToken = auth.access_token
             if let refresh = auth.refresh_token {
