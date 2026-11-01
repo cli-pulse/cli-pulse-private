@@ -2904,6 +2904,8 @@ extension AppState {
     /// cadence can shorten to the recent-interaction window.
     public func notePopoverActivated() {
         dataRefreshManager.noteMenuOpened()
+        // 1.61 (B3): a restore that could not reach the server tries now.
+        retryDeferredSessionRestoreNow()
     }
 
     /// v1.40 PR-8: one-time — a FRESH install (no explicit refresh-interval ever
