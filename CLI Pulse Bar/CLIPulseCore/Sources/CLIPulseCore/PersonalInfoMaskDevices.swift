@@ -17,6 +17,10 @@ import Foundation
 //     Watch numbers the account's whole list when it fetches it itself, and
 //     the devices it was sent otherwise, so its numbers can differ from the
 //     iPhone's until its own next fetch.
+//     A Mac names its own rows (the process scan's, the session logs') by its
+//     host name, which is not the name its row in the list has. Its host name
+//     takes this Mac's number, found by id (1.61, B5), so its own rows read as
+//     the other screens number it, not "Hidden device".
 //   * Remote Control's paired devices (the Macs an iPhone pairs with, the
 //     iPhones a Mac lets in) are "Device N" by their place in that list, and
 //     a device being paired gets the number it will have there.
@@ -42,10 +46,35 @@ public struct DeviceNameNumbers: Sendable, Equatable {
         self.numbersByID = numbersByID
     }
 
+    /// 1.61 (B5): the Mac the app runs on, which names its own rows by its
+    /// host name (`HostIdentity`) rather than by its name in the account's
+    /// device list.
+    public struct ThisDevice: Sendable, Equatable {
+        public let hostName: String
+        /// Its id in the account's device list: the device its helper is
+        /// paired as for the signed-in account, nil when it is not.
+        public let id: String?
+
+        public init(hostName: String, id: String?) {
+            self.hostName = hostName
+            self.id = id
+        }
+    }
+
     /// The account's devices numbered from 1 in the order of their ids. A
     /// name two of them share says nothing about which one is meant, so it
     /// gets no number; nor does a blank one.
-    public static func devices(_ devices: [(id: String, name: String)]) -> DeviceNameNumbers {
+    ///
+    /// `thisDevice`: this Mac's host name gets this Mac's number, by its id.
+    /// A Mac the list does not have (not paired to the account, or removed
+    /// from it) is numbered after the list, unless the list already names
+    /// the host name (the local route's own row is this Mac, by that name).
+    /// A host name the list gives to another device says nothing about which
+    /// one is meant, so it gets no number.
+    public static func devices(
+        _ devices: [(id: String, name: String)],
+        thisDevice: ThisDevice? = nil
+    ) -> DeviceNameNumbers {
         let ordered = devices.sorted { $0.id < $1.id }
         var numbers: [String: Int] = [:]
         var byID: [String: Int] = [:]
@@ -57,11 +86,25 @@ public struct DeviceNameNumbers: Sendable, Equatable {
             if numbers[name] != nil { shared.insert(name) } else { numbers[name] = index + 1 }
         }
         for name in shared { numbers[name] = nil }
+        if let thisDevice {
+            let host = thisDevice.hostName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !host.isEmpty, !shared.contains(host) {
+                if let mine = thisDevice.id.flatMap({ byID[$0] }) {
+                    if let listed = numbers[host], listed != mine {
+                        numbers[host] = nil
+                    } else {
+                        numbers[host] = mine
+                    }
+                } else if numbers[host] == nil {
+                    numbers[host] = ordered.count + 1
+                }
+            }
+        }
         return DeviceNameNumbers(numbersByName: numbers, numbersByID: byID)
     }
 
-    public static func devices(_ devices: [DeviceRecord]) -> DeviceNameNumbers {
-        Self.devices(devices.map { (id: $0.id, name: $0.name) })
+    public static func devices(_ devices: [DeviceRecord], thisDevice: ThisDevice? = nil) -> DeviceNameNumbers {
+        Self.devices(devices.map { (id: $0.id, name: $0.name) }, thisDevice: thisDevice)
     }
 
     public static func devices(_ devices: [WatchDeviceSummary]) -> DeviceNameNumbers {
@@ -176,6 +219,7 @@ public extension PersonalInfoMask {
 }
 
 public extension AppState {
-    /// The account's devices, numbered for "Device N" (`DeviceNameNumbers.devices`).
-    var deviceNameNumbers: DeviceNameNumbers { .devices(devices) }
+    /// The account's devices, numbered for "Device N" (`DeviceNameNumbers.devices`),
+    /// with this Mac's host name numbered as this Mac (`thisMacDevice`).
+    var deviceNameNumbers: DeviceNameNumbers { .devices(devices, thisDevice: thisMacDevice) }
 }

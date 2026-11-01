@@ -91,9 +91,10 @@ This reads the app targets' Swift (and one Core file) and checks five things:
      CLIPulseCore that name a device (`CORE_VIEWS`: the device health card and
      Remote Control's screens on both ends) are scanned with the app targets,
      and in them any `.name` / `.displayName` counts, whatever the receiver.
-     This device's own name (`UIDevice.current.name`, `.localizedName`) is
-     never read where it could be shown; the places that only send it are
-     allowlisted. The real tree must make at least
+     This device's own name (`UIDevice.current.name`, `.localizedName`, and
+     the Mac's host name, `ProcessInfo.processInfo.hostName`, which names its
+     own session rows) is never read where it could be shown; the places that
+     only send it are allowlisted. The real tree must make at least
      MIN_DEVICE_MASK_CALLS_REAL_TREE calls to the device mask.
 
 WHAT IT CANNOT SEE
@@ -173,6 +174,9 @@ CORE_VIEW_READS = [
 OWN_NAME_READS = [
     (re.compile(r"\b(UIDevice\s*\.\s*current)\s*\.\s*(name)\b"), set(), "PersonalInfoMask.deviceName"),
     (re.compile(r"\b(Host\s*\.\s*current\s*\(\s*\))\s*\.\s*(localizedName)\b"), set(),
+     "PersonalInfoMask.deviceName"),
+    # 1.61 (B5): the Mac's host name, which its own session rows carry.
+    (re.compile(r"\b(ProcessInfo\s*\.\s*processInfo)\s*\.\s*(hostName)\b"), set(),
      "PersonalInfoMask.deviceName"),
 ]
 DEVICE_MASK_CALLS = re.compile(

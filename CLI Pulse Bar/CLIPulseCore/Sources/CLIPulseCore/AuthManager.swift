@@ -494,22 +494,33 @@ extension AppState {
         let canPairThisMac = runtimeEnvironment.capabilities.allowsHelperRegistration
             && !isDemoMode
         let needsReads = isAuthenticated && isPaired && canPairThisMac
+        let pairedDeviceId = needsReads
+            ? HelperConfig.pairedDeviceId(
+                authenticatedUserId: userId,
+                runtimeEnvironment: runtimeEnvironment,
+                persistence: helperConfig
+            )
+            : nil
+        // 1.61 (B5): which of the account's devices this Mac is.
+        thisMacPairedDeviceId = pairedDeviceId
         let next = ThisMacPairing.state(
             isAuthenticated: isAuthenticated,
             isPaired: isPaired,
             canPairThisMac: canPairThisMac,
-            pairedDeviceId: needsReads
-                ? HelperConfig.pairedDeviceId(
-                    authenticatedUserId: userId,
-                    runtimeEnvironment: runtimeEnvironment,
-                    persistence: helperConfig
-                )
-                : nil,
+            pairedDeviceId: pairedDeviceId,
             helperStatus: needsReads ? readHelperStatus() : nil
         )
         if authState.thisMacPairing != next {
             authState.thisMacPairing = next
         }
+    }
+
+    /// 1.61 (B5): this Mac as "Hide personal information" numbers it: the host
+    /// name its own rows carry, and its id in the account's list (from the
+    /// last `refreshThisMacPairing`). Demo shows no rows of this Mac's.
+    func refreshThisMacDevice(hostName: String) {
+        let next = isDemoMode ? nil : DeviceNameNumbers.ThisDevice(hostName: hostName, id: thisMacPairedDeviceId)
+        if thisMacDevice != next { thisMacDevice = next }
     }
     #endif
 
@@ -1167,6 +1178,9 @@ extension AppState {
         pairingInfo = nil
         pairingError = nil
         authState.thisMacPairing = .notNeeded
+        // 1.61 (B5): the next account's devices are not this one's.
+        thisMacPairedDeviceId = nil
+        thisMacDevice = nil
         lastError = nil
         // Clear tier-migration state so a different account signing in on
         // the same device starts clean — otherwise they'd see the prior
