@@ -3,8 +3,9 @@
 //
 // Each try of the restore is one `GET /auth/v1/user`, so the stub's request
 // log counts tries. The network monitor and the clock are fakes the test
-// drives; the backoff's own sleeping retry is real, but every test here ends
-// well before its first 5 s step.
+// drives; the backoff's own sleeping retry is real, so each test checks that
+// the try it counts is the trigger's (`deferredSessionRestoreRetryTask`), not
+// that retry's.
 
 import Foundation
 import XCTest
@@ -32,15 +33,16 @@ final class DeferredSessionRestoreTriggerTests: XCTestCase {
 
     // MARK: - Each trigger
 
-    func test_the_network_coming_back_tries_at_once() async {
+    func test_the_network_coming_back_tries_at_once() async throws {
         let (state, network, clock) = await Self.deferredState()
         defer { state.cancelDeferredSessionRestore() }
         XCTAssertEqual(SessionRestoreStub.count(Self.userPath), 1, "the launch try")
         XCTAssertTrue(network.isWatching, "watched while deferred")
 
-        clock.now += 6                           // past the spacing, before the 5 s retry would matter
+        clock.now += 6                           // past the spacing
         network.comeBack()
-        await state.deferredSessionRestoreRetryTask?.value
+        let retry = try XCTUnwrap(state.deferredSessionRestoreRetryTask, "the network started a try")
+        await retry.value
 
         XCTAssertEqual(SessionRestoreStub.count(Self.userPath), 2, "tried at once")
         // The backoff counts on: still offline, the next try is a step further.
@@ -50,25 +52,27 @@ final class DeferredSessionRestoreTriggerTests: XCTestCase {
     }
 
     #if os(macOS)
-    func test_the_mac_app_becoming_active_tries_at_once() async {
+    func test_the_mac_app_becoming_active_tries_at_once() async throws {
         let (state, _, clock) = await Self.deferredState()
         defer { state.cancelDeferredSessionRestore() }
 
         clock.now += 6
         NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: nil)
-        await Self.until { state.deferredSessionRestoreRetryTask != nil }
-        await state.deferredSessionRestoreRetryTask?.value
+        await Self.until(seconds: 1) { state.deferredSessionRestoreRetryTask != nil }
+        let retry = try XCTUnwrap(state.deferredSessionRestoreRetryTask, "the activation started a try")
+        await retry.value
 
         XCTAssertEqual(SessionRestoreStub.count(Self.userPath), 2)
     }
 
-    func test_the_menu_opening_tries_at_once() async {
+    func test_the_menu_opening_tries_at_once() async throws {
         let (state, _, clock) = await Self.deferredState()
         defer { state.cancelDeferredSessionRestore() }
 
         clock.now += 6
         state.notePopoverActivated()
-        await state.deferredSessionRestoreRetryTask?.value
+        let retry = try XCTUnwrap(state.deferredSessionRestoreRetryTask, "the menu started a try")
+        await retry.value
 
         XCTAssertEqual(SessionRestoreStub.count(Self.userPath), 2)
     }
@@ -84,17 +88,21 @@ final class DeferredSessionRestoreTriggerTests: XCTestCase {
         let source = try String(contentsOf: app, encoding: .utf8)
         let active = try XCTUnwrap(source.range(of: "if phase == .active {"), "the scene-phase hook")
         let block = source[active.upperBound...].prefix { $0 != "}" }
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.hasPrefix("//") }
         XCTAssertTrue(block.contains("appState.retryDeferredSessionRestoreNow()"),
                       "the iPhone retries a deferred restore when its scene becomes active")
     }
 
-    func test_a_restored_session_after_a_trigger_ends_the_watch() async {
+    func test_a_restored_session_after_a_trigger_ends_the_watch() async throws {
         let (state, network, clock) = await Self.deferredState()
         Self.answerSignedIn()
 
         clock.now += 6
         network.comeBack()
-        await state.deferredSessionRestoreRetryTask?.value
+        let retry = try XCTUnwrap(state.deferredSessionRestoreRetryTask, "the network started a try")
+        await retry.value
         defer { state.stopRefreshLoop() }
 
         XCTAssertTrue(state.isAuthenticated, "the try the network set off restored the session")
@@ -117,6 +125,7 @@ final class DeferredSessionRestoreTriggerTests: XCTestCase {
         await Self.until { SessionRestoreStub.count(Self.userPath) == 2 }
         XCTAssertTrue(state.deferredSessionRestoreInFlight)
 
+        clock.now += 2                           // news, not the same moment told twice
         network.comeBack()
         state.retryDeferredSessionRestoreNow()
         state.retryDeferredSessionRestoreNow()
@@ -128,8 +137,27 @@ final class DeferredSessionRestoreTriggerTests: XCTestCase {
         XCTAssertFalse(state.deferredSessionRestoreInFlight)
         XCTAssertEqual(SessionRestoreStub.count(Self.userPath), 2)
         // One more, as soon as the spacing allows (5 s after the last went
-        // out), not a whole backoff step (10 s) away.
-        XCTAssertEqual(state.deferredSessionRestoreDueAt, clock.now + AppState.deferredSessionRestoreMinimumSpacing)
+        // out, 2 s ago), not a whole backoff step (10 s) away.
+        XCTAssertEqual(state.deferredSessionRestoreDueAt, clock.now + 3)
+    }
+
+    /// On a Mac, opening the menu also makes the app active: one moment, told
+    /// twice within a second. The second is not a reason for a follow-up.
+    func test_the_same_moment_told_twice_is_one_trigger() async {
+        let (state, network, clock) = await Self.deferredState()
+        defer { state.cancelDeferredSessionRestore() }
+        SessionRestoreStub.respond { _ in .held(503, "{}") }
+
+        clock.now += 6
+        state.retryDeferredSessionRestoreNow()   // the menu opening
+        await Self.until { SessionRestoreStub.count(Self.userPath) == 2 }
+        network.comeBack()                       // the app becoming active, same moment
+        SessionRestoreStub.releaseHeld()
+        await state.deferredSessionRestoreRetryTask?.value
+
+        XCTAssertEqual(SessionRestoreStub.count(Self.userPath), 2)
+        XCTAssertEqual(state.deferredSessionRestoreDueAt,
+                       clock.now + AppState.deferredSessionRestoreDelay(attempt: 2), "the backoff, no follow-up")
     }
 
     /// Two tries are never closer than the spacing. A trigger too soon after
@@ -153,8 +181,10 @@ final class DeferredSessionRestoreTriggerTests: XCTestCase {
         XCTAssertEqual(state.deferredSessionRestoreDueAt, clock.now + 3, "brought forward to the spacing")
 
         clock.now += 1
-        network.comeBack()                       // still inside; due is already sooner
-        XCTAssertEqual(state.deferredSessionRestoreDueAt, clock.now + 2, "not pushed back")
+        let sleeping = state.deferredSessionRestoreTask
+        network.comeBack()                       // still inside; due is already that soon
+        XCTAssertEqual(state.deferredSessionRestoreTask, sleeping, "not re-armed")
+        XCTAssertEqual(state.deferredSessionRestoreDueAt, clock.now + 2)
     }
 
     /// The first try's spacing counts from the launch's own try.
@@ -277,8 +307,8 @@ final class DeferredSessionRestoreTriggerTests: XCTestCase {
         for _ in 0..<20 { await Task.yield() }
     }
 
-    private static func until(_ condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(5)
+    private static func until(seconds: TimeInterval = 3, _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(seconds)
         while !condition(), Date() < deadline {
             try? await Task.sleep(nanoseconds: 5_000_000)
         }

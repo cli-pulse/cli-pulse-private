@@ -37,9 +37,9 @@ struct NetworkReturnDetector: Equatable {
     }
 }
 
-/// `NetworkReturnWatching` over `NWPathMonitor`. Started only while a restore
-/// is deferred, and cancelled when that ends; a cancelled monitor cannot be
-/// started again, so each deferral makes a new one.
+/// `NetworkReturnWatching` over `NWPathMonitor`. Started when a restore is
+/// deferred and cancelled with the deferral (`cancelDeferredSessionRestore`);
+/// a cancelled monitor cannot be started again, so each deferral makes a new one.
 final class NWPathNetworkReturnMonitor: NetworkReturnWatching, @unchecked Sendable {
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "app.clipulse.deferred-restore.network")

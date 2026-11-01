@@ -828,6 +828,11 @@ extension AppState {
     /// one `GET /auth/v1/user` per 5 s.
     nonisolated static let deferredSessionRestoreMinimumSpacing: TimeInterval = 5
 
+    /// 1.61 (B3): triggers this close to the try they find out are the same
+    /// moment told twice (on a Mac, opening the menu also makes the app
+    /// active), not news the try went out too early to see.
+    nonisolated static let deferredSessionRestoreSameMomentWindow: TimeInterval = 1
+
     private func scheduleDeferredSessionRestore() {
         deferredSessionRestoreAttempts += 1
         var delay = Self.deferredSessionRestoreDelay(attempt: deferredSessionRestoreAttempts)
@@ -885,14 +890,18 @@ extension AppState {
     /// does nothing otherwise.
     ///
     /// No storms: while a try is out, any number of triggers make at most one
-    /// more, as soon as that one fails; and two tries are never closer than
+    /// more, as soon as that one fails (none if they came with it, within
+    /// `deferredSessionRestoreSameMomentWindow`); and two tries are never closer than
     /// `deferredSessionRestoreMinimumSpacing`, so a trigger too soon after the
     /// last brings the sleeping retry forward to when the spacing allows.
     /// The backoff counts on: a try a trigger set off that fails schedules the
     /// next one a backoff step further, as any failed try does.
     public func retryDeferredSessionRestoreNow() {
         if deferredSessionRestoreInFlight {
-            deferredSessionRestoreTriggeredInFlight = true
+            let sinceItWentOut = deferredSessionRestoreLastStartedAt.map { deferredSessionRestoreClock() - $0 } ?? .infinity
+            if sinceItWentOut >= Self.deferredSessionRestoreSameMomentWindow {
+                deferredSessionRestoreTriggeredInFlight = true
+            }
             return
         }
         guard deferredSessionRestoreTask != nil, let due = deferredSessionRestoreDueAt else { return }
@@ -911,7 +920,9 @@ extension AppState {
         }
     }
 
-    /// 1.61 (B3): watched only while a restore is deferred.
+    /// 1.61 (B3): watched only while a restore is deferred. Stopped by
+    /// `cancelDeferredSessionRestore()`: a sign-in, a sign-out, or the next try
+    /// finding that Demo or local mode was chosen meanwhile.
     private func startDeferredSessionRestoreTriggers() {
         if deferredSessionRestoreNetworkMonitor == nil {
             let monitor = makeNetworkReturnMonitor()
