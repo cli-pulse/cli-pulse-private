@@ -119,7 +119,15 @@ public final class AppState: ObservableObject {
             if !selectedTab.isVisible { selectedTab = .overview }
         }
     }
-    @Published public var isLoading = false
+    @Published public var isLoading = false {
+        didSet {
+            // 1.61 (B2): whoever held the flag let go of it. Only a holder
+            // that a refresh was skipped behind (a sign-in, a session restore)
+            // owes one; a refresh's own release finds nothing owed.
+            guard oldValue, !isLoading else { return }
+            runRefreshOwedWhenLoadingEnds()
+        }
+    }
     @Published public var lastError: String?
     @Published public var tierLimitWarning: String?
     /// Count of providers the tier-migration just auto-disabled.
