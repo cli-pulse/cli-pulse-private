@@ -929,7 +929,7 @@ public final class AppState: ObservableObject {
         if let unsaved = SessionTokenStore.shared.unsavedPair {
             return unsaved.access.isEmpty ? .absent : .value(unsaved.access)
         }
-        switch KeychainHelper.read(key: Self.tokenKeychainKey) {
+        switch lockAware(KeychainHelper.read(key: Self.tokenKeychainKey)) {
         case .value(let token) where token.isEmpty: return .absent
         case let read: return read
         }
@@ -939,7 +939,15 @@ public final class AppState: ObservableObject {
         if let unsaved = SessionTokenStore.shared.unsavedPair {
             return unsaved.refresh.map { $0.isEmpty ? .absent : .value($0) } ?? .absent
         }
-        return KeychainHelper.read(key: AuthManager.refreshTokenKeychainKey)
+        return lockAware(KeychainHelper.read(key: AuthManager.refreshTokenKeychainKey))
+    }
+
+    /// 1.61: while protected data is unavailable nothing the Keychain answers
+    /// but a value is believed: whatever status a locked device returns for a
+    /// `WhenUnlocked` item, it is a lock, not proof that there is no session.
+    private func lockAware(_ read: KeychainHelper.Read) -> KeychainHelper.Read {
+        if case .value = read { return read }
+        return isProtectedDataAvailable() ? read : .locked
     }
 
     /// 1.61: the Keychain says it holds no session (not merely that it cannot
@@ -1116,6 +1124,23 @@ public final class AppState: ObservableObject {
     /// 1.61: the restore `restoreSessionIfIdle()` started. Kept so a test can
     /// wait for it.
     var idleSessionRestoreTask: Task<Void, Never>?
+    /// 1.61: the launch's restore is scheduled but has not started yet (its
+    /// task first installs the API client's handlers). `restoreSessionIfIdle`
+    /// must not start a second one meanwhile.
+    var launchRestorePending = false
+    /// 1.61: whether this device's protected data (the Keychain items written
+    /// `WhenUnlocked`) can be read and written now. Live on iOS; a seam for
+    /// tests; always true elsewhere.
+    var isProtectedDataAvailable: @MainActor () -> Bool = {
+        #if os(iOS)
+        UIApplication.shared.isProtectedDataAvailable
+        #else
+        true
+        #endif
+    }
+    /// 1.61: a refresh was skipped while protected data was unavailable; the
+    /// unlock runs it.
+    var refreshOwedAfterUnlock = false
     #if os(iOS)
     var protectedDataObservers: [NSObjectProtocol] = []
     #endif
@@ -1310,6 +1335,7 @@ public final class AppState: ObservableObject {
             }
             defaults.removeObject(forKey: "cli_pulse_token")
 
+            launchRestorePending = true
             Task {
                 await api.setTokenRefreshHandler { newAccess, newRefresh in
                     Self.persistRotatedTokens(access: newAccess, refresh: newRefresh)

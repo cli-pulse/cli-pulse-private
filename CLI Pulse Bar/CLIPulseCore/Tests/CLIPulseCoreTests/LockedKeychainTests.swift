@@ -370,6 +370,78 @@ final class LockedKeychainTests: XCTestCase {
         await task.value
     }
 
+    // MARK: - Second review
+
+    /// While protected data is unavailable a missing item is not believed: a
+    /// locked iPhone may report a `WhenUnlocked` item as missing. The restore
+    /// defers instead of landing as "never signed in".
+    func test_while_locked_a_missing_session_is_taken_for_a_locked_one() async throws {
+        let (state, _) = await Self.makeState()
+        defer { state.cancelDeferredSessionRestore() }
+        state.isProtectedDataAvailable = { false }
+
+        XCTAssertEqual(state.storedTokenRead, .locked)
+        await state.restoreSession()
+
+        XCTAssertNotNil(state.deferredSessionRestoreTask, "deferred until it can be read")
+        state.isProtectedDataAvailable = { true }
+        XCTAssertEqual(state.storedTokenRead, .absent, "control: unlocked, missing is missing")
+    }
+
+    /// A refresh tick while locked sends nothing and is owed; the unlock runs it.
+    func test_a_refresh_while_locked_is_skipped_and_run_on_unlock() async throws {
+        SessionRestoreStub.respond { _ in .status(500) }
+        let api = APIClient(token: "access", supabaseURL: "https://stub.cli-pulse.test",
+                            supabaseAnonKey: "anon", session: SessionRestoreStub.session())
+        let state = AppState(
+            runtimeEnvironment: RefreshAfterSessionRestoreTests.refreshOnlyRuntime,
+            defaults: UploadOutcomeTests.freshDefaults(),
+            api: api,
+            performLaunchSetup: false)
+        state.isAuthenticated = true
+        state.isPaired = true
+        state.isProtectedDataAvailable = { false }
+
+        await state.refreshAll()
+        XCTAssertEqual(SessionRestoreStub.paths(), [], "nothing sent while locked")
+        XCTAssertTrue(state.refreshOwedAfterUnlock)
+
+        state.isProtectedDataAvailable = { true }
+        state.protectedDataDidBecomeAvailable()
+        let task = try XCTUnwrap(state.dataRefreshManager.refreshTask, "the unlock runs it")
+        await task.value
+        XCTAssertFalse(state.refreshOwedAfterUnlock)
+        XCTAssertFalse(SessionRestoreStub.paths().isEmpty)
+    }
+
+    func test_no_idle_restore_while_the_launch_restore_is_pending() async {
+        let (state, _) = await Self.makeState()
+        AppState.persistAuthTokens(access: "access-old", refresh: "refresh-1")
+        state.launchRestorePending = true
+        state.restoreSessionIfIdle()
+        XCTAssertNil(state.idleSessionRestoreTask)
+    }
+
+    /// A sign-out while the refresh waited for its checks: nothing is sent.
+    func test_a_refresh_that_was_signed_out_of_while_it_waited_sends_nothing() async throws {
+        SessionRestoreStub.respond { _ in .status(200, Self.rotated) }
+        let (_, api) = await Self.makeState()
+        await api.updateToken("access-old")
+        await api.updateRefreshToken("refresh-1")
+        await api.setRotationPersistenceCheck { [api] in
+            api.fenceCurrentSession()
+            return true
+        }
+
+        do {
+            _ = try await api.refreshAccessToken()
+            XCTFail("expected the refresh to stop")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        XCTAssertEqual(SessionRestoreStub.count(Self.tokenPath), 0)
+    }
+
     // MARK: - The wiring the app targets cannot test
 
     func test_the_iphone_wiring() throws {

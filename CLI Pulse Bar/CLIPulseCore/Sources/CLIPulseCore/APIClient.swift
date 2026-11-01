@@ -544,6 +544,8 @@ public actor APIClient {
         }
         let endBackgroundTime = await refreshBackgroundTime?()
         defer { endBackgroundTime?() }
+        // 1.61: the two waits above let a sign-out or another refresh in.
+        guard self.refreshToken == currentRefreshToken, !isSessionFenced else { throw CancellationError() }
         guard let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=refresh_token") else {
             throw APIError.invalidResponse
         }

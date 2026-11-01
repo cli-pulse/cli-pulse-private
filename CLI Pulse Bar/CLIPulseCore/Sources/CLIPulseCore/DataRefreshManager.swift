@@ -2608,6 +2608,12 @@ extension AppState {
         guard runtimeEnvironment.capabilities.allowsLiveCollection else {
             return
         }
+        // 1.61: nothing to do while locked: a token refresh could not be
+        // written, and nobody is looking. The unlock runs it.
+        guard isProtectedDataAvailable() else {
+            refreshOwedAfterUnlock = true
+            return
+        }
         // 1.61: a pair the Keychain refused earlier gets another chance first.
         saveUnsavedSessionTokens()
         await dataRefreshManager.refreshAll(context: refreshContext(), callbacks: refreshCallbacks())

@@ -788,6 +788,7 @@ extension AppState {
     #endif
 
     public func restoreSession() async {
+        launchRestorePending = false
         sessionRestoresInFlight += 1
         defer { sessionRestoresInFlight -= 1 }
         #if os(iOS)
@@ -1128,7 +1129,9 @@ extension AppState {
     func protectedDataDidBecomeAvailable() {
         saveUnsavedSessionTokens()
         restoreSessionIfIdle()
-        if isAuthenticated, !isDemoMode, lastError != nil { requestRefresh() }
+        let owed = refreshOwedAfterUnlock
+        refreshOwedAfterUnlock = false
+        if isAuthenticated, !isDemoMode, owed || lastError != nil { requestRefresh() }
     }
 
     /// 1.61: this iPhone refreshes its own session because the Watch needs a
@@ -1160,7 +1163,7 @@ extension AppState {
     /// cannot give.
     public func restoreSessionIfIdle() {
         guard !isAuthenticated, !isDemoMode, !isLocalMode,
-              sessionRestoresInFlight == 0, idleSessionRestoreTask == nil else { return }
+              sessionRestoresInFlight == 0, idleSessionRestoreTask == nil, !launchRestorePending else { return }
         if deferredSessionRestoreTask != nil || deferredSessionRestoreInFlight {
             retryDeferredSessionRestoreNow()
             return
