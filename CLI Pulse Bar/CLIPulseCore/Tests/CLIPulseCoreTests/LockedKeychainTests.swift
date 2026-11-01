@@ -442,6 +442,39 @@ final class LockedKeychainTests: XCTestCase {
         XCTAssertEqual(SessionRestoreStub.count(Self.tokenPath), 0)
     }
 
+    /// Two requests went out with the same token; the first 401's refresh
+    /// rotated it before the second 401 arrived. The second retries with the
+    /// new token and does not refresh again (on the Watch each refresh is a
+    /// question that can wake the iPhone).
+    func test_staggered_401s_refresh_once() async throws {
+        SessionRestoreStub.respond { request in
+            switch (request.url?.path, Self.bearer(request)) {
+            case ("/rest/v1/sessions", "access-old"), ("/rest/v1/devices", "access-old"):
+                return .held(401, #"{"message":"JWT expired"}"#)
+            case (Self.tokenPath, _): return .status(200, Self.rotated)
+            default: return .status(200, "[]")
+            }
+        }
+        let (_, api) = await Self.makeState()
+        await api.installExternalAuthenticatedSession(
+            accessToken: "access-old", refreshToken: "refresh-1",
+            userID: "00000000-0000-0000-0000-00000000000a", transitionGeneration: 0)
+
+        let first = Task { try await api.sessions() }
+        let second = Task { try await api.devices() }
+        let deadline = Date().addingTimeInterval(5)
+        while SessionRestoreStub.paths().filter({ $0.hasPrefix("/rest/v1/") }).count < 2, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        SessionRestoreStub.releaseHeld(path: "/rest/v1/sessions")
+        _ = try await first.value
+        SessionRestoreStub.releaseHeld(path: "/rest/v1/devices")
+        _ = try await second.value
+
+        XCTAssertEqual(SessionRestoreStub.count(Self.tokenPath), 1, "one refresh for both")
+        XCTAssertEqual(SessionRestoreStub.authorizations("/rest/v1/devices"), ["access-old", "access-new"])
+    }
+
     // MARK: - The wiring the app targets cannot test
 
     func test_the_iphone_wiring() throws {
