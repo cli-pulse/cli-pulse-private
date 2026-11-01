@@ -2547,6 +2547,9 @@ public enum L10n {
         public static func tightestAccount(_ value: String) -> String { tr("watch.tightest_account", value) }
         // Alert card VoiceOver value
         public static var unread: String { tr("watch.unread") }
+        /// 1.61 (B1): a session from the iPhone whose renewal the iPhone could
+        /// not give yet (`WatchCredentialRelayError`).
+        public static var waitingForPhone: String { tr("watch.waiting_for_phone") }
     }
 
     /// v1.10 P3-2: accessibility labels for icon-only controls and

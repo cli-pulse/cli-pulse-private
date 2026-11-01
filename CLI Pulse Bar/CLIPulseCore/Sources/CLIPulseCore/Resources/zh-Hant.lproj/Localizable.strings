@@ -735,6 +735,7 @@
 "watch.stale_updated" = "資料已過期 · 上次更新 %@";
 "watch.tightest_account" = "配額最緊張：%@";
 "watch.unread" = "未讀";
+"watch.waiting_for_phone" = "正在等待 iPhone 更新登入。請在 iPhone 上開啟 CLI Pulse。";
 "widget.alerts_summary" = "%d 則警示 • CLI Pulse";
 "widget.percent_left" = "%@ 剩餘 %d%%";
 "widget.quota_fallback" = "配額";

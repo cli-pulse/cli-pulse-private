@@ -488,6 +488,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "watch.stale_updated" = "Obsoleto · actualizado %@";
 "watch.tightest_account" = "Más limitada: %@";
 "watch.unread" = "Sin leer";
+"watch.waiting_for_phone" = "Esperando a que tu iPhone renueve el inicio de sesión. Abre CLI Pulse en tu iPhone.";
 "widget.alerts_summary" = "%d alertas • CLI Pulse";
 
 /* Watch base namespace backfill (P5) — es previously fell back to en for these. */

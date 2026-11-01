@@ -17,9 +17,9 @@ final class WatchSessionManager: NSObject, ObservableObject {
     @Published private(set) var lastReceivedIdentity:
         WatchSessionIdentity?
 
-    // Auth tokens received from iPhone
+    // Auth token received from iPhone. 1.61 (B1): the access token only; the
+    // iPhone renews a session it gave the Watch, and keeps its refresh token.
     @Published var pendingAuthToken: String?
-    @Published var pendingRefreshToken: String?
     @Published var pendingAuthEmail: String?
     @Published var pendingAuthName: String?
 
@@ -74,6 +74,14 @@ final class WatchSessionManager: NSObject, ObservableObject {
                 lastAcceptedIdentity: lastLogoutIdentity
             )
         super.init()
+    }
+
+    /// 1.61 (B1): the account whose data the iPhone last sent and this Watch
+    /// kept (the persisted snapshot's owner; a sign-out from the iPhone clears
+    /// it). Read at launch, before WatchConnectivity activates, to tell a
+    /// session stored before 1.61 that came from the iPhone.
+    var lastPhoneUserID: String? {
+        UserDefaults.standard.string(forKey: ownerKey).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     /// Activate the WCSession if supported.
@@ -185,7 +193,6 @@ final class WatchSessionManager: NSObject, ObservableObject {
         lastSyncDate = nil
         lastReceivedIdentity = nil
         pendingAuthToken = nil
-        pendingRefreshToken = nil
         pendingAuthEmail = nil
         pendingAuthName = nil
         clearPersistedData()
@@ -399,6 +406,11 @@ extension WatchSessionManager: WCSessionDelegate {
     ) {
         DispatchQueue.main.async {
             self.isPhoneReachable = session.isReachable
+            // 1.61 (B1): a launch's restore asks the iPhone before this session
+            // is active, and gets no answer; it asks again now.
+            if session.isReachable {
+                NotificationCenter.default.post(name: .watchPhoneBecameReachable, object: nil)
+            }
         }
         // Load any previously persisted data on activation
         DispatchQueue.main.async {
@@ -424,7 +436,12 @@ extension WatchSessionManager: WCSessionDelegate {
 
     func sessionReachabilityDidChange(_ session: WCSession) {
         DispatchQueue.main.async {
+            let wasReachable = self.isPhoneReachable
             self.isPhoneReachable = session.isReachable
+            if session.isReachable, !wasReachable {
+                // A session waiting for the iPhone's renewal asks again now.
+                NotificationCenter.default.post(name: .watchPhoneBecameReachable, object: nil)
+            }
         }
     }
 
@@ -445,7 +462,6 @@ extension WatchSessionManager: WCSessionDelegate {
             DispatchQueue.main.async {
                 guard self.acceptLogout(identity) else { return }
                 self.pendingAuthToken = nil
-                self.pendingRefreshToken = nil
                 self.pendingAuthEmail = nil
                 self.pendingAuthName = nil
                 self.clearCachedData()
@@ -466,7 +482,6 @@ extension WatchSessionManager: WCSessionDelegate {
 
         if userInfo["cli_pulse_auth"] as? Bool == true {
             let token = userInfo["access_token"] as? String
-            let refresh = userInfo["refresh_token"] as? String
             let email = userInfo["email"] as? String
             let name = userInfo["name"] as? String
 
@@ -485,19 +500,99 @@ extension WatchSessionManager: WCSessionDelegate {
                 }
                 self.lastReceivedIdentity = identity
                 self.pendingAuthToken = token
-                self.pendingRefreshToken = refresh
                 self.pendingAuthEmail = email
                 self.pendingAuthName = name
                 NotificationCenter.default.post(name: .watchDidReceiveAuth, object: nil, userInfo: [
                     "access_token": token,
-                    "refresh_token": refresh ?? "",
                     "user_id": identity.userID,
                     "session_epoch": identity.epoch,
                     "email": email ?? "",
                     "name": name ?? "",
                 ])
             }
+            return
         }
+
+        // 1.61 (B1): a new access token for the session this iPhone gave the
+        // Watch: one its refresh produced, or its answer to a queued request.
+        if userInfo[WatchCredentialRelay.answerKey] as? Bool == true,
+           case let .accessToken(token, _) = WatchCredentialRelay.answer(from: userInfo) {
+            DispatchQueue.main.async {
+                guard self.accept(identity) else { return }
+                NotificationCenter.default.post(name: .watchDidReceiveCredentials, object: nil, userInfo: [
+                    "access_token": token,
+                    "user_id": identity.userID,
+                    "session_epoch": identity.epoch,
+                ])
+            }
+        }
+    }
+}
+
+// MARK: - 1.61 (B1): asking the iPhone for the current access token
+
+extension WatchSessionManager {
+    /// How long the Watch waits for the iPhone's reply before it queues the
+    /// question instead.
+    static let credentialsReplyTimeout: TimeInterval = 20
+
+    /// Asks the iPhone for the current access token of `userID`'s session and
+    /// waits for its answer while the iPhone can be reached. Otherwise (or
+    /// with no reply in time) the question is queued for the iPhone, whose
+    /// answer arrives later as a transfer (`.watchDidReceiveCredentials`), and
+    /// this returns `.unavailable`.
+    func requestCurrentCredentials(userID: String) async -> WatchCredentialRelay.Answer {
+        guard WCSession.isSupported() else { return .unavailable }
+        let session = WCSession.default
+        guard session.activationState == .activated else { return .unavailable }
+        let request = WatchCredentialRelay.request(userID: userID)
+        if session.isReachable {
+            let reply: WatchCredentialRelay.Answer? = await withCheckedContinuation { continuation in
+                let once = ResumeOnce(continuation)
+                session.sendMessage(
+                    request,
+                    replyHandler: { once.resume(WatchCredentialRelay.answer(from: $0)) },
+                    errorHandler: { _ in once.resume(nil) }
+                )
+                DispatchQueue.global().asyncAfter(deadline: .now() + Self.credentialsReplyTimeout) {
+                    once.resume(nil)
+                }
+            }
+            if let reply { return reply }
+        }
+        queueCredentialsRequest(request, on: session)
+        return .unavailable
+    }
+
+    /// One queued question per account at a time: the iPhone's answer is the
+    /// same however often it was asked.
+    private func queueCredentialsRequest(_ request: [String: Any], on session: WCSession) {
+        let asked = WatchCredentialRelay.requestedUserID(in: request) ?? ""
+        let alreadyQueued = session.outstandingUserInfoTransfers.contains {
+            $0.isTransferring && WatchCredentialRelay.requestedUserID(in: $0.userInfo) == asked
+        }
+        if !alreadyQueued {
+            session.transferUserInfo(request)
+        }
+    }
+}
+
+/// Resumes a continuation once, whichever of the reply, the error and the
+/// timeout comes first. WatchConnectivity calls its handlers from any thread.
+private final class ResumeOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<WatchCredentialRelay.Answer?, Never>?
+
+    init(_ continuation: CheckedContinuation<WatchCredentialRelay.Answer?, Never>) {
+        self.continuation = continuation
+    }
+
+    func resume(_ value: WatchCredentialRelay.Answer?) {
+        lock.lock()
+        let pending = continuation
+        continuation = nil
+        lock.unlock()
+        pending?.resume(returning: value)
     }
 }
 
@@ -507,4 +602,8 @@ extension Notification.Name {
     static let watchDidReceiveAuth = Notification.Name("watchDidReceiveAuth")
     static let watchDidReceiveLogout = Notification.Name("watchDidReceiveLogout")
     static let watchDidReceiveContext = Notification.Name("watchDidReceiveContext")
+    /// 1.61 (B1): a new access token from the iPhone for its session.
+    static let watchDidReceiveCredentials = Notification.Name("watchDidReceiveCredentials")
+    /// 1.61 (B1): the iPhone can be reached again.
+    static let watchPhoneBecameReachable = Notification.Name("watchPhoneBecameReachable")
 }
