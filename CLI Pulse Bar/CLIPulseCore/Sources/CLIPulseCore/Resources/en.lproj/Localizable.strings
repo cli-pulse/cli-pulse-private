@@ -731,7 +731,7 @@
 "watch.stale_updated" = "Stale · updated %@";
 "watch.tightest_account" = "Tightest: %@";
 "watch.unread" = "Unread";
-"watch.waiting_for_phone" = "Waiting for your iPhone to renew the sign-in. Open CLI Pulse on your iPhone.";
+"watch.waiting_for_phone" = "Data will update once your iPhone is unlocked and nearby.";
 "widget.alerts_summary" = "%d alerts • CLI Pulse";
 "widget.percent_left" = "%@ %d%% left";
 "widget.quota_fallback" = "Quota";

@@ -247,8 +247,8 @@ final class WatchCredentialRelayTests: XCTestCase {
         }
     }
 
-    /// A session stored before 1.61 has no record. It is the iPhone's when its
-    /// token is the account the iPhone last sent this Watch anything for.
+    /// A session stored before 1.61 has no record. It is the iPhone's unless
+    /// the iPhone last sent this Watch another account's data.
     func test_a_session_from_before_1_61_is_the_iPhones_when_its_account_is() throws {
         let token = Self.jwt(exp: Date(), sub: Self.userID)
         let inferred = try XCTUnwrap(WatchSessionRecord.resolve(
@@ -257,7 +257,8 @@ final class WatchCredentialRelayTests: XCTestCase {
         XCTAssertEqual(inferred.userID, Self.userID)
 
         XCTAssertNil(WatchSessionRecord.resolve(stored: nil, accessToken: token, lastPhoneUserID: "another-account"))
-        XCTAssertNil(WatchSessionRecord.resolve(stored: nil, accessToken: token, lastPhoneUserID: nil))
+        // 1.61: no iPhone account kept is not another one (WatchUpgradeAndWaitTests).
+        XCTAssertEqual(WatchSessionRecord.resolve(stored: nil, accessToken: token, lastPhoneUserID: nil)?.source, .phone)
         XCTAssertNil(WatchSessionRecord.resolve(stored: nil, accessToken: "opaque", lastPhoneUserID: Self.userID))
 
         // A written record wins.
@@ -400,7 +401,7 @@ final class WatchCredentialRelayTests: XCTestCase {
         let english = WatchCredentialRelayError.waitingForPhone.errorDescription
         store.set("zh-Hans")
         let chinese = WatchCredentialRelayError.waitingForPhone.errorDescription
-        XCTAssertEqual(chinese, L10n.keepingBrandUnbroken("正在等待 iPhone 更新登录。请在 iPhone 上打开 CLI Pulse。"))
+        XCTAssertEqual(chinese, "iPhone 解锁并在附近时，数据就会更新。")
         XCTAssertNotEqual(chinese, english)
         for locale in ["en", "zh-Hans", "zh-Hant", "ja", "ko", "es"] {
             XCTAssertNotNil(LocaleCatalogueProbe.ownValue("watch.waiting_for_phone", in: locale),

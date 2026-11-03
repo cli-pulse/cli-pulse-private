@@ -69,24 +69,46 @@ public struct WatchSessionRecord: Equatable, Sendable, Codable {
         record?.source ?? .watch
     }
 
-    /// The record for the session stored at launch. A session stored before
-    /// 1.61 has none written. It is the iPhone's when its token belongs to the
-    /// account whose data the iPhone last sent this Watch (`lastPhoneUserID`,
-    /// the owner of the snapshot the Watch kept): the iPhone's sign-in
-    /// installs over any other session, and its sign-out ends any session of
-    /// that account, so that session is the iPhone's to renew. Otherwise
-    /// (no iPhone account, another one, a token whose account cannot be read)
-    /// it is the Watch's own and refreshes itself, as before.
+    /// The record for the session stored at launch.
+    ///
+    /// A session stored before 1.61 has none written. It is the Watch's own
+    /// only when its token's account cannot be read, or the iPhone is known
+    /// to be on another account (`lastPhoneUserID`, the owner of the snapshot
+    /// the Watch kept). Otherwise it is the iPhone's to renew: before 1.61
+    /// every launch of the iPhone app sent its sign-in to the Watch, so a
+    /// session there almost always came from it, and the refresh token kept
+    /// with it is the iPhone's too, which the Watch must not spend.
+    ///
+    /// 1.61: that includes a Watch with no snapshot owner kept. Each sign-in
+    /// the iPhone sends clears the snapshot until its next data arrives, and
+    /// such a session used to read as the Watch's own: it refreshed itself
+    /// with the iPhone's refresh token (refused once the iPhone had refreshed:
+    /// signed out), or, holding only the access token a 1.61 iPhone sends,
+    /// could not refresh at all and showed the sign-in screen at its first
+    /// expiry while the iPhone was still signed in (the 1.61 device test).
+    ///
+    /// `hasRefreshToken` (1.61): whether the Watch holds a refresh token for
+    /// it. A recorded session of the Watch's own without one cannot renew
+    /// itself; unless the iPhone is on another account, it is the iPhone's.
     public static func resolve(
         stored raw: String?,
         accessToken: String,
-        lastPhoneUserID: String?
+        lastPhoneUserID: String?,
+        hasRefreshToken: Bool = true
     ) -> WatchSessionRecord? {
-        if let record = stored(raw) { return record }
+        let phoneIsAnotherAccount: (String) -> Bool = { user in
+            lastPhoneUserID.map { !WatchCredentialRelay.sameUser($0, user) } ?? false
+        }
+        if let record = stored(raw) {
+            guard record.source == .watch, !hasRefreshToken, !phoneIsAnotherAccount(record.userID) else {
+                return record
+            }
+            return WatchSessionRecord(source: .phone, userID: record.userID, name: record.name, email: record.email)
+        }
         guard
-            let phoneUser = lastPhoneUserID,
             let tokenUser = APIClient.jwtSubject(accessToken),
-            WatchCredentialRelay.sameUser(phoneUser, tokenUser)
+            !tokenUser.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            !phoneIsAnotherAccount(tokenUser)
         else {
             return nil
         }
@@ -231,6 +253,54 @@ public enum WatchCredentialRelay {
 
     /// 1.61: see `phoneRenewal(…, refreshedAt:)`.
     public static let heldTokenRefreshSpacing: TimeInterval = 60
+
+    // MARK: A token the server refused (1.61)
+
+    /// The access token the server refused while the iPhone could not renew
+    /// it yet (locked, out of reach). Sent again, it is only refused again: a
+    /// Watch waiting for a locked iPhone sent a round of four refused data
+    /// requests every 20 to 60 seconds. While the Watch holds that token its
+    /// refresh does not call the server; it asks the iPhone instead, as the
+    /// refused request would have. It calls the server again as soon as it
+    /// holds a different token (the iPhone's), or once the hold runs out.
+    /// Each refusal of the same token holds it back longer, from `firstHold`
+    /// up to `longestHold`.
+    public struct RefusedTokenHold: Equatable, Sendable {
+        public static let firstHold: TimeInterval = 300
+        public static let longestHold: TimeInterval = 1_800
+
+        private var fingerprint: String?
+        private var until: Date?
+        public private(set) var refusals = 0
+
+        public init() {}
+
+        /// The server refused `token`, or it could not be sent (expired), and
+        /// the iPhone had no other one to give.
+        public mutating func refused(_ token: String?, at now: Date = Date()) {
+            guard let token, !token.isEmpty else {
+                clear()
+                return
+            }
+            let refusedOne = WatchCredentialRelay.fingerprint(token)
+            refusals = refusedOne == fingerprint ? min(refusals + 1, 16) : 1
+            fingerprint = refusedOne
+            let hold = min(Self.firstHold * pow(2, Double(refusals - 1)), Self.longestHold)
+            until = now.addingTimeInterval(hold)
+        }
+
+        /// Whether a refresh holding `token` stays away from the server now.
+        public func holdsBack(_ token: String?, now: Date = Date()) -> Bool {
+            guard let fingerprint, let until, let token, !token.isEmpty else { return false }
+            return now < until && WatchCredentialRelay.fingerprint(token) == fingerprint
+        }
+
+        public mutating func clear() {
+            fingerprint = nil
+            until = nil
+            refusals = 0
+        }
+    }
 
     // MARK: Tokens the iPhone delivered (1.61)
 
