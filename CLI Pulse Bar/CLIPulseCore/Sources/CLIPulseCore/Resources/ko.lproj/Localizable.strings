@@ -475,7 +475,7 @@
 "watch.stale_updated" = "오래된 데이터 · %@ 업데이트";
 "watch.tightest_account" = "잔여량 최소: %@";
 "watch.unread" = "안 읽음";
-"watch.waiting_for_phone" = "iPhone이 로그인을 갱신하기를 기다리는 중입니다. iPhone에서 CLI Pulse를 여세요.";
+"watch.waiting_for_phone" = "iPhone이 잠금 해제되어 가까이 있으면 데이터가 업데이트됩니다.";
 "widget.alerts_summary" = "알림 %d개 • CLI Pulse";
 
 /* Watch base namespace backfill (P5) — ko previously fell back to en for these. */

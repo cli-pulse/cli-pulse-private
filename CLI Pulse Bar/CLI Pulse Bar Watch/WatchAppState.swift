@@ -85,6 +85,10 @@ public final class WatchAppState: ObservableObject {
     /// do right after launch). Adopted once that account's session from the
     /// iPhone is in, and used before asking the iPhone again.
     private var deliveredPhoneToken = WatchCredentialRelay.DeliveredToken()
+    /// 1.61: the token the server refused while the iPhone could not renew
+    /// it. `refreshAll` sends it to the server again only once it is replaced
+    /// or the hold runs out, and meanwhile only asks the iPhone.
+    private var refusedTokenHold = WatchCredentialRelay.RefusedTokenHold()
     // v1.41: fetch devices() every 2nd refresh (tick 0, 2, 4…) to save watch
     // battery — machine health changes slowly and rides the WC fallback anyway.
     private var refreshTickCount = 0
@@ -329,17 +333,24 @@ public final class WatchAppState: ObservableObject {
         // 1.61: nothing the iPhone delivered for the session left is kept, and
         // no question queued for it is answered into the next one.
         deliveredPhoneToken.clear()
+        refusedTokenHold.clear()
         WatchSessionManager.shared.cancelQueuedCredentialRequests()
         // 1.61 (B1): a session from the iPhone is the iPhone's to revoke (its
         // sign-out does). Revoking it from here would sign the iPhone out.
         // The stored record first: a restore or a sign-in still in flight has
-        // already reset `sessionSource`.
-        let revokesOnServer = (
-            WatchSessionRecord.stored(KeychainHelper.load(key: WatchSessionRecord.keychainKey))?.source
-                ?? sessionSource
-        ).renewsItself
+        // already reset `sessionSource`. 1.61: resolved as a restore resolves
+        // it, so a session stored before 1.61 that is the iPhone's is not
+        // revoked from here either.
         let token =
             KeychainHelper.load(key: "cli_pulse_token") ?? ""
+        let revokesOnServer = (
+            WatchSessionRecord.resolve(
+                stored: KeychainHelper.load(key: WatchSessionRecord.keychainKey),
+                accessToken: token,
+                lastPhoneUserID: WatchSessionManager.shared.lastPhoneUserID,
+                hasRefreshToken: !(KeychainHelper.load(key: "cli_pulse_refresh_token") ?? "").isEmpty
+            )?.source ?? sessionSource
+        ).renewsItself
         stopRefreshLoop()
         refreshGate.authDidChange()
         KeychainHelper.delete(key: "cli_pulse_token")
@@ -385,6 +396,7 @@ public final class WatchAppState: ObservableObject {
         // not be answered into the next one (an iPhone's "signed out" for it
         // would end a session signed in here meanwhile).
         WatchSessionManager.shared.cancelQueuedCredentialRequests()
+        refusedTokenHold.clear()
         stopRefreshLoop()
         refreshGate.authDidChange()
         if kind.clearsPersistedCredentials {
@@ -646,6 +658,34 @@ public final class WatchAppState: ObservableObject {
         }
         isLoading = true
         lastError = nil
+        // 1.61: holding the token the server refused while the iPhone could
+        // not renew it, the refresh asks the iPhone only, as each refused
+        // request would have, and calls the server once it holds another
+        // token or the hold runs out (`RefusedTokenHold`).
+        if sessionSource == .phone {
+            let held = await api.getToken()
+            // A token past its `exp` would only be refused: it is held back as
+            // if it had been, without being sent first (once per token, so
+            // the hold still runs out).
+            if WatchCredentialRelay.hasExpired(held), !refusedTokenHold.covers(held) {
+                refusedTokenHold.refused(held)
+            }
+            if refusedTokenHold.holdsBack(held) {
+                _ = try? await api.refreshAccessToken()
+                guard refreshGate.canCommit(lease, isAuthenticated: isAuthenticated) else { return }
+                let now = await api.getToken()
+                if refusedTokenHold.holdsBack(now) {
+                    // Still waiting, even if the iPhone handed back this very
+                    // token: its reachability notice asks again.
+                    awaitingPhoneCredentials = true
+                    serverOnline = false
+                    lastError = WatchCredentialRelayError.waitingForPhone.localizedDescription
+                    isLoading = false
+                    return
+                }
+            }
+        }
+        let sentToken = await api.getToken()
         let fetchDevices = refreshTickCount % 2 == 0   // ticks 0,2,4… (first paint included)
         refreshTickCount &+= 1
         do {
@@ -701,12 +741,17 @@ public final class WatchAppState: ObservableObject {
             }
             serverOnline = true
             lastRefresh = Date()
+            refusedTokenHold.clear()
         } catch {
             guard refreshGate.canCommit(
                 lease,
                 isAuthenticated: isAuthenticated
             ) else {
                 return
+            }
+            // The server refused the token sent, and the iPhone had no other.
+            if sessionSource == .phone, (error as? WatchCredentialRelayError) == .waitingForPhone {
+                refusedTokenHold.refused(sentToken)
             }
             serverOnline = false
             lastError = error.localizedDescription
@@ -783,12 +828,14 @@ public final class WatchAppState: ObservableObject {
         let refreshToken = KeychainHelper.load(key: "cli_pulse_refresh_token")
         guard !token.isEmpty else { return }
         // 1.61 (B1): who renews the stored session. One stored before 1.61
-        // has no record and is renewed here, as it was, until the iPhone next
-        // sends its sign-in.
+        // has no record: the iPhone's unless it is known to be another
+        // account's (`WatchSessionRecord.resolve`), so an upgraded Watch waits
+        // for the iPhone rather than spend its refresh token or sign out.
         let record = WatchSessionRecord.resolve(
             stored: KeychainHelper.load(key: WatchSessionRecord.keychainKey),
             accessToken: token,
-            lastPhoneUserID: WatchSessionManager.shared.lastPhoneUserID
+            lastPhoneUserID: WatchSessionManager.shared.lastPhoneUserID,
+            hasRefreshToken: !(refreshToken ?? "").isEmpty
         )
         let source = WatchSessionRecord.source(of: record)
 
@@ -1002,6 +1049,11 @@ public final class WatchAppState: ObservableObject {
         applyFallbackData(from: WatchSessionManager.shared)
         serverOnline = false
         awaitingPhoneCredentials = (error as? WatchCredentialRelayError) == .waitingForPhone
+        if awaitingPhoneCredentials {
+            // Refused (or expired) and not renewed: not for the server again
+            // until the iPhone sends another (`refreshAll`).
+            refusedTokenHold.refused(accessToken)
+        }
         lastError = error.localizedDescription
         isLoading = false
         // 1.61: a token the iPhone delivered while this restore was out.
