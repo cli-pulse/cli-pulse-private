@@ -1,0 +1,7 @@
+An Apple Watch signed in through your iPhone now gets its sign-in from the iPhone and stays signed in, and its Live page and device count match the iPhone.
+
+• An Apple Watch signed in through your iPhone now gets its sign-in from the iPhone instead of renewing it on its own. When it needs a new one while your iPhone is locked or out of reach, it stays signed in and waits. If it has no data to show yet, it displays "Data will update once your iPhone is unlocked and nearby."
+
+• On Apple Watch, the Live page now lists sessions on the same rule as the iPhone, so a session whose device has gone to sleep no longer stays on it as running. The device count on Apple Watch now counts the devices seen in the last 30 minutes, as the iPhone does.
+
+• If CLI Pulse starts without a network connection, it now signs back in as soon as the network returns or you come back to the app, instead of waiting for its next try. If you sign out while it is still reconnecting, you stay signed out.

@@ -1,0 +1,9 @@
+The first upload after launch is no longer delayed, an offline start reconnects as soon as the network returns, Copilot shows an ended subscription and paces its monthly quotas, and "Hide personal information" numbers this Mac's sessions too.
+
+• After CLI Pulse starts, this Mac's first upload to your account now happens as soon as your sign-in is restored. Until now it could wait for the next scheduled refresh, up to 30 minutes, if you did not open CLI Pulse.
+
+• If CLI Pulse starts without a network connection, it now signs back in as soon as the network returns or you open CLI Pulse, instead of waiting for its next try. If you sign out while it is still reconnecting, you stay signed out.
+
+• Copilot: an account whose Copilot subscription has ended now shows "Copilot subscription ended" instead of "Operational". Copilot's monthly quotas now have a pace line in the menu bar and on the card, like Codex and Claude, and the Premium bar now appears for accounts where it was missing.
+
+• "Hide personal information" in Settings › Advanced now numbers this Mac's own sessions like every other device ("Device 1", "Device 2" and so on) instead of showing "Hidden device".

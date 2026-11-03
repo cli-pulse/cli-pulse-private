@@ -1,0 +1,7 @@
+Un Apple Watch que inició sesión a través de tu iPhone ahora obtiene la sesión del iPhone y no la cierra, y su página En vivo y su número de dispositivos coinciden con los del iPhone.
+
+• Un Apple Watch que inició sesión a través de tu iPhone ahora obtiene la sesión del iPhone en lugar de renovarla por su cuenta. Si necesita una nueva mientras tu iPhone está bloqueado o lejos, mantiene la sesión iniciada y espera. Si aún no tiene datos que mostrar, muestra «Los datos se actualizarán cuando tu iPhone esté desbloqueado y cerca.»
+
+• En el Apple Watch, la página En vivo ahora muestra las sesiones con el mismo criterio que el iPhone, así que una sesión cuyo dispositivo está en reposo ya no sigue apareciendo como en curso. El número de dispositivos del Apple Watch ahora cuenta los dispositivos vistos en los últimos 30 minutos, como hace el iPhone.
+
+• Si CLI Pulse se abre sin conexión de red, ahora vuelve a iniciar sesión en cuanto vuelve la red o regresas a la app, en lugar de esperar al siguiente intento. Si cierras sesión mientras aún se está reconectando, la sesión sigue cerrada.
