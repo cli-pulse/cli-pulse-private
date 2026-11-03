@@ -338,13 +338,19 @@ public final class WatchAppState: ObservableObject {
         // 1.61 (B1): a session from the iPhone is the iPhone's to revoke (its
         // sign-out does). Revoking it from here would sign the iPhone out.
         // The stored record first: a restore or a sign-in still in flight has
-        // already reset `sessionSource`.
-        let revokesOnServer = (
-            WatchSessionRecord.stored(KeychainHelper.load(key: WatchSessionRecord.keychainKey))?.source
-                ?? sessionSource
-        ).renewsItself
+        // already reset `sessionSource`. 1.61: resolved as a restore resolves
+        // it, so a session stored before 1.61 that is the iPhone's is not
+        // revoked from here either.
         let token =
             KeychainHelper.load(key: "cli_pulse_token") ?? ""
+        let revokesOnServer = (
+            WatchSessionRecord.resolve(
+                stored: KeychainHelper.load(key: WatchSessionRecord.keychainKey),
+                accessToken: token,
+                lastPhoneUserID: WatchSessionManager.shared.lastPhoneUserID,
+                hasRefreshToken: !(KeychainHelper.load(key: "cli_pulse_refresh_token") ?? "").isEmpty
+            )?.source ?? sessionSource
+        ).renewsItself
         stopRefreshLoop()
         refreshGate.authDidChange()
         KeychainHelper.delete(key: "cli_pulse_token")
@@ -658,11 +664,20 @@ public final class WatchAppState: ObservableObject {
         // token or the hold runs out (`RefusedTokenHold`).
         if sessionSource == .phone {
             let held = await api.getToken()
+            // A token past its `exp` would only be refused: it is held back as
+            // if it had been, without being sent first (once per token, so
+            // the hold still runs out).
+            if WatchCredentialRelay.hasExpired(held), !refusedTokenHold.covers(held) {
+                refusedTokenHold.refused(held)
+            }
             if refusedTokenHold.holdsBack(held) {
                 _ = try? await api.refreshAccessToken()
                 guard refreshGate.canCommit(lease, isAuthenticated: isAuthenticated) else { return }
                 let now = await api.getToken()
                 if refusedTokenHold.holdsBack(now) {
+                    // Still waiting, even if the iPhone handed back this very
+                    // token: its reachability notice asks again.
+                    awaitingPhoneCredentials = true
                     serverOnline = false
                     lastError = WatchCredentialRelayError.waitingForPhone.localizedDescription
                     isLoading = false

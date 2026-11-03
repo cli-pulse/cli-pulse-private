@@ -289,6 +289,13 @@ public enum WatchCredentialRelay {
             until = now.addingTimeInterval(hold)
         }
 
+        /// Whether `token` is the one refused, whether or not its hold has
+        /// run out.
+        public func covers(_ token: String?) -> Bool {
+            guard let fingerprint, let token, !token.isEmpty else { return false }
+            return WatchCredentialRelay.fingerprint(token) == fingerprint
+        }
+
         /// Whether a refresh holding `token` stays away from the server now.
         public func holdsBack(_ token: String?, now: Date = Date()) -> Bool {
             guard let fingerprint, let until, let token, !token.isEmpty else { return false }
@@ -300,6 +307,13 @@ public enum WatchCredentialRelay {
             until = nil
             refusals = 0
         }
+    }
+
+    /// 1.61: whether a token is past its `exp` (one whose expiry cannot be
+    /// read is not): the server would only refuse it.
+    public static func hasExpired(_ token: String?, now: Date = Date()) -> Bool {
+        guard let token, let expiry = APIClient.jwtExpiry(token) else { return false }
+        return expiry <= now
     }
 
     // MARK: Tokens the iPhone delivered (1.61)

@@ -55,8 +55,14 @@ final class WatchUpgradeAndWaitTests: XCTestCase {
         XCTAssertFalse(hold.holdsBack(nil, now: start.addingTimeInterval(20)))
         XCTAssertFalse(hold.holdsBack("", now: start.addingTimeInterval(20)))
 
+        // Run out, it is still the token that was refused.
+        XCTAssertFalse(hold.holdsBack(refused, now: start.addingTimeInterval(Hold.firstHold)))
+        XCTAssertTrue(hold.covers(refused))
+        XCTAssertFalse(hold.covers(fromPhone))
+
         hold.clear()
         XCTAssertFalse(hold.holdsBack(refused, now: start.addingTimeInterval(20)))
+        XCTAssertFalse(hold.covers(refused))
         hold.refused(refused, at: start)
         hold.refused(nil, at: start)
         XCTAssertFalse(hold.holdsBack(refused, now: start.addingTimeInterval(20)), "no token: nothing held")
@@ -83,6 +89,13 @@ final class WatchUpgradeAndWaitTests: XCTestCase {
         hold.refused(another, at: now)
         XCTAssertEqual(hold.refusals, 1)
         XCTAssertFalse(hold.holdsBack(another, now: now.addingTimeInterval(Hold.firstHold)))
+    }
+
+    func test_a_token_past_its_expiry_counts_as_refused_and_one_whose_expiry_cannot_be_read_does_not() {
+        XCTAssertTrue(WatchCredentialRelay.hasExpired(Self.jwt(sub: Self.userID, expiresIn: -1)))
+        XCTAssertFalse(WatchCredentialRelay.hasExpired(Self.jwt(sub: Self.userID, expiresIn: 60)))
+        XCTAssertFalse(WatchCredentialRelay.hasExpired("opaque"))
+        XCTAssertFalse(WatchCredentialRelay.hasExpired(nil))
     }
 
     /// The Watch's refresh loop (`WatchAppState.refreshAll`) against the real
@@ -113,43 +126,71 @@ final class WatchUpgradeAndWaitTests: XCTestCase {
         for tick in 0..<9 {   // three minutes, the iPhone locked
             await Self.watchRefresh(api, hold: &hold, now: start.addingTimeInterval(Double(tick) * 20))
         }
-        XCTAssertEqual(SessionRestoreStub.count(Self.alertsPath), 1, "the refused token went to the server once")
+        XCTAssertEqual(SessionRestoreStub.count(Self.alertsPath), 0, "a token past its expiry is not sent at all")
         XCTAssertEqual(phone.asked, 9, "and the iPhone was asked on every tick")
+        XCTAssertEqual(hold.refusals, 1)
 
-        // The hold runs out: one more try with the same token, then a longer hold.
+        // The hold runs out: one try with the same token, then a longer hold.
         let later = start.addingTimeInterval(Hold.firstHold)
         await Self.watchRefresh(api, hold: &hold, now: later)
         await Self.watchRefresh(api, hold: &hold, now: later.addingTimeInterval(Hold.firstHold))
-        XCTAssertEqual(SessionRestoreStub.count(Self.alertsPath), 2)
+        XCTAssertEqual(SessionRestoreStub.count(Self.alertsPath), 1, "the hold is bounded")
         XCTAssertEqual(hold.refusals, 2)
 
         // Unlocked: the iPhone's token reaches the server on the next tick.
         phone.give(fromPhone)
         await Self.watchRefresh(api, hold: &hold, now: later.addingTimeInterval(Hold.firstHold + 20))
         XCTAssertEqual(SessionRestoreStub.authorizations(Self.alertsPath).last, fromPhone)
-        XCTAssertEqual(SessionRestoreStub.count(Self.alertsPath), 3)
+        XCTAssertEqual(SessionRestoreStub.count(Self.alertsPath), 2)
         XCTAssertEqual(SessionRestoreStub.count(Self.tokenPath), 0, "the Watch never refreshes the iPhone's session")
         let held = await api.getToken()
         XCTAssertEqual(held, fromPhone)
         XCTAssertFalse(hold.holdsBack(held))
     }
 
+    /// A token the server refused before its expiry (revoked, say) goes once,
+    /// then is held back the same way.
+    func test_an_unexpired_token_the_server_refused_is_sent_once_then_held_back() async {
+        let refused = Self.jwt(sub: Self.userID, expiresIn: 1_800)
+        SessionRestoreStub.respond { _ in .status(401, #"{"message":"JWT invalid"}"#) }
+        let phone = PhoneStub()
+        let api = APIClient(supabaseURL: "https://stub.cli-pulse.test", supabaseAnonKey: "anon",
+                            session: SessionRestoreStub.session())
+        _ = await api.beginExternalAuthorizationTransition(generation: 1)
+        _ = await api.installExternalAuthenticatedSession(
+            accessToken: refused, refreshToken: nil, userID: Self.userID, transitionGeneration: 1,
+            renewer: { try phone.answer() }
+        )
+        var hold = Hold()
+        let start = Date()
+        for tick in 0..<9 {
+            await Self.watchRefresh(api, hold: &hold, now: start.addingTimeInterval(Double(tick) * 20))
+        }
+        XCTAssertEqual(SessionRestoreStub.count(Self.alertsPath), 1)
+        XCTAssertEqual(phone.asked, 9)
+    }
+
     func test_the_Watch_refresh_holds_a_refused_token_back_and_still_asks_the_iPhone() throws {
         let watch = try Self.code("CLI Pulse Bar Watch/WatchAppState.swift")
         let refresh = try Self.section(watch, from: "func refreshAll() async {", to: "func startRefreshLoop()")
+        let seeds = try XCTUnwrap(refresh.range(of:
+            "if WatchCredentialRelay.hasExpired(held), !refusedTokenHold.covers(held) {\n                refusedTokenHold.refused(held)"))
         let holds = try XCTUnwrap(refresh.range(of: "if refusedTokenHold.holdsBack(held) {"))
+        XCTAssertLessThan(seeds.lowerBound, holds.lowerBound, "an expired token is held back before it is sent")
         let asks = try XCTUnwrap(refresh.range(of: "_ = try? await api.refreshAccessToken()"))
         let server = try XCTUnwrap(refresh.range(of: "async let dashTask = api.dashboard()"))
         XCTAssertLessThan(holds.lowerBound, asks.lowerBound)
         XCTAssertLessThan(asks.lowerBound, server.lowerBound, "held back: the iPhone is asked, the server is not")
         XCTAssertTrue(refresh.contains("if sessionSource == .phone {"), "only a session the iPhone renews")
-        XCTAssertNotNil(refresh.range(
+        let stillHeld = try XCTUnwrap(refresh.range(
             of: #"if refusedTokenHold\.holdsBack\(now\) \{[^}]*return\s*\}"#, options: .regularExpression),
             "still the refused token after asking: no request")
+        XCTAssertTrue(refresh[stillHeld].contains("awaitingPhoneCredentials = true"), "and still waiting, so it asks again")
         XCTAssertTrue(refresh.contains("let sentToken = await api.getToken()"))
         XCTAssertTrue(refresh.contains(
             "if sessionSource == .phone, (error as? WatchCredentialRelayError) == .waitingForPhone {\n                refusedTokenHold.refused(sentToken)"))
-        XCTAssertTrue(refresh.contains("refusedTokenHold.clear()"), "a refresh that worked ends the hold")
+        let success = try Self.section(String(refresh), from: "dashboard = fetchedDashboard", to: "} catch {")
+        XCTAssertTrue(success.contains("refusedTokenHold.clear()"), "a refresh that worked ends the hold")
 
         let offline = try Self.section(watch, from: "private func commitPhoneSessionOffline(", to: "// MARK: - WCSession Fallback")
         XCTAssertTrue(offline.contains("refusedTokenHold.refused(accessToken)"),
@@ -250,6 +291,33 @@ final class WatchUpgradeAndWaitTests: XCTestCase {
                                                   hasRefreshToken: true), phone)
     }
 
+    /// The cost of reading an unrecorded session as the iPhone's: one the
+    /// Watch signed in to by itself with an email code, while the iPhone app
+    /// was signed out, is renewed by asking the iPhone, whose "signed out"
+    /// ends it (the user signs in on the Watch once more; that session is then
+    /// recorded as the Watch's own). The Watch app is a companion app, so an
+    /// iPhone app is always there to answer.
+    func test_an_unrecorded_session_with_its_own_refresh_token_is_still_the_iPhones_when_no_account_is_kept() throws {
+        let token = Self.jwt(sub: Self.userID, expiresIn: 600)
+        let record = try XCTUnwrap(WatchSessionRecord.resolve(stored: nil, accessToken: token, lastPhoneUserID: nil,
+                                                              hasRefreshToken: true))
+        XCTAssertEqual(record.source, .phone)
+        XCTAssertEqual(WatchCredentialRelay.watchAction(for: .signedOut, currentUserID: Self.userID), .signOut)
+        XCTAssertEqual(WatchCredentialRelay.answer(for: .signedOut, requestedUserID: Self.userID), .signedOut)
+        let plist = try Self.code("CLI Pulse Bar Watch/Info.plist")
+        XCTAssertTrue(plist.contains("<key>WKCompanionAppBundleIdentifier</key>"))
+        XCTAssertFalse(plist.contains("WKRunsIndependentlyOfCompanionApp"))
+    }
+
+    func test_signing_out_revokes_only_a_session_the_Watch_renews_itself_as_a_restore_reads_it() throws {
+        let watch = try Self.code("CLI Pulse Bar Watch/WatchAppState.swift")
+        let signOut = try Self.section(watch, from: "let revokesOnServer = (", to: ").renewsItself")
+        XCTAssertTrue(signOut.contains("WatchSessionRecord.resolve("))
+        XCTAssertTrue(signOut.contains("lastPhoneUserID: WatchSessionManager.shared.lastPhoneUserID,"))
+        XCTAssertTrue(signOut.contains("hasRefreshToken: !(KeychainHelper.load(key: \"cli_pulse_refresh_token\") ?? \"\").isEmpty"))
+        XCTAssertTrue(signOut.contains(")?.source ?? sessionSource"))
+    }
+
     func test_the_restore_tells_resolve_whether_it_holds_a_refresh_token() throws {
         let watch = try Self.code("CLI Pulse Bar Watch/WatchAppState.swift")
         let restore = try Self.section(watch, from: "private func restoreSession() async", to: "guard let lease = await beginAuthTransition(\n            kind: .sessionRestore")
@@ -295,7 +363,9 @@ final class WatchUpgradeAndWaitTests: XCTestCase {
 
     /// `WatchAppState.refreshAll`'s use of the hold, on the client alone.
     private static func watchRefresh(_ api: APIClient, hold: inout Hold, now: Date) async {
-        if hold.holdsBack(await api.getToken(), now: now) {
+        let held = await api.getToken()
+        if WatchCredentialRelay.hasExpired(held, now: now), !hold.covers(held) { hold.refused(held, at: now) }
+        if hold.holdsBack(held, now: now) {
             _ = try? await api.refreshAccessToken()
             if hold.holdsBack(await api.getToken(), now: now) { return }
         }
