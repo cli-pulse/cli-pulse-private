@@ -312,6 +312,10 @@ struct PulseHomeView: View {
 
     private func chips(_ dash: DashboardSummary) -> some View {
         let devicesOnline = onlineDevices(dash)
+        // The Alerts page's own count, not the cloud's `unresolved_alerts`:
+        // the list the iPhone relays also holds its quota alerts, which are
+        // never uploaded (WatchAlertSort.open).
+        let openAlertCount = WatchAlertSort.open(state.alerts).count
         return HStack(spacing: 6) {
             StatChip(
                 icon: "terminal",
@@ -326,13 +330,13 @@ struct PulseHomeView: View {
                 tint: .cyan,
                 accessibilityText: L10n.watch.devicesCount(devicesOnline)
             )
-            if dash.unresolved_alerts > 0 {
+            if openAlertCount > 0 {
                 StatChip(
                     icon: "bell.badge",
-                    value: "\(dash.unresolved_alerts)",
+                    value: "\(openAlertCount)",
                     tint: .red,
                     emphasized: true,
-                    accessibilityText: L10n.watch.alertsCount(dash.unresolved_alerts),
+                    accessibilityText: L10n.watch.alertsCount(openAlertCount),
                     action: { selectedTab = .alerts }
                 )
             }

@@ -107,6 +107,21 @@ final class WatchScreenshotLaunchTests: XCTestCase {
         XCTAssertEqual(snap.refreshedAt, demo.refreshedAt)
     }
 
+    /// The Pulse page's bell counts the Alerts page's open list, which the
+    /// iPhone relays with its own quota alert in it; the cloud figure leaves
+    /// that alert out. Demo holds both kinds, so the 01_pulse screenshot shows
+    /// the count the bell opens to.
+    func test_theBellCountsTheListTheAlertsPageShows() {
+        let snap = Launch.watchSnapshot(of: DemoDataProvider.generate())
+        let open = WatchAlertSort.open(snap.alerts)
+        XCTAssertEqual(open.count, snap.alerts.filter { !$0.is_resolved }.count)
+        XCTAssertEqual(open.count, 3)
+        // Positive control: the cloud count is the smaller one, so the bell
+        // reading the list is a change the screenshot can show.
+        XCTAssertEqual(snap.dashboard.unresolved_alerts, 2)
+        XCTAssertTrue(open.contains { $0.id.hasPrefix("quota-") })
+    }
+
     /// The Watch draws a machine card only for a device that reports machine
     /// health (`WatchDeviceTrim`). Demo's devices report none, so a capture
     /// draws no machine card, as a real account with such devices sees it.

@@ -428,9 +428,9 @@ internal enum DemoDataProvider {
             // `dashboard_summary` counts the unresolved rows of public.alerts,
             // and the cloud route passes that count through. The quota alert
             // is the app's own, raised as it refreshes and never uploaded, so
-            // the Alerts tile reads 2 while the alert list and the tab badge,
-            // which count the merged list, read 3. Demo counted the quota
-            // alert in the tile too, which no account sees.
+            // the Alerts tile reads 2 while the alert list, the tab badge and
+            // the Watch's bell, which count the merged list, read 3. Demo
+            // counted the quota alert in the tile too, which no account sees.
             unresolved_alerts: cloudAlerts.filter { !$0.is_resolved }.count,
             provider_breakdown: breakdowns,
             // Empty, as every real producer leaves it (APIClient, DataRefreshManager),

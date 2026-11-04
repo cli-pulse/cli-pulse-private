@@ -14,6 +14,16 @@ public enum WatchAlertSort {
         }
     }
 
+    /// The alerts still open: everything not resolved, in the order given.
+    /// One rule for the Alerts page's list and the Pulse page's bell, and the
+    /// same one the iPhone's tab badge and the Mac's menu-bar badge count by.
+    /// The bell used to show the cloud's `unresolved_alerts`, which leaves out
+    /// the quota alerts the iPhone raises itself and relays with its list, so
+    /// it read one or two fewer than the page it opens.
+    public static func open(_ alerts: [AlertRecord]) -> [AlertRecord] {
+        alerts.filter { !$0.is_resolved }
+    }
+
     /// Alerts ordered most-severe first. The sort is made deterministically
     /// **stable** (Swift's `sorted` is not guaranteed stable) by using the
     /// original index as the tie-breaker, so same-severity alerts keep the
