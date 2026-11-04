@@ -69,8 +69,13 @@ _build_lock_alive() {
     for p in "$(cat "$1/pid" 2>/dev/null || true)" "$(cat "$1/child" 2>/dev/null || true)"; do
         [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null && return 0
     done
-    pgrep -f -- "-resolvePackageDependencies .*-clonedSourcePackagesDirPath ${1%.lock}( |$)" >/dev/null 2>&1 && return 0
-    return 1
+    # The directory as a literal inside the extended regex pgrep takes. pgrep exits 1 for no
+    # match; anything else (a bad pattern, no pgrep) counts as alive, so a doubt never reaps.
+    local dir_re rc=0
+    dir_re="$(printf '%s' "${1%.lock}" | sed -e 's#[][\\.^$*+?(){}|]#\\&#g')"
+    pgrep -f -- "-resolvePackageDependencies .*-clonedSourcePackagesDirPath ${dir_re}( |$)" >/dev/null 2>&1 || rc=$?
+    (( rc == 1 )) && return 1
+    return 0
 }
 
 # _phys_path <path>: the path with symlinks and .. resolved through its deepest existing
@@ -84,10 +89,11 @@ _phys_path() {
     done
     p="$(cd "$p" 2>/dev/null && pwd -P)" || { echo "$1"; return; }
     p="${p%/}$rest"
-    # The parts that do not exist yet can still hold .. ; fold them lexically.
-    local out="" part
-    local IFS=/
-    for part in $p; do
+    # The parts that do not exist yet can still hold .. ; fold them lexically. Split with read,
+    # which neither globs nor touches the caller's IFS.
+    local out="" part parts=()
+    IFS=/ read -r -a parts <<<"$p"
+    for part in "${parts[@]+"${parts[@]}"}"; do
         case "$part" in
             ""|.) ;;
             ..) out="${out%/*}" ;;
@@ -189,11 +195,12 @@ spm_cache_key() {
              -e '/Begin XCLocalSwiftPackageReference section/,/End XCLocalSwiftPackageReference section/p' \
              "$app/CLI Pulse Bar.xcodeproj/project.pbxproj" 2>/dev/null || true
       grep -E '^[[:space:]]*\.package\(' "$app/CLIPulseCore/Package.swift" 2>/dev/null || true
+      # (A // comment is dropped before the test, but not the // of a URL.)
       # A .package( declaration split over lines would hash only its first line, so a changed
       # URL or version on a later line would keep the key. Then the whole manifest counts. A
       # one-line declaration (all of them today) keeps the key the line alone gives.
       if grep -E '^[[:space:]]*\.package\(' "$app/CLIPulseCore/Package.swift" 2>/dev/null |
-            grep -qvE '\)[[:space:]]*,?[[:space:]]*(//.*)?$'; then
+            sed -E 's:(^|[[:space:]]|[),])//.*$:\1:' | grep -qvE '\)[[:space:]]*,?[[:space:]]*$'; then
           cat "$app/CLIPulseCore/Package.swift"
       fi
     } | shasum -a 256 | awk '{print $1}'
@@ -222,7 +229,8 @@ spm_cache_args() {
             echo "⚠ $dir is in iCloud's Documents or Desktop; packages resolve into the derived data instead" >&2
             return 0 ;;
     esac
-    if [[ -n "${TMPDIR:-}" && ( "$dir/" == "${TMPDIR%/}/"* || "$dir/" == "/private${TMPDIR%/}/"* ) ]]; then
+    if [[ -n "${TMPDIR:-}" && ( "$dir/" == "${TMPDIR%/}/"* || "$dir/" == "/private${TMPDIR%/}/"* ||
+          "$dir/" == "$(_phys_path "$TMPDIR")/"* ) ]]; then
         echo "⚠ $dir is in \$TMPDIR, which macOS purges by age; packages resolve into the derived data instead" >&2
         return 0
     fi
