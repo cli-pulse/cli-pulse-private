@@ -61,13 +61,40 @@
 
 SPM_ARGS=()
 
-# 0 when the lock's holder, or the resolve it recorded, is alive.
+# 0 when the lock's holder, or the resolve it recorded, is alive. A resolve into the lock's
+# directory counts even when no child pid was written: a holder killed between starting
+# xcodebuild and recording its pid leaves the resolve running with nothing in the lock.
 _build_lock_alive() {
     local p
     for p in "$(cat "$1/pid" 2>/dev/null || true)" "$(cat "$1/child" 2>/dev/null || true)"; do
         [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null && return 0
     done
+    pgrep -f -- "-resolvePackageDependencies .*-clonedSourcePackagesDirPath ${1%.lock}( |$)" >/dev/null 2>&1 && return 0
     return 1
+}
+
+# _phys_path <path>: the path with symlinks and .. resolved through its deepest existing
+# ancestor, so the iCloud and $TMPDIR checks below cannot be passed by spelling.
+_phys_path() {
+    local p="$1" rest="" base
+    while [[ -n "$p" && "$p" != "/" && ! -d "$p" ]]; do
+        base="$(basename "$p")"
+        rest="/$base$rest"
+        p="$(dirname "$p")"
+    done
+    p="$(cd "$p" 2>/dev/null && pwd -P)" || { echo "$1"; return; }
+    p="${p%/}$rest"
+    # The parts that do not exist yet can still hold .. ; fold them lexically.
+    local out="" part
+    local IFS=/
+    for part in $p; do
+        case "$part" in
+            ""|.) ;;
+            ..) out="${out%/*}" ;;
+            *) out="$out/$part" ;;
+        esac
+    done
+    echo "${out:-/}"
 }
 
 # Removes a lock whose holder is gone, but only if it still shows the state the caller saw:
@@ -162,6 +189,13 @@ spm_cache_key() {
              -e '/Begin XCLocalSwiftPackageReference section/,/End XCLocalSwiftPackageReference section/p' \
              "$app/CLI Pulse Bar.xcodeproj/project.pbxproj" 2>/dev/null || true
       grep -E '^[[:space:]]*\.package\(' "$app/CLIPulseCore/Package.swift" 2>/dev/null || true
+      # A .package( declaration split over lines would hash only its first line, so a changed
+      # URL or version on a later line would keep the key. Then the whole manifest counts. A
+      # one-line declaration (all of them today) keeps the key the line alone gives.
+      if grep -E '^[[:space:]]*\.package\(' "$app/CLIPulseCore/Package.swift" 2>/dev/null |
+            grep -qvE '\)[[:space:]]*,?[[:space:]]*(//.*)?$'; then
+          cat "$app/CLIPulseCore/Package.swift"
+      fi
     } | shasum -a 256 | awk '{print $1}'
 }
 
@@ -182,8 +216,9 @@ spm_cache_args() {
     dir="${CLIPULSE_SPM_DIR:-${CLIPULSE_SPM_ROOT:-$HOME/Library/Caches/CLIPulse-build}/SourcePackages-${key:0:8}}"
     dir="${dir%/}"
     case "$dir" in /*) ;; *) dir="$PWD/$dir" ;; esac
+    dir="$(_phys_path "$dir")"
     case "$dir/" in
-        "$HOME/Documents/"*|"$HOME/Desktop/"*)
+        "$HOME/Documents/"*|"$HOME/Desktop/"*|"$(_phys_path "$HOME/Documents")/"*|"$(_phys_path "$HOME/Desktop")/"*)
             echo "⚠ $dir is in iCloud's Documents or Desktop; packages resolve into the derived data instead" >&2
             return 0 ;;
     esac
