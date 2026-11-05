@@ -24,8 +24,11 @@ import CoreGraphics
 public enum KeychainReport: Equatable, Sendable {
     /// `browser` is a `Browser` raw value (a fixed list; never a profile name).
     /// `screenLocked`: a locked login keychain answers like an item that needs
-    /// approval, so `approval_needed` says whether the screen was locked.
-    case safeStorage(SafeStorageOutcome, browser: String, channel: DistributionChannel, screenLocked: Bool)
+    /// approval. The screen's lock is a hint only: a keychain can lock on its
+    /// own timer while the screen is not, so `approval_needed` with the screen
+    /// unlocked still does not prove the item needed approval. Nil when the
+    /// session would not say.
+    case safeStorage(SafeStorageOutcome, browser: String, channel: DistributionChannel, screenLocked: Bool?)
     case sessionPair(SessionPairOutcome)
 
     public enum SafeStorageOutcome: String, Sendable, CaseIterable {
@@ -60,7 +63,7 @@ public enum KeychainReport: Equatable, Sendable {
         switch self {
         case let .safeStorage(outcome, browser, channel, screenLocked):
             return ["ss_outcome": outcome.rawValue, "ss_browser": browser, "channel": channel.rawValue,
-                    "screen_locked": screenLocked ? "true" : "false"]
+                    "screen_locked": screenLocked.map { $0 ? "true" : "false" } ?? "unknown"]
         case .sessionPair(let outcome):
             return ["pair_outcome": outcome.rawValue]
         }
@@ -133,8 +136,11 @@ final class KeychainReporter: @unchecked Sendable {
         lock.unlock()
         guard due else { return }
         sink.send(report) { [self] in
+            // The day it actually went: a report queued before midnight and
+            // sent after it uses the new day.
+            let sentDay = DayKey.string(from: now(), in: DayKey.utc)
             lock.lock()
-            defaults.set(today, forKey: key)
+            defaults.set(sentDay, forKey: key)
             inFlight.remove(key)
             lock.unlock()
         }
@@ -157,7 +163,7 @@ public enum KeychainReports {
 
     static func safeStorageReport(
         _ outcome: BrowserCookieKeychainOutcome, browser: Browser,
-        channel: DistributionChannel, screenLocked: Bool
+        channel: DistributionChannel, screenLocked: Bool?
     ) -> KeychainReport {
         let mapped: KeychainReport.SafeStorageOutcome
         switch outcome {
@@ -167,9 +173,11 @@ public enum KeychainReports {
         return .safeStorage(mapped, browser: browser.rawValue, channel: channel, screenLocked: screenLocked)
     }
 
-    /// Whether the login session's screen is locked right now.
-    static func isScreenLocked() -> Bool {
-        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
+    /// Whether the login session's screen is locked right now; nil when there
+    /// is no session dictionary. `CGSSessionScreenIsLocked` is undocumented and
+    /// present only while locked, so its absence in a session reads as unlocked.
+    static func isScreenLocked() -> Bool? {
+        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return nil }
         return (session["CGSSessionScreenIsLocked"] as? Bool) ?? false
     }
     #endif

@@ -83,6 +83,20 @@ final class KeychainReporterTests: XCTestCase {
         next.report(.sessionPair(.pendingAtLaunch))
         XCTAssertEqual(sink.reports.count, 2)
     }
+
+    /// Queued before UTC midnight, sent after it: the new day is the one used.
+    func test_aReportSentAfterMidnightUsesTheDayItWasSent() {
+        let sink = RecordingSink()
+        sink.delivers = false
+        let clock = Clock(Date(timeIntervalSince1970: 1_793_923_140)) // 11-05 23:59 UTC
+        let reporter = KeychainReporter(sink: sink, defaults: defaults, now: { clock.now })
+        reporter.report(.sessionPair(.held))
+        clock.now = clock.now.addingTimeInterval(120)                 // 11-06 00:01 UTC
+        sink.deliverHeld()
+        sink.delivers = true
+        reporter.report(.sessionPair(.held))
+        XCTAssertEqual(sink.reports.count, 1, "already sent on 11-06")
+    }
 }
 
 #if os(macOS)
@@ -94,6 +108,9 @@ final class SafeStorageReportMappingTests: XCTestCase {
         XCTAssertEqual(
             KeychainReports.safeStorageReport(.approvalNeeded, browser: .chrome, channel: .devid, screenLocked: true),
             .safeStorage(.approvalNeeded, browser: "chrome", channel: .devid, screenLocked: true))
+        XCTAssertEqual(
+            KeychainReport.safeStorage(.approvalNeeded, browser: "arc", channel: .devid, screenLocked: nil)
+                .tags["screen_locked"], "unknown")
     }
 }
 #endif
@@ -151,8 +168,8 @@ final class KeychainReportPrivacyTests: XCTestCase {
             "the Keychain did not accept the new sign-in tokens",
             "Each of these outcomes is sent at most once a UTC day",
             "(the stack trace, the app and OS version, the device details and the SDK's random installation identifier)",
-            "whether the screen was locked",
-            "the browser's name from a fixed list, the install channel and whether the screen was locked",
+            "whether the screen was locked (when the system says)",
+            "the browser's name from a fixed list, the install channel and whether the screen was locked (when the system says)",
             "It has no breadcrumbs, no tokens, no error text from the system",
         ] {
             XCTAssertTrue(policy.contains(claim), "PRIVACY.md no longer says \"\(claim)\"")
