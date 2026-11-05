@@ -7,8 +7,18 @@ import Security
 private final class RecordingSink: KeychainReportSink, @unchecked Sendable {
     private let lock = NSLock()
     private var sent: [KeychainReport] = []
-    func send(_ report: KeychainReport) { lock.lock(); sent.append(report); lock.unlock() }
+    private var held: [@Sendable () -> Void] = []
+    /// False: like a process whose Sentry never started; nothing is confirmed sent.
+    var delivers = true
+    func send(_ report: KeychainReport, sent done: @escaping @Sendable () -> Void) {
+        lock.lock(); sent.append(report)
+        let deliver = delivers
+        if !deliver { held.append(done) }
+        lock.unlock()
+        if deliver { done() }
+    }
     var reports: [KeychainReport] { lock.lock(); defer { lock.unlock() }; return sent }
+    func deliverHeld() { lock.lock(); let h = held; held = []; lock.unlock(); h.forEach { $0() } }
 }
 
 private final class Clock: @unchecked Sendable {
@@ -33,19 +43,19 @@ final class KeychainReporterTests: XCTestCase {
 
     func test_eachOutcomeIsSentOncePerUTCDay() {
         let sink = RecordingSink()
-        // 2026-11-06 23:59 UTC.
+        // 2026-11-05 23:59 UTC.
         let clock = Clock(Date(timeIntervalSince1970: 1_793_923_140))
         let reporter = KeychainReporter(sink: sink, defaults: defaults, now: { clock.now })
 
         reporter.report(.sessionPair(.held))
         reporter.report(.sessionPair(.held))
         reporter.report(.sessionPair(.savedLater))
-        reporter.report(.safeStorage(.approvalNeeded, browser: "chrome", channel: .devid))
+        reporter.report(.safeStorage(.approvalNeeded, browser: "chrome", channel: .devid, screenLocked: false))
         // Another browser the same day: a sample of first occurrences only.
-        reporter.report(.safeStorage(.approvalNeeded, browser: "brave", channel: .devid))
+        reporter.report(.safeStorage(.approvalNeeded, browser: "brave", channel: .devid, screenLocked: false))
         XCTAssertEqual(sink.reports, [
             .sessionPair(.held), .sessionPair(.savedLater),
-            .safeStorage(.approvalNeeded, browser: "chrome", channel: .devid),
+            .safeStorage(.approvalNeeded, browser: "chrome", channel: .devid, screenLocked: false),
         ])
 
         clock.now = clock.now.addingTimeInterval(120) // 00:01 UTC the next day
@@ -53,7 +63,40 @@ final class KeychainReporterTests: XCTestCase {
         XCTAssertEqual(sink.reports.last, .sessionPair(.held))
         XCTAssertEqual(sink.reports.count, 4)
     }
+
+    /// A report that never reached Sentry does not use up the day, and one
+    /// waiting to be sent is not queued twice.
+    func test_theDayIsUsedOnlyWhenTheReportIsSent() {
+        let sink = RecordingSink()
+        sink.delivers = false
+        let reporter = KeychainReporter(sink: sink, defaults: defaults, now: { Date(timeIntervalSince1970: 1_793_923_140) })
+        reporter.report(.sessionPair(.pendingAtLaunch))
+        reporter.report(.sessionPair(.pendingAtLaunch))
+        XCTAssertEqual(sink.reports.count, 1, "queued once")
+        XCTAssertNil(defaults.string(forKey: KeychainReport.sessionPair(.pendingAtLaunch).dayKey))
+
+        // The next process: its Sentry starts.
+        let next = KeychainReporter(sink: sink, defaults: defaults, now: { Date(timeIntervalSince1970: 1_793_923_140) })
+        sink.delivers = true
+        next.report(.sessionPair(.pendingAtLaunch))
+        XCTAssertEqual(sink.reports.count, 2, "the day was not used by the report that never left")
+        next.report(.sessionPair(.pendingAtLaunch))
+        XCTAssertEqual(sink.reports.count, 2)
+    }
 }
+
+#if os(macOS)
+final class SafeStorageReportMappingTests: XCTestCase {
+    func test_eachOutcomeMapsToItsOwnWord() {
+        XCTAssertEqual(
+            KeychainReports.safeStorageReport(.refusedOrAuthFailed, browser: .brave, channel: .brew, screenLocked: false),
+            .safeStorage(.refusedOrAuthFailed, browser: "brave", channel: .brew, screenLocked: false))
+        XCTAssertEqual(
+            KeychainReports.safeStorageReport(.approvalNeeded, browser: .chrome, channel: .devid, screenLocked: true),
+            .safeStorage(.approvalNeeded, browser: "chrome", channel: .devid, screenLocked: true))
+    }
+}
+#endif
 
 final class KeychainReportScopeTests: XCTestCase {
     func test_theEventAddsOnlyClosedSetTagsAndNoBreadcrumbs() {
@@ -63,13 +106,14 @@ final class KeychainReportScopeTests: XCTestCase {
         let before = event.serialize()
         XCTAssertEqual((before["breadcrumbs"] as? [Any])?.count, 1, "control")
 
-        let report = KeychainReport.safeStorage(.refusedOrAuthFailed, browser: "chrome", channel: .devid)
+        let report = KeychainReport.safeStorage(.refusedOrAuthFailed, browser: "chrome", channel: .devid, screenLocked: false)
         SentryKeychainReportSink.configure(event, for: report)
         let after = event.serialize()
 
         XCTAssertNil(after["breadcrumbs"])
         XCTAssertEqual(after["tags"] as? [String: String],
-                       ["ss_outcome": "refused_or_auth_failed", "ss_browser": "chrome", "channel": "devid"])
+                       ["ss_outcome": "refused_or_auth_failed", "ss_browser": "chrome", "channel": "devid",
+                        "screen_locked": "false"])
         XCTAssertEqual(after["fingerprint"] as? [String], ["safe-storage", "refused_or_auth_failed"])
         XCTAssertEqual(after["level"] as? String, "warning")
         XCTAssertEqual(Set(after.keys).subtracting(before.keys), ["tags", "fingerprint", "level"])
@@ -80,7 +124,7 @@ final class KeychainReportScopeTests: XCTestCase {
     /// keys and the message must come through it unchanged.
     func test_theScrubberLeavesTheReportAlone() {
         let reports: [KeychainReport] = KeychainReport.SessionPairOutcome.allCases.map { .sessionPair($0) }
-            + KeychainReport.SafeStorageOutcome.allCases.map { .safeStorage($0, browser: "edge", channel: .brew) }
+            + KeychainReport.SafeStorageOutcome.allCases.map { .safeStorage($0, browser: "edge", channel: .brew, screenLocked: true) }
         for report in reports {
             let event = Event(level: .warning)
             event.message = SentryMessage(formatted: SentryKeychainReportSink.message(for: report))
@@ -105,8 +149,10 @@ final class KeychainReportPrivacyTests: XCTestCase {
             "Since v1.62 the Mac app outside the App Store also sends an error report",
             "a browser's \"Safe Storage\" item",
             "the Keychain did not accept the new sign-in tokens",
-            "Each kind is sent at most once a day",
-            "the browser's name from a fixed list and the install channel",
+            "Each of these outcomes is sent at most once a UTC day",
+            "(the stack trace, the app and OS version, the device details and the SDK's random installation identifier)",
+            "whether the screen was locked",
+            "the browser's name from a fixed list, the install channel and whether the screen was locked",
             "It has no breadcrumbs, no tokens, no error text from the system",
         ] {
             XCTAssertTrue(policy.contains(claim), "PRIVACY.md no longer says \"\(claim)\"")
@@ -141,6 +187,7 @@ final class SessionTokenStoreReportTests: XCTestCase {
         store.onEvent = { [unowned self] event in
             self.lock.lock(); self.events.append(event); self.lock.unlock()
         }
+        stores.append(store)
         return store
     }
 
@@ -148,21 +195,29 @@ final class SessionTokenStoreReportTests: XCTestCase {
     private let newer = SessionTokenStore.Pair(access: "a2", refresh: "r2")
     private let signedOut = SessionTokenStore.Pair(access: "", refresh: nil)
     private var marker: Bool { defaults.bool(forKey: SessionTokenStore.unsavedMarkerKey) }
+    private var stores: [SessionTokenStore] = []
+
+    /// The events delivered so far, once every store's queue has emptied.
+    private func drained() -> [KeychainReport.SessionPairOutcome] {
+        stores.forEach { $0.waitForEventsForTesting() }
+        lock.lock(); defer { lock.unlock() }
+        return events
+    }
 
     func test_aRefusedWriteIsHeldOnce_andSavedLater() {
         let s = store()
         keychainAccepts = false
         s.persist(pair)
         s.persist(newer)
-        XCTAssertEqual(events, [.held], "one hold, however many pairs it holds")
+        XCTAssertEqual(drained(), [.held], "one hold, however many pairs it holds")
         XCTAssertTrue(marker)
         XCTAssertEqual(s.unsavedPair, newer)
 
         XCTAssertFalse(s.retryUnsaved())
-        XCTAssertEqual(events, [.held])
+        XCTAssertEqual(drained(), [.held])
         keychainAccepts = true
         XCTAssertTrue(s.retryUnsaved())
-        XCTAssertEqual(events, [.held, .savedLater])
+        XCTAssertEqual(drained(), [.held, .savedLater])
         XCTAssertFalse(marker)
     }
 
@@ -172,7 +227,7 @@ final class SessionTokenStoreReportTests: XCTestCase {
         s.persist(pair)
         keychainAccepts = true
         s.persist(newer)
-        XCTAssertEqual(events, [.held])
+        XCTAssertEqual(drained(), [.held])
         XCTAssertFalse(marker)
         XCTAssertNil(s.unsavedPair)
     }
@@ -188,14 +243,14 @@ final class SessionTokenStoreReportTests: XCTestCase {
         XCTAssertFalse(marker)
         keychainAccepts = true
         s.retryUnsaved()
-        XCTAssertEqual(events, [.held])
+        XCTAssertEqual(drained(), [.held])
     }
 
     func test_aRefusedSignOutAlone_isNotAHold() {
         let s = store()
         keychainAccepts = false
         s.persist(signedOut)
-        XCTAssertEqual(events, [])
+        XCTAssertEqual(drained(), [])
         XCTAssertFalse(marker)
     }
 
@@ -203,13 +258,13 @@ final class SessionTokenStoreReportTests: XCTestCase {
         keychainAccepts = false
         store().persist(pair)
         XCTAssertTrue(marker)
-        events = []
+        _ = drained(); events = []
 
         // The next process: a new store on the same defaults.
         let next = store()
         next.consumeLaunchMarker()
         next.consumeLaunchMarker()
-        XCTAssertEqual(events, [.pendingAtLaunch])
+        XCTAssertEqual(drained(), [.pendingAtLaunch])
         XCTAssertFalse(marker)
     }
 
@@ -218,10 +273,10 @@ final class SessionTokenStoreReportTests: XCTestCase {
     func test_theLaunchMarkerIsReadBeforeTheFirstWrite() {
         keychainAccepts = false
         store().persist(pair)
-        events = []
+        _ = drained(); events = []
         keychainAccepts = true
         store().persist(newer)
-        XCTAssertEqual(events, [.pendingAtLaunch])
+        XCTAssertEqual(drained(), [.pendingAtLaunch])
     }
 
     func test_theMacTracksNothing() {
@@ -230,7 +285,7 @@ final class SessionTokenStoreReportTests: XCTestCase {
         s.persist(pair)
         keychainAccepts = true
         s.retryUnsaved()
-        XCTAssertEqual(events, [])
+        XCTAssertEqual(drained(), [])
         XCTAssertFalse(marker)
         XCTAssertFalse(SessionTokenStore.isIPhone, "swift test runs on the Mac")
     }
@@ -305,6 +360,14 @@ final class SafeStorageOutcomeTests: XCTestCase {
         ChromeCookieImporter.resetSafeStorageKeyCacheForTesting()
         read(noUI: errSecInteractionNotAllowed, dialog: errSecAuthFailed, interactive: true)
         XCTAssertEqual(outcomes, [.refusedOrAuthFailed, .refusedOrAuthFailed])
+    }
+
+    /// Only "a dialog would be needed" counts; any other Keychain error in the
+    /// background is not reported as one.
+    func test_aBackgroundReadFailingOtherwise_isNotApprovalNeeded() {
+        read(noUI: errSecNotAvailable, dialog: errSecSuccess, interactive: false)
+        read(noUI: errSecParam, dialog: errSecSuccess, interactive: false)
+        XCTAssertEqual(outcomes, [])
     }
 
     func test_noItem_anAllowedDialog_andAnUnansweredDialog_reportNothing() {

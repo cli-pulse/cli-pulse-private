@@ -56,6 +56,9 @@ final class SessionTokenStore: @unchecked Sendable {
         set { lock.lock(); eventHandler = newValue; lock.unlock() }
     }
     private var eventHandler: (@Sendable (KeychainReport.SessionPairOutcome) -> Void)?
+    /// Events leave in the order their transitions happened: queued here while
+    /// the lock is held, delivered outside it.
+    private let eventQueue = DispatchQueue(label: "cli-pulse.session-pair-events")
 
     init(defaults: UserDefaults, tracksUnsavedPairs: Bool, writer: @escaping (Pair) -> Bool) {
         self.defaults = defaults
@@ -85,9 +88,8 @@ final class SessionTokenStore: @unchecked Sendable {
                 if !wasHoldingCredentials { events.append(.held) }
             }
         }
-        let handler = eventHandler
+        deliverLocked(events)
         lock.unlock()
-        if tracksUnsavedPairs { events.forEach { handler?($0) } }
         return wrote
     }
 
@@ -102,9 +104,8 @@ final class SessionTokenStore: @unchecked Sendable {
             if !pending.access.isEmpty { events.append(.savedLater) }
         }
         let none = unsaved == nil
-        let handler = eventHandler
+        deliverLocked(events)
         lock.unlock()
-        if tracksUnsavedPairs { events.forEach { handler?($0) } }
         return none
     }
 
@@ -114,10 +115,19 @@ final class SessionTokenStore: @unchecked Sendable {
     func consumeLaunchMarker() {
         lock.lock()
         let events = consumeLaunchMarkerLocked()
-        let handler = eventHandler
+        deliverLocked(events)
         lock.unlock()
-        if tracksUnsavedPairs { events.forEach { handler?($0) } }
     }
+
+    /// Queues `events` for the handler; called with the lock held, so two
+    /// threads' events keep the order of their transitions.
+    private func deliverLocked(_ events: [KeychainReport.SessionPairOutcome]) {
+        guard tracksUnsavedPairs, !events.isEmpty, let handler = eventHandler else { return }
+        eventQueue.async { events.forEach(handler) }
+    }
+
+    /// Tests: waits for the events queued so far.
+    func waitForEventsForTesting() { eventQueue.sync {} }
 
     private func consumeLaunchMarkerLocked() -> [KeychainReport.SessionPairOutcome] {
         guard tracksUnsavedPairs, !launchMarkerConsumed else { return [] }

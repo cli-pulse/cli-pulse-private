@@ -590,16 +590,18 @@ with CLI Pulse 1.55, and later releases follow them:
   window title, file name or account detail. Since v1.62 the Mac app outside
   the App Store also sends an error report when, on a refresh you started, the
   Keychain answered "cancelled" or "authentication failed" for a browser's
-  "Safe Storage" item, and when a background refresh found such an item that
-  would need the Keychain to ask you; and the iPhone app sends one when the
-  Keychain did not accept the new sign-in tokens and the app kept them in
-  memory, when it wrote them later, and when it opened and found that its last
-  run had ended still holding some. Each kind is sent at most once a day.
-  Besides what every report carries (the app and OS version, the device
+  "Safe Storage" item, and when a background refresh was told by the Keychain
+  that reading such an item would need a dialog (which a locked keychain also
+  says); and the iPhone app sends one when the Keychain did not accept the new
+  sign-in tokens and the app kept them in memory, when it wrote them later,
+  and when it opened and found that its last run had ended still holding
+  some. Each of these outcomes is sent at most once a UTC day. Besides what
+  every report carries (the stack trace, the app and OS version, the device
   details and the SDK's random installation identifier), each holds only a
   fixed word for what happened and, for the Mac one, the browser's name from a
-  fixed list and the install channel. It has no breadcrumbs, no tokens, no
-  error text from the system, and no account detail. Performance tracing
+  fixed list, the install channel and whether the screen was locked. It has
+  no breadcrumbs, no tokens, no error text from the system, and no account
+  detail. Performance tracing
   is disabled
   (`tracesSampleRate = 0`). There is no switch to turn crash reporting off.
 

@@ -284,19 +284,29 @@ enum ChromeCookieImporter {
 
         var password: String?
         var existing: [(service: String, account: String)] = []
+        var existingStatuses: [OSStatus] = []
         for label in labels {
             let result = passwordLookup(label.service, label.account, false)
             if let p = result.password {
                 password = p
                 break
             }
-            if result.status != errSecItemNotFound { existing.append(label) }
+            if result.status != errSecItemNotFound {
+                existing.append(label)
+                existingStatuses.append(result.status)
+            }
         }
 
         if password == nil {
             guard !existing.isEmpty else { throw ImportError.keychainDenied }
             guard allowInteraction else {
-                BrowserCookieKeychainOutcomeHandler.handler?(browser, .approvalNeeded)
+                // Reported only when the Keychain said "a dialog would be
+                // needed" for every item it found, not for any other error.
+                // A locked login keychain says the same; the reporter tags
+                // whether the screen was locked.
+                if existingStatuses.allSatisfy({ $0 == errSecInteractionNotAllowed }) {
+                    BrowserCookieKeychainOutcomeHandler.handler?(browser, .approvalNeeded)
+                }
                 throw ImportError.keychainApprovalNeeded
             }
             var refused = false

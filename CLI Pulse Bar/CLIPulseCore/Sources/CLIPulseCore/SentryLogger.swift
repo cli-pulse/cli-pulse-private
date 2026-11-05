@@ -143,13 +143,18 @@ public enum SentryLogger {
         startState.withLock { $0 = StartState() }
     }
 
+    /// Runs what waited, in order; a capture made meanwhile joins the queue
+    /// behind them, and only an empty queue marks the start done.
     private static func runAfterStart() {
-        let pending = startState.withLock { state -> [@Sendable () -> Void] in
-            state.started = true
-            defer { state.pending = [] }
-            return state.pending
+        while true {
+            let pending = startState.withLock { state -> [@Sendable () -> Void] in
+                if state.pending.isEmpty { state.started = true }
+                defer { state.pending = [] }
+                return state.pending
+            }
+            if pending.isEmpty { return }
+            pending.forEach { $0() }
         }
-        pending.forEach { $0() }
     }
 
     private static func environment() -> String {

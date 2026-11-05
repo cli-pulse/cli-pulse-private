@@ -1,4 +1,7 @@
 import Foundation
+#if os(macOS)
+import CoreGraphics
+#endif
 
 /// 1.62: two Keychain outcomes we could not see in 1.61's data, reported to
 /// Sentry as closed-set words only.
@@ -20,7 +23,9 @@ import Foundation
 /// PRIVACY.md describes exactly these.
 public enum KeychainReport: Equatable, Sendable {
     /// `browser` is a `Browser` raw value (a fixed list; never a profile name).
-    case safeStorage(SafeStorageOutcome, browser: String, channel: DistributionChannel)
+    /// `screenLocked`: a locked login keychain answers like an item that needs
+    /// approval, so `approval_needed` says whether the screen was locked.
+    case safeStorage(SafeStorageOutcome, browser: String, channel: DistributionChannel, screenLocked: Bool)
     case sessionPair(SessionPairOutcome)
 
     public enum SafeStorageOutcome: String, Sendable, CaseIterable {
@@ -44,7 +49,7 @@ public enum KeychainReport: Equatable, Sendable {
 
     var outcome: String {
         switch self {
-        case .safeStorage(let outcome, _, _): return outcome.rawValue
+        case .safeStorage(let outcome, _, _, _): return outcome.rawValue
         case .sessionPair(let outcome): return outcome.rawValue
         }
     }
@@ -53,8 +58,9 @@ public enum KeychainReport: Equatable, Sendable {
     /// `token`, …), or the scrubber would blank them.
     var tags: [String: String] {
         switch self {
-        case let .safeStorage(outcome, browser, channel):
-            return ["ss_outcome": outcome.rawValue, "ss_browser": browser, "channel": channel.rawValue]
+        case let .safeStorage(outcome, browser, channel, screenLocked):
+            return ["ss_outcome": outcome.rawValue, "ss_browser": browser, "channel": channel.rawValue,
+                    "screen_locked": screenLocked ? "true" : "false"]
         case .sessionPair(let outcome):
             return ["pair_outcome": outcome.rawValue]
         }
@@ -68,16 +74,18 @@ public enum KeychainReport: Equatable, Sendable {
 /// Where the reports go. A protocol so the tests see every report without
 /// starting Sentry (DEBUG builds never start it).
 protocol KeychainReportSink: Sendable {
-    func send(_ report: KeychainReport)
+    /// `sent` runs once the report has actually been handed to Sentry.
+    func send(_ report: KeychainReport, sent: @escaping @Sendable () -> Void)
 }
 
 struct SentryKeychainReportSink: KeychainReportSink {
-    func send(_ report: KeychainReport) {
+    func send(_ report: KeychainReport, sent: @escaping @Sendable () -> Void) {
         // A report from launch can come before `SentrySDK.start` has finished.
         SentryLogger.afterStart {
             SentrySDK.capture(message: Self.message(for: report)) { scope in
                 Self.configure(scope, for: report)
             }
+            sent()
         }
     }
 
@@ -97,7 +105,9 @@ struct SentryKeychainReportSink: KeychainReportSink {
     }
 }
 
-/// Sends each report at most once per UTC day for its kind and outcome.
+/// Sends each report at most once per UTC day for its kind and outcome. The
+/// day is used up only when the report was really sent, so a process that
+/// ends before Sentry starts (a short background launch) does not spend it.
 final class KeychainReporter: @unchecked Sendable {
     static let shared = KeychainReporter(sink: SentryKeychainReportSink(), defaults: .standard, now: { Date() })
 
@@ -105,6 +115,8 @@ final class KeychainReporter: @unchecked Sendable {
     private let defaults: UserDefaults
     private let now: @Sendable () -> Date
     private let lock = NSLock()
+    /// Reports handed to the sink and not sent yet, so they are not queued twice.
+    private var inFlight: Set<String> = []
 
     init(sink: any KeychainReportSink, defaults: UserDefaults, now: @escaping @Sendable () -> Date) {
         self.sink = sink
@@ -114,11 +126,18 @@ final class KeychainReporter: @unchecked Sendable {
 
     func report(_ report: KeychainReport) {
         let today = DayKey.string(from: now(), in: DayKey.utc)
+        let key = report.dayKey
         lock.lock()
-        let due = defaults.string(forKey: report.dayKey) != today
-        if due { defaults.set(today, forKey: report.dayKey) }
+        let due = defaults.string(forKey: key) != today && !inFlight.contains(key)
+        if due { inFlight.insert(key) }
         lock.unlock()
-        if due { sink.send(report) }
+        guard due else { return }
+        sink.send(report) { [self] in
+            lock.lock()
+            defaults.set(today, forKey: key)
+            inFlight.remove(key)
+            lock.unlock()
+        }
     }
 }
 
@@ -131,13 +150,27 @@ public enum KeychainReports {
         guard !MASSandboxGate.isSandboxed else { return }
         let channel = DistributionChannel.detectCurrent()
         BrowserCookieKeychainOutcomeHandler.handler = { browser, outcome in
-            let mapped: KeychainReport.SafeStorageOutcome
-            switch outcome {
-            case .refusedOrAuthFailed: mapped = .refusedOrAuthFailed
-            case .approvalNeeded: mapped = .approvalNeeded
-            }
-            KeychainReporter.shared.report(.safeStorage(mapped, browser: browser.rawValue, channel: channel))
+            KeychainReporter.shared.report(
+                safeStorageReport(outcome, browser: browser, channel: channel, screenLocked: isScreenLocked()))
         }
+    }
+
+    static func safeStorageReport(
+        _ outcome: BrowserCookieKeychainOutcome, browser: Browser,
+        channel: DistributionChannel, screenLocked: Bool
+    ) -> KeychainReport {
+        let mapped: KeychainReport.SafeStorageOutcome
+        switch outcome {
+        case .refusedOrAuthFailed: mapped = .refusedOrAuthFailed
+        case .approvalNeeded: mapped = .approvalNeeded
+        }
+        return .safeStorage(mapped, browser: browser.rawValue, channel: channel, screenLocked: screenLocked)
+    }
+
+    /// Whether the login session's screen is locked right now.
+    static func isScreenLocked() -> Bool {
+        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
+        return (session["CGSSessionScreenIsLocked"] as? Bool) ?? false
     }
     #endif
 
