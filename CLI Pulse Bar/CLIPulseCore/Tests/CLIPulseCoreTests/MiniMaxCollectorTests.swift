@@ -195,6 +195,7 @@ final class MiniMaxParsingTests: XCTestCase {
         XCTAssertEqual(C.resetsAt(end: nil, remains: 900, now: now), now.addingTimeInterval(900), "seconds")
         XCTAssertNil(C.resetsAt(end: past, remains: 0, now: now))
         XCTAssertNil(C.date(12345), "not a time")
+        XCTAssertNil(C.date(1e300), "not a time either")
         XCTAssertEqual(C.date(1_780_297_200), C.date(1_780_297_200_000))
     }
 
@@ -212,6 +213,24 @@ final class MiniMaxParsingTests: XCTestCase {
             guard case CollectorError.parseFailed(let detail) = $0 else { return XCTFail("\($0)") }
             XCTAssertEqual(detail, "MiniMax: status 1002")
         }
+    }
+
+    /// A message that only mentions logging in is not a refusal.
+    func test_aLoginServiceOutage_isNotARejection() {
+        XCTAssertThrowsError(try parse(#"{"base_resp": {"status_code": 1001, "status_msg": "login service unavailable"}}"#)) {
+            XCTAssertFalse($0 is MiniMaxCollector.ParseRejection)
+        }
+    }
+
+    /// Finite but too big for an Int: a parse failure or no window, never a trap.
+    func test_hugeNumbers_doNotTrap() throws {
+        XCTAssertThrowsError(try parse(#"{"base_resp": {"status_code": "1e100"}}"#))
+        XCTAssertThrowsError(try parse(#"{"model_remains": "1e100", "total": 5}"#))
+        let w = windows(try parse(#"{"model_remains": [{"model_name": "general", "current_interval_remaining_percent": 50, "start_time": 1780279200, "end_time": "1e300"}]}"#))
+        XCTAssertEqual(w.interval?.remainingPercent, 50)
+        XCTAssertNil(w.interval?.windowMinutes)
+        XCTAssertNil(MiniMaxCollector.int(1e100))
+        XCTAssertEqual(MiniMaxCollector.int(42), 42)
     }
 
     func test_noUsableLane_isAParseFailure() {
@@ -282,6 +301,26 @@ final class MiniMaxFetchTests: XCTestCase {
         MiniMaxStubProtocol.clearRequests()
         _ = try await collector().fetchWithAPIKey("k")
         XCTAssertEqual(asked, ["api.minimaxi.com/v1/token_plan/remains"], "the region that answered goes first")
+    }
+
+    /// The region belongs to the key that answered there: a new key starts on
+    /// the global host, so a global key is never sent to China first.
+    func test_anotherKey_startsOnTheGlobalHostAgain() async throws {
+        MiniMaxStubProtocol.handler = { r in
+            let key = r.value(forHTTPHeaderField: "Authorization")
+            if r.url?.host == "api.minimaxi.com" { return key == "Bearer china" ? .answer(200, Self.ok) : .answer(401, Data()) }
+            return key == "Bearer global" ? .answer(200, Self.ok) : .answer(401, Data())
+        }
+        _ = try await collector().fetchWithAPIKey("china")
+        MiniMaxStubProtocol.clearRequests()
+        _ = try await collector().fetchWithAPIKey("global")
+        XCTAssertEqual(asked, ["api.minimax.io/v1/token_plan/remains"])
+        XCTAssertFalse(MiniMaxStubProtocol.recordedRequests().contains {
+            $0.url?.host == "api.minimaxi.com" && $0.value(forHTTPHeaderField: "Authorization") == "Bearer global"
+        })
+        MiniMaxStubProtocol.clearRequests()
+        _ = try await collector().fetchWithAPIKey("china")
+        XCTAssertEqual(asked, ["api.minimaxi.com/v1/token_plan/remains"], "the china key still goes to China first")
     }
 
     /// Upstream's case: the token plan refuses the key, the old path does not
@@ -362,7 +401,10 @@ final class MiniMaxFetchTests: XCTestCase {
         MiniMaxStubProtocol.handler = { r in
             r.url?.host == "evil.example.test" ? .answer(200, Self.ok) : .redirect(to: "https://evil.example.test/steal")
         }
-        await assertThrows(try await collector().fetchWithAPIKey("k")) { _ in }
+        await assertThrows(try await collector().fetchWithAPIKey("k")) {
+            guard case CollectorError.httpError(let status, _) = $0 else { return XCTFail("\($0)") }
+            XCTAssertEqual(status, 302, "the refused redirect ends the request")
+        }
         XCTAssertFalse(asked.contains { $0.hasPrefix("evil.example.test") }, "the Bearer header followed a redirect")
     }
 

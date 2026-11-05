@@ -48,6 +48,7 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 
 #if os(macOS)
+import CryptoKit
 import Foundation
 
 /// Fetches the MiniMax coding / token plan quota.
@@ -137,12 +138,15 @@ public struct MiniMaxCollector: ProviderCollector, Sendable {
     /// Newest first: the token plan, then the coding plan it replaced.
     static let apiPaths = ["/v1/token_plan/remains", "/v1/api/openplatform/coding_plan/remains"]
 
-    /// The region whose host last accepted the key. In memory only: after a
-    /// relaunch a China key costs at most two extra requests to learn it again.
+    /// The region whose host last accepted the key, for that key only: a key
+    /// the collector has not seen answer starts on the global host, so a new
+    /// global key is never sent to China because the previous key lived
+    /// there. In memory only, and only a hash of the key: after a relaunch a
+    /// China key costs at most two extra requests to learn it again.
     private static let rememberedRegion = RegionMemory()
 
     /// Forgets the remembered region (tests).
-    static func resetRememberedRegion() { rememberedRegion.set(.global) }
+    static func resetRememberedRegion() { rememberedRegion.reset() }
 
     // MARK: - Fetch (API key)
 
@@ -200,7 +204,7 @@ public struct MiniMaxCollector: ProviderCollector, Sendable {
             return try Self.settle(try await verdict(host: host, token: token))
         }
 
-        let first = Self.rememberedRegion.get()
+        let first = Self.rememberedRegion.region(for: token)
         let firstVerdict = try await verdict(host: first.apiHost, token: token)
         switch firstVerdict {
         case .ok(let parsed):
@@ -211,7 +215,7 @@ public struct MiniMaxCollector: ProviderCollector, Sendable {
             // A key from the other region is rejected here: ask there, once.
             let second = first.other
             let secondVerdict = try await verdict(host: second.apiHost, token: token)
-            if case .ok = secondVerdict { Self.rememberedRegion.set(second) }
+            if case .ok = secondVerdict { Self.rememberedRegion.remember(second, for: token) }
             return try Self.settle(secondVerdict)
         }
     }
@@ -343,17 +347,22 @@ public struct MiniMaxCollector: ProviderCollector, Sendable {
         if let base = (body["base_resp"] ?? json["base_resp"]) as? [String: Any],
            let code = number(base["status_code"]), code != 0 {
             let message = (base["status_msg"] as? String ?? "").lowercased()
-            if code == 1004 || ["invalid api key", "log in", "login", "cookie"].contains(where: message.contains) {
+            // Only an explicit refusal. A message that merely mentions logging
+            // in ("login service unavailable") is an outage, and an outage must
+            // not send the key to the other region or call it rejected.
+            if code == 1004 || message.contains("invalid api key") {
                 throw ParseRejection.credential
             }
             // The code only: the vendor's message stays out of logs and the UI.
-            throw CollectorError.parseFailed("MiniMax: status \(Int(code))")
+            throw CollectorError.parseFailed("MiniMax: status \(int(code).map(String.init) ?? "?")")
         }
 
         if let remains = number(json["model_remains"]) {
-            let total = number(json["total"]) ?? 0
+            guard let remaining = int(remains), let total = int(number(json["total"]) ?? 0) else {
+                throw CollectorError.parseFailed("MiniMax: count out of range")
+            }
             let endTime = json["end_time"] as? String ?? json["remains_time"] as? String
-            return .legacy(LegacyRemains(modelRemains: Int(remains), total: Int(total), endTime: endTime))
+            return .legacy(LegacyRemains(modelRemains: remaining, total: total, endTime: endTime))
         }
 
         guard let lanes = body["model_remains"] as? [[String: Any]] ?? json["model_remains"] as? [[String: Any]] else {
@@ -461,17 +470,25 @@ public struct MiniMaxCollector: ProviderCollector, Sendable {
         return result
     }
 
+    /// `value` as an Int when it is a whole-number-sized value an Int can hold
+    /// (`"1e100"` is finite and would trap in `Int(_:)`).
+    static func int(_ value: Double) -> Int? {
+        guard value.isFinite, abs(value) < 1e15 else { return nil }
+        return Int(value)
+    }
+
     /// Epoch milliseconds or seconds; anything smaller is not a time.
     static func date(_ value: Any?) -> Date? {
         guard let raw = number(value) else { return nil }
-        if raw > 1_000_000_000_000 { return Date(timeIntervalSince1970: raw / 1000) }
-        if raw > 1_000_000_000 { return Date(timeIntervalSince1970: raw) }
-        return nil
+        let seconds: Double
+        if raw > 1_000_000_000_000 { seconds = raw / 1000 } else if raw > 1_000_000_000 { seconds = raw } else { return nil }
+        // Before 2100, or it is not a time either.
+        return seconds < 4_102_444_800 ? Date(timeIntervalSince1970: seconds) : nil
     }
 
     private static func windowMinutes(start: Date?, end: Date?) -> Int? {
         guard let start, let end else { return nil }
-        let minutes = Int((end.timeIntervalSince(start) / 60).rounded())
+        guard let minutes = int((end.timeIntervalSince(start) / 60).rounded()) else { return nil }
         return minutes > 0 ? minutes : nil
     }
 
@@ -542,19 +559,32 @@ public struct MiniMaxCollector: ProviderCollector, Sendable {
     }
 }
 
-/// The remembered region, behind a lock (collectors run concurrently).
+/// The remembered region and the hash of the key it belongs to, behind a lock
+/// (collectors run concurrently).
 private final class RegionMemory: @unchecked Sendable {
     private let lock = NSLock()
+    private var keyHash: Data?
     private var region: MiniMaxCollector.Region = .global
 
-    func get() -> MiniMaxCollector.Region {
+    func region(for key: String) -> MiniMaxCollector.Region {
         lock.lock(); defer { lock.unlock() }
-        return region
+        return keyHash == Self.hash(key) ? region : .global
     }
 
-    func set(_ value: MiniMaxCollector.Region) {
+    func remember(_ value: MiniMaxCollector.Region, for key: String) {
         lock.lock(); defer { lock.unlock() }
+        keyHash = Self.hash(key)
         region = value
+    }
+
+    func reset() {
+        lock.lock(); defer { lock.unlock() }
+        keyHash = nil
+        region = .global
+    }
+
+    private static func hash(_ key: String) -> Data {
+        Data(SHA256.hash(data: Data(key.utf8)))
     }
 }
 
