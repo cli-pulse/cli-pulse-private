@@ -263,7 +263,7 @@ final class ProviderFixtureRegressionTests: XCTestCase {
         """.data(using: .utf8)!
 
         let parsed = try MiniMaxCollector.parseRemainsResponse(json)
-        let result = MiniMaxCollector().buildResult(parsed)
+        let result = MiniMaxCollector.buildResult(parsed)
 
         assertDataKind(result, .quota)
         XCTAssertEqual(result.usage.plan_type, "Coding Plan")
