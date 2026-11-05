@@ -284,18 +284,31 @@ enum ChromeCookieImporter {
 
         var password: String?
         var existing: [(service: String, account: String)] = []
+        var existingStatuses: [OSStatus] = []
         for label in labels {
             let result = passwordLookup(label.service, label.account, false)
             if let p = result.password {
                 password = p
                 break
             }
-            if result.status != errSecItemNotFound { existing.append(label) }
+            if result.status != errSecItemNotFound {
+                existing.append(label)
+                existingStatuses.append(result.status)
+            }
         }
 
         if password == nil {
             guard !existing.isEmpty else { throw ImportError.keychainDenied }
-            guard allowInteraction else { throw ImportError.keychainApprovalNeeded }
+            guard allowInteraction else {
+                // Reported only when the Keychain said "a dialog would be
+                // needed" for every item it found, not for any other error.
+                // A locked login keychain says the same; the reporter tags
+                // whether the screen was locked.
+                if existingStatuses.allSatisfy({ $0 == errSecInteractionNotAllowed }) {
+                    BrowserCookieKeychainOutcomeHandler.handler?(browser, .approvalNeeded)
+                }
+                throw ImportError.keychainApprovalNeeded
+            }
             var refused = false
             for label in existing {
                 BrowserCookieKeychainPromptHandler.handler?(BrowserCookieKeychainPromptContext(
@@ -316,6 +329,7 @@ enum ChromeCookieImporter {
             // as errSecInteractionNotAllowed even here): not a denial either,
             // so the run does not remember it as one.
             if password == nil, !refused { throw ImportError.keychainApprovalNeeded }
+            if refused { BrowserCookieKeychainOutcomeHandler.handler?(browser, .refusedOrAuthFailed) }
         }
         guard let password else { throw ImportError.keychainDenied }
 

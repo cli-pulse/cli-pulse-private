@@ -136,6 +136,7 @@ struct CLIPulseBarApp: App {
         if runtimeEnvironment.capabilities.allowsTelemetry {
             SentryLogger.start(platform: .macOS)
             MainThreadStallProbe.shared.start()
+            KeychainReports.installForMac()
         }
         // Subscribes to provider discovery rather than waiting for a view,
         // because MenuBarExtra builds its content lazily — a hook in the UI

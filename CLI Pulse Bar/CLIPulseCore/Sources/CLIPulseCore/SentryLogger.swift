@@ -108,6 +108,53 @@ public enum SentryLogger {
         SentrySDK.configureScope { scope in
             scope.setTag(value: platform.rawValue, key: "platform_family")
         }
+        runAfterStart()
+    }
+
+    // MARK: - Reports made before the SDK has started (1.62)
+
+    private struct StartState {
+        var started = false
+        var pending: [@Sendable () -> Void] = []
+    }
+
+    private static let startState = NSLockedBox(StartState())
+
+    /// The most reports kept while waiting for the start; later ones are dropped.
+    static let maxPendingReports = 8
+
+    /// Runs `capture` now if the SDK has started, else once it has. `start`
+    /// hands the SDK's start to a background queue, so a report made at launch
+    /// (`KeychainReports`) could otherwise be captured before the SDK runs and
+    /// dropped. A build that never starts the SDK (DEBUG, no DSN) never runs it.
+    public static func afterStart(_ capture: @escaping @Sendable () -> Void) {
+        let runNow = startState.withLock { state -> Bool in
+            if state.started { return true }
+            if state.pending.count < maxPendingReports { state.pending.append(capture) }
+            return false
+        }
+        if runNow { capture() }
+    }
+
+    /// Tests: the SDK never starts under DEBUG.
+    static func markStartedForTesting() { runAfterStart() }
+
+    static func resetStartStateForTesting() {
+        startState.withLock { $0 = StartState() }
+    }
+
+    /// Runs what waited, in order; a capture made meanwhile joins the queue
+    /// behind them, and only an empty queue marks the start done.
+    private static func runAfterStart() {
+        while true {
+            let pending = startState.withLock { state -> [@Sendable () -> Void] in
+                if state.pending.isEmpty { state.started = true }
+                defer { state.pending = [] }
+                return state.pending
+            }
+            if pending.isEmpty { return }
+            pending.forEach { $0() }
+        }
     }
 
     private static func environment() -> String {
@@ -429,5 +476,18 @@ public enum SentryLogger {
             out = regex.stringByReplacingMatches(in: out, range: range, withTemplate: "[email]")
         }
         return out
+    }
+}
+
+/// A value behind a lock.
+final class NSLockedBox<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Value
+
+    init(_ value: Value) { self.value = value }
+
+    func withLock<Result>(_ body: (inout Value) -> Result) -> Result {
+        lock.lock(); defer { lock.unlock() }
+        return body(&value)
     }
 }
