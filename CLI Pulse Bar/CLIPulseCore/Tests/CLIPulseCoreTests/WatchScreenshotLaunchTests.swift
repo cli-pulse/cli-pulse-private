@@ -107,11 +107,12 @@ final class WatchScreenshotLaunchTests: XCTestCase {
         XCTAssertEqual(snap.refreshedAt, demo.refreshedAt)
     }
 
-    /// The Pulse page's bell counts the Alerts page's open list, which the
-    /// iPhone relays with its own quota alert in it; the cloud figure leaves
-    /// that alert out. Demo holds both kinds, so the 01_pulse screenshot shows
-    /// the count the bell opens to.
-    func test_theBellCountsTheListTheAlertsPageShows() {
+    /// The data side of the Pulse page's bell (PulseHomeView counts
+    /// `WatchAlertSort.open(state.alerts)`; the view itself is not compiled by
+    /// `swift test`): the open list the iPhone relays holds its own quota
+    /// alert, which the cloud figure leaves out. Demo holds both kinds, so the
+    /// 01_pulse screenshot shows the count the bell opens to.
+    func test_theOpenListHoldsTheRelayedQuotaAlertTheCloudCountLeavesOut() {
         let snap = Launch.watchSnapshot(of: DemoDataProvider.generate())
         let open = WatchAlertSort.open(snap.alerts)
         XCTAssertEqual(open.count, snap.alerts.filter { !$0.is_resolved }.count)
