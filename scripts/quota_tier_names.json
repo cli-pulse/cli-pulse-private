@@ -12,7 +12,7 @@
    "display": "TRANSLATE",
    "l10n_key": "quota_tier.hours_5",
    "reason": "Generic window length; the numeral is preserved and only the unit word is localized. Same treatment as \"5h Window\" so the two spellings of one concept do not diverge across providers.",
-   "producers": "Swift StepFunCollector; Swift SakanaCollector; Tauri stepfun.rs"
+   "producers": "Swift StepFunCollector; Swift MiniMaxCollector; Swift SakanaCollector; Tauri stepfun.rs"
   },
   {
    "name": "5h Rate Limit",
@@ -93,7 +93,7 @@
   {
    "name": "Coding Plan",
    "display": "PASSTHROUGH",
-   "reason": "MiniMax's product name, not a description: the collector hits `GET /v1/coding_plan/remains` and sets plan_type to the same string, so it is the subscription the user sees on MiniMax's own page.",
+   "reason": "MiniMax's product name, not a description: the subscription the user sees on MiniMax's own page. MiniMaxCollector names a token/coding plan window by it when the window's length is neither 5 hours nor a day, and uses it as plan_type when MiniMax sends no plan title.",
    "producers": "Swift MiniMaxCollector; Tauri minimax.rs"
   },
   {
@@ -114,7 +114,7 @@
    "display": "TRANSLATE",
    "l10n_key": "quota_tier.daily",
    "reason": "Generic time window; leaving it English while the \"Weekly\" bar beside it is localized would be visibly inconsistent on the same Windsurf card.",
-   "producers": "Swift WindsurfCollector; HelperSwift GeminiQuotaFetcher; Swift CodexCollector, Python helper and HelperSwift CodexQuotaFetcher for a 1440-minute Codex window (named by length)"
+   "producers": "Swift MiniMaxCollector (a 1440-minute token plan window); Swift WindsurfCollector; HelperSwift GeminiQuotaFetcher; Swift CodexCollector, Python helper and HelperSwift CodexQuotaFetcher for a 1440-minute Codex window (named by length)"
   },
   {
    "name": "Daily Routines",
@@ -378,7 +378,7 @@
    "display": "TRANSLATE",
    "l10n_key": "quota_tier.weekly",
    "reason": "Pure generic time window, emitted by nine unrelated collectors, which is itself evidence it is our description and not any vendor's label. Safe ONLY because the mapping is display-only: WatchRingMath.weeklyTier takes the tier whose role is secondary and otherwise falls back to localizedCaseInsensitiveContains(\"week\"). Only Codex tiers carry a role (written by 1.55+ writers, or inferred at display by CodexQuotaWindows.resolved, from this very name for older rows), so every other provider's weekly window is found by the stored English, which must stay English.",
-   "producers": "Swift ClaudeResultBuilder, CodexCollector, AlibabaCollector, CodebuffCollector, KimiCollector, StepFunCollector, WindsurfCollector, OpenCodeGoCollector, SakanaCollector; Python helper (Claude + Codex); HelperSwift Claude+Codex fetchers; Android ClaudeCollector + CodexCollector + KimiCollector + DemoDataProvider; Tauri claude/codex/alibaba/kimi/stepfun/codebuff"
+   "producers": "Swift ClaudeResultBuilder, CodexCollector, AlibabaCollector, CodebuffCollector, KimiCollector, StepFunCollector, WindsurfCollector, OpenCodeGoCollector, SakanaCollector, MiniMaxCollector; Python helper (Claude + Codex); HelperSwift Claude+Codex fetchers; Android ClaudeCollector + CodexCollector + KimiCollector + DemoDataProvider; Tauri claude/codex/alibaba/kimi/stepfun/codebuff"
   },
   {
    "name": "Window",

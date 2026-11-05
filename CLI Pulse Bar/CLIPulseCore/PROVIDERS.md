@@ -36,7 +36,7 @@ These do **not** use developer API key billing.
 | **Cursor** | `CursorCollector` | cookie → REST | `.quota` | `config.manualCookieHeader` or `CURSOR_COOKIE` | medium (cookie-based) |
 | **Kimi** | `KimiCollector` | JWT token → Connect RPC | `.quota` | `config.apiKey` or `config.manualCookieHeader` or `KIMI_AUTH_TOKEN` | medium (token-based) |
 | **Alibaba** | `AlibabaCollector` | API token → REST (region routing) | `.quota` | `config.apiKey` or `ALIBABA_CODING_PLAN_API_KEY` | medium (region fallback) |
-| **MiniMax** | `MiniMaxCollector` | API token → REST; cookie fallback | `.quota` | `config.apiKey` or `MINIMAX_API_KEY` or cookie | medium (API token: high; cookie: fragile) |
+| **MiniMax** | `MiniMaxCollector` | API token → REST (global `api.minimax.io`, China mainland `api.minimaxi.com` when global rejects the key); cookie fallback | `.quota` | `config.apiKey` or `MINIMAX_API_KEY` or cookie | medium (API token: high; cookie: fragile) |
 | **Augment** | `AugmentCollector` | cookie → REST | `.quota` | `config.manualCookieHeader` or `AUGMENT_COOKIE` | medium (cookie-based) |
 | **Volcano Engine** | `VolcanoEngineCollector` | API token → REST (Ark) | `.quota` | `config.apiKey` or `ARK_API_KEY`/`VOLC_ACCESSKEY`/`VOLCANO_ENGINE_API_KEY` | medium (quota endpoint TBD) |
 
