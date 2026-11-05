@@ -22,7 +22,7 @@ struct WatchAlertsView: View {
     @State private var hapticFiredCriticalIDs: Set<String> = []
 
     private var openAlerts: [AlertRecord] {
-        WatchAlertSort.bySeverity(state.alerts.filter { !$0.is_resolved })
+        WatchAlertSort.bySeverity(WatchAlertSort.open(state.alerts))
     }
 
     private var openCriticalIDs: [String] {

@@ -42,12 +42,28 @@ final class WatchAlertSortTests: XCTestCase {
         XCTAssertTrue(WatchAlertSort.bySeverity([]).isEmpty)
     }
 
+    func test_open_dropsResolvedAndKeepsOrder() {
+        let alerts = [
+            make(id: "cloud-1", severity: "Warning"),
+            make(id: "cloud-2", severity: "Info", resolved: true),
+            make(id: "cloud-3", severity: "Critical"),
+            // The quota alert the iPhone raises and relays; never in the cloud's count.
+            make(id: "quota-claude", severity: "Warning"),
+        ]
+        XCTAssertEqual(WatchAlertSort.open(alerts).map(\.id), ["cloud-1", "cloud-3", "quota-claude"])
+    }
+
+    func test_open_emptyAndAllResolved() {
+        XCTAssertTrue(WatchAlertSort.open([]).isEmpty)
+        XCTAssertTrue(WatchAlertSort.open([make(id: "r", severity: "Info", resolved: true)]).isEmpty)
+    }
+
     // MARK: - Helper
 
-    private func make(id: String, severity: String) -> AlertRecord {
+    private func make(id: String, severity: String, resolved: Bool = false) -> AlertRecord {
         AlertRecord(
             id: id, type: "QuotaLow", severity: severity, title: "t", message: "m",
-            created_at: "2026-06-14T00:00:00Z", is_read: false, is_resolved: false,
+            created_at: "2026-06-14T00:00:00Z", is_read: false, is_resolved: resolved,
             acknowledged_at: nil, snoozed_until: nil,
             related_project_id: nil, related_project_name: nil,
             related_session_id: nil, related_session_name: nil,
