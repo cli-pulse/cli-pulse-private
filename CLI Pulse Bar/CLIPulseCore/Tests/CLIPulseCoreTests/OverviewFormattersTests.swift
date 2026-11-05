@@ -70,7 +70,10 @@ final class OverviewFormattersTests: XCTestCase {
         let korea = DisplayFormat.hour(ten, locale: Locale(identifier: "ko_KR"), timeZone: DisplayFormat.utc)
         XCTAssertTrue(korea.hasPrefix("오후") && korea.hasSuffix("10시"), korea)
         let mexico = DisplayFormat.hour(ten, locale: Locale(identifier: "es_MX"), timeZone: DisplayFormat.utc)
-        XCTAssertTrue(mexico.hasPrefix("10") && mexico.hasSuffix("p.m."), "es_MX keeps its day period: \(mexico)")
+        // ICU spells Mexico's day period "p.m." on some OS versions and "pm" on others.
+        XCTAssertTrue(mexico.hasPrefix("10") && !mexico.contains(":")
+                      && mexico.range(of: #"p\.?\s?m\.?$"#, options: [.regularExpression, .caseInsensitive]) != nil,
+                      "es_MX keeps its day period: \(mexico)")
         let us = DisplayFormat.hour(ten, locale: Locale(identifier: "en_US"), timeZone: DisplayFormat.utc)
         XCTAssertTrue(us.hasPrefix("10") && us.hasSuffix("PM") && !us.contains(":"), "en_US unchanged: \(us)")
     }
