@@ -82,6 +82,8 @@ _build_lock_alive() {
 # ancestor, so the iCloud and $TMPDIR checks below cannot be passed by spelling.
 _phys_path() {
     local p="$1" rest="" base
+    # A path with a newline is left as it is: read below would cut it at the newline.
+    case "$p" in *$'\n'*) echo "$p"; return ;; esac
     while [[ -n "$p" && "$p" != "/" && ! -d "$p" ]]; do
         base="$(basename "$p")"
         rest="/$base$rest"
@@ -200,7 +202,7 @@ spm_cache_key() {
       # URL or version on a later line would keep the key. Then the whole manifest counts. A
       # one-line declaration (all of them today) keeps the key the line alone gives.
       if grep -E '^[[:space:]]*\.package\(' "$app/CLIPulseCore/Package.swift" 2>/dev/null |
-            sed -E 's:(^|[[:space:]]|[),])//.*$:\1:' | grep -qvE '\)[[:space:]]*,?[[:space:]]*$'; then
+            sed -E 's:(^|[[:space:]]|[(),])//.*$:\1:' | grep -qvE '\)[[:space:]]*,?[[:space:]]*$'; then
           cat "$app/CLIPulseCore/Package.swift"
       fi
     } | shasum -a 256 | awk '{print $1}'
