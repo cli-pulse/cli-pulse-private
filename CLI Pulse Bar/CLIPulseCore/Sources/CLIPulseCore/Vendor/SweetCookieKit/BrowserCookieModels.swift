@@ -410,6 +410,23 @@ public enum BrowserCookieKeychainPromptHandler {
     public nonisolated(unsafe) static var handler: ((BrowserCookieKeychainPromptContext) -> Void)?
 }
 
+/// CLI Pulse (1.62): what the Keychain said about a browser's Safe Storage
+/// item, from the one place that knows (`chromeSafeStorageKey`), as a closed
+/// set: never classified from an error's text. The Mac app reports these
+/// (`KeychainReports.installForMac`); nil everywhere else.
+public enum BrowserCookieKeychainOutcome: Sendable, Equatable {
+    /// Asked with a dialog allowed, and the Keychain answered
+    /// errSecUserCanceled or errSecAuthFailed.
+    case refusedOrAuthFailed
+    /// A background read found an item that needs a dialog, and none was
+    /// allowed (1.60, N2).
+    case approvalNeeded
+}
+
+public enum BrowserCookieKeychainOutcomeHandler {
+    public nonisolated(unsafe) static var handler: (@Sendable (Browser, BrowserCookieKeychainOutcome) -> Void)?
+}
+
 #endif
 
 #endif

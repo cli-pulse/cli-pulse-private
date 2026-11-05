@@ -39,6 +39,9 @@ struct CLIPulseApp: App {
         // (`CredentialedURLSession`).
         CredentialedURLSession.purgeLegacyStorageIfNeeded()
         SentryLogger.start(platform: .iOS)
+        // 1.62: before AppState restores the session, so a pair the previous
+        // run left unwritten is noticed before anything writes a new one.
+        KeychainReports.installForIPhone()
         let state = AppState()
         _appState = StateObject(wrappedValue: state)
         // Hand AppState to the delegate so the APNs token callback + the

@@ -295,7 +295,10 @@ enum ChromeCookieImporter {
 
         if password == nil {
             guard !existing.isEmpty else { throw ImportError.keychainDenied }
-            guard allowInteraction else { throw ImportError.keychainApprovalNeeded }
+            guard allowInteraction else {
+                BrowserCookieKeychainOutcomeHandler.handler?(browser, .approvalNeeded)
+                throw ImportError.keychainApprovalNeeded
+            }
             var refused = false
             for label in existing {
                 BrowserCookieKeychainPromptHandler.handler?(BrowserCookieKeychainPromptContext(
@@ -316,6 +319,7 @@ enum ChromeCookieImporter {
             // as errSecInteractionNotAllowed even here): not a denial either,
             // so the run does not remember it as one.
             if password == nil, !refused { throw ImportError.keychainApprovalNeeded }
+            if refused { BrowserCookieKeychainOutcomeHandler.handler?(browser, .refusedOrAuthFailed) }
         }
         guard let password else { throw ImportError.keychainDenied }
 
