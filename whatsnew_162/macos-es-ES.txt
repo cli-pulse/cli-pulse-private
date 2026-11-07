@@ -1,0 +1,5 @@
+Las cuotas de MiniMax aparecen ahora en la tarjeta, y las claves API de la plataforma de MiniMax para China continental funcionan.
+
+• MiniMax: CLI Pulse lee ahora la información de cuota que envía MiniMax hoy. La tarjeta muestra el periodo de uso de tu plan (de 5 horas, diario o según el plan) y, si tu plan lo tiene, su periodo semanal, como porcentaje restante, con la hora a la que se reinicia cada uno. Hasta ahora, estas cuentas mostraban «Desconocido».
+
+• MiniMax: una clave API creada en la plataforma de MiniMax para China continental funciona ahora. CLI Pulse prueba primero el servicio global de MiniMax y solo prueba el de China continental si el global rechaza la clave, y recuerda cuál la aceptó.

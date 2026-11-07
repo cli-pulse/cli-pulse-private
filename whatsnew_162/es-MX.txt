@@ -1,0 +1,3 @@
+En el Apple Watch, la campana de alertas muestra ahora el mismo número que la página Alertas que abre.
+
+• En el Apple Watch, la campana cuenta ahora las alertas abiertas que muestra la página Alertas, incluidas las alertas de cuota que genera tu iPhone. Antes contaba solo las alertas subidas a tu cuenta, así que podía mostrar menos que la página.
