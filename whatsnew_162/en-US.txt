@@ -1,0 +1,3 @@
+On Apple Watch, the alert bell now shows the same number as the Alerts page it opens.
+
+• On Apple Watch, the bell now counts the open alerts that the Alerts page lists, including the quota alerts your iPhone raises. It used to count only the alerts uploaded to your account, so it could show fewer than the page.

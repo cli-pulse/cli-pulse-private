@@ -1,0 +1,5 @@
+MiniMax quotas now appear on the card, and MiniMax API keys from the China mainland platform work.
+
+• MiniMax: CLI Pulse now reads the quota information MiniMax sends today. The card shows your plan's usage window (5-hour, daily or the length of your plan) and, if your plan has one, its weekly window, as the percentage left, with the time each one resets. Until now these accounts showed "Unknown".
+
+• MiniMax: an API key created on MiniMax's China mainland platform now works. CLI Pulse tries MiniMax's global service first and the China mainland service only if the global one rejects the key, and remembers which one accepted it.
