@@ -7,6 +7,7 @@ import com.clipulse.android.data.model.UserIdentity
 import com.clipulse.android.data.local.CacheDao
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
+import com.clipulse.android.data.repository.DashboardRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +38,7 @@ class SettingsViewModel @Inject constructor(
     private val supabase: SupabaseClient,
     private val tokenStore: TokenStore,
     private val cache: CacheDao,
+    private val repository: DashboardRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -128,6 +130,12 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun loadSettings() {
+        // Demo mode has no account settings: leaving `settings` null keeps the notification
+        // and threshold cards, which only edit a real account, off the screen.
+        if (tokenStore.isDemoMode) {
+            _state.value = _state.value.copy(tier = "free", isLoading = false)
+            return
+        }
         viewModelScope.launch {
             try {
                 val tier = supabase.serverTier()
@@ -164,6 +172,9 @@ class SettingsViewModel @Inject constructor(
     fun exitDemoMode() {
         tokenStore.isDemoMode = false
         tokenStore.clear()
+        // The repository is a singleton: without this, its demo rows are still in memory
+        // when the next account signs in.
+        repository.exitDemoMode()
     }
 
     fun testWebhook() {
@@ -206,9 +217,14 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun signOut() {
+        // End the session before the caller switches to the sign-in screen: that screen
+        // checks the token store as it opens, and a token still there would sign the user
+        // straight back in.
+        val token = tokenStore.accessToken
+        tokenStore.clear()
         viewModelScope.launch {
             try {
-                supabase.signOut()
+                supabase.signOut(token)
             } catch (_: Exception) {
             } finally {
                 // Always clear local cache — prevent data leakage to next user

@@ -6,8 +6,10 @@ import com.clipulse.android.data.local.CacheDao
 import com.clipulse.android.data.model.SettingsSnapshot
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
+import com.clipulse.android.data.repository.DashboardRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -29,6 +31,7 @@ class SettingsViewModelTest {
     private val supabase = mockk<SupabaseClient>(relaxed = true)
     private val tokenStore = mockk<TokenStore>(relaxed = true)
     private val cache = mockk<CacheDao>(relaxed = true)
+    private val repository = mockk<DashboardRepository>(relaxed = true)
 
     private val testSettings = SettingsSnapshot(
         notificationsEnabled = true,
@@ -49,7 +52,7 @@ class SettingsViewModelTest {
     fun `initial state has user info from token store`() = runTest {
         coEvery { supabase.serverTier() } returns "pro"
         coEvery { supabase.settings() } returns testSettings
-        val vm = SettingsViewModel(supabase, tokenStore, cache)
+        val vm = SettingsViewModel(supabase, tokenStore, cache, repository)
 
         assertEquals("Jason", vm.state.value.userName)
         assertEquals("jason@test.com", vm.state.value.userEmail)
@@ -60,7 +63,7 @@ class SettingsViewModelTest {
     fun `loadSettings populates tier and settings`() = runTest {
         coEvery { supabase.serverTier() } returns "pro"
         coEvery { supabase.settings() } returns testSettings
-        val vm = SettingsViewModel(supabase, tokenStore, cache)
+        val vm = SettingsViewModel(supabase, tokenStore, cache, repository)
         
 
         val state = vm.state.value
@@ -74,7 +77,7 @@ class SettingsViewModelTest {
     @Test
     fun `loadSettings failure still clears loading`() = runTest {
         coEvery { supabase.serverTier() } throws RuntimeException("fail")
-        val vm = SettingsViewModel(supabase, tokenStore, cache)
+        val vm = SettingsViewModel(supabase, tokenStore, cache, repository)
         
 
         assertFalse(vm.state.value.isLoading)
@@ -85,7 +88,7 @@ class SettingsViewModelTest {
     fun `updateSetting calls supabase and reloads`() = runTest {
         coEvery { supabase.serverTier() } returns "pro"
         coEvery { supabase.settings() } returns testSettings
-        val vm = SettingsViewModel(supabase, tokenStore, cache)
+        val vm = SettingsViewModel(supabase, tokenStore, cache, repository)
         
 
         vm.updateSetting("data_retention_days", 14)
@@ -99,13 +102,13 @@ class SettingsViewModelTest {
     fun `signOut clears all caches`() = runTest {
         coEvery { supabase.serverTier() } returns "free"
         coEvery { supabase.settings() } returns testSettings
-        val vm = SettingsViewModel(supabase, tokenStore, cache)
+        val vm = SettingsViewModel(supabase, tokenStore, cache, repository)
         
 
         vm.signOut()
         
 
-        coVerify { supabase.signOut() }
+        coVerify { supabase.signOut(any()) }
         coVerify { cache.clearDashboard() }
         coVerify { cache.clearProviders() }
         coVerify { cache.clearSessions() }
@@ -118,8 +121,8 @@ class SettingsViewModelTest {
     fun `signOut clears cache even when supabase throws`() = runTest {
         coEvery { supabase.serverTier() } returns "free"
         coEvery { supabase.settings() } returns testSettings
-        coEvery { supabase.signOut() } throws RuntimeException("network")
-        val vm = SettingsViewModel(supabase, tokenStore, cache)
+        coEvery { supabase.signOut(any()) } throws RuntimeException("network")
+        val vm = SettingsViewModel(supabase, tokenStore, cache, repository)
         
 
         vm.signOut()
@@ -135,7 +138,7 @@ class SettingsViewModelTest {
         coEvery { supabase.serverTier() } returns "free"
         coEvery { supabase.settings() } returns testSettings
         coEvery { supabase.deleteAccount() } returns Unit
-        val vm = SettingsViewModel(supabase, tokenStore, cache)
+        val vm = SettingsViewModel(supabase, tokenStore, cache, repository)
         
 
         var called = false
@@ -152,7 +155,7 @@ class SettingsViewModelTest {
         coEvery { supabase.serverTier() } returns "free"
         coEvery { supabase.settings() } returns testSettings
         coEvery { supabase.deleteAccount() } throws RuntimeException("server error")
-        val vm = SettingsViewModel(supabase, tokenStore, cache)
+        val vm = SettingsViewModel(supabase, tokenStore, cache, repository)
         
 
         vm.deleteAccount {}
@@ -171,13 +174,55 @@ class SettingsViewModelTest {
         every { tokenStore.isDemoMode } returns true
         coEvery { supabase.serverTier() } returns "free"
         coEvery { supabase.settings() } returns testSettings
-        val vm = SettingsViewModel(supabase, tokenStore, cache)
+        val vm = SettingsViewModel(supabase, tokenStore, cache, repository)
 
         // The demo name is copy, so SettingsScreen renders it from R.string.settings_demo_user
         // in the app's language; the view model carries no English name.
         assertNull(vm.state.value.userName)
         assertEquals("demo@clipulse.app", vm.state.value.userEmail)
         assertTrue(vm.state.value.isDemoMode)
+        vm.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `demo mode loads no account settings`() = runTest {
+        every { tokenStore.isDemoMode } returns true
+        val vm = SettingsViewModel(supabase, tokenStore, cache, repository)
+
+        val state = vm.state.value
+        assertFalse(state.isLoading)
+        assertEquals("free", state.tier)
+        assertNull(state.settings)
+        coVerify(exactly = 0) { supabase.settings() }
+        coVerify(exactly = 0) { supabase.serverTier() }
+        coVerify(exactly = 0) { supabase.userIdentities() }
+        vm.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `exitDemoMode clears the flag, the token store and the shared repository`() = runTest {
+        every { tokenStore.isDemoMode } returns true
+        val vm = SettingsViewModel(supabase, tokenStore, cache, repository)
+
+        vm.exitDemoMode()
+
+        verify { tokenStore.isDemoMode = false }
+        verify { tokenStore.clear() }
+        verify { repository.exitDemoMode() }
+        vm.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `signOut ends the local session before the server call, with the token it had`() = runTest {
+        every { tokenStore.accessToken } returns "access-1"
+        val vm = SettingsViewModel(supabase, tokenStore, cache, repository)
+
+        vm.signOut()
+
+        coVerifyOrder {
+            tokenStore.clear()
+            supabase.signOut("access-1")
+        }
         vm.viewModelScope.cancel()
     }
 }

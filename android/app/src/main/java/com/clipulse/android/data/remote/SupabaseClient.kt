@@ -1,15 +1,19 @@
 package com.clipulse.android.data.remote
 
 import com.clipulse.android.BuildConfig
+import com.clipulse.android.data.DemoDataProvider
 import com.clipulse.android.data.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
 import java.net.URLEncoder
 import java.time.Instant
 import java.time.LocalDate
@@ -18,6 +22,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -34,16 +39,36 @@ import kotlinx.coroutines.sync.withLock
  */
 internal const val OAUTH_REDIRECT_TO: String = "clipulse://auth/callback"
 
-class SupabaseClient(
+/**
+ * Demo mode ("Try Demo" on the sign-in screen) has no account and no token. Every read a
+ * demo user's screens make answers from [DemoDataProvider] before any request is built, and
+ * [DemoModeGuard] fails any other request locally, so demo mode never reaches the backend.
+ * Before 1.62 each screen fetched for itself and demo mode got 401/400 ("Your session
+ * expired") on every tab, while SyncWorker sent register_device + dashboard_summary every
+ * 15 minutes without a token.
+ */
+class SupabaseClient internal constructor(
     private val tokenStore: TokenStore,
+    private val supabaseUrl: String,
+    private val supabaseAnonKey: String,
+    httpClientBuilder: OkHttpClient.Builder,
 ) {
-    private val supabaseUrl: String = BuildConfig.SUPABASE_URL
-    private val supabaseAnonKey: String = BuildConfig.SUPABASE_ANON_KEY
+    constructor(tokenStore: TokenStore) : this(
+        tokenStore,
+        BuildConfig.SUPABASE_URL,
+        BuildConfig.SUPABASE_ANON_KEY,
+        OkHttpClient.Builder(),
+    )
+
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
 
     private val refreshMutex = Mutex()
 
-    private val client = OkHttpClient.Builder()
+    /** Demo mode's alerts, kept so acknowledge / resolve / snooze change what the Alerts tab shows. */
+    private val demoAlerts = AtomicReference<List<AlertRecord>?>(null)
+
+    private val client = httpClientBuilder
+        .addInterceptor(DemoModeGuard(tokenStore))
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
@@ -156,8 +181,12 @@ class SupabaseClient(
         }
     }
 
-    suspend fun signOut(): Unit = withContext(Dispatchers.IO) {
-        val token = tokenStore.accessToken
+    /**
+     * Ends the session on this device and asks the server to revoke [token]. A caller that is
+     * about to switch to the sign-in screen clears the token store first and passes the token
+     * it read, so that screen never finds the old session (see SettingsViewModel.signOut).
+     */
+    suspend fun signOut(token: String? = tokenStore.accessToken): Unit = withContext(Dispatchers.IO) {
         tokenStore.clear()
         if (token != null) {
             try {
@@ -175,6 +204,7 @@ class SupabaseClient(
     // ── Dashboard ────────────────────────────────────────
 
     suspend fun dashboard(): DashboardSummary = withContext(Dispatchers.IO) {
+        if (tokenStore.isDemoMode) return@withContext DemoDataProvider.dashboard()
         // v0.42 (2026-05-08): pass the device's local-TZ today so the server
         // computes today/30-day windows against the user's wall clock instead
         // of UTC. Server falls back to current_date if param absent (default
@@ -197,6 +227,7 @@ class SupabaseClient(
     // ── Providers ────────────────────────────────────────
 
     suspend fun providers(): List<ProviderUsage> = withContext(Dispatchers.IO) {
+        if (tokenStore.isDemoMode) return@withContext DemoDataProvider.providers()
         // v0.42: same local-TZ today fix as dashboard().
         val arr = rpcArray("provider_summary", JSONObject().apply {
             put("p_user_today", localTodayKey())
@@ -236,6 +267,7 @@ class SupabaseClient(
     // ── Sessions ─────────────────────────────────────────
 
     suspend fun sessions(): List<SessionRecord> = withContext(Dispatchers.IO) {
+        if (tokenStore.isDemoMode) return@withContext DemoDataProvider.sessions()
         val userId = enc(tokenStore.userId ?: "")
         val arr = restGetArray(
             "/rest/v1/sessions?user_id=eq.$userId&select=*,devices(name)&order=last_active_at.desc&limit=50"
@@ -265,6 +297,7 @@ class SupabaseClient(
     // ── Daily Usage ──────────────────────────────────────
 
     suspend fun dailyUsage(days: Int = 30): List<DailyUsage> = withContext(Dispatchers.IO) {
+        if (tokenStore.isDemoMode) return@withContext DemoDataProvider.dailyUsage(days)
         val params = JSONObject().put("days", days)
         val arr = rpcArray("get_daily_usage", params)
         (0 until arr.length()).mapNotNull { i ->
@@ -287,6 +320,7 @@ class SupabaseClient(
     // ── Devices ──────────────────────────────────────────
 
     suspend fun devices(): List<DeviceRecord> = withContext(Dispatchers.IO) {
+        if (tokenStore.isDemoMode) return@withContext DemoDataProvider.devices()
         val userId = enc(tokenStore.userId ?: "")
         val arr = restGetArray(
             "/rest/v1/devices?user_id=eq.$userId&select=*&order=last_seen_at.desc"
@@ -341,6 +375,7 @@ class SupabaseClient(
     // ── Alerts ───────────────────────────────────────────
 
     suspend fun alerts(): List<AlertRecord> = withContext(Dispatchers.IO) {
+        if (tokenStore.isDemoMode) return@withContext currentDemoAlerts()
         val userId = enc(tokenStore.userId ?: "")
         val arr = restGetArray(
             "/rest/v1/alerts?user_id=eq.$userId&select=*&order=created_at.desc&limit=50"
@@ -373,6 +408,10 @@ class SupabaseClient(
     }
 
     suspend fun acknowledgeAlert(id: String) = withContext(Dispatchers.IO) {
+        if (tokenStore.isDemoMode) {
+            updateDemoAlert(id) { it.copy(isRead = true, acknowledgedAt = isoNow()) }
+            return@withContext
+        }
         val userId = enc(tokenStore.userId ?: "")
         restPatch(
             "/rest/v1/alerts?id=eq.${enc(id)}&user_id=eq.$userId",
@@ -384,6 +423,10 @@ class SupabaseClient(
     }
 
     suspend fun resolveAlert(id: String) = withContext(Dispatchers.IO) {
+        if (tokenStore.isDemoMode) {
+            updateDemoAlert(id) { it.copy(isResolved = true) }
+            return@withContext
+        }
         val userId = enc(tokenStore.userId ?: "")
         restPatch(
             "/rest/v1/alerts?id=eq.${enc(id)}&user_id=eq.$userId",
@@ -392,8 +435,12 @@ class SupabaseClient(
     }
 
     suspend fun snoozeAlert(id: String, minutes: Int) = withContext(Dispatchers.IO) {
-        val userId = enc(tokenStore.userId ?: "")
         val until = isoAt(System.currentTimeMillis() + minutes * 60_000L)
+        if (tokenStore.isDemoMode) {
+            updateDemoAlert(id) { it.copy(snoozedUntil = until) }
+            return@withContext
+        }
+        val userId = enc(tokenStore.userId ?: "")
         restPatch(
             "/rest/v1/alerts?id=eq.${enc(id)}&user_id=eq.$userId",
             JSONObject().apply { put("snoozed_until", until) },
@@ -403,6 +450,7 @@ class SupabaseClient(
     // ── Settings ─────────────────────────────────────────
 
     suspend fun settings(): SettingsSnapshot = withContext(Dispatchers.IO) {
+        if (tokenStore.isDemoMode) return@withContext SettingsSnapshot()
         val userId = enc(tokenStore.userId ?: "")
         val arr = restGetArray("/rest/v1/user_settings?user_id=eq.$userId&select=*")
         val s = arr.optJSONObject(0) ?: JSONObject()
@@ -443,6 +491,7 @@ class SupabaseClient(
      * hammer the DB on every 30s polling cycle.
      */
     suspend fun evaluateBudgetAlerts(): Int = withContext(Dispatchers.IO) {
+        if (tokenStore.isDemoMode) return@withContext 0
         try {
             val json = rpc("evaluate_budget_alerts")
             json.optInt("alerts_created", 0)
@@ -468,6 +517,7 @@ class SupabaseClient(
     // ─�� Server Tier ──────────────────────────────────────
 
     suspend fun serverTier(): String = withContext(Dispatchers.IO) {
+        if (tokenStore.isDemoMode) return@withContext "free"
         try {
             val json = rpc("get_user_tier")
             json.optString("tier", "free")
@@ -687,6 +737,7 @@ class SupabaseClient(
 
     /** List OAuth identities linked to the current user. */
     suspend fun userIdentities(): List<UserIdentity> = withContext(Dispatchers.IO) {
+        if (tokenStore.isDemoMode) return@withContext emptyList()
         val json = get("$supabaseUrl/auth/v1/user")
         val arr = json.optJSONArray("identities") ?: JSONArray()
         (0 until arr.length()).mapNotNull { i ->
@@ -899,8 +950,36 @@ class SupabaseClient(
 
     // ── HTTP Helpers (all suspend, no runBlocking) ─────
 
+    /**
+     * Gate for the authenticated helpers below. Demo mode fails locally (see [DemoModeGuard]).
+     * With neither an access token nor a refresh token there is no session to send: the server
+     * would answer 401 and the refresh below could not run, so this throws the same
+     * [ApiError.TokenExpired] without the request.
+     */
+    private fun requireSession(url: String) {
+        if (tokenStore.isDemoMode) throw DemoModeRequestBlocked(url)
+        if (tokenStore.accessToken.isNullOrBlank() && tokenStore.refreshToken.isNullOrBlank()) {
+            throw ApiError.TokenExpired
+        }
+    }
+
+    private fun currentDemoAlerts(): List<AlertRecord> {
+        demoAlerts.get()?.let { return it }
+        demoAlerts.compareAndSet(null, DemoDataProvider.alerts())
+        return demoAlerts.get()!!
+    }
+
+    private fun updateDemoAlert(id: String, change: (AlertRecord) -> AlertRecord) {
+        while (true) {
+            val before = currentDemoAlerts()
+            val after = before.map { if (it.id == id) change(it) else it }
+            if (demoAlerts.compareAndSet(before, after)) return
+        }
+    }
+
     // NOTE: All callers must be on Dispatchers.IO (public methods enforce this via withContext)
     private suspend fun get(url: String, retried: Boolean = false): JSONObject {
+        requireSession(url)
         val currentToken = tokenStore.accessToken
         val req = Request.Builder().url(url).get()
             .addHeader("apikey", supabaseAnonKey)
@@ -923,6 +1002,7 @@ class SupabaseClient(
     }
 
     private suspend fun post(url: String, body: JSONObject, auth: Boolean = true, retried: Boolean = false): JSONObject {
+        if (auth) requireSession(url)
         val currentToken = if (auth) tokenStore.accessToken else null
         val req = Request.Builder().url(url)
             .post(body.toString().toRequestBody(jsonMedia))
@@ -948,6 +1028,7 @@ class SupabaseClient(
     }
 
     private suspend fun restGetArray(path: String, retried: Boolean = false): JSONArray {
+        requireSession(path)
         val currentToken = tokenStore.accessToken
         val req = Request.Builder().url("$supabaseUrl$path").get()
             .addHeader("Content-Type", "application/json")
@@ -971,6 +1052,7 @@ class SupabaseClient(
     }
 
     private suspend fun restPatch(path: String, body: JSONObject, retried: Boolean = false) {
+        requireSession(path)
         val currentToken = tokenStore.accessToken
         val req = Request.Builder().url("$supabaseUrl$path")
             .patch(body.toString().toRequestBody(jsonMedia))
@@ -995,6 +1077,7 @@ class SupabaseClient(
     }
 
     private suspend fun rpc(function: String, params: JSONObject = JSONObject(), retried: Boolean = false): JSONObject {
+        requireSession("/rest/v1/rpc/$function")
         val currentToken = tokenStore.accessToken
         val req = Request.Builder().url("$supabaseUrl/rest/v1/rpc/$function")
             .post(params.toString().toRequestBody(jsonMedia))
@@ -1023,6 +1106,7 @@ class SupabaseClient(
     }
 
     private suspend fun rpcArray(function: String, params: JSONObject = JSONObject(), retried: Boolean = false): JSONArray {
+        requireSession("/rest/v1/rpc/$function")
         val currentToken = tokenStore.accessToken
         val req = Request.Builder().url("$supabaseUrl/rest/v1/rpc/$function")
             .post(params.toString().toRequestBody(jsonMedia))
@@ -1117,6 +1201,22 @@ class SupabaseClient(
             if (v is Boolean) out[k] = v
         }
         return out
+    }
+}
+
+/**
+ * Demo mode has no account, so no request is ever sent while it is on. Thrown instead of
+ * sending; an [IOException] so OkHttp's synchronous `execute()` passes it to the caller and
+ * error handling treats it like a request that could not be made.
+ */
+class DemoModeRequestBlocked(target: String) :
+    IOException("Demo mode: request not sent (${target.substringBefore('?')})")
+
+/** Fails every request while demo mode is on: the backstop for call sites without a demo answer. */
+internal class DemoModeGuard(private val tokenStore: TokenStore) : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): Response {
+        if (tokenStore.isDemoMode) throw DemoModeRequestBlocked(chain.request().url.encodedPath)
+        return chain.proceed(chain.request())
     }
 }
 
