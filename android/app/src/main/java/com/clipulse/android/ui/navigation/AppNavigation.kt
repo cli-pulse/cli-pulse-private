@@ -73,6 +73,10 @@ fun AppNavigation(
     // isLoggedIn = true: LoginScreen called onLoggedIn() at once and Exit Demo Mode (and
     // Sign Out) dropped the user straight back into the tabs, in 1.37 as well.
     var loginEpoch by rememberSaveable { mutableIntStateOf(0) }
+    // Activity-scoped, read here with the Activity as owner (before the session's own owner
+    // is provided below).
+    val sessionStores: SessionViewModelStores = viewModel()
+    val activityOwner = checkNotNull(LocalViewModelStoreOwner.current)
 
     // Only deliver a callback to the screen whose flow-kind matches. A login callback
     // received while we're on the authenticated stack, or vice versa, is ignored — the
@@ -95,14 +99,17 @@ fun AppNavigation(
     // Everything below is one signed-in (or demo) session. Its view models live in a store of
     // their own (see SessionViewModelStores), and the NavController starts afresh with each
     // epoch, so nothing on the tabs survives into the next session.
-    val sessionStores: SessionViewModelStores = viewModel()
-    val sessionOwner = remember(loginEpoch) { sessionStores.ownerFor(loginEpoch) }
+    val sessionOwner = remember(loginEpoch) { sessionStores.ownerFor(loginEpoch, activityOwner) }
+    DisposableEffect(sessionStores) {
+        onDispose { sessionStores.clearIfEnded() }
+    }
     CompositionLocalProvider(LocalViewModelStoreOwner provides sessionOwner) {
         key(loginEpoch) {
             SignedInApp(
                 linkCallback = linkCallback,
                 linkNotice = linkNotice,
                 onSignOut = {
+                    sessionStores.endSession()
                     loginEpoch++
                     isLoggedIn = false
                 },

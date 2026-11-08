@@ -8,6 +8,8 @@ import com.clipulse.android.data.local.CacheDao
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
 import com.clipulse.android.data.repository.DashboardRepository
+import com.clipulse.android.di.ApplicationScope
+import kotlinx.coroutines.CoroutineScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +41,7 @@ class SettingsViewModel @Inject constructor(
     private val tokenStore: TokenStore,
     private val cache: CacheDao,
     private val repository: DashboardRepository,
+    @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -223,7 +226,9 @@ class SettingsViewModel @Inject constructor(
         // straight back in.
         val token = tokenStore.accessToken
         tokenStore.clear()
-        viewModelScope.launch {
+        // The app's scope, not this view model's: the session's view models are cleared as
+        // soon as the sign-in screen shows, which would cancel the server call and the wipe.
+        appScope.launch {
             try {
                 supabase.signOut(token)
             } catch (_: Exception) {
