@@ -163,6 +163,14 @@ line on what it is used for in the script's tables.
 
 ## Releasing a version to the App Store — the order
 
+**The version bump PR sets the policy's version.** Moving MARKETING_VERSION to
+a new major.minor also means reading PRIVACY.md against that version and
+setting its `It describes CLI Pulse X.Y.` line; `scripts/check_privacy_version.sh`
+(Repo Hygiene, every PR) fails until the two agree. A patch release changes
+nothing. `Last Updated` (the date of the last substantive revision) and the
+hosted page, cli-pulse/cli-pulse `docs/privacy.html`, change on release day.
+1.62.0's bump skipped this line, which is why the check exists.
+
 Four scripts write to App Store Connect, and the order matters. The listing and
 screenshot pushers write only to an editable version, and a submitted version
 is waiting for review and no longer editable, so the submission goes last. Each

@@ -80,7 +80,7 @@ hdr "Tier 2 — verify (tests + gates)"
 
 gates=(check-versions check_migration_numbers check_helper_version_sync
        check_helper_method_parity check_helper_no_container_touch
-       check_no_internal_docs check_copyright)
+       check_no_internal_docs check_copyright check_privacy_version)
 missing_gate=0
 for g in "${gates[@]}"; do
     [[ -f "scripts/$g.sh" ]] || { missing_gate=1; continue; }
