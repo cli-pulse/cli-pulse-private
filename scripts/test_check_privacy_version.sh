@@ -217,7 +217,23 @@ mutate "four-part version" "$PBX" "1.62.0;" "1.62.0.1;" \
 
 build_fixture
 mutate "a site the parse cannot read" "$PBX" "MARKETING_VERSION = 1.62.0;" "MARKETING_VERSION=1.70.0;" 1 \
-    && expect_fail "a site the parse cannot read" "mentions MARKETING_VERSION 3 times but has 2"
+    && expect_fail "a site the parse cannot read" "sets MARKETING_VERSION in 3 places but only 2 are plain"
+
+build_fixture
+mutate "a quoted key" "$PBX" "MARKETING_VERSION = 1.62.0;" '"MARKETING_VERSION" = 1.70.0;' 1 \
+    && expect_fail "a quoted key" "sets MARKETING_VERSION in 3 places but only 2 are plain"
+
+build_fixture
+mutate "an [sdk=] variant" "$PBX" "MARKETING_VERSION = 1.62.0;" \
+    $'MARKETING_VERSION = 1.62.0;\n\t\t\t\t"MARKETING_VERSION[sdk=macosx*]" = 1.70.0;' 1 \
+    && expect_fail "an [sdk=] variant" "sets MARKETING_VERSION in 4 places but only 3 are plain"
+
+# References to the setting are not sites: they must neither block the check
+# nor add a value to it.
+build_fixture
+mutate "references, a comment, a longer name" "$PBX" "CURRENT_PROJECT_VERSION = 117;" \
+    $'CURRENT_PROJECT_VERSION = 117;\n\t\t\t\tINFOPLIST_KEY_CFBundleShortVersionString = "$(MARKETING_VERSION)";\n\t\t\t\tshellScript = "echo \\"${MARKETING_VERSION}\\" $MARKETING_VERSION\\n";\n\t\t\t\t/* MARKETING_VERSION is bumped by scripts/sync-versions.sh */\n\t\t\t\tCUSTOM_MARKETING_VERSION = 9.9.9;' 1 \
+    && expect_pass "references, a comment and CUSTOM_MARKETING_VERSION are not sites" --root "$CASE"
 
 build_fixture
 mutate "no MARKETING_VERSION" "$PBX" "MARKETING_VERSION = 1.62.0;" "CURRENT_PROJECT_VERSION = 117;" \

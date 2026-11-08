@@ -58,14 +58,22 @@ fail_at() {
 # ── MARKETING_VERSION: every site, one value ────────────────────────────────
 # Every assignment's raw value is kept, valid or not, so one malformed site is a
 # second distinct value rather than something the parse quietly drops. A site
-# written in a shape the parse does not recognise is caught by the count.
-mentions="$(grep -oE 'MARKETING_VERSION' "$PBXPROJ" | wc -l | tr -d '[:space:]')"
-assignments="$(grep -oE 'MARKETING_VERSION = [^;]*;' "$PBXPROJ" | wc -l | tr -d '[:space:]')"
-[ "$mentions" = "$assignments" ] \
-    || fail "the Xcode project mentions MARKETING_VERSION $mentions times but has $assignments 'MARKETING_VERSION = X;' assignments; every site must be a plain assignment this check can read"
+# written in a shape the parse does not read (a quoted key, an
+# "[sdk=...]" variant, no spaces around "=") is caught by the count: SITE is any
+# build-setting key MARKETING_VERSION followed by "=", ASSIGN only the plain
+# form. Neither counts a reference to the setting ($(MARKETING_VERSION),
+# ${MARKETING_VERSION}, $MARKETING_VERSION), the word in a comment, or a longer
+# setting name that ends in it, so those neither block nor feed the check.
+NOT_KEY='(^|[^$({_A-Za-z0-9])'
+SITE_RE="${NOT_KEY}\"?MARKETING_VERSION(\\[[^]]*\\])?\"?[[:space:]]*="
+ASSIGN_RE="${NOT_KEY}MARKETING_VERSION = [^;]*;"
+sites="$(grep -oE "$SITE_RE" "$PBXPROJ" | wc -l | tr -d '[:space:]')"
+assignments="$(grep -oE "$ASSIGN_RE" "$PBXPROJ" | wc -l | tr -d '[:space:]')"
+[ "$sites" = "$assignments" ] \
+    || fail "the Xcode project sets MARKETING_VERSION in $sites places but only $assignments are plain 'MARKETING_VERSION = X;' assignments; every site must be one this check can read"
 [ "$assignments" -gt 0 ] || fail "found no MARKETING_VERSION in $PBXPROJ"
-versions="$(grep -oE 'MARKETING_VERSION = [^;]*;' "$PBXPROJ" \
-    | sed -E 's/^MARKETING_VERSION = //; s/;$//; s/[[:space:]"]//g' \
+versions="$(grep -oE "$ASSIGN_RE" "$PBXPROJ" \
+    | sed -E 's/^.*MARKETING_VERSION = //; s/;$//; s/[[:space:]"]//g' \
     | sort -u)"
 distinct="$(printf '%s\n' "$versions" | wc -l | tr -d '[:space:]')"
 [ "$distinct" = 1 ] \
