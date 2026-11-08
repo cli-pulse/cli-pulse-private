@@ -226,20 +226,25 @@ class SettingsViewModel @Inject constructor(
         // straight back in.
         val token = tokenStore.accessToken
         tokenStore.clear()
-        // The app's scope, not this view model's: the session's view models are cleared as
-        // soon as the sign-in screen shows, which would cancel the server call and the wipe.
+        // Both below run in the app's scope, not this view model's: the session's view models
+        // are cleared as soon as the sign-in screen shows, which would cancel them.
+        //
+        // Local first, and not behind the network: the previous account's cached rows are gone
+        // before anyone can sign in again, whatever the logout request does.
         appScope.launch {
-            try {
-                supabase.signOut(token)
-            } catch (_: Exception) {
-            } finally {
-                // Always clear local cache — prevent data leakage to next user
+            runCatching {
                 cache.clearDashboard()
                 cache.clearProviders()
                 cache.clearSessions()
                 cache.clearAlerts()
                 cache.clearDevices()
+                cache.clearDailyUsage()
             }
+        }
+        // Revoking touches nothing on this device, so it cannot undo a sign-in that happens
+        // while it is still running.
+        appScope.launch {
+            runCatching { supabase.revokeSession(token) }
         }
     }
 

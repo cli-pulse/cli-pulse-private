@@ -160,4 +160,29 @@ class SupabaseClientDemoModeTest {
         client.sessions()
         assertEquals(1, server.requestCount)
     }
+
+    @Test
+    fun `revoking an old session leaves the next account signed in`() = runTest {
+        tokenStore.updateAuthState("access-B", "refresh-B", "user-B")
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        client.revokeSession("access-A")
+
+        val request = server.takeRequest()
+        assertEquals("/auth/v1/logout", request.path)
+        assertEquals("Bearer access-A", request.getHeader("Authorization"))
+        assertEquals("access-B", tokenStore.accessToken)
+        assertEquals("refresh-B", tokenStore.refreshToken)
+    }
+
+    @Test
+    fun `signOut ends the local session and revokes it`() = runTest {
+        tokenStore.updateAuthState("access-1", "refresh-1", "user-1")
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        client.signOut()
+
+        assertNull(tokenStore.accessToken)
+        assertEquals("Bearer access-1", server.takeRequest().getHeader("Authorization"))
+    }
 }

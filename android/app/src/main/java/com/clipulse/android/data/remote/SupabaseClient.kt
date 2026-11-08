@@ -181,13 +181,23 @@ class SupabaseClient internal constructor(
         }
     }
 
-    /**
-     * Ends the session on this device and asks the server to revoke [token]. A caller that is
-     * about to switch to the sign-in screen clears the token store first and passes the token
-     * it read, so that screen never finds the old session (see SettingsViewModel.signOut).
-     */
-    suspend fun signOut(token: String? = tokenStore.accessToken): Unit = withContext(Dispatchers.IO) {
+    /** Ends the session on this device, then asks the server to revoke it. */
+    suspend fun signOut(): Unit = withContext(Dispatchers.IO) {
+        val token = tokenStore.accessToken
         tokenStore.clear()
+        revoke(token)
+    }
+
+    /**
+     * Asks the server to revoke [token] and touches nothing on this device, so it can still be
+     * running after the next account has signed in (see SettingsViewModel.signOut, which ends
+     * the local session itself before the screen changes).
+     */
+    suspend fun revokeSession(token: String?): Unit = withContext(Dispatchers.IO) {
+        revoke(token)
+    }
+
+    private fun revoke(token: String?) {
         if (token != null) {
             try {
                 val req = Request.Builder()

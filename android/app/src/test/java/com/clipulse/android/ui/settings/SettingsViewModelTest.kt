@@ -110,7 +110,7 @@ class SettingsViewModelTest {
         vm.signOut()
         
 
-        coVerify { supabase.signOut(any()) }
+        coVerify { supabase.revokeSession(any()) }
         coVerify { cache.clearDashboard() }
         coVerify { cache.clearProviders() }
         coVerify { cache.clearSessions() }
@@ -123,7 +123,7 @@ class SettingsViewModelTest {
     fun `signOut clears cache even when supabase throws`() = runTest {
         coEvery { supabase.serverTier() } returns "free"
         coEvery { supabase.settings() } returns testSettings
-        coEvery { supabase.signOut(any()) } throws RuntimeException("network")
+        coEvery { supabase.revokeSession(any()) } throws RuntimeException("network")
         val vm = SettingsViewModel(supabase, tokenStore, cache, repository, appScope)
         
 
@@ -220,7 +220,7 @@ class SettingsViewModelTest {
         // A real TokenStore: reading the token after clear() would hand the server null.
         val store = TokenStore(InMemorySharedPreferences())
         store.updateAuthState("access-1", "refresh-1", "user-1")
-        coEvery { supabase.signOut(any()) } answers {
+        coEvery { supabase.revokeSession(any()) } answers {
             assertNull("the session is gone before the server is called", store.accessToken)
         }
         val vm = SettingsViewModel(supabase, store, cache, repository, appScope)
@@ -228,7 +228,8 @@ class SettingsViewModelTest {
         vm.signOut()
 
         assertNull(store.accessToken)
-        coVerify { supabase.signOut("access-1") }
+        coVerify { supabase.revokeSession("access-1") }
+        coVerify { cache.clearDailyUsage() }
         vm.viewModelScope.cancel()
     }
 }
