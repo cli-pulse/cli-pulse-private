@@ -185,4 +185,28 @@ class SupabaseClientDemoModeTest {
         assertNull(tokenStore.accessToken)
         assertEquals("Bearer access-1", server.takeRequest().getHeader("Authorization"))
     }
+
+    @Test
+    fun `a refresh that returns after sign-out does not bring the session back`() = runTest {
+        tokenStore.updateAuthState("stale-1", "refresh-1", "user-1")
+        server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse =
+                if (request.path!!.startsWith("/auth/v1/token")) {
+                    tokenStore.clear() // the user signs out while the refresh is out
+                    MockResponse().setResponseCode(200)
+                        .setBody("""{"access_token":"new-1","refresh_token":"new-r"}""")
+                } else {
+                    MockResponse().setResponseCode(401)
+                }
+        }
+
+        try {
+            client.sessions()
+            fail("the refreshed session must not be used")
+        } catch (e: ApiError.TokenExpired) {
+            // expected
+        }
+        assertNull(tokenStore.accessToken)
+        assertNull(tokenStore.refreshToken)
+    }
 }

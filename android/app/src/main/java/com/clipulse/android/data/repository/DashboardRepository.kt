@@ -104,6 +104,15 @@ class DashboardRepository(
     /** Clear demo mode and all demo data. */
     fun exitDemoMode() {
         tokenStore?.isDemoMode = false
+        resetSession()
+    }
+
+    /**
+     * Forget everything this singleton holds for the session that is ending (sign-out,
+     * account deletion, demo exit): Overview's export menu reads these flows, and the next
+     * account must not export the last one's rows while its own first fetch is still out.
+     */
+    fun resetSession() {
         lastBudgetEvalAtMs = 0L
         _dashboard.value = null
         _providers.value = emptyList()

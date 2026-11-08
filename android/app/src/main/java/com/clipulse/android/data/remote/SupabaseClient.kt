@@ -155,6 +155,9 @@ class SupabaseClient internal constructor(
                 throw ApiError.Http(401, "Empty access_token in refresh response")
             }
             val newRefresh = json.optString("refresh_token", rt)
+            // The session may have ended (sign-out, demo) or been replaced by the next account's
+            // while the request was out; writing now would bring the old one back.
+            if (tokenStore.refreshToken != rt) throw ApiError.TokenExpired
             tokenStore.accessToken = newAccess
             tokenStore.refreshToken = newRefresh
             newAccess to newRefresh

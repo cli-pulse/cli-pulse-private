@@ -43,6 +43,13 @@ fun SettingsScreen(
     onViewDevices: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
+
+    // Account deletion succeeded: leave for the sign-in screen. Read from the view model's
+    // state rather than a callback handed to it, so a rotation during the request cannot
+    // leave the user on the tabs of an account that no longer exists.
+    LaunchedEffect(state.deleteSuccess) {
+        if (state.deleteSuccess) onSignOut()
+    }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -383,7 +390,7 @@ fun SettingsScreen(
                         TextButton(
                             onClick = {
                                 showDeleteConfirm = false
-                                viewModel.deleteAccount(onSuccess = onSignOut)
+                                viewModel.deleteAccount()
                             },
                             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
                         ) {

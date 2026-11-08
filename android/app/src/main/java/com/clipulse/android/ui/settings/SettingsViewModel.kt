@@ -225,12 +225,23 @@ class SettingsViewModel @Inject constructor(
         // checks the token store as it opens, and a token still there would sign the user
         // straight back in.
         val token = tokenStore.accessToken
+        endLocalSession()
+        // Revoking touches nothing on this device, so it cannot undo a sign-in that happens
+        // while it is still running. The app's scope, not this view model's: the session's
+        // view models are cleared as soon as the sign-in screen shows.
+        appScope.launch {
+            runCatching { supabase.revokeSession(token) }
+        }
+    }
+
+    /**
+     * Everything on this device that belonged to the session: the tokens and the singleton
+     * repository's rows at once, the Room cache in the app's scope (it must not wait on the
+     * network, and must not be cancelled when this view model is cleared).
+     */
+    private fun endLocalSession() {
         tokenStore.clear()
-        // Both below run in the app's scope, not this view model's: the session's view models
-        // are cleared as soon as the sign-in screen shows, which would cancel them.
-        //
-        // Local first, and not behind the network: the previous account's cached rows are gone
-        // before anyone can sign in again, whatever the logout request does.
+        repository.resetSession()
         appScope.launch {
             runCatching {
                 cache.clearDashboard()
@@ -241,20 +252,20 @@ class SettingsViewModel @Inject constructor(
                 cache.clearDailyUsage()
             }
         }
-        // Revoking touches nothing on this device, so it cannot undo a sign-in that happens
-        // while it is still running.
-        appScope.launch {
-            runCatching { supabase.revokeSession(token) }
-        }
     }
 
-    fun deleteAccount(onSuccess: () -> Unit) {
+    /**
+     * Deletes the account, then everything of it on this device. Success is reported through
+     * `deleteSuccess`, which SettingsScreen turns into the switch to the sign-in screen: a
+     * callback captured before a rotation would switch a screen that no longer exists.
+     */
+    fun deleteAccount() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, deleteError = null)
             try {
                 supabase.deleteAccount()
+                endLocalSession()
                 _state.value = _state.value.copy(isLoading = false, deleteSuccess = true)
-                onSuccess()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,

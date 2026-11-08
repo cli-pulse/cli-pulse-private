@@ -14,6 +14,10 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import androidx.lifecycle.viewModelScope
@@ -33,7 +37,10 @@ class SettingsViewModelTest {
     private val tokenStore = mockk<TokenStore>(relaxed = true)
     private val cache = mockk<CacheDao>(relaxed = true)
     private val repository = mockk<DashboardRepository>(relaxed = true)
-    private val appScope by lazy { CoroutineScope(mainDispatcherRule.testDispatcher) }
+    // Its own scheduler, separate from the view model's: a test can cancel the view model's
+    // scope first and show that sign-out's work still runs.
+    private val appDispatcher = StandardTestDispatcher()
+    private val appScope = CoroutineScope(SupervisorJob() + appDispatcher)
 
     private val testSettings = SettingsSnapshot(
         notificationsEnabled = true,
@@ -108,6 +115,7 @@ class SettingsViewModelTest {
         
 
         vm.signOut()
+        appDispatcher.scheduler.advanceUntilIdle()
         
 
         coVerify { supabase.revokeSession(any()) }
@@ -128,6 +136,7 @@ class SettingsViewModelTest {
         
 
         vm.signOut()
+        appDispatcher.scheduler.advanceUntilIdle()
         
 
         // Cache should still be cleared
@@ -136,18 +145,14 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `deleteAccount success calls onSuccess`() = runTest {
+    fun `deleteAccount success reports deleteSuccess`() = runTest {
         coEvery { supabase.serverTier() } returns "free"
         coEvery { supabase.settings() } returns testSettings
         coEvery { supabase.deleteAccount() } returns Unit
         val vm = SettingsViewModel(supabase, tokenStore, cache, repository, appScope)
-        
 
-        var called = false
-        vm.deleteAccount { called = true }
-        
+        vm.deleteAccount()
 
-        assertTrue(called)
         assertTrue(vm.state.value.deleteSuccess)
         vm.viewModelScope.cancel()
     }
@@ -160,9 +165,9 @@ class SettingsViewModelTest {
         val vm = SettingsViewModel(supabase, tokenStore, cache, repository, appScope)
         
 
-        vm.deleteAccount {}
-        
+        vm.deleteAccount()
 
+        assertFalse(vm.state.value.deleteSuccess)
         assertNotNull(vm.state.value.deleteError)
         assertEquals(
             UiError.ActionFailed(UiError.Action.DeleteAccount, UiError.Unknown("server error")),
@@ -226,9 +231,46 @@ class SettingsViewModelTest {
         val vm = SettingsViewModel(supabase, store, cache, repository, appScope)
 
         vm.signOut()
+        appDispatcher.scheduler.advanceUntilIdle()
 
         assertNull(store.accessToken)
         coVerify { supabase.revokeSession("access-1") }
+        coVerify { cache.clearDailyUsage() }
+        vm.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `sign-out's work outlives the view model and does not wait on the network`() = runTest {
+        every { tokenStore.accessToken } returns "access-1"
+        coEvery { supabase.revokeSession(any()) } coAnswers { awaitCancellation() }
+        // A wipe that suspends, as Room's does: on the view model's scope the cancel below
+        // would stop it before daily usage is cleared.
+        coEvery { cache.clearDashboard() } coAnswers { delay(1) }
+        val vm = SettingsViewModel(supabase, tokenStore, cache, repository, appScope)
+
+        vm.signOut()
+        vm.viewModelScope.cancel() // the session's view models are cleared at once
+        appDispatcher.scheduler.advanceUntilIdle()
+
+        verify { tokenStore.clear() }
+        verify { repository.resetSession() }
+        coVerify { cache.clearDashboard() }
+        coVerify { cache.clearDailyUsage() }
+        coVerify { supabase.revokeSession("access-1") }
+    }
+
+    @Test
+    fun `deleting the account removes it from the device too`() = runTest {
+        val vm = SettingsViewModel(supabase, tokenStore, cache, repository, appScope)
+
+        vm.deleteAccount()
+        appDispatcher.scheduler.advanceUntilIdle()
+
+        assertTrue(vm.state.value.deleteSuccess)
+        coVerify { supabase.deleteAccount() }
+        verify { tokenStore.clear() }
+        verify { repository.resetSession() }
+        coVerify { cache.clearDashboard() }
         coVerify { cache.clearDailyUsage() }
         vm.viewModelScope.cancel()
     }
