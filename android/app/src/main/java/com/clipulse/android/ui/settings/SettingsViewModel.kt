@@ -7,6 +7,9 @@ import com.clipulse.android.data.model.UserIdentity
 import com.clipulse.android.data.local.CacheDao
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
+import com.clipulse.android.data.repository.DashboardRepository
+import com.clipulse.android.di.ApplicationScope
+import kotlinx.coroutines.CoroutineScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +40,8 @@ class SettingsViewModel @Inject constructor(
     private val supabase: SupabaseClient,
     private val tokenStore: TokenStore,
     private val cache: CacheDao,
+    private val repository: DashboardRepository,
+    @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -128,6 +133,12 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun loadSettings() {
+        // Demo mode has no account settings: leaving `settings` null keeps the notification
+        // and threshold cards, which only edit a real account, off the screen.
+        if (tokenStore.isDemoMode) {
+            _state.value = _state.value.copy(tier = "free", isLoading = false)
+            return
+        }
         viewModelScope.launch {
             try {
                 val tier = supabase.serverTier()
@@ -164,6 +175,10 @@ class SettingsViewModel @Inject constructor(
     fun exitDemoMode() {
         tokenStore.isDemoMode = false
         tokenStore.clear()
+        // The repository is a singleton: without this, its demo rows are still in memory
+        // when the next account signs in.
+        repository.exitDemoMode()
+        supabase.clearDemoState()
     }
 
     fun testWebhook() {
@@ -206,28 +221,51 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun signOut() {
-        viewModelScope.launch {
-            try {
-                supabase.signOut()
-            } catch (_: Exception) {
-            } finally {
-                // Always clear local cache — prevent data leakage to next user
+        // End the session before the caller switches to the sign-in screen: that screen
+        // checks the token store as it opens, and a token still there would sign the user
+        // straight back in.
+        val token = tokenStore.accessToken
+        endLocalSession()
+        // Revoking touches nothing on this device, so it cannot undo a sign-in that happens
+        // while it is still running. The app's scope, not this view model's: the session's
+        // view models are cleared as soon as the sign-in screen shows.
+        appScope.launch {
+            runCatching { supabase.revokeSession(token) }
+        }
+    }
+
+    /**
+     * Everything on this device that belonged to the session: the tokens and the singleton
+     * repository's rows at once, the Room cache in the app's scope (it must not wait on the
+     * network, and must not be cancelled when this view model is cleared).
+     */
+    private fun endLocalSession() {
+        tokenStore.clear()
+        repository.resetSession()
+        appScope.launch {
+            runCatching {
                 cache.clearDashboard()
                 cache.clearProviders()
                 cache.clearSessions()
                 cache.clearAlerts()
                 cache.clearDevices()
+                cache.clearDailyUsage()
             }
         }
     }
 
-    fun deleteAccount(onSuccess: () -> Unit) {
+    /**
+     * Deletes the account, then everything of it on this device. Success is reported through
+     * `deleteSuccess`, which SettingsScreen turns into the switch to the sign-in screen: a
+     * callback captured before a rotation would switch a screen that no longer exists.
+     */
+    fun deleteAccount() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, deleteError = null)
             try {
                 supabase.deleteAccount()
+                endLocalSession()
                 _state.value = _state.value.copy(isLoading = false, deleteSuccess = true)
-                onSuccess()
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,

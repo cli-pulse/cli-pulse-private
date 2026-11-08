@@ -2,11 +2,12 @@ package com.clipulse.android.data
 
 import com.clipulse.android.data.model.*
 import java.time.Instant
+import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
 /**
  * Generates demo data for Android, mirroring iOS DemoDataProvider.swift.
- * 3 providers, 4 sessions, 3 devices, 5 alerts, dashboard summary.
+ * 3 providers, 4 sessions, 3 devices, 5 alerts, daily usage, dashboard summary.
  */
 object DemoDataProvider {
 
@@ -137,6 +138,44 @@ object DemoDataProvider {
             sourceKind = "provider", sourceId = "Codex",
             groupingKey = "error-rate:Codex",
         ),
+    )
+
+    /**
+     * Per-day, per-model usage for the last [days] days (today included), in the same
+     * yyyy-MM-dd form the server's get_daily_usage returns, so Overview's forecast and
+     * Cost Analysis have something to draw in demo mode. Made-up figures, deterministic.
+     */
+    fun dailyUsage(days: Int = 30): List<DailyUsage> {
+        val today = LocalDate.now()
+        val models = listOf(
+            // provider, model, input tokens per day, cost per day (USD)
+            DemoModel("Codex", "gpt-5-codex", 61_000, 0.79),
+            DemoModel("Gemini", "gemini-2.5-pro", 30_000, 0.24),
+            DemoModel("Claude", "claude-sonnet-4-5", 17_000, 0.28),
+        )
+        return (0 until days.coerceIn(1, 365)).flatMap { back ->
+            // A light weekly rhythm: quieter weekends, busier mid-week.
+            val factor = listOf(1.0, 1.15, 1.25, 1.1, 0.95, 0.45, 0.4)[back % 7]
+            val date = today.minusDays(back.toLong()).toString()
+            models.map { m ->
+                DailyUsage(
+                    date = date,
+                    provider = m.provider,
+                    model = m.model,
+                    inputTokens = (m.inputPerDay * factor).toInt(),
+                    cachedTokens = (m.inputPerDay * factor * 0.4).toInt(),
+                    outputTokens = (m.inputPerDay * factor * 0.12).toInt(),
+                    cost = Math.round(m.costPerDay * factor * 100) / 100.0,
+                )
+            }
+        }
+    }
+
+    private data class DemoModel(
+        val provider: String,
+        val model: String,
+        val inputPerDay: Int,
+        val costPerDay: Double,
     )
 
     fun dashboard(): DashboardSummary {

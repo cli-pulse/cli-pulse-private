@@ -4,20 +4,27 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-class TokenStore(
-    context: Context,
+class TokenStore internal constructor(
+    private val prefs: SharedPreferences,
 ) {
-    private val prefs: SharedPreferences = EncryptedSharedPreferences.create(
-        context,
-        "cli_pulse_secure_prefs",
-        MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+    constructor(context: Context) : this(
+        EncryptedSharedPreferences.create(
+            context,
+            "cli_pulse_secure_prefs",
+            MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        ),
     )
 
     var accessToken: String?
         get() = prefs.getString(KEY_ACCESS_TOKEN, null)
-        set(value) = prefs.edit().putString(KEY_ACCESS_TOKEN, value).apply()
+        set(value) {
+            val edit = prefs.edit().putString(KEY_ACCESS_TOKEN, value)
+            // A real session always ends demo mode, whichever sign-in path wrote it.
+            if (!value.isNullOrBlank()) edit.putBoolean(KEY_DEMO_MODE, false)
+            edit.apply()
+        }
 
     var refreshToken: String?
         get() = prefs.getString(KEY_REFRESH_TOKEN, null)
@@ -44,6 +51,9 @@ class TokenStore(
         set(value) = prefs.edit().putBoolean(KEY_DEMO_MODE, value).apply()
 
     val isLoggedIn: Boolean get() = isDemoMode || !accessToken.isNullOrBlank()
+
+    /** A signed-in account, as opposed to demo mode or signed out. */
+    val hasSession: Boolean get() = !isDemoMode && !accessToken.isNullOrBlank()
 
     // ── Pending OAuth flow (login or link) ─────────────────────────────
     // Durable across process death / backgrounding so we can complete the browser round-trip.
@@ -95,11 +105,13 @@ class TokenStore(
 
     /** Atomically update auth tokens + userId in a single write transaction. */
     fun updateAuthState(access: String?, refresh: String?, user: String?) {
-        prefs.edit()
+        val edit = prefs.edit()
             .putString(KEY_ACCESS_TOKEN, access)
             .putString(KEY_REFRESH_TOKEN, refresh)
             .putString(KEY_USER_ID, user)
-            .apply()
+        // A real session always ends demo mode, whichever sign-in path wrote it.
+        if (!access.isNullOrBlank()) edit.putBoolean(KEY_DEMO_MODE, false)
+        edit.apply()
     }
 
     fun clear() {

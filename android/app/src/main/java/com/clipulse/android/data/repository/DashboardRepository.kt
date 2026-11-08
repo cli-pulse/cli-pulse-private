@@ -53,6 +53,8 @@ class DashboardRepository(
      * the critical path of the alerts list rendering.
      */
     suspend fun maybeEvaluateBudgetAlerts() {
+        // Demo mode has no account to evaluate, and must not use up the next account's turn.
+        if (isDemoMode) return
         val now = System.currentTimeMillis()
         if (now - lastBudgetEvalAtMs < budgetEvalCooldownMs) return
         lastBudgetEvalAtMs = now
@@ -61,6 +63,11 @@ class DashboardRepository(
 
     /** Load cached data into StateFlows (call on startup). */
     suspend fun loadFromCache() {
+        // Demo mode never shows an account's cached rows.
+        if (isDemoMode) {
+            loadDemoData()
+            return
+        }
         cache.getDashboard()?.let { cached ->
             parseDashboard(cached.json)?.let { _dashboard.value = it }
         }
@@ -80,18 +87,33 @@ class DashboardRepository(
         if (cachedDailyUsage.isNotEmpty()) _dailyUsage.value = cachedDailyUsage
     }
 
-    /** Load demo data into StateFlows when in demo mode. */
-    fun loadDemoData() {
+    /**
+     * Load demo data into every StateFlow when in demo mode. Every refresh below does this
+     * instead of fetching, and never writes Room, so demo rows cannot outlive demo mode and
+     * Overview's export menu (which reads these flows) has the same data the tabs show.
+     */
+    fun loadDemoData(days: Int = 30) {
         _dashboard.value = DemoDataProvider.dashboard()
         _providers.value = DemoDataProvider.providers()
         _sessions.value = DemoDataProvider.sessions()
         _devices.value = DemoDataProvider.devices()
         _alerts.value = DemoDataProvider.alerts()
+        _dailyUsage.value = DemoDataProvider.dailyUsage(days)
     }
 
     /** Clear demo mode and all demo data. */
     fun exitDemoMode() {
         tokenStore?.isDemoMode = false
+        resetSession()
+    }
+
+    /**
+     * Forget everything this singleton holds for the session that is ending (sign-out,
+     * account deletion, demo exit): Overview's export menu reads these flows, and the next
+     * account must not export the last one's rows while its own first fetch is still out.
+     */
+    fun resetSession() {
+        lastBudgetEvalAtMs = 0L
         _dashboard.value = null
         _providers.value = emptyList()
         _sessions.value = emptyList()
@@ -115,36 +137,42 @@ class DashboardRepository(
     }
 
     suspend fun refreshDashboard() {
+        if (isDemoMode) return loadDemoData()
         val data = supabase.dashboard()
         _dashboard.value = data
         cache.saveDashboard(CachedDashboard(json = serializeDashboard(data)))
     }
 
     suspend fun refreshProviders() {
+        if (isDemoMode) return loadDemoData()
         val data = supabase.providers()
         _providers.value = data
         cache.replaceProviders(data.map { CachedProvider(provider = it.provider, json = serializeProvider(it)) })
     }
 
     suspend fun refreshSessions() {
+        if (isDemoMode) return loadDemoData()
         val data = supabase.sessions()
         _sessions.value = data
         cache.replaceSessions(data.map { CachedSession(id = it.id, json = serializeSession(it)) })
     }
 
     suspend fun refreshDevices() {
+        if (isDemoMode) return loadDemoData()
         val data = supabase.devices()
         _devices.value = data
         cache.replaceDevices(data.map { CachedDevice(id = it.id, json = serializeDevice(it)) })
     }
 
     suspend fun refreshAlerts() {
+        if (isDemoMode) return loadDemoData()
         val data = supabase.alerts()
         _alerts.value = data
         cache.replaceAlerts(data.map { CachedAlert(id = it.id, json = serializeAlert(it)) })
     }
 
     suspend fun refreshDailyUsage(days: Int = 30) {
+        if (isDemoMode) return loadDemoData(days)
         val data = supabase.dailyUsage(days)
         _dailyUsage.value = data
         cache.replaceDailyUsage(data.map {

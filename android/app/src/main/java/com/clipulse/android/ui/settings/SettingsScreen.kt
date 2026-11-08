@@ -43,6 +43,13 @@ fun SettingsScreen(
     onViewDevices: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
+
+    // Account deletion succeeded: leave for the sign-in screen. Read from the view model's
+    // state rather than a callback handed to it, so a rotation during the request cannot
+    // leave the user on the tabs of an account that no longer exists.
+    LaunchedEffect(state.deleteSuccess) {
+        if (state.deleteSuccess) onSignOut()
+    }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -231,94 +238,96 @@ fun SettingsScreen(
             }
         }
 
-        // Integrations (Webhook)
-        Spacer(Modifier.height(16.dp))
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(stringResource(R.string.settings_integrations), style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(stringResource(R.string.settings_webhook_notifications), modifier = Modifier.weight(1f))
-                    Switch(
-                        checked = state.webhookEnabled,
-                        onCheckedChange = { viewModel.updateSetting("webhook_enabled", it) },
-                    )
-                }
-
-                if (state.webhookEnabled) {
+        // Integrations (Webhook) edit a real account's settings; demo mode has none.
+        if (!state.isDemoMode) {
+            Spacer(Modifier.height(16.dp))
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(stringResource(R.string.settings_integrations), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
-                    var webhookText by remember(state.webhookUrl) { mutableStateOf(state.webhookUrl ?: "") }
-                    OutlinedTextField(
-                        value = webhookText,
-                        onValueChange = { webhookText = it },
-                        label = { Text(stringResource(R.string.settings_webhook_url_hint)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = { viewModel.updateSetting("webhook_url", webhookText) },
-                            enabled = webhookText.isNotBlank(),
-                        ) { Text(stringResource(R.string.settings_save_url)) }
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.updateSetting("webhook_url", webhookText)
-                                viewModel.testWebhook()
-                            },
-                            enabled = webhookText.isNotBlank(),
-                        ) { Text(stringResource(R.string.settings_test)) }
-                    }
 
-                    // Event filter section
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        stringResource(R.string.settings_event_filter),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    Text(
-                        stringResource(R.string.settings_event_filter_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(4.dp))
-
-                    // Severity filter chips
-                    Text(stringResource(R.string.settings_filter_severities), style = MaterialTheme.typography.labelMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("Critical", "Warning", "Info").forEach { severity ->
-                            val selected = state.webhookFilterSeverities.contains(severity)
-                            FilterChip(
-                                selected = selected,
-                                onClick = { viewModel.toggleWebhookFilterSeverity(severity) },
-                                label = { Text(tokenLabel(severity, DataTokenDisplay.severity(severity)), style = MaterialTheme.typography.bodySmall) },
-                            )
-                        }
-                    }
-
-                    // Type filter chips
-                    Text(stringResource(R.string.settings_filter_types), style = MaterialTheme.typography.labelMedium)
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        listOf("cost_spike", "quota_exceeded", "session_long", "device_offline").forEach { type ->
-                            val selected = state.webhookFilterTypes.contains(type)
-                            FilterChip(
-                                selected = selected,
-                                onClick = { viewModel.toggleWebhookFilterType(type) },
-                                label = { Text(tokenLabel(type.replace("_", " "), DataTokenDisplay.webhookType(type)), style = MaterialTheme.typography.bodySmall) },
-                            )
+                        Text(stringResource(R.string.settings_webhook_notifications), modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = state.webhookEnabled,
+                            onCheckedChange = { viewModel.updateSetting("webhook_enabled", it) },
+                        )
+                    }
+
+                    if (state.webhookEnabled) {
+                        Spacer(Modifier.height(8.dp))
+                        var webhookText by remember(state.webhookUrl) { mutableStateOf(state.webhookUrl ?: "") }
+                        OutlinedTextField(
+                            value = webhookText,
+                            onValueChange = { webhookText = it },
+                            label = { Text(stringResource(R.string.settings_webhook_url_hint)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { viewModel.updateSetting("webhook_url", webhookText) },
+                                enabled = webhookText.isNotBlank(),
+                            ) { Text(stringResource(R.string.settings_save_url)) }
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.updateSetting("webhook_url", webhookText)
+                                    viewModel.testWebhook()
+                                },
+                                enabled = webhookText.isNotBlank(),
+                            ) { Text(stringResource(R.string.settings_test)) }
+                        }
+
+                        // Event filter section
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            stringResource(R.string.settings_event_filter),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        Text(
+                            stringResource(R.string.settings_event_filter_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(4.dp))
+
+                        // Severity filter chips
+                        Text(stringResource(R.string.settings_filter_severities), style = MaterialTheme.typography.labelMedium)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("Critical", "Warning", "Info").forEach { severity ->
+                                val selected = state.webhookFilterSeverities.contains(severity)
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = { viewModel.toggleWebhookFilterSeverity(severity) },
+                                    label = { Text(tokenLabel(severity, DataTokenDisplay.severity(severity)), style = MaterialTheme.typography.bodySmall) },
+                                )
+                            }
+                        }
+
+                        // Type filter chips
+                        Text(stringResource(R.string.settings_filter_types), style = MaterialTheme.typography.labelMedium)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        ) {
+                            listOf("cost_spike", "quota_exceeded", "session_long", "device_offline").forEach { type ->
+                                val selected = state.webhookFilterTypes.contains(type)
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = { viewModel.toggleWebhookFilterType(type) },
+                                    label = { Text(tokenLabel(type.replace("_", " "), DataTokenDisplay.webhookType(type)), style = MaterialTheme.typography.bodySmall) },
+                                )
+                            }
                         }
                     }
                 }
             }
-        }
 
+        }
         Spacer(Modifier.height(24.dp))
 
         // Demo mode exit or Sign out
@@ -361,38 +370,40 @@ fun SettingsScreen(
             }
         }
 
-        // Delete account
-        var showDeleteConfirm by remember { mutableStateOf(false) }
-        TextButton(
-            onClick = { showDeleteConfirm = true },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-        ) {
-            Text(stringResource(R.string.delete_account))
-        }
+        // Delete account: demo mode has no account to delete.
+        if (!state.isDemoMode) {
+            var showDeleteConfirm by remember { mutableStateOf(false) }
+            TextButton(
+                onClick = { showDeleteConfirm = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) {
+                Text(stringResource(R.string.delete_account))
+            }
 
-        if (showDeleteConfirm) {
-            AlertDialog(
-                onDismissRequest = { showDeleteConfirm = false },
-                title = { Text(stringResource(R.string.settings_delete_title)) },
-                text = { Text(stringResource(R.string.settings_delete_message)) },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            showDeleteConfirm = false
-                            viewModel.deleteAccount(onSuccess = onSignOut)
-                        },
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                    ) {
-                        Text(stringResource(R.string.delete))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showDeleteConfirm = false }) {
-                        Text(stringResource(R.string.cancel))
-                    }
-                },
-            )
+            if (showDeleteConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteConfirm = false },
+                    title = { Text(stringResource(R.string.settings_delete_title)) },
+                    text = { Text(stringResource(R.string.settings_delete_message)) },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showDeleteConfirm = false
+                                viewModel.deleteAccount()
+                            },
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        ) {
+                            Text(stringResource(R.string.delete))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteConfirm = false }) {
+                            Text(stringResource(R.string.cancel))
+                        }
+                    },
+                )
+            }
         }
     }
 }

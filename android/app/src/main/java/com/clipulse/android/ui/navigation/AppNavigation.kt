@@ -11,6 +11,10 @@ import androidx.compose.material3.*
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -63,8 +67,16 @@ fun AppNavigation(
     pendingCallback: OAuthDeepLinkCallback? = null,
     pendingNotice: OAuthDeepLinkNotice? = null,
 ) {
-    val navController = rememberNavController()
     var isLoggedIn by remember { mutableStateOf(false) }
+    // Bumped on every sign-out, demo exit and account deletion, so the sign-in screen gets a
+    // new LoginViewModel. The Activity keeps view models, and the previous one still says
+    // isLoggedIn = true: LoginScreen called onLoggedIn() at once and Exit Demo Mode (and
+    // Sign Out) dropped the user straight back into the tabs, in 1.37 as well.
+    var loginEpoch by rememberSaveable { mutableIntStateOf(0) }
+    // Activity-scoped, read here with the Activity as owner (before the session's own owner
+    // is provided below).
+    val sessionStores: SessionViewModelStores = viewModel()
+    val activityOwner = checkNotNull(LocalViewModelStoreOwner.current)
 
     // Only deliver a callback to the screen whose flow-kind matches. A login callback
     // received while we're on the authenticated stack, or vice versa, is ignored — the
@@ -76,6 +88,7 @@ fun AppNavigation(
 
     if (!isLoggedIn) {
         LoginScreen(
+            viewModel = hiltViewModel(key = "login-$loginEpoch"),
             loginCallback = loginCallback,
             loginNotice = loginNotice,
             onLoggedIn = { isLoggedIn = true },
@@ -83,6 +96,35 @@ fun AppNavigation(
         return
     }
 
+    // Everything below is one signed-in (or demo) session. Its view models live in a store of
+    // their own (see SessionViewModelStores), and the NavController starts afresh with each
+    // epoch, so nothing on the tabs survives into the next session.
+    val sessionOwner = remember(loginEpoch) { sessionStores.ownerFor(loginEpoch, activityOwner) }
+    DisposableEffect(sessionStores) {
+        onDispose { sessionStores.clearIfEnded() }
+    }
+    CompositionLocalProvider(LocalViewModelStoreOwner provides sessionOwner) {
+        key(loginEpoch) {
+            SignedInApp(
+                linkCallback = linkCallback,
+                linkNotice = linkNotice,
+                onSignOut = {
+                    sessionStores.endSession()
+                    loginEpoch++
+                    isLoggedIn = false
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SignedInApp(
+    linkCallback: OAuthDeepLinkCallback?,
+    linkNotice: OAuthDeepLinkNotice?,
+    onSignOut: () -> Unit,
+) {
+    val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
     val tabs = Screen.entries
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -196,7 +238,7 @@ fun AppNavigation(
                 SettingsScreen(
                     linkCallback = linkCallback,
                     linkNotice = linkNotice,
-                    onSignOut = { isLoggedIn = false },
+                    onSignOut = onSignOut,
                     onManageSubscription = { navController.navigate("subscription") },
                     onViewDevices = { navController.navigate("devices") },
                 )

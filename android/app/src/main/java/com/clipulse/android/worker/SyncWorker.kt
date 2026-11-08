@@ -52,7 +52,10 @@ class SyncWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result {
-        if (!tokenStore.isLoggedIn) return Result.success()
+        // A real account only. `isLoggedIn` is also true in demo mode, which has no token:
+        // before 1.62 a demo install sent register_device + dashboard_summary every 15
+        // minutes and got 401s back.
+        if (!tokenStore.hasSession) return Result.success()
 
         return try {
             // 1. Ensure device is registered
