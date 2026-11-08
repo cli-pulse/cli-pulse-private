@@ -228,6 +228,11 @@ mutate "an [sdk=] variant" "$PBX" "MARKETING_VERSION = 1.62.0;" \
     $'MARKETING_VERSION = 1.62.0;\n\t\t\t\t"MARKETING_VERSION[sdk=macosx*]" = 1.70.0;' 1 \
     && expect_fail "an [sdk=] variant" "sets MARKETING_VERSION in 4 places but only 3 are plain"
 
+build_fixture
+mutate "two qualifiers" "$PBX" "MARKETING_VERSION = 1.62.0;" \
+    $'MARKETING_VERSION = 1.62.0;\n\t\t\t\t"MARKETING_VERSION[sdk=macosx*][arch=arm64]" = 1.70.0;' 1 \
+    && expect_fail "two qualifiers" "sets MARKETING_VERSION in 4 places but only 3 are plain"
+
 # References to the setting are not sites: they must neither block the check
 # nor add a value to it.
 build_fixture

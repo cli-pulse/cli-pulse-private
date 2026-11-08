@@ -64,8 +64,11 @@ fail_at() {
 # form. Neither counts a reference to the setting ($(MARKETING_VERSION),
 # ${MARKETING_VERSION}, $MARKETING_VERSION), the word in a comment, or a longer
 # setting name that ends in it, so those neither block nor feed the check.
+# The project file is written by Xcode, one "KEY = VALUE;" per line with only
+# "/* name */" comments, so a hand-written assignment inside a comment (fails
+# closed) or a key split across lines (not counted) is not handled.
 NOT_KEY='(^|[^$({_A-Za-z0-9])'
-SITE_RE="${NOT_KEY}\"?MARKETING_VERSION(\\[[^]]*\\])?\"?[[:space:]]*="
+SITE_RE="${NOT_KEY}\"?MARKETING_VERSION(\\[[^]]*\\])*\"?[[:space:]]*="
 ASSIGN_RE="${NOT_KEY}MARKETING_VERSION = [^;]*;"
 sites="$(grep -oE "$SITE_RE" "$PBXPROJ" | wc -l | tr -d '[:space:]')"
 assignments="$(grep -oE "$ASSIGN_RE" "$PBXPROJ" | wc -l | tr -d '[:space:]')"
