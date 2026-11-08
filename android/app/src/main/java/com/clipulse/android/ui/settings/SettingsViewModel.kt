@@ -175,6 +175,7 @@ class SettingsViewModel @Inject constructor(
         // The repository is a singleton: without this, its demo rows are still in memory
         // when the next account signs in.
         repository.exitDemoMode()
+        supabase.clearDemoState()
     }
 
     fun testWebhook() {

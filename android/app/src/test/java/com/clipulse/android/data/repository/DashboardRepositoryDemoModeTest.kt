@@ -31,6 +31,7 @@ class DashboardRepositoryDemoModeTest {
         repository.refreshAlerts()
         repository.refreshDailyUsage(7)
         repository.loadFromCache()
+        repository.maybeEvaluateBudgetAlerts()
 
         verify { supabase wasNot Called }
         verify { cache wasNot Called }

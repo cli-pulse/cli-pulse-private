@@ -963,6 +963,11 @@ class SupabaseClient internal constructor(
         }
     }
 
+    /** Forget demo mode's alert changes, so the next demo session starts from the sample data. */
+    fun clearDemoState() {
+        demoAlerts.set(null)
+    }
+
     private fun currentDemoAlerts(): List<AlertRecord> {
         demoAlerts.get()?.let { return it }
         demoAlerts.compareAndSet(null, DemoDataProvider.alerts())

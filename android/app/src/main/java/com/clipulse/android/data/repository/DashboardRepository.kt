@@ -53,6 +53,8 @@ class DashboardRepository(
      * the critical path of the alerts list rendering.
      */
     suspend fun maybeEvaluateBudgetAlerts() {
+        // Demo mode has no account to evaluate, and must not use up the next account's turn.
+        if (isDemoMode) return
         val now = System.currentTimeMillis()
         if (now - lastBudgetEvalAtMs < budgetEvalCooldownMs) return
         lastBudgetEvalAtMs = now
@@ -102,6 +104,7 @@ class DashboardRepository(
     /** Clear demo mode and all demo data. */
     fun exitDemoMode() {
         tokenStore?.isDemoMode = false
+        lastBudgetEvalAtMs = 0L
         _dashboard.value = null
         _providers.value = emptyList()
         _sessions.value = emptyList()

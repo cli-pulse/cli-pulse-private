@@ -5,11 +5,11 @@ import com.clipulse.android.MainDispatcherRule
 import com.clipulse.android.data.local.CacheDao
 import com.clipulse.android.data.model.SettingsSnapshot
 import com.clipulse.android.data.remote.SupabaseClient
+import com.clipulse.android.data.remote.InMemorySharedPreferences
 import com.clipulse.android.data.remote.TokenStore
 import com.clipulse.android.data.repository.DashboardRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
-import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -209,20 +209,24 @@ class SettingsViewModelTest {
         verify { tokenStore.isDemoMode = false }
         verify { tokenStore.clear() }
         verify { repository.exitDemoMode() }
+        verify { supabase.clearDemoState() }
         vm.viewModelScope.cancel()
     }
 
     @Test
     fun `signOut ends the local session before the server call, with the token it had`() = runTest {
-        every { tokenStore.accessToken } returns "access-1"
-        val vm = SettingsViewModel(supabase, tokenStore, cache, repository)
+        // A real TokenStore: reading the token after clear() would hand the server null.
+        val store = TokenStore(InMemorySharedPreferences())
+        store.updateAuthState("access-1", "refresh-1", "user-1")
+        coEvery { supabase.signOut(any()) } answers {
+            assertNull("the session is gone before the server is called", store.accessToken)
+        }
+        val vm = SettingsViewModel(supabase, store, cache, repository)
 
         vm.signOut()
 
-        coVerifyOrder {
-            tokenStore.clear()
-            supabase.signOut("access-1")
-        }
+        assertNull(store.accessToken)
+        coVerify { supabase.signOut("access-1") }
         vm.viewModelScope.cancel()
     }
 }
