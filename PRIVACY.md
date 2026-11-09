@@ -12,10 +12,11 @@ diagnostic readings about each Mac, the record your Android phone adds to your
 account each time you sign in on it (with that phone's notification token if it
 was sent), the network details every request carries, a subscription's receipt
 sent to us for checking, and what sessions you run through the optional
-Companion CLI print (all described below), everything CLI Pulse uploads is there
-to show your usage and alerts on your other devices, or wherever you asked for
-alerts to go, and this document lists all of it, including the parts that are
-not numbers.
+Companion CLI print (all described below), everything else CLI Pulse uploads is
+there to run the features you use across your devices (showing your usage and
+alerts, keeping your settings in step, carrying the requests you send to a Mac)
+or to send alerts where you asked, and this document lists all of it, including
+the parts that are not numbers.
 
 This document is the single source of truth for what we collect. If you find
 anything in the apps, their App Store or Google Play listings, or the GitHub
@@ -99,17 +100,17 @@ pass through our servers.
 | **Your name and profile details from Apple, Google or GitHub**, if you sign in with one of them (on iPhone; on Android, Google or GitHub, including one you link in Settings › Linked Accounts) | Supabase Auth | ✅ Yes, if that provider shares them | Supabase keeps what the sign-in provider hands it. When you sign in with Google on Android, the app also passes on the name Google gives it |
 | **Apple / Google / GitHub sign-in tokens** (during sign-in) | Not persisted — exchanged once for a Supabase session | ✅ Yes (during sign-in only) | Identity verification with the original OAuth provider |
 | **Supabase session access / refresh token** | Keychain on each Apple device you sign in on; on Android, the app's encrypted preferences (`cli_pulse_secure_prefs`). Your iPhone passes it to your paired Apple Watch over Apple's own watch connection | ❌ Not uploaded as data: sent only to authenticate your requests and to renew your session | Keeps you signed in |
-| **What else the Android app keeps on the phone**: your account's ID, name and email; the ID of the phone's record in your account; whether Try Demo is on; while a GitHub sign-in or account link you started in the browser is unfinished, a one-time code for finishing it; as last fetched from your account, the Overview's totals for today (tokens, estimated cost, and how many sessions, devices and open alerts) and up to 30 days of daily usage (per day, provider and model: token counts and cost); and files you export from the Overview (CSV and PDF; they can include project folder names, alert messages and your Macs' names) | The totals and daily usage in the app's own database (`cli_pulse_cache`), which the app does not encrypt; exported files in the app's cache folder; everything else in the app's encrypted preferences (`cli_pulse_secure_prefs`). Sign Out starts deleting all of it except exported files at once, without waiting for the network, and Delete Account does the same once our server has deleted the account. Exit Demo Mode deletes the encrypted preferences. If, when the app starts, our server does not accept the saved sign-in, the app deletes the encrypted preferences but keeps the totals and daily usage until someone next signs in on the phone and they are fetched again. That happens after you sign out, or delete the account, on another device, and also when the saved sign-in has simply expired because the background sync has not renewed it within the hour. While the app is open, a refused renewal changes nothing on the phone: it keeps showing you as signed in, unable to connect, until you tap Sign Out or the app next starts. A sign-in code you abandon stays until you start another or sign out. Exported files stay until Android clears the app's cache or you uninstall the app (each of the four kinds of CSV export replaces the previous file of its kind; PDF reports are named by date, so one stays for each day you export one). Uninstalling the app deletes all of it | ❌ No (the one-time code goes to Supabase Auth once, to finish that sign-in) | Shows who is signed in, finishes a browser sign-in, and lets you share an export. This release saves the totals and daily usage but never reads them back |
+| **What else the Android app keeps on the phone**: your account's ID, name and email; the ID of the phone's record in your account; whether Try Demo is on; while a GitHub sign-in or account link you started in the browser is unfinished, a one-time code for finishing it; as last fetched from your account, the Overview's totals for today (tokens, estimated cost, and how many sessions, devices and open alerts) and up to 30 days of daily usage (per day, provider and model: token counts and cost); and files you export from the Overview (CSV and PDF of what the Overview has loaded; in this release, for a signed-in account, that is the totals and daily usage per provider and model) | The totals and daily usage in the app's own database (`cli_pulse_cache`), which the app does not encrypt; exported files in the app's cache folder; everything else in the app's encrypted preferences (`cli_pulse_secure_prefs`). Sign Out starts deleting all of it except exported files at once, without waiting for the network, and Delete Account does the same once our server has deleted the account. Exit Demo Mode deletes the encrypted preferences. If, when the app starts, our server does not accept the saved sign-in, the app deletes the encrypted preferences but keeps the totals and daily usage until someone next signs in on the phone and they are fetched again. That happens after you sign out, or delete the account, on another device, and also whenever the saved sign-in, which lasts an hour, has expired and the background sync has not yet renewed it: the sync renews it only on its first run after it expires, and Android can put that run off for hours, so opening the app after some time away often signs you out. While the app is open, a refused renewal changes nothing on the phone: it keeps showing you as signed in, unable to connect, until you tap Sign Out or the check above runs again, which happens when the app starts or Android redraws its screen (for example when you rotate the phone). A sign-in code you abandon stays until you start another or sign out. Exported files stay until Android clears the app's cache or you uninstall the app (each of the four kinds of CSV export replaces the previous file of its kind; PDF reports are named by date, so one stays for each day you export one). Uninstalling the app deletes all of it | ❌ No (the one-time code goes to Supabase Auth once, to finish that sign-in) | Shows who is signed in, finishes a browser sign-in, and lets you share an export. This release saves the totals and daily usage but never reads them back |
 | **What the Android app's libraries keep on the phone**: Google's Firebase keeps a random ID for this install of the app, a sign-in token of its own, the notification token, and a record of the days it was used, which it sends to Google with its requests; Google's log uploader may keep events it has not yet sent to Google (Google Play's billing library can add some once you open Settings › Subscription); Sentry keeps its own random installation ID, a running copy of its latest breadcrumbs and device details, and any crash reports not yet sent; Android keeps the background sync's schedule | The app's private storage | ❌ Not to our server, except the notification token (see its row) | Firebase, Google's log uploader and Sentry use them as described under *Security practices* and *Third-party sub-processors*. Neither Sign Out nor Delete Account deletes them; uninstalling the app does |
 | **Git activity metadata** (commit hash, keyed hash of the project path, commit timestamp, merge flag) | Supabase — only when the "Track git activity (Yield Score)" toggle is ON, and only collected by the Companion CLI | ✅ Yes (opt-in only) | Powers the Yield Score feature |
 | **Git commit messages, diffs, file paths, author identity** | — | ❌ Never | Explicitly excluded even when Yield Score is on |
 | **Quota alerts you dismiss** | UserDefaults on that device | ❌ Never | Suppression list to prevent re-firing |
 | **Codex accounts seen with credits** (a digest of the ChatGPT account ID, never the ID itself) | UserDefaults (app group) on this device | ❌ Never | Keeps a spent Codex credits balance visible as "0 credits left" |
 | **Codex limit reset credits** (since v1.57, Mac app only): how many limit resets OpenAI has granted the ChatGPT account Codex is signed in to on this Mac, and when each expires. The app asks OpenAI for them (a read-only request to `chatgpt.com`) with the same Codex sign-in, in the same refresh as Codex's quota. It never asks OpenAI to use one | Kept in memory in the Mac app while it runs, each credit's ID and the ChatGPT account ID only as hashes; never written to disk | ❌ Never, and not to your iPhone or Apple Watch either | Shown on the Codex card |
-| **Your subscription**, if you buy one in the App Store or Google Play reports one for your Google account: the plan, its status and dates (period, trial end, whether it renews), which store, and that store's transaction or order ID. To check it, the app sends our server the App Store's signed transaction and product ID, or Google Play's purchase token, product ID and the app's package name | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | Keeps your plan with your account, so every device shows it; deleted with your account |
+| **Your subscription**, if you buy one in the App Store or Google Play reports one for your Google account: the plan, that it is active, when the current period ends, which store, the App Store's product and transaction IDs or Google Play's order ID (or, if Google gives none, the start of the purchase token), and when it was last checked. To check it, the app sends our server the App Store's signed transaction and product ID, or Google Play's purchase token, product ID and the app's package name | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | Keeps your plan with your account, so every device shows it; deleted with your account |
 | **Crash reports** from the Mac, iPhone, Apple Watch and Android apps (see *Security practices* for what they contain) | Sentry (sentry.io), scrubbed before leaving the device | ✅ Yes, when a crash or error happens, whether or not you are signed in; the same SDK also reports each app session's start and whether it ended in a crash | So crashes are visible to us without waiting for an App Store or Google Play review |
 | **Anonymous install statistics** (Mac app only: random install id, install channel, app version, OS major.minor, display language, and a few once-ever yes/no milestones listed below) | Supabase, **not linked to any account** | ✅ Yes, unless you turn it off | Tells us whether the app actually works for people who never sign in |
-| **Network details of every request to our server**, from every app: your IP address, and the label each request carries, naming the app or its network library with version numbers (on Apple devices it also shows the system version) | Supabase's request logs, kept for 7 days on our plan; with each sign-in, Supabase Auth's record of that session, deleted when the session ends or with your account; for each attempt to pair a Mac, our own database, for about an hour | ✅ Yes, with every request | Running and protecting the service (pairing attempts are counted to limit their rate). Deleting your account does not remove request-log entries already written |
+| **Network details of every request to our server**, from every app: your IP address; the label each request carries, which names the app, or the library or browser making the request, usually with version numbers (for the Mac, iPhone and Apple Watch apps, also the system's); and the address each request asks for, which can include your account's ID | Supabase's request and sign-in logs, kept for about 90 days; with each sign-in, Supabase Auth's record of that session, removed when you sign out or delete your account (records of expired sessions are cleaned up later); for each attempt to pair a Mac, our own database, until the cleanup after it is an hour old (at most about a day) | ✅ Yes, with every request | Running and protecting the service (pairing attempts are counted to limit their rate). Deleting your account does not remove log entries already written |
 
 **The key point:** the two categories of data you'd be most worried about —
 provider API keys and raw session-log contents — never touch our servers, full
@@ -189,7 +190,7 @@ or hardware identifiers, any file path or project name, which providers you use
 (beyond the remote-control fact above), or any token count or cost figure. Your
 IP address is not stored with the report, though, like any request over the
 internet, the connection itself reaches our hosting provider, whose request
-logs keep it for 7 days (see *Network details* in the table).
+logs keep it for about 90 days (see *Network details* in the table).
 
 The identifier is random — not derived from your hardware, and not a hash of
 anything about it. It is kept in the app's preferences on your Mac. Moving the
@@ -729,8 +730,9 @@ with CLI Pulse 1.55, and later releases follow them:
 - **Delete API keys:** Remove any provider config in Settings → Providers;
   the Keychain entry is deleted.
 - **Delete your account:** "Delete Account" (at the bottom of Settings on the
-  Mac and on Android, and in Settings on iPhone) deletes your account and
-  everything linked to it from Supabase. On Android it then deletes what the
+  Mac and on Android, and in Settings on iPhone) deletes your account and the
+  records linked to it in our database (see *Deleting your account* for what
+  stays). On Android it then deletes what the
   app itself keeps on the phone, except files you exported, and returns to the
   sign-in screen; what its libraries keep stays until you uninstall the app (see
   the table). If our server cannot delete the account, for example because the
@@ -742,7 +744,8 @@ with CLI Pulse 1.55, and later releases follow them:
   waiting for the network, then asks our server once to sign your account out.
   It does not try again if that request fails, for example because the phone is
   offline or its sign-in expired since it was last renewed (the app does not
-  renew it first). When the request goes through, it ends your account's
+  renew it first); your account then stays signed in on our server and on
+  your other devices. When the request goes through, it ends your account's
   sign-ins on every device, not only on this phone, as Sign Out in the other
   apps also does: your other devices can no longer renew their sign-in once
   their current one runs out (normally within an hour), and have to sign in
@@ -750,8 +753,10 @@ with CLI Pulse 1.55, and later releases follow them:
   After that the app sends nothing linked to your account. The phone's record
   in your account (maker, model, Android version and any notification token)
   stays until you delete the account, and each later sign-in adds a new one.
-- **Stop the Android app's background sync:** sign out (Settings → Sign Out).
-  The app has no separate switch for it.
+- **Stop the Android app's background uploads:** sign out (Settings → Sign
+  Out). The background job stays scheduled and still wakes about every 15
+  minutes, but sends nothing while no one is signed in; uninstalling the app
+  removes it. The app has no separate switch for it.
 - **Sign-in methods on Android:** Settings → Linked Accounts adds Google or
   GitHub as a way to sign in to your account, or removes one while another way
   to sign in remains.
@@ -760,8 +765,9 @@ with CLI Pulse 1.55, and later releases follow them:
   the app's cache folder and then handed to the app you pick in Android's share
   menu. It stays in that folder, also after you sign out or delete your
   account, until Android clears the app's cache or you uninstall the app. Each
-  CSV export replaces the previous one; PDF reports are named by date, so one
-  stays for each day you export one.
+  of the four kinds of CSV export replaces the previous file of its kind, so up
+  to four CSV files stay; PDF reports are named by date, so one stays for each
+  day you export one.
 - **Stop product email:** every product email we send carries a one-click opt
   out, and honouring it is immediate and permanent. You can also email
   yyyyy.yeyuhe@gmail.com and ask. Opting out never affects your account, your
@@ -779,7 +785,9 @@ phone).
 for a sign-in code for your address: email clipulse.support@gmail.com from the
 address your account uses, with the subject "Delete my CLI Pulse account". We
 may reply to that address to confirm the request is yours, and then delete the
-account as the app would.
+account as the app would. If you signed in with Apple and hid your email
+address, write from any address, tell us the relay address, and we will agree
+with you how to confirm the request.
 
 Either way, deleting the account removes your sign-in, settings, alert
 webhook, usage history, quotas, sessions, alerts, device records and the other
@@ -788,11 +796,15 @@ you own passes to another member, if one remains. It does not remove what is
 not linked to an account (anonymous install statistics, crash reports already
 sent to Sentry, the Firebase registration Google keeps for an Android install,
 and invitations to someone else's team sent to your email address), nor
-entries already written to
-Supabase's request logs, which are deleted after 7 days. Nor does it reach
-copies on your devices: an Android phone that was signed in keeps the usage
-figures it saved until someone next signs in on it or you uninstall the app,
-and deletes its sign-in details the next time the app starts there.
+entries already written to Supabase's request and sign-in logs, which are
+deleted after about 90 days, nor the emails you sent us, including the
+request, which stay in our mailbox. Nor does it reach copies on your devices:
+an Android phone that was signed in keeps what it saved. It deletes its
+sign-in details the next time its start-up check is refused (not while it is
+offline), and keeps the usage figures until a later sign-in replaces them, you
+sign out there, or you uninstall the app. Until then its background sync keeps
+contacting our server about every 15 minutes with the old sign-in, which our
+server refuses.
 
 ---
 
@@ -861,16 +873,18 @@ exchange for anything — the App Store and Google Play forbid it, and so do we.
   password hash, linked sign-in methods, settings, alert webhook, quota state,
   subscription and device records) is kept while the account exists and deleted
   with it.
-- **Network details of requests** are kept in Supabase's request logs for 7
-  days, and with each sign-in session until it ends (see the table). Deleting
-  your account ends the sessions but does not remove log entries already
-  written.
+- **Network details of requests** are kept in Supabase's request and sign-in
+  logs for about 90 days, and with each sign-in session until you sign out or
+  delete your account (records of expired sessions are cleaned up later); a Mac
+  pairing attempt's IP address is deleted at the cleanup after it is an hour
+  old. Deleting your account does not remove log entries already written.
 - **Crash reports** are kept by Sentry for the retention period of our Sentry
   plan and then deleted. They carry no account, so deleting your account does
   not remove them. Google keeps the Firebase registration of an Android install
   under Firebase's own terms.
-- **Account deletion** removes all associated rows within 30 days
-  (cascading deletes handled at the database level).
+- **Account deletion** removes the rows associated with your account within 30
+  days (cascading deletes handled at the database level; see
+  *Deleting your account* for what stays).
 - **Anonymous install rows** are deleted 400 days after they were last
   touched. They are not attached to an account, so account deletion does not
   reach them — there is no link to follow. Apart from that row, the identifier
