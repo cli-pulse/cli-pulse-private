@@ -5,13 +5,15 @@
 
 CLI Pulse is a developer tool for monitoring usage, quotas, and cost across AI
 coding providers (Claude, Codex, Gemini, OpenRouter, and others). Our privacy
-goal is straightforward: **your provider API keys never reach our servers**
-(CLI Pulse sends each one only to the provider it belongs to). Apart from what
+goal is straightforward: **your provider API keys never reach our servers** (CLI
+Pulse sends each one only to the provider it belongs to). Apart from what
 signing in needs, crash reports, the anonymous install statistics, a few
-diagnostic readings about each Mac, and a record of each Android phone you sign
-in on (all described below), everything CLI Pulse uploads is there to show your
-usage and alerts on your other devices, or wherever you asked for alerts to go,
-and this document lists all of it, including the parts that are not numbers.
+diagnostic readings about each Mac, and the record your Android phone adds to
+your account each time you sign in on it, with that phone's notification token
+if it was sent (all described below), everything CLI Pulse uploads is there to
+show your usage and alerts on your other devices, or wherever you asked for
+alerts to go, and this document lists all of it, including the parts that are
+not numbers.
 
 This document is the single source of truth for what we collect. If you find
 anything in the apps, their App Store or Google Play listings, or the GitHub
@@ -32,7 +34,7 @@ It describes CLI Pulse 1.62.
       this document directly.
 * **The app's background helper**, which runs the same collectors as the app
   on its own schedule (every 2 minutes by default) and uploads what it finds
-  for your iPhone and Apple Watch. It is switched on when you pair this Mac with
+  for your iPhone, Apple Watch and Android phone. It is switched on when you pair this Mac with
   your account, and on or off with Settings › Advanced › "Enable background sync",
   which since v1.56 is there whether or not you are signed in or this Mac is
   paired. It uploads only with that pairing (see *When uploads happen*).
@@ -46,13 +48,16 @@ It describes CLI Pulse 1.62.
   your account, and is described in its own section below.
 * **The iPhone app** (with its widgets) and **the Apple Watch app**. They show
   what your Macs synced. They read nothing from AI tools on the phone or watch.
-* **The Android app** (from Google Play). It shows what your Macs synced to your
-  account and reads nothing from AI tools on the phone. This release has no
-  place to enter a provider API key, so it contacts no AI provider. While you
-  are signed out, or in "Try Demo" (which shows built-in sample data), it sends
-  nothing to our server; crash reports still go to Sentry, and Google's
-  Firebase and Google Play are contacted as described under *When uploads
-  happen*. Earlier versions of this document did not cover the Android app.
+* **The Android app** (from Google Play). This document describes Android version
+  1.62.0; earlier Android versions, such as 1.37.0, differ and are not described
+  here. It shows what your Macs synced to your account and reads nothing from AI
+  tools on the phone. This release has no place to enter a provider API key, so
+  it contacts no AI provider. While you are signed out it sends our server only
+  what signing in needs, and in "Try Demo" (which shows built-in sample data) it
+  sends our server nothing; in both cases Sentry still receives a record of each
+  app session and any crash report, and Google's Firebase and Google Play are
+  contacted as described under *When uploads happen*. Earlier versions of this
+  document mentioned the Android app only for its crash reports.
 
 Remote control between an iPhone and a Mac is built into the direct-download
 build but is off in this release: the Mac shows no Remote Control section in
@@ -77,23 +82,23 @@ pass through our servers.
 | **Daily usage** (per day, provider and model: input, cached and output token counts and a cost estimate; which of your Macs it came from, once that Mac is paired) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So iPhone, Apple Watch and the Android app show the same history as your Mac |
 | **Provider quota state** (remaining, limit, plan, reset times; the label you gave the account, if any; which Mac reported it) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So mobile clients display current quotas without running the scanner themselves |
 | **AI CLI sessions running on your Mac** (the program's name; the name of its project folder, never the full path; a keyed hash of that folder's path; when it started and was last active; an activity estimate based on how long it has run and its CPU use) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in and this Mac is paired | So iPhone, Apple Watch and the Android app can show what is running on your Mac. The App Store build's sandbox usually hides other programs from it, and then it has none to send. The Companion CLI sends more; see its section |
-| **Alerts**: your Mac or a program using a lot of CPU (with that program's name, provider and folder name; CLI Pulse 1.56 and earlier also raised one for a session running a long time), budget alerts our server works out from your daily usage, and whether you marked each one read, resolved or snoozed it | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So your other devices can show them |
+| **Alerts**: your Mac or a program using a lot of CPU (with that program's name, provider and folder name; CLI Pulse 1.56 and earlier also raised one for a session running a long time), budget alerts our server works out from your daily usage, and whether and when you acknowledged each one (which marks it read), whether you resolved it, and until when you snoozed it | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So your other devices can show them |
 | **Your alert webhook**, if you add one: the address, and which alerts go to it | Supabase, linked to your CLI Pulse account | ✅ Yes | Our server posts each matching alert (its title, message, type, severity and provider) to that address |
 | **Settings kept with your account** (such as alert thresholds and budget, how many days ended sessions and alerts are kept, and whether Yield Score and remote control are on) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So every device uses the same settings |
 | **This Mac's helper readings**: CPU and memory load, how many AI CLI sessions are running, whether each installed AI CLI is signed in with a subscription or an API key (where the built-in agent or the Companion CLI can tell), and whether each provider's check worked, or why not (for example not signed in, or keychain access declined) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in and this Mac is paired | Load and session count show on your other devices. The rest are diagnostics for us, such as why a provider shows nothing |
 | **Device name** (your Mac's name as set in System Settings, which often contains your own name), **macOS version, app version and helper version** | Supabase, linked to your CLI Pulse account | ✅ Yes, when you pair this Mac, and the app version while it is paired | Shows which of your Macs are reporting. The versions are diagnostics for us |
-| **Your Android phone's maker and model** (such as "Google Pixel 8", not a name you gave it) **and its Android version**, sent the first time the app's background sync runs after you sign in (at most every 15 minutes, while the phone is online and its battery is not low) | Supabase, linked to your CLI Pulse account | ✅ Yes, once per sign-in | Lists the phone among your devices. Signing out does not remove it, and each later sign-in on the phone adds another; the app cannot remove them, and they are deleted with your account |
+| **Your Android phone's maker and model** (such as "Google Pixel 8", not a name you gave it) **and its Android version**, with fixed labels and the time the record was added. The app's background sync sends it the first time it runs after you sign in (at most every 15 minutes, while the phone is online and its battery is not low) | Supabase, linked to your CLI Pulse account | ✅ Yes, once per sign-in | Lists the phone among your devices. Signing out does not remove it, and each later sign-in on the phone adds another; the app cannot remove them, and they are deleted with your account |
 | **Machine readings** (Companion CLI only): battery charge, health, cycle count and temperature, thermal state, temperature and fan sensors, load, uptime, memory pressure, swap and disk space, Low Power Mode, and the state of machine controls | Supabase, linked to your CLI Pulse account | ✅ Yes, while the Companion CLI is allowed to upload | The Machine view on iPhone and Apple Watch, and the Devices screen in the Android app |
 | **Requests you send from your iPhone to a Mac** (fan boost, fan back to automatic, Low Power Mode, Keep Awake) | Supabase, linked to your CLI Pulse account | ✅ Yes, when you send one | Carried to that Mac, which acts on them only if you allowed it there |
 | **Your iPhone's notification token**, only if you allow notifications while signed in | Supabase, linked to your CLI Pulse account | ✅ Yes | Lets our server ask your iPhone, through Apple, to refresh its widgets or to look at a pending request. These pushes carry none of your data |
-| **Your Android phone's notification token**, which Google's Firebase Cloud Messaging gives the app. It is sent only when Firebase gives the app a new token while you are signed in and the phone is already listed in your account; the first token usually arrives when the app first starts, before that, and is not sent | Supabase, with the phone's record in your account | ✅ Yes, only a replaced token | None yet: our server sends no notifications to Android phones and does not read this token, and the app does not ask for permission to show notifications. A token that was sent stays with that record after you sign out |
+| **Your Android phone's notification token**, which Google's Firebase Cloud Messaging gives the app. It is sent when Firebase hands the app a token while you are signed in and the phone is already listed in your account. Firebase usually hands over the first token when the app first starts, before you have signed in, so usually only a later replacement, if Firebase issues one while you are signed in, is sent | Supabase, with the phone's record in your account | ✅ Yes, if handed over while signed in | None yet: our server sends no notifications to Android phones and does not read this token, and the app does not ask for permission to show notifications. A token that was sent stays with that record after you sign out |
 | **Your CLI Pulse login email** | Supabase Auth | ✅ Yes | Required to authenticate you. Asking for a sign-in code for an address creates an account for it, even if the code is never entered. We may also use it to email you **occasionally** about the product itself — a short survey, or notice of a change that affects you. Never marketing, never sold, never shared, and every such email carries a one-click opt out. See *Product email* below. |
 | **Your password**, if you sign in with one | Supabase Auth | ✅ Yes, when you sign in with it | Signs you in. Supabase keeps it only as a hash |
 | **Your name and profile details from Apple, Google or GitHub**, if you sign in with one of them (on iPhone; on Android, Google or GitHub, including one you link in Settings › Linked Accounts) | Supabase Auth | ✅ Yes, if that provider shares them | Supabase keeps what the sign-in provider hands it. When you sign in with Google on Android, the app also passes on the name Google gives it |
 | **Apple / Google / GitHub sign-in tokens** (during sign-in) | Not persisted — exchanged once for a Supabase session | ✅ Yes (during sign-in only) | Identity verification with the original OAuth provider |
-| **Supabase session access / refresh token** | Keychain on each Apple device you sign in on; on Android, the app's encrypted preferences (`cli_pulse_secure_prefs`). Your iPhone passes it to your paired Apple Watch over Apple's own watch connection | ❌ Never re-uploaded (only received) | Keeps you signed in |
-| **What else the Android app keeps on the phone**: your account's ID, name and email; the ID of the phone's record in your account; whether Try Demo is on; while a GitHub sign-in or account link you started in the browser is unfinished, a one-time code for finishing it; and, as last fetched from your account, the Overview's totals for today (tokens, estimated cost, and how many sessions, devices and open alerts) and up to 30 days of daily usage (per day, provider and model: token counts and cost) | The first four in the app's encrypted preferences (`cli_pulse_secure_prefs`); the totals and daily usage in the app's own database (`cli_pulse_cache`), which the app does not encrypt. Sign Out deletes all of it at once, without waiting for the network. Delete Account deletes all of it once our server has deleted the account. Exit Demo Mode deletes the encrypted preferences. If our server rejects your saved sign-in when the app starts, the app deletes the encrypted preferences but keeps the totals and daily usage until it next fetches them. A sign-in code you abandon stays until you start another or sign out. Uninstalling the app deletes all of it | ❌ No: copies of what your account holds | Shows who is signed in and finishes a browser sign-in. This release saves the totals and daily usage but never reads them back |
-| **What the Android app's libraries keep on the phone**: Google's Firebase keeps a random ID for this install of the app and its notification token; Sentry keeps its own random installation ID and any crash reports not yet sent, with the breadcrumbs and device details they carry; Android keeps the background sync's schedule | The app's private storage | ❌ Not to our server | Firebase and Sentry use them as described under *Security practices* and *Third-party sub-processors*. Signing out does not delete them; uninstalling the app does |
+| **Supabase session access / refresh token** | Keychain on each Apple device you sign in on; on Android, the app's encrypted preferences (`cli_pulse_secure_prefs`). Your iPhone passes it to your paired Apple Watch over Apple's own watch connection | ❌ Not uploaded as data: sent only to authenticate your requests and to renew your session | Keeps you signed in |
+| **What else the Android app keeps on the phone**: your account's ID, name and email; the ID of the phone's record in your account; whether Try Demo is on; while a GitHub sign-in or account link you started in the browser is unfinished, a one-time code for finishing it; as last fetched from your account, the Overview's totals for today (tokens, estimated cost, and how many sessions, devices and open alerts) and up to 30 days of daily usage (per day, provider and model: token counts and cost); and files you export from the Overview (CSV and PDF, which can include project folder names) | The totals and daily usage in the app's own database (`cli_pulse_cache`), which the app does not encrypt; exported files in the app's cache folder; everything else in the app's encrypted preferences (`cli_pulse_secure_prefs`). Sign Out starts deleting all of it except exported files at once, without waiting for the network, and Delete Account does the same once our server has deleted the account. Exit Demo Mode deletes the encrypted preferences. If, when the app starts, our server answers that your saved sign-in is no longer valid, the app deletes the encrypted preferences but keeps the totals and daily usage until someone next signs in on the phone and they are fetched again. If our server only refuses to renew an expired sign-in (as it does some time after you sign out, or delete the account, on another device), the app keeps all of it and shows you as signed in but unable to connect until you tap Sign Out. A sign-in code you abandon stays until you start another or sign out. Exported files stay until Android clears the app's cache or you uninstall the app (each CSV export replaces the previous one; PDF reports are named by date, so one stays for each day you export one). Uninstalling the app deletes all of it | ❌ No (the one-time code goes to Supabase Auth once, to finish that sign-in) | Shows who is signed in, finishes a browser sign-in, and lets you share an export. This release saves the totals and daily usage but never reads them back |
+| **What the Android app's libraries keep on the phone**: Google's Firebase keeps a random ID for this install of the app, a sign-in token of its own, the notification token, and a record of the days it was used, which it sends to Google with its requests; Google's log uploader keeps events it has not yet sent to Google (Google Play's billing library adds some once you open Settings › Subscription); Sentry keeps its own random installation ID, a running copy of its latest breadcrumbs and device details, and any crash reports not yet sent; Android keeps the background sync's schedule | The app's private storage | ❌ Not to our server, except the notification token (see its row) | Firebase, Google's log uploader and Sentry use them as described under *Security practices* and *Third-party sub-processors*. Neither Sign Out nor Delete Account deletes them; uninstalling the app does |
 | **Git activity metadata** (commit hash, keyed hash of the project path, commit timestamp, merge flag) | Supabase — only when the "Track git activity (Yield Score)" toggle is ON, and only collected by the Companion CLI | ✅ Yes (opt-in only) | Powers the Yield Score feature |
 | **Git commit messages, diffs, file paths, author identity** | — | ❌ Never | Explicitly excluded even when Yield Score is on |
 | **Quota alerts you dismiss** | UserDefaults on that device | ❌ Never | Suppression list to prevent re-firing |
@@ -101,6 +106,7 @@ pass through our servers.
 | **Codex limit reset credits** (since v1.57, Mac app only): how many limit resets OpenAI has granted the ChatGPT account Codex is signed in to on this Mac, and when each expires. The app asks OpenAI for them (a read-only request to `chatgpt.com`) with the same Codex sign-in, in the same refresh as Codex's quota. It never asks OpenAI to use one | Kept in memory in the Mac app while it runs, each credit's ID and the ChatGPT account ID only as hashes; never written to disk | ❌ Never, and not to your iPhone or Apple Watch either | Shown on the Codex card |
 | **Crash reports** from the Mac, iPhone, Apple Watch and Android apps (see *Security practices* for what they contain) | Sentry (sentry.io), scrubbed before leaving the device | ✅ Yes, when a crash or error happens, whether or not you are signed in; the same SDK also reports each app session's start and whether it ended in a crash | So crashes are visible to us without waiting for an App Store or Google Play review |
 | **Anonymous install statistics** (Mac app only: random install id, install channel, app version, OS major.minor, display language, and a few once-ever yes/no milestones listed below) | Supabase, **not linked to any account** | ✅ Yes, unless you turn it off | Tells us whether the app actually works for people who never sign in |
+| **Network details of every request** from every app: your IP address, and the label each request carries naming the app or its network library, with a version number | Supabase's request logs, and Supabase Auth's record of each sign-in | ✅ Yes, with every request | Running and protecting the service |
 
 **The key point:** the two categories of data you'd be most worried about —
 provider API keys and raw session-log contents — never touch our servers, full
@@ -135,12 +141,15 @@ account. Each request for totals sends the phone's current date (the day only),
 so that "today" matches your calendar; our server uses it to answer and does
 not keep it. While the app is open, the screen you are on refreshes from our
 server every 30 to 60 seconds, and the Alerts tab asks our server, at most every
-5 minutes, to work out budget alerts from your daily usage. Two things happen
-whether or not you are signed in, in Try Demo too, and neither goes to our
-server: Google's Firebase gets the phone a notification token when the app
-starts (Firebase's own default, which our code does not change), and opening
+5 minutes, to work out budget alerts from your daily usage. Three things happen
+whether or not you are signed in, in Try Demo too: Sentry receives a record of
+each app session and any crash report (see *Crash reports*); Google's Firebase
+registers the app with Google and gets it a notification token when the app
+starts (Firebase's own default, which our code does not change); and opening
 Settings › Subscription asks Google Play on the phone which CLI Pulse
-subscriptions exist and whether you have one.
+subscriptions exist and whether you have one. None of these goes to our server,
+except the notification token and a Google Play subscription, as the table and
+*Third-party sub-processors* describe.
 
 ### Anonymous install statistics
 
@@ -228,10 +237,13 @@ affects crash reports.
 The scanner runs entirely on your Mac. Your API key never passes through our
 servers — it goes directly from your Mac to the provider.
 
-The Android app runs no scanner and holds no provider keys: it reads what your
-account holds, sends back the changes you make in it (settings, alert states, a
-webhook) and the record of the phone, sends its crash reports to Sentry, and
-gets its notification token from Google's Firebase.
+The Android app runs no scanner and holds no provider keys. It reads what your
+account holds and sends back the changes you make in it: settings, alert
+states, a webhook and its test, and your linked sign-in methods. It also sends
+the record of the phone, sometimes its notification token, and requests for our
+server to work out budget alerts. It sends its crash reports to Sentry,
+registers with Google's Firebase for its notification token, and asks Google
+Play about subscriptions when you open Settings › Subscription.
 
 ---
 
@@ -419,7 +431,7 @@ Since v1.55 that read is its own question:
   what is read; a day whose Codex log is no longer on the Mac keeps the figure
   it had. While you are signed in, the daily Codex numbers this Mac had already
   synced for those days are replaced with the new ones (the fields of the
-  *Daily usage* row above), so on those days your iPhone and Apple Watch show
+  *Daily usage* row above), so on those days your iPhone, Apple Watch and Android app show
   the same figures as the Mac. A paired Mac uploads nothing for a day that has no Codex
   numbers from it in the cloud, and numbers it synced before it was paired keep
   their old figures. A Mac that is not paired keeps its numbers in one place it
@@ -553,12 +565,14 @@ with CLI Pulse 1.55, and later releases follow them:
   whether the phone is connected, receive notifications through Google, keep
   its background sync running (also after the phone restarts) and use Google
   Play billing; two more, for fingerprint or face unlock, come with Google's
-  sign-in library, and the app never uses them. It declares the notification
-  permission but never asks you for it. It opts out of Android's backup to
-  Google's cloud (`android:allowBackup="false"`). On Android 12 and later a
-  direct transfer to a new phone can still copy the app's files, but Android
-  does not move Keystore keys, so the copied sign-in tokens cannot be read
-  there.
+  sign-in library, and the app never uses them. One more, which an Android
+  library adds, only lets the app's own parts send each other messages. It
+  declares the notification permission but never asks you for it. It opts out
+  of Android's backup to Google's cloud (`android:allowBackup="false"`). On
+  Android 12 and later a direct transfer to a new phone can still copy the
+  app's files. Android does not move Keystore keys, so the copied sign-in tokens
+  cannot be read there, but the saved totals and daily usage, and any files you
+  exported, can.
 - **TLS 1.2+** for every network connection. The Android app also refuses any
   unencrypted connection, and trusts only the certificate authorities built
   into the phone.
@@ -593,9 +607,11 @@ with CLI Pulse 1.55, and later releases follow them:
   above, not secrets. See "Roadmap" below.
 - **No third-party analytics SDKs.** We do not ship Google Analytics,
   Firebase Analytics, Amplitude, Mixpanel, Crashlytics, or any similar
-  product-analytics tool. The Android app includes one part of Google's
-  Firebase, Cloud Messaging, for its notification token (see *Third-party
-  sub-processors*), and no other Firebase product. There is no fingerprinting and no ad network
+  product-analytics tool. The Android app includes Google's Firebase Cloud
+  Messaging, for its notification token, with the Firebase parts it needs
+  (Firebase Installations, which gives the install the random ID described under
+  *Third-party sub-processors*), and no other Firebase product: no Firebase
+  Analytics and no Crashlytics. There is no fingerprinting and no ad network
   integration. This is a statement about SDKs, and we would rather over-explain
   than let it read as more than it is: we do collect the anonymous install
   milestones described above, ourselves, to our own database. They are opt-out,
@@ -622,12 +638,14 @@ with CLI Pulse 1.55, and later releases follow them:
   no such word is kept. (Before v1.55 the query string was sent too, and a
   request to our server named your account's internal ID in it.) The Android app records no web requests, and its hook does not look for
   identifiers, UUIDs or email addresses: it removes only the secrets named
-  above. Its breadcrumbs come from the Sentry SDK's own defaults: the app's
-  screens opening and closing, the app moving to the background, and changes on
-  the phone such as the network connection, the battery, the screen turning on
-  or off, and the time zone or language. By the same defaults it sends a report,
-  with the stack trace, when the app has not responded for about five seconds
-  (what Android calls "not responding"). Android reports carry no screenshots.
+  above, and it checks field names only in a report's tags, extras and
+  breadcrumb data. Its breadcrumbs come from the Sentry SDK's own defaults: the
+  app's screens opening and closing, the app moving to the background, and
+  changes on the phone such as the network connection, the battery, the screen
+  turning on or off, and the time zone or language. By the same defaults it
+  sends a report, with the stack trace, when the app has not responded for about
+  five seconds (what Android calls "not responding"). Android reports carry no
+  screenshots.
   The SDK also reports, for each app session, that it started
   and whether it ended in a crash, with a random installation identifier the SDK
   generates. Since v1.59 the Mac app also sends an error report when three
@@ -702,28 +720,56 @@ with CLI Pulse 1.55, and later releases follow them:
 - **Delete your account:** "Delete Account" (at the bottom of Settings on the
   Mac and on Android, and in Settings on iPhone) deletes your account and all
   associated usage metrics from Supabase. On Android it then deletes what the
-  app keeps on the phone, except files you exported, and returns to the sign-in
-  screen; if our server cannot delete the account, for example because the
+  app itself keeps on the phone, except files you exported, and returns to the
+  sign-in screen; what its libraries keep stays until you uninstall the app (see
+  the table). If our server cannot delete the account, for example because the
   phone is offline, the app says so, keeps you signed in and deletes nothing.
-- **Sign out on Android:** Settings → Sign Out deletes the app's sign-in
-  details and saved usage figures from the phone at once, then asks our server
-  once to end the session (it does not try again if the phone is offline).
-  After that the app sends nothing linked to your account. The phone's record
-  in your account (maker, model, Android version and any notification token)
-  stays until you delete the account, and each later sign-in adds a new one.
+  You can also have your account deleted without any of the apps: see
+  *Deleting your account* below.
+- **Sign out on Android:** Settings → Sign Out starts deleting the app's
+  sign-in details and saved usage figures from the phone at once, without
+  waiting for the network, then asks our server once to sign your account out
+  (it does not try again if the phone is offline). Like Sign Out in the other
+  apps, that request ends your account's sign-ins on every device, not only on
+  this phone: your other devices can no longer renew their sign-in once their
+  current one runs out, within about an hour. After that the app sends nothing
+  linked to your account. The phone's record in your account (maker, model,
+  Android version and any notification token) stays until you delete the
+  account, and each later sign-in adds a new one.
 - **Sign-in methods on Android:** Settings → Linked Accounts adds Google or
   GitHub as a way to sign in to your account, or removes one while another way
   to sign in remains.
 - **Export:** Use the Export menu in the Overview tab (Mac and Android) to save
   a PDF or CSV of the data it shows. On Android the file is first written to
   the app's cache folder and then handed to the app you pick in Android's share
-  menu. It stays in that folder, also after you sign out, until Android clears
-  the app's cache or you uninstall the app (a later export of the same file
-  overwrites it).
+  menu. It stays in that folder, also after you sign out or delete your
+  account, until Android clears the app's cache or you uninstall the app. Each
+  CSV export replaces the previous one; PDF reports are named by date, so one
+  stays for each day you export one.
 - **Stop product email:** every product email we send carries a one-click opt
   out, and honouring it is immediate and permanent. You can also email
   yyyyy.yeyuhe@gmail.com and ask. Opting out never affects your account, your
   subscription, or anything the app does.
+
+---
+
+## Deleting your account
+
+**In an app:** Settings → Delete Account, on the Mac, iPhone or Android, while
+signed in (see *Your controls* for what each app then removes from the device).
+
+**Without an app**, for example after you uninstalled it, or if someone asked
+for a sign-in code for your address: email clipulse.support@gmail.com from the
+address your account uses, with the subject "Delete my CLI Pulse account". We
+may reply to that address to confirm the request is yours, and then delete the
+account as the app would.
+
+Either way, deleting the account removes your sign-in, settings, alert
+webhook, usage history, quotas, sessions, alerts, device records and every
+other row linked to your account, within 30 days (see *Data retention*). It
+does not remove what is not linked to an account: anonymous install
+statistics, crash reports already sent to Sentry, and the Firebase registration
+Google keeps for an Android install.
 
 ---
 
@@ -765,8 +811,8 @@ exchange for anything — the App Store and Google Play forbid it, and so do we.
   Keychain Access.
 - **What the Android app keeps on the phone** stays until you sign out, delete
   your account in the app, or uninstall the app (the table above lists the
-  exceptions). Files you export stay in the app's cache folder until Android
-  clears it or you uninstall the app.
+  exceptions, including what its libraries keep). Files you export stay in the
+  app's cache folder until Android clears it or you uninstall the app.
 - **Your Android phone's record in your account** (its maker, model, Android
   version and any notification token) stays until you delete your account.
   Signing out does not remove it and the app has no way to; each sign-in after
@@ -788,6 +834,13 @@ exchange for anything — the App Store and Google Play forbid it, and so do we.
   above), so a setting longer than that keeps only alerts longer. (Earlier
   versions of this document pointed to a setting in Settings → Privacy that
   does not exist.)
+- **Everything else stored with your account** (your login email, name,
+  password hash, linked sign-in methods, settings, alert webhook, quota state and
+  device records) is kept while the account exists and deleted with it.
+- **Crash reports** are kept by Sentry for the retention period of our Sentry
+  plan and then deleted. They carry no account, so deleting your account does
+  not remove them. Google keeps the Firebase registration of an Android install
+  under Firebase's own terms.
 - **Account deletion** removes all associated rows within 30 days
   (cascading deletes handled at the database level).
 - **Anonymous install rows** are deleted 400 days after they were last
@@ -808,17 +861,21 @@ exchange for anything — the App Store and Google Play forbid it, and so do we.
 - **Google** — used for Sign in with Google at the user's option. The Android
   app also uses two other Google services. **Firebase Cloud Messaging:** when
   the app starts, whether or not you are signed in and in Try Demo too,
-  Firebase registers this install of the app with Google (a random installation
-  ID and a notification token) and renews them from time to time. That is
-  Firebase's default, which our code does not change; signing out does not
-  remove them, and our server sends nothing through it. **Google Play:** when
-  you open Settings › Subscription, also in Try Demo, the app asks Google Play
-  on the phone which CLI Pulse subscriptions exist and whether your Google
-  account has one, and Google's billing library may send Google its own records
-  of those requests. Nothing can be bought on Android. Only if Google Play
-  reported a CLI Pulse subscription would the app send our server its purchase
-  token, product ID and the app's package name, for us to check with Google
-  Play.
+  Firebase registers this install of the app with Google and renews the
+  registration from time to time. It sends Google a random installation ID and
+  a sign-in token of its own, the app's and Android's versions, the versions of
+  Google Play services and of its own code, and the phone's model details, and
+  gets back the notification token. That is Firebase's default, which our code
+  does not change; signing out does not remove the registration, and our server
+  sends nothing through it. **Google Play:** the first time you open Settings ›
+  Subscription (also in Try Demo), and again whenever Google Play's billing
+  service reconnects while the app stays open, the app asks Google Play on the
+  phone which CLI Pulse subscriptions exist and whether your Google account has
+  one, and Google's billing library may send Google its own records of those
+  requests. Nothing can be bought on Android. Only if Google Play reported a CLI
+  Pulse subscription would the app confirm it to Google Play (if it was not yet
+  confirmed) and send our server its purchase token, product ID and the app's
+  package name, for us to check with Google Play.
 - **GitHub** — used for Sign in with GitHub at the user's option. GitHub also
   hosts the direct-download build's update information and downloads, and the
   Companion CLI's, so checking for an update is a request to GitHub.
