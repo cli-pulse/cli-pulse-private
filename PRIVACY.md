@@ -110,7 +110,7 @@ pass through our servers.
 | **Your subscription**, if you buy one in the App Store or Google Play reports one for your Google account: the plan, that it is active, when the current period ends, which store, the App Store's product and transaction IDs or Google Play's order ID (or, if Google gives none, the start of the purchase token), and when it was last checked. To check it, the app sends our server the App Store's signed transaction and product ID, or Google Play's purchase token, product ID and the app's package name | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | Keeps your plan with your account, so every device shows it; deleted with your account |
 | **Crash reports** from the Mac, iPhone, Apple Watch and Android apps (see *Security practices* for what they contain) | Sentry (sentry.io), scrubbed before leaving the device | ✅ Yes, when a crash or error happens, whether or not you are signed in; the same SDK also reports each app session's start and whether it ended in a crash | So crashes are visible to us without waiting for an App Store or Google Play review |
 | **Anonymous install statistics** (Mac app only: random install id, install channel, app version, OS major.minor, display language, and a few once-ever yes/no milestones listed below) | Supabase, **not linked to any account** | ✅ Yes, unless you turn it off | Tells us whether the app actually works for people who never sign in |
-| **Network details of every request to our server**, from every app: your IP address; the label each request carries, which names the app, or the library or browser making the request, usually with version numbers (for the Mac, iPhone and Apple Watch apps, also the system's); and the address each request asks for, which can include your account's ID | Supabase's request and sign-in logs, kept for about 90 days; with each sign-in, Supabase Auth's record of that session, removed when you sign out or delete your account (records of expired sessions are cleaned up later); for each attempt to pair a Mac, our own database, until the cleanup after it is an hour old (at most about a day) | ✅ Yes, with every request | Running and protecting the service (pairing attempts are counted to limit their rate). Deleting your account does not remove log entries already written |
+| **Network details of every request to our server**, from every app: your IP address, and the approximate location (city and country) that our hosting provider works out from it and records with the request; the label each request carries, which names the app, or the library or browser making the request, usually with version numbers (for the Mac, iPhone and Apple Watch apps, also the system's); and the address each request asks for, which can include your account's ID | Supabase's request and sign-in logs, kept for about 90 days; with each sign-in, Supabase Auth's record of that session, removed when you sign out or delete your account (records of expired sessions are cleaned up later); for each attempt to pair a Mac, our own database, until the cleanup after it is an hour old (at most about a day) | ✅ Yes, with every request | Running and protecting the service (pairing attempts are counted to limit their rate). Deleting your account does not remove log entries already written |
 
 **The key point:** the two categories of data you'd be most worried about —
 provider API keys and raw session-log contents — never touch our servers, full
@@ -190,7 +190,8 @@ or hardware identifiers, any file path or project name, which providers you use
 (beyond the remote-control fact above), or any token count or cost figure. Your
 IP address is not stored with the report, though, like any request over the
 internet, the connection itself reaches our hosting provider, whose request
-logs keep it for about 90 days (see *Network details* in the table).
+logs keep it, with the city and country it points to, for about 90 days (see
+*Network details* in the table).
 
 The identifier is random — not derived from your hardware, and not a hash of
 anything about it. It is kept in the app's preferences on your Mac. Moving the
@@ -875,7 +876,8 @@ exchange for anything — the App Store and Google Play forbid it, and so do we.
   subscription and device records) is kept while the account exists and deleted
   with it.
 - **Network details of requests** are kept in Supabase's request and sign-in
-  logs for about 90 days, and with each sign-in session until you sign out or
+  logs for about 90 days (the request logs also hold the city and country worked
+  out from your IP address), and with each sign-in session until you sign out or
   delete your account (records of expired sessions are cleaned up later); a Mac
   pairing attempt's IP address is deleted at the cleanup after it is an hour
   old. Deleting your account does not remove log entries already written.
