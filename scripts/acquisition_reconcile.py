@@ -742,8 +742,13 @@ def main() -> None:
   Compare FIRST-TIME acquisition above against the row count from
   backend/supabase/analysis/phase1_menu_open_to_provider.sql -- but compare the
   RIGHT windows. anonymous_installs cannot contain an install that predates the
-  backend going live (2026-08-06) or a build that predates the collector, and
-  `n_tup_ins` is the real numerator because deleted rows never come back.
+  backend going live (2026-08-06) or a build that predates the collector.
+  `n_tup_ins` is an upper bound on installs, not a count of them: a deleted
+  row comes back as a new row, and is counted again, once its install reports
+  a milestone it had not reported (the five rows deleted by hand in August
+  2026 could, after v0.76 and v0.80 added new milestones; from 2027-09-10 the
+  nightly prune of migrate_v0.88 adds more), and it also counts probe rows a
+  migration inserted and deleted.
   Charging the telemetry for 4.5 months of downloads it could not have seen is
   the same class of error as reading a thresholded report.
 

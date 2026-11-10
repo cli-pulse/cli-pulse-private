@@ -46,33 +46,72 @@
 --     only in `CLIPulseBarApp` (macOS); `CLI Pulse Bar iOS` contains no
 --     reference to it. The iOS 1.47 approval date is irrelevant to this table
 --     -- do not add it to the availability list and do not wait on it.
---  3. A DELETED ROW IS GONE FOREVER, NOT RE-SENT. `installReported` and
---     `activationReported` are client-side UserDefaults latches set only on a
---     2xx. Deleting a row server-side does not clear them, so that install is
---     permanently absent from every future read. As of 2026-08-12
---     pg_stat_user_tables reports 7 inserts / 5 deletes / 2 live rows: five
---     installs were already removed this way, including the owner's own
+--  3. A DELETED ROW IS NOT RE-SENT -- UNTIL THAT INSTALL REACHES A MILESTONE
+--     IT HAD NOT REPORTED, AND THEN IT COMES BACK AS A NEW ROW. Every milestone
+--     sits behind a client-side UserDefaults latch set only on a 2xx, keyed to
+--     a persistent install id: installReported and activationReported (v0.73),
+--     helperConnectedReported and costReported (v0.76), and four remote-control
+--     latches (v0.80). Deleting a row server-side clears none of them, so the
+--     install is absent from reads until it reaches a milestone it has not
+--     latched. That send re-asserts every latched milestone, the RPC finds no
+--     row and INSERTs, and the new row's `first_seen_at` and every milestone it
+--     had already reached are one and the same now() (effect (b) below).
+--     As of 2026-08-12 pg_stat_user_tables reported 7 inserts / 5 deletes / 2
+--     live rows: five installs were removed by hand, including the owner's own
 --     Developer ID install (id 01784A9A..., both latches still true on disk).
---     DO NOT DELETE ROWS FROM THIS TABLE.
+--     Those deletions predate the v0.76 and v0.80 latches, so any of them that
+--     later ran a newer client and reached one of those milestones may already
+--     be back as a new row with a day-0 `first_seen_at` (not checked).
+--     DO NOT DELETE ROWS BY HAND. Since migrate_v0.88 (2026-11-10) the nightly
+--     job `prune_anonymous_installs_nightly` deletes every row 400 days after
+--     its `last_seen_at`, because PRIVACY.md promises that; it is the only
+--     deletion. The table was created on 2026-08-06, so it deletes nothing
+--     before 2027-09-10. From then on, because of trap 5, it also deletes
+--     installs still in use whose last milestone is 400 days old, with two
+--     effects on every read:
+--       (a) OLD COHORTS READ HIGH. In one `first_seen_at` cohort an install
+--           that reported nothing after installing goes at day 400, one that
+--           reported a later milestone 400 days after that milestone. A read
+--           reaching back more than 400 days has lost its non-activated
+--           installs first, so its rates are biased upward, not just short.
+--       (b) RECENT COHORTS GAIN FAKE INSTANT ACTIVATIONS. As above, a pruned
+--           install that later reports a milestone it had not comes back as a
+--           NEW row whose `first_seen_at` and every milestone it had already
+--           reached are that same instant: an old install read as a new one
+--           that activated on day 0. `n_tup_ins` counts it twice (see 4d).
 --  4. A NON-ACTIVATED ROW IS NOT EVIDENCE OF ANYTHING ON ITS OWN. See 4c.
---  5. `last_seen_at` IS NOT A LIVENESS SIGNAL, and for a non-activated install
---     it is FROZEN AT INSTALL TIME FOREVER. It advances only on an upsert, an
---     upsert happens only on a SEND, and the client sends exactly twice ever:
---     `install`, then `first_provider_detected`. Both are latched in
---     UserDefaults (trap 3). So an install that has relaunched a hundred times
---     and never found a CLI is byte-identical to one that ran once and was
---     deleted the same hour.
---     Verified 2026-08-18: `count(*) where last_seen_at <> first_seen_at` is
---     **0** across the whole table, and `AnonymousInstallTelemetry` has no code
---     path that sends a third time.
---     Consequence, which this file itself got wrong until then: any predicate
---     of the form `last_seen_at = first_seen_at AND first_provider_detected_at
---     IS NULL` is TAUTOLOGICAL -- it selects every non-activated row and
---     discriminates nothing. Whether an install relaunched is simply NOT
---     OBSERVABLE here. Do not write a query that claims otherwise, and do not
---     add one to `prune_anonymous_installs()`' 400-day window either: that
---     window is "400 days since we last heard from them", which for a
---     non-activated install means 400 days since INSTALL.
+--  5. `last_seen_at` IS NOT A LIVENESS SIGNAL. It advances only on an upsert,
+--     an upsert happens only on a SEND, and the client sends only when it
+--     reaches a milestone it has not reported: install and
+--     first_provider_detected (v0.73), helper_connected and first_cost
+--     (v0.76), and four remote-control facts (v0.80), each latched in
+--     UserDefaults (trap 3). There is no heartbeat. So `last_seen_at` is the
+--     time of the LAST MILESTONE OF ANY KIND, and after that it freezes; for
+--     an install that reported nothing after installing it is the install
+--     time. An install that has relaunched a hundred times and reached no new
+--     milestone is byte-identical to one that ran once and was deleted the
+--     same hour.
+--     Measured 2026-08-18, BEFORE v0.76 shipped: `count(*) where last_seen_at
+--     <> first_seen_at` was **0** across the whole table. That was a
+--     measurement, not a guarantee: an activation sent after the install
+--     already moved `last_seen_at`. What held by construction was narrower: a
+--     NON-ACTIVATED install sent only once, so its `last_seen_at` equalled
+--     `first_seen_at`. Since v0.76 that no longer holds either: a
+--     non-activated install moves it when its helper connects, when it first
+--     shows a cost, or on a remote-control fact. 4f measures it.
+--     Consequence, which this file itself got wrong until then: before v0.76
+--     any predicate of the form `last_seen_at = first_seen_at AND
+--     first_provider_detected_at IS NULL` was TAUTOLOGICAL -- it selected
+--     every non-activated row and discriminated nothing. Since v0.76 it
+--     excludes non-activated installs that sent again, which means "reached no
+--     later milestone", NOT "never relaunched". Whether an install relaunched
+--     is simply NOT OBSERVABLE here. Do not write a query that claims
+--     otherwise, and do not add one to `prune_anonymous_installs()`' 400-day
+--     window either: that
+--     window is "400 days since we last heard from them", which is 400 days
+--     after the last milestone of any kind, and for an install that reported
+--     nothing after installing, 400 days after INSTALL. Since v0.88 that
+--     window runs every night (trap 3).
 --
 -- CONSTRUCT VALIDITY -- what `providers.isEmpty == false` actually proves
 -- ----------------------------------------------------------------------
@@ -247,9 +286,11 @@ where i.first_seen_at >= a.available_from
 --
 --     This used to be titled "installs that have never relaunched" and carried
 --     an extra `last_seen_at = first_seen_at` conjunct. Both were wrong: by
---     trap 5 that conjunct is true for EVERY non-activated row, so it filtered
---     nothing while asserting a fact about relaunch behaviour that this table
---     cannot observe. The verdict (AMBIGUOUS) survived; the reasoning behind it
+--     trap 5 that conjunct was true for EVERY non-activated row while the
+--     client sent only on install and activation (before v0.76), so it filtered
+--     nothing; since v0.76 it filters on a later milestone, which is not
+--     relaunch behaviour either. Either way it asserted a fact about relaunch
+--     behaviour that this table cannot observe. The verdict (AMBIGUOUS) survived; the reasoning behind it
 --     did not, which is the more dangerous kind of error -- a reader would have
 --     acted on "never relaunched".
 select 'not activated' as control,
@@ -260,8 +301,14 @@ select 'not activated' as control,
 from public.anonymous_installs
 where first_provider_detected_at is null;
 
--- 4d. Write history. Deletions are invisible in the table itself and
---     permanently remove an install from all future reads (trap 3).
+-- 4d. Write history. Deletions are invisible in the table itself. A deleted
+--     install is absent until it reports a milestone it had not latched, and
+--     then it is inserted again as a new row (trap 3), so `inserts` is an upper
+--     bound on installs, not a count of them: it counts such an install twice,
+--     and it also counts probe rows a migration inserted and deleted. Since
+--     v0.88 the nightly prune deletes from 2027-09-10 on, so `deletes` grows by
+--     design and there will be more such returns. `expected_live` still
+--     reconciles with `live_rows`.
 select 'write history' as control,
        n_tup_ins as inserts, n_tup_upd as updates, n_tup_del as deletes,
        n_live_tup as live_rows,
@@ -286,12 +333,14 @@ with synthetic(install_id, channel, app_version, first_seen_at, last_seen_at, fi
             now() - interval '9 days', now(),                    now())
 )
 -- NOTE ON THE SHAPES ABOVE. Rows 1 and 2 carry `last_seen_at = now()` with a
--- NULL `first_provider_detected_at`. Trap 5 says production can never emit
--- that: a non-activated install sends exactly once, so its `last_seen_at`
--- equals `first_seen_at`. They are kept deliberately, as ILLEGAL shapes that
--- exercise 4a and 4b, and they are the reason the old 4c control looked alive
--- when it was tautological -- it "discriminated" only against rows reality
--- does not produce. Never add a control whose only negative examples are
+-- NULL `first_provider_detected_at`. Before v0.76 production could never emit
+-- that: a non-activated install sent exactly once, so its `last_seen_at`
+-- equalled `first_seen_at`. They were kept deliberately, as then-ILLEGAL
+-- shapes that exercise 4a and 4b, and they are the reason the old 4c control
+-- looked alive when it was tautological -- it "discriminated" only against
+-- rows reality did not produce. Since v0.76 the shape is legal (a
+-- non-activated install whose helper later connects, or that reports a
+-- remote-control fact). Never add a control whose only negative examples are
 -- impossible.
 select
   (select count(*) from synthetic
@@ -313,13 +362,17 @@ select
 --     A predicate that selects every row discriminates nothing, however
 --     confident its label. 4c carried exactly such a conjunct for months and
 --     the synthetic check above could not see it, because the synthetic rows
---     included shapes production cannot emit.
+--     included shapes production could not emit before v0.76 (see the 4e
+--     note).
 --
 --     This asks the only question that matters: does adding the
 --     `last_seen_at` conjunct change what is selected? If not, it is inert and
 --     any query using it is asserting something the data does not support.
---     `resent_rows` is the same fact from the other side -- it must stay 0
---     until the client is changed to send more than twice.
+--     `resent_rows` is information only: it counts activated rows too, so it
+--     can be above 0 while the conjunct is inert. The verdict compares the
+--     conjunct's own effect, the non-activated rows whose `last_seen_at` moved
+--     (possible since v0.76: helper connected, first cost, a remote-control
+--     fact).
 select 'tautology guard: last_seen_at' as control,
        (select count(*) from public.anonymous_installs
          where first_provider_detected_at is null)                as without_conjunct,
@@ -328,17 +381,17 @@ select 'tautology guard: last_seen_at' as control,
            and last_seen_at = first_seen_at)                      as with_conjunct,
        (select count(*) from public.anonymous_installs
          where last_seen_at <> first_seen_at)                     as resent_rows,
-       -- TWO outcomes, not three. A first draft had an `else 'UNEXPECTED -- the
-       -- conjunct filtered something'` arm; a negative control over synthetic
-       -- populations showed it is UNREACHABLE BY CONSTRUCTION. For the conjunct
-       -- to filter a non-activated row, that row must have
-       -- `last_seen_at <> first_seen_at`, which makes `resent_rows > 0` and
-       -- takes the first arm every time. A branch that can never fire is the
-       -- mirror image of the tautology this guard exists to catch, so it is
-       -- gone rather than left to reassure someone.
+       -- TWO outcomes. The conjunct filters exactly the non-activated rows with
+       -- `last_seen_at <> first_seen_at`, so testing for those is the same as
+       -- testing `without_conjunct <> with_conjunct`. (An earlier version
+       -- tested `resent_rows > 0`, which also counts activated rows, and so
+       -- could call the conjunct "not inert" when it was.) A branch that can
+       -- never fire is the mirror image of the tautology this guard exists to
+       -- catch, so there is no third one.
        case
          when (select count(*) from public.anonymous_installs
-                where last_seen_at <> first_seen_at) > 0
-           then 'CLIENT NOW RE-SENDS -- trap 5 is stale, re-read it before using last_seen_at'
-         else 'INERT as expected -- last_seen_at adds nothing, per trap 5'
+                where first_provider_detected_at is null
+                  and last_seen_at <> first_seen_at) > 0
+           then 'NOT INERT -- the conjunct drops non-activated installs that reported a later milestone (trap 5); it means "no later milestone", not "never relaunched"'
+         else 'INERT -- the conjunct selects every non-activated row; last_seen_at adds nothing here'
        end as verdict;
