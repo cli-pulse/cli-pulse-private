@@ -951,6 +951,17 @@ pg_cron job's functions name exists. From v0.21 until v0.87 the nightly
 retention cleanup named a table that never existed, rolled back its other
 deletes with it, and cron recorded every run as succeeded.
 
+In each release's verification, also run
+`backend/supabase/ops/check_anonymous_install_retention.sql` (one SELECT). It
+must return no rows (on the day v0.88 is applied, before the job's first run,
+the one expected row is 'no run recorded'). Each row it can return names one
+way the 400-day promise in PRIVACY.md could quietly stop holding: the nightly
+prune job (v0.88) is missing, inactive, or runs another command; the prune
+function is no longer v0.73's; the job has never run, its last run failed, or
+no run started in the last 26 hours; or a row is older than 401 days. Until
+2027-09-10 the prune has nothing to delete, so a job that works and one that
+does not look the same from its run history alone.
+
 ### Migration numbering — one number, one migration, forever
 
 **Before you name a new `backend/supabase/migrate_vX.YY_*.sql`, run:**
