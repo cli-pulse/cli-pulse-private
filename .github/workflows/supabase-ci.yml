@@ -672,9 +672,12 @@ jobs:
     # suite reproduces the bug first on production's body (v0.25 without its
     # comment-only lines, as B0's catalog check measured it), drives whole
     # worker calls on both install paths, runs the header's APPLY statements
-    # as printed (pause, drain, apply, verify, restore, rollback), fires every
-    # guard, and runs mutants of the worker and the backfill, each of which
-    # must fail the assertion named for it.
+    # as printed (pause, quiesce, recount, apply, verify, restore, rollback),
+    # fires every guard, proves exclusive access with concurrent sessions
+    # (idle and open transactions, a late worker call) and the recovery
+    # branches (an error after the backfill, a client lost mid-apply), and
+    # runs mutants of the worker, the backfill and the exclusive-access
+    # guards, each of which must fail the assertion named for it.
     name: Webhook jobs finalize failures (v0.89)
     runs-on: ubuntu-latest
     timeout-minutes: 10

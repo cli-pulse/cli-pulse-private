@@ -41,10 +41,12 @@
 #      4, pending, and a new alert with that key is never enqueued; no answer
 #      ends at 3, pending; three raises end at 3, pending; a transport failure
 #      waits 5 minutes; a request id without dispatched_at is never read.
-#   2. upgrade apply, through the header's statements as printed: Q0 (owner,
-#      body md5) before and after, Q1..Q4, the pause P2 and the restore R6
-#      against the cron stand-in, the drain checks Q6/Q6b (a stale 'running'
-#      row older than 10 minutes does not count); the catalog fingerprint
+#   2. upgrade apply, through the header's statements as printed: Q0 (hashes
+#      and booleans only) before and after, Q1 (counts only), Q2, Q3, R0, the
+#      pause P2 and the restore R8 against the cron stand-in, the quiesce
+#      checks Q4/Q4b (a stale 'running' row older than 10 minutes does not
+#      count), the recount Q5, Q6; the header's expected acl_md5, job_md5 and
+#      comment_md5 are the real ones; the catalog fingerprint
 #      (ops/check_webhook_catalog.sql) moves only in the worker's body md5 and
 #      the comment on processed_at; the contract (SECURITY DEFINER,
 #      search_path, signature, grants); applied twice (same md5 and ACL,
@@ -54,10 +56,12 @@
 #      request is not finalized, then it is); raises; 2xx on the first and on
 #      the third request; malformed rows; one call at a time; dedup.
 #   4. backfill: exactly the stuck rows (no request id, attempt_count >= 3);
-#      rows with a request id are left to the worker; the NOTICE equals Q1's
-#      stuck; above 5000 it refuses, and the header's BF batch then lets it
-#      apply; the rollback (Q4's saved definition) restores the body and
-#      leaves the backfilled rows finalized.
+#      rows with a request id are left to the worker; the NOTICE equals the
+#      recount Q5 taken after the pause, not Q1's preliminary count (a job
+#      stuck in between is counted); above 5000 it refuses, and the header's
+#      BF batch then lets it apply, the job still paused; the rollback (R0's
+#      saved definition) restores the body and leaves the backfilled rows
+#      finalized.
 #   5. re-runs: accepted on v0.25 raw, on v0.89 raw and on v0.89 without its
 #      comment-only lines (a client that strips them), in every order.
 #   6. guards: each refuses and changes nothing (worker, ACL, rows, comment,
@@ -65,9 +69,27 @@
 #      not block; an applier that is a member of the owner role applies; a
 #      session holding the worker's catalog row makes it give up at
 #      lock_timeout.
+#   6b. exclusive access (A5): an idle transaction that already ran the
+#      worker is refused; an open transaction that read the queue is refused
+#      by the pg_locks check; one that wrote it makes the apply wait and give
+#      up at lock_timeout; so does a v0.89 worker run holding the worker's
+#      lock during a re-run; a worker call that starts during a first apply
+#      waits on the queue lock, then runs the old body after the commit (it
+#      can leave a stuck row, which step 7's Q5 shows and BF clears); during
+#      a re-run a v0.89 worker call returns at once and touches nothing.
+#   6c. recovery (APPLY step 6): an error injected after the replace and the
+#      backfill rolls everything back (old body, no comment, stuck rows still
+#      stuck) and R8 restores the recorded value; with the client killed
+#      mid-apply, another session still sees the old body while Q6 shows the
+#      apply open, and once Q6 is 0, Q0/Q5 tell a commit (sent as one string,
+#      as apply_migration does) from a rollback (psql -f, killed before the
+#      commit); R8 then restores a recorded value of false as false.
 #   7. negative controls: mutants of the worker and the backfill, cut from
 #      between the markers and applied directly to a throwaway database
-#      (bypassing the guards), must each fail the assertion named for them.
+#      (bypassing the guards), must each fail the assertion named for them;
+#      and copies of the migration without each exclusive-access guard (A5b
+#      idle check, A5c advisory lock, A5d LOCK TABLE, A5e pg_locks check)
+#      must each fail theirs.
 #
 # Usage (creates and drops its own b1_<pid>_* databases and roles there):
 #   DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres \
@@ -112,8 +134,9 @@ MEMBER="${PFX}_member"
 cleanup() { # best-effort: every step runs, failures only warn, the exit status is the script's own
     set +e
     local p d r
-    for p in "${BGPIDS[@]:-}"; do [[ -n "$p" ]] && kill "$p" >/dev/null 2>&1; done
-    for d in "${CREATED[@]:-}"; do
+    exec 3>&- 4>&- 2>/dev/null
+    for p in "${BGPIDS[@]:-}" $(cat "$WORK/bgpids" 2>/dev/null); do [[ -n "$p" ]] && kill "$p" >/dev/null 2>&1; done
+    for d in "${CREATED[@]:-}" $(cat "$WORK/created" 2>/dev/null); do
         [[ -n "$d" ]] || continue
         PGOPTIONS='-c client_min_messages=warning' psql "$DATABASE_URL" -qtAX -c "drop database if exists $d with (force)" >/dev/null 2>&1 \
             || echo "warning: could not drop database $d (drop it by hand)" >&2
@@ -138,7 +161,7 @@ newdb() { # newdb <name> [template]: sets DB to its URL
     psql "$DATABASE_URL" -qtAX -v ON_ERROR_STOP=1 \
         -c "drop database if exists $1 with (force)" -c "create database $1${2:+ template $2}" >/dev/null \
         || { echo "cannot create database $1" >&2; exit 2; }
-    CREATED+=("$1")
+    CREATED+=("$1"); echo "$1" >> "$WORK/created"   # the file: also from subshells
     DB="$BASE/$1"
 }
 dropdb_now() { psql "$DATABASE_URL" -qtAX -c "drop database if exists $1 with (force)" >/dev/null 2>&1 || true; }
@@ -154,6 +177,15 @@ migrate() {
     local pre=()
     [[ -n "${2:-}" ]] && pre=(-c "set role $2")
     PGOPTIONS='-c client_min_messages=notice' psql "$DB" -v ON_ERROR_STOP=1 --no-psqlrc -qtAX ${pre[@]+"${pre[@]}"} -f "$1" 2>&1
+}
+BGPID=""
+poll() { # poll <sql returning boolean> <tenths of a second>: 0 once true, 1 if never
+    local i
+    for i in $(seq 1 "$2"); do
+        [[ "$(q -c "select ($1)::text" 2>/dev/null)" == "true" ]] && return 0
+        sleep 0.1
+    done
+    return 1
 }
 wait_for() { # wait_for <sql returning boolean>: up to 15 s
     local i
@@ -179,9 +211,9 @@ between() {
 }
 # hq <label>: that APPLY line of the header, exactly as printed.
 hq() {
-    local n; n="$(grep -c -E "^--    $1: " "$V089" || true)"
+    local n; n="$(grep -c -E "^-- +$1: " "$V089" || true)"
     [[ "$n" == 1 ]] || { echo "header: want one '$1:' line, found $n" >&2; exit 2; }
-    sed -n -E "s/^--    $1: //p" "$V089"
+    sed -n -E "s/^-- +$1: //p" "$V089"
 }
 strip_comment_lines() { sed '/^[[:space:]]*--/d' "$1"; }
 
@@ -543,7 +575,7 @@ backfill_checks() { # what the migration's backfill (or a mutant of it) did to t
 refuses() {
     local before after out rc=0
     before="$(q -c "select b1t.snapshot()")"
-    out="$(migrate "$V089" "${3:-}")" || rc=$?
+    out="$(migrate "$MIG" "${3:-}")" || rc=$?
     after="$(q -c "select b1t.snapshot()")"
     if (( rc == 0 )); then fail "$1: the migration applied"
     elif ! grep -q -E -- "$2" <<<"$out"; then fail "$1: refused, but not by /$2/: $(grep -m1 -E 'ERROR' <<<"$out")"
@@ -552,18 +584,25 @@ refuses() {
 }
 applies() { # applies <label> [role]: apply v0.89 to $DB; it must succeed; echoes nothing, keeps its output in LAST_OUT
     local rc=0
-    LAST_OUT="$(migrate "$V089" "${2:-}")" || rc=$?
+    LAST_OUT="$(migrate "$MIG" "${2:-}")" || rc=$?
     if (( rc == 0 )); then pass "$1"; else fail "$1: $(grep -m1 -E 'ERROR' <<<"$LAST_OUT")"; fi
 }
 LAST_OUT=""
+MIG="$V089"
 pause_job() { # the header's P2, as printed; it must touch exactly one job
     local out; out="$(psql "$DB" --no-psqlrc -X -v ON_ERROR_STOP=1 -c "$(hq P2)" 2>&1)"
     grep -q '(1 row)' <<<"$out" || fail "$P P2 (pause) did not return exactly one row: $out"
 }
-restore_job() {
-    local out; out="$(psql "$DB" --no-psqlrc -X -v ON_ERROR_STOP=1 -c "$(hq R6)" 2>&1)"
-    grep -q '(1 row)' <<<"$out" || fail "$P R6 (restore) did not return exactly one row: $out"
+restore_job() { # restore_job <recorded active value>: the header's R8 with that value put in
+    local r8 out
+    r8="$(hq R8)"
+    [[ "$(grep -o '<recorded active>' <<<"$r8" | wc -l | tr -d ' ')" == 1 ]] || { echo "R8: want one <recorded active>" >&2; exit 2; }
+    out="$(psql "$DB" --no-psqlrc -X -v ON_ERROR_STOP=1 -c "${r8/<recorded active>/$1}" 2>&1)"
+    grep -q '(1 row)' <<<"$out" || fail "$P R8 (restore $1) did not return exactly one row: $out"
 }
+q0() { q -c "$(hq Q0)"; }
+q3() { q -c "$(hq Q3)"; }
+q5() { q -c "$(hq Q5)"; }
 worker_md5() { q -c "select md5(prosrc) from pg_proc where oid = 'public.process_webhook_jobs()'::regprocedure"; }
 notice() { grep -E 'NOTICE: +v0\.89: ' <<<"$1" | sed -E 's/.*NOTICE: +v0\.89: //' | paste -sd'|' -; }
 
@@ -608,7 +647,12 @@ same "0. the guard (A2) lists all four" \
 same "0. the verification (E) lists the two 'after' values only" \
      "$(sed -n '/^do \$verify\$$/,/^\$verify\$;$/p' "$V089" | grep -oE "'[0-9a-f]{32}'" | tr -d "'" | sort | paste -sd' ' -)" \
      "$(printf '%s\n' "$RAW89" "$STRIP89" | sort | paste -sd' ' -)"
-same "0. step 0 (Q0) expects production's body" "$(grep -c -E "^--    Expect owner = postgres, body_md5 = $PROD_WORKER_MD5,$" "$V089")" "1"
+same "0. step 0 (Q0) expects production's body on a first apply" "$(grep -c -E "^--    FIRST APPLY: expect body_md5 = $PROD_WORKER_MD5,$" "$V089")" "1"
+HDR="$(sed -n '1,/^begin;$/p' "$V089" | sed -E 's/^-- ?//' | tr '\n' ' ' | tr -s ' ')"
+if [[ "$HDR" == *"RE-RUN OR RECOVERY: body_md5 = $RAW89 or $STRIP89 "* ]]; then pass "0. step 0 accepts the two v0.89 bodies on a re-run or in recovery"
+else fail "0. step 0's RE-RUN OR RECOVERY line does not list $RAW89 and $STRIP89"; fi
+held="$(grep -c -x 'commit;' "$V089" || true)"
+[[ "$held" == 1 ]] || { echo "the migration must end with exactly one 'commit;' line (found $held)" >&2; exit 2; }
 dropdb_now "${PFX}_md5"
 
 # =============================================================================
@@ -643,34 +687,47 @@ dropdb_now "${PFX}_ctl"
 echo "== 2. upgrade: the header's steps, as printed"
 newdb "${PFX}_up" "${PFX}_upbase"
 P="[upgrade]"
-same "$P Q0 before: owner, production's body md5, attributes, ACL, one function, applier" \
-     "$(q -c "$(hq Q0)")" \
-     "$SU|$PROD_WORKER_MD5|t|{\"search_path=pg_catalog, extensions, public, net\"}|{$SU=X/$SU,service_role=X/$SU}|1|$SU"
+ACL_UP="$(q -c "select md5('{$SU=X/$SU,service_role=X/$SU}')")"
+ACL_FR="$(q -c "select md5('{$SU=X/$SU}')")"
+JOB_MD5="$(q -c "select md5('3|process_webhook_jobs|30 seconds|select public.process_webhook_jobs()|$SU')")"
+same "$P Q0 before (hashes and booleans only): production's body, one function, attributes, applier, grants, ACL, no comment" \
+     "$(q0)" "$PROD_WORKER_MD5|1|t|t|t|$ACL_UP|"
+hvals() { grep -oE "$1 = [0-9a-f]{32}" <<<"$HDR" | grep -oE '[0-9a-f]{32}' | sort -u | paste -sd' ' -; }
+if [[ "$SU" == postgres ]]; then   # the header states production's values, whose role is postgres
+    same "$P the header's expected acl_md5 is this ACL's (production's)" "$(hvals acl_md5)" "$ACL_UP"
+    same "$P the header's expected job_md5 is this job's (production's)" "$(hvals job_md5)" "$JOB_MD5"
+fi
 FP_BEFORE="$(q -f "$OPS")"
-for l in Q1 Q1b Q3b; do q -c "$(hq "$l")" >/dev/null || fail "$P $l does not run as printed"; done
+for l in Q1 Q1b Q3b Q9; do q -c "$(hq "$l")" >/dev/null || fail "$P $l does not run as printed"; done
+same "$P Q1 returns counts only (no timestamp column)" \
+     "$(psql "$DB" --no-psqlrc -X -A -c "$(hq Q1)" | head -1)" \
+     "total|pending|stuck|awaiting|malformed_id_without_dispatch|never_dispatched_old|finalized_with_request_id|odd_counts"
 same "$P Q2: both secrets once, non-empty (no value selected)" "$(q -c "$(hq Q2)" | sort | paste -sd' ' -)" \
      "app_service_role_key|1|1 app_supabase_url|1|1"
-same "$P Q3: exactly one webhook job, as production's" "$(q -c "$(hq Q3)")" \
-     "3|process_webhook_jobs|30 seconds|select public.process_webhook_jobs()|t|$SU"
-q -c "$(hq Q4)" > "$WORK/rollback.sql"; echo ';' >> "$WORK/rollback.sql"
-grep -q 'CREATE OR REPLACE FUNCTION public.process_webhook_jobs()' "$WORK/rollback.sql" || fail "$P Q4 did not print the worker's definition"
+same "$P Q3: exactly one webhook job, active, its definition's hash" "$(q3)" "1|true|$JOB_MD5"
+q -c "$(hq R0)" > "$WORK/rollback.sql"; echo ';' >> "$WORK/rollback.sql"
+grep -q 'CREATE OR REPLACE FUNCTION public.process_webhook_jobs()' "$WORK/rollback.sql" || fail "$P R0 did not print the worker's definition"
 pause_job
 same "$P P2 paused the webhook job and nothing else" \
      "$(q -c "select string_agg(jobid || '=' || active, ' ' order by jobid) from cron.job")" "3=false 4=true"
-same "$P Q6: nothing running" "$(q -c "$(hq Q6)")" "0"
-same "$P Q6b: a 'running' row 20 minutes old does not count" "$(q -c "$(hq Q6b)")" "0"
+same "$P Q3 after the pause" "$(q3)" "1|false|$JOB_MD5"
+same "$P Q4: nothing running, nobody idle in a transaction, nobody holding the queue, everybody visible" "$(q -c "$(hq Q4)")" "0|0|0|0"
+same "$P Q4b: a 'running' row 20 minutes old does not count" "$(q -c "$(hq Q4b)")" "0"
 q -c "insert into cron.job_run_details (jobid, status, start_time) values (3, 'starting', now() - interval '1 minute')" >/dev/null
-same "$P Q6b: a recent 'starting' row does" "$(q -c "$(hq Q6b)")" "1"
+same "$P Q4b: a recent 'starting' row does" "$(q -c "$(hq Q4b)")" "1"
 q -c "update cron.job_run_details set status = 'succeeded', end_time = now() where status = 'starting'" >/dev/null
+same "$P Q5: the recount right before the apply" "$(q5)" "0"
+same "$P Q6 before the apply: no worker lock, no apply session" "$(q -c "$(hq Q6)")" "0|0"
 applies "$P the migration applies on production's shape, the job paused"
 same "$P its NOTICEs: applier and owner, nothing to backfill, the body it installed" "$(notice "$LAST_OUT")" \
      "applier $SU, worker owner $SU|backfilled 0 stuck job(s): finalized with failure, nothing re-sent|worker replaced (body md5 $RAW89), owner and ACL unchanged"
-same "$P Q0 after: v0.89's body, everything else as before" \
-     "$(q -c "$(hq Q0)")" \
-     "$SU|$RAW89|t|{\"search_path=pg_catalog, extensions, public, net\"}|{$SU=X/$SU,service_role=X/$SU}|1|$SU"
-restore_job
-same "$P R6 restored the job; Q3 as before" "$(q -c "$(hq Q3)")" \
-     "3|process_webhook_jobs|30 seconds|select public.process_webhook_jobs()|t|$SU"
+COMMENT_MD5="$(q -c "select md5(col_description('public.webhook_jobs'::regclass, 8))")"
+same "$P Q0 after: v0.89's body and the comment, everything else as before" "$(q0)" "$RAW89|1|t|t|t|$ACL_UP|$COMMENT_MD5"
+same "$P every comment_md5 the header expects is the comment's" \
+     "$(grep -oE 'comment_md5 =? ?[0-9a-f]{32}' <<<"$HDR" | grep -oE '[0-9a-f]{32}' | sort -u | paste -sd' ' -)" "$COMMENT_MD5"
+same "$P Q3 after the apply: one job, same definition, still paused" "$(q3)" "1|false|$JOB_MD5"
+restore_job true
+same "$P R8 restored the recorded value (true); Q3 as in step 0" "$(q3)" "1|true|$JOB_MD5"
 FP_AFTER="$(q -f "$OPS")"
 same "$P fingerprint: only the worker's line and processed_at's line changed" \
      "$(diff <(echo "$FP_BEFORE") <(echo "$FP_AFTER") | grep -E '^[<>] ' \
@@ -690,23 +747,22 @@ check "$P the column comment says FINALIZED, and is schema.sql's" \
       "col_description('public.webhook_jobs'::regclass, 8) like 'FINALIZED, not delivered (v0.89).%'"
 pause_job
 applies "$P applied a second time"
-same "$P second time: nothing backfilled, same body, owner and ACL" "$(notice "$LAST_OUT") / $(q -c "$(hq Q0)")" \
-     "applier $SU, worker owner $SU|backfilled 0 stuck job(s): finalized with failure, nothing re-sent|worker replaced (body md5 $RAW89), owner and ACL unchanged / $SU|$RAW89|t|{\"search_path=pg_catalog, extensions, public, net\"}|{$SU=X/$SU,service_role=X/$SU}|1|$SU"
-restore_job
+same "$P second time: nothing backfilled, same body, owner and ACL" "$(notice "$LAST_OUT") / $(q0)" \
+     "applier $SU, worker owner $SU|backfilled 0 stuck job(s): finalized with failure, nothing re-sent|worker replaced (body md5 $RAW89), owner and ACL unchanged / $RAW89|1|t|t|t|$ACL_UP|$COMMENT_MD5"
+restore_job true
 
 # =============================================================================
 echo "== 3. fresh install (the baseline files)"
 newdb "${PFX}_fr"; build_fresh
 P="[fresh]"
-same "$P Q0: the baseline installs v0.89's body, owner-only ACL" "$(q -c "$(hq Q0)")" \
-     "$SU|$RAW89|t|{\"search_path=pg_catalog, extensions, public, net\"}|{$SU=X/$SU}|1|$SU"
+same "$P Q0: the baseline installs v0.89's body and the comment, owner-only ACL" "$(q0)" "$RAW89|1|t|t|t|$ACL_FR|$COMMENT_MD5"
 check "$P the baseline carries the comment on processed_at" \
       "col_description('public.webhook_jobs'::regclass, 8) like 'FINALIZED, not delivered (v0.89).%'"
 pause_job
 applies "$P the migration re-applies on a fresh install (its own body)"
-same "$P nothing backfilled, body and ACL unchanged" "$(notice "$LAST_OUT" | cut -d'|' -f2) / $(q -c "$(hq Q0)" | cut -d'|' -f2,5)" \
-     "backfilled 0 stuck job(s): finalized with failure, nothing re-sent / $RAW89|{$SU=X/$SU}"
-restore_job
+same "$P nothing backfilled, body, ACL and comment unchanged" "$(notice "$LAST_OUT" | cut -d'|' -f2) / $(q0)" \
+     "backfilled 0 stuck job(s): finalized with failure, nothing re-sent / $RAW89|1|t|t|t|$ACL_FR|$COMMENT_MD5"
+restore_job true
 
 # =============================================================================
 echo "== 4. behaviour, both paths"
@@ -723,31 +779,35 @@ newdb "${PFX}_bf" "${PFX}_upbase"
 P="[upgrade]"
 backfill_rows
 q1_stuck="$(q -c "select stuck from ($(hq Q1 | sed 's/;$//')) q1")"
-same "$P Q1 counts the two stuck rows" "$q1_stuck" "2"
+same "$P Q1 (preliminary) counts the two stuck rows" "$q1_stuck" "2"
 same "$P Q1b, by attempt_count" "$(q -c "$(hq Q1b)" | paste -sd' ' -)" "2|1 3|3 4|1"
 pause_job
+# the old worker was still running between Q1 and the pause: one more job used its attempts up
+q -c "insert into public.webhook_jobs (user_id, alert_id, alert_payload, attempt_count, last_error) values ('$UA', 'bf-late', '{\"grouping_key\":\"bf-late\"}', 4, 'HTTP 502: late')" >/dev/null
+same "$P Q4 after the pause: quiet" "$(q -c "$(hq Q4)")" "0|0|0|0"
+n_stuck="$(q5)"
+same "$P Q5, the recount after the pause, sees the job that got stuck after Q1" "$n_stuck" "3"
 applies "$P the migration applies with stuck rows"
-same "$P its NOTICE backfilled Q1's stuck count" "$(notice "$LAST_OUT" | cut -d'|' -f2)" \
-     "backfilled $q1_stuck stuck job(s): finalized with failure, nothing re-sent"
+same "$P its NOTICE backfilled the recount (not Q1's preliminary count)" "$(notice "$LAST_OUT" | cut -d'|' -f2)" \
+     "backfilled $n_stuck stuck job(s): finalized with failure, nothing re-sent"
 backfill_checks
-same "$P Q1 after: stuck = 0" "$(q -c "select stuck from ($(hq Q1 | sed 's/;$//')) q1")" "0"
-restore_job
+same "$P Q5 after: stuck = 0" "$(q5)" "0"
+restore_job true
 invoke
 same "$P row b (third request live for 1 minute) stays pending under the new worker" "$(q -c "select attempt_count || ' ' || pg_net_request_id || ' ' || (processed_at is null) from public.webhook_jobs where alert_id = 'bf-b'")" "3 950 true"
 same "$P row c (third request, no answer for 10 minutes) is given up by the new worker" \
      "$(q -c "select (processed_at is not null) || ' ' || coalesce(pg_net_request_id::text, 'noreq') || ' ' || last_error from public.webhook_jobs where alert_id = 'bf-c'")" \
      "true noreq gave up: no response from pg_net after 3 attempts"
 same "$P row d (attempt 2) gets its third request" "$(q -c "select attempt_count || ' req' || pg_net_request_id || ' ' || (processed_at is null) from public.webhook_jobs where alert_id = 'bf-d'") calls=$(calls)" "3 req1 true calls=1"
-same "$P Q7 (new stuck) is 0" "$(q -c "$(hq Q7)")" "0"
-q -c "$(hq Q8)" >/dev/null || fail "$P Q8 does not run as printed"
-# rollback: Q4's saved definition, the job paused
+same "$P Q5 (new stuck) stays 0 under the new worker" "$(q5)" "0"
+# rollback: R0's saved definition, the job paused
 pause_job
 apply "$WORK/rollback.sql"
-same "$P rollback: Q4's saved definition restores production's body, ACL unchanged" \
-     "$(q -c "$(hq Q0)" | cut -d'|' -f2,5)" "$PROD_WORKER_MD5|{$SU=X/$SU,service_role=X/$SU}"
+same "$P rollback: R0's saved definition restores production's body; ACL unchanged, the comment stays" \
+     "$(q0)" "$PROD_WORKER_MD5|1|t|t|t|$ACL_UP|$COMMENT_MD5"
 check "$P rollback: the backfilled rows stay finalized" \
       "(select bool_and(processed_at is not null and last_error like 'v0.89 backfill: %') from public.webhook_jobs where alert_id in ('bf-a', 'bf-a3'))"
-restore_job
+restore_job true
 dropdb_now "${PFX}_bf"
 
 newdb "${PFX}_bfs" "${PFX}_upbase"
@@ -758,11 +818,11 @@ backfill_rows
 pause_job
 refuses "$P size guard: 5003 stuck jobs: refused, nothing changed" 'more than 5000'
 q -c "$(hq BF)" >/dev/null
-q1_stuck="$(q -c "select stuck from ($(hq Q1 | sed 's/;$//')) q1")"
-same "$P one BF batch, as printed, finalizes 1000" "$q1_stuck" "4003"
+n_stuck="$(q5)"
+same "$P one BF batch, as printed, finalizes 1000 (job still paused; Q5 recounts)" "$n_stuck / $(q3)" "4003 / 1|false|$JOB_MD5"
 applies "$P after it the migration applies"
-same "$P and backfills the rest (Q1's stuck after the batch)" "$(notice "$LAST_OUT" | cut -d'|' -f2)" \
-     "backfilled $q1_stuck stuck job(s): finalized with failure, nothing re-sent"
+same "$P and backfills the rest (the recount after the batch)" "$(notice "$LAST_OUT" | cut -d'|' -f2)" \
+     "backfilled $n_stuck stuck job(s): finalized with failure, nothing re-sent"
 backfill_checks
 dropdb_now "${PFX}_bfs"
 
@@ -841,7 +901,7 @@ G=$((G + 1)); newdb "${PFX}_g$G" "${PFX}_gb"
 psql "$DB" --no-psqlrc -qtAX -c "SELECT PUBLIC.PROCESS_WEBHOOK_JOBS(), PG_SLEEP(60)" >/dev/null 2>&1 &
 bg=$!; BGPIDS+=("$bg")
 wait_for "exists (select 1 from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and state = 'active' and query like '%PG_SLEEP(60)%')"
-refuses "$P a session running the worker (its query in upper case): refused, nothing changed" 'another session is running process_webhook_jobs\(\)'
+refuses "$P a session running the worker (its query in upper case): refused, nothing changed" 'another session is running a query that names process_webhook_jobs'
 q -c "select pg_terminate_backend(pid) from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and query like '%PG_SLEEP(60)%'" >/dev/null
 wait "$bg" >/dev/null 2>&1 || true
 dropdb_now "${PFX}_g$G"
@@ -874,6 +934,175 @@ same "$P its NOTICE names that applier and the owner; the owner is unchanged" \
      "$(notice "$LAST_OUT" | cut -d'|' -f1) / $(q -c "select pg_get_userbyid(proowner) from pg_proc where oid = 'public.process_webhook_jobs()'::regprocedure")" \
      "applier $MEMBER, worker owner $SU / $SU"
 dropdb_now "${PFX}_g$G"
+
+# =============================================================================
+echo "== 7b. exclusive access to the queue (A5) and the late caller"
+# held_copy <src> <dst> <statement>: the migration with <statement> run just before its commit
+held_copy() {
+    HELD="$3" perl -pe 's/^commit;$/$ENV{HELD}\ncommit;/' "$1" > "$2"
+    [[ "$(grep -c -x -F -- "$3" "$2")" == 1 ]] || { echo "held_copy: '$3' not placed once" >&2; exit 2; }
+}
+# idle_open <sql>: a session that runs <sql> inside an open transaction, then
+# sits idle in it (its input is a fifo the suite holds open on fd 3)
+idle_open() {
+    /bin/rm -f "$WORK/fifo"; mkfifo "$WORK/fifo"
+    psql "$DB" --no-psqlrc -qtAX < "$WORK/fifo" >/dev/null 2>&1 &
+    IDLE_PID=$!; BGPIDS+=("$IDLE_PID"); echo "$IDLE_PID" >> "$WORK/bgpids"
+    exec 3> "$WORK/fifo"
+    printf 'begin;\n%s\n' "$1" >&3
+}
+idle_close() { exec 3>&-; wait "$IDLE_PID" >/dev/null 2>&1 || true; }
+IDLE_PID=""
+sleeping() { # sleeping <statement>: another session is running it (psql -f may keep its ';')
+    echo "exists (select 1 from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and state = 'active' and query like '$1%' and wait_event = 'PgSleep')"
+}
+end_sleepers() {
+    q -c "select pg_terminate_backend(pid) from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and query like 'select pg_sleep(%'" >/dev/null
+}
+start_bg() { "$@" >/dev/null 2>&1 & BGPID=$!; BGPIDS+=("$BGPID"); echo "$BGPID" >> "$WORK/bgpids"; }
+
+ex_idle() { # ex_idle <tag>
+    newdb "${PFX}_x$1" "${PFX}_gb"
+    idle_open "select public.process_webhook_jobs();"
+    wait_for "exists (select 1 from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and state = 'idle in transaction')"
+    check "$P (setup) the idle session ran the worker and holds a write lock on the queue" \
+          "exists (select 1 from pg_locks l join pg_stat_activity a on a.pid = l.pid where a.state = 'idle in transaction' and a.datname = current_database() and l.relation = 'public.webhook_jobs'::regclass and l.mode = 'RowExclusiveLock')"
+    same "$P (setup) Q4 sees it: idle_in_xact and queue_lock_holders" "$(q -c "$(hq Q4)" | cut -d'|' -f2,3)" "1|1"
+    refuses "$P an idle transaction that already ran the worker: refused, nothing changed" 'idle in an open transaction'
+    idle_close
+    dropdb_now "${PFX}_x$1"
+}
+ex_reader() {
+    newdb "${PFX}_x$1" "${PFX}_gb"
+    start_bg psql "$DB" --no-psqlrc -qtAX -c "begin" -c "select count(*) from public.webhook_jobs" -c "select pg_sleep(60)"
+    local b=$BGPID
+    wait_for "$(sleeping 'select pg_sleep(60)')"
+    refuses "$P an open transaction that read the queue (busy, not idle, not naming the worker): refused by the lock check, nothing changed" \
+            'other session\(s\) hold a lock on public\.webhook_jobs'
+    end_sleepers; wait "$b" >/dev/null 2>&1 || true
+    dropdb_now "${PFX}_x$1"
+}
+ex_writer() {
+    local b t0
+    newdb "${PFX}_x$1" "${PFX}_gb"
+    start_bg psql "$DB" --no-psqlrc -qtAX -c "begin" -c "update public.webhook_jobs set attempt_count = attempt_count where id = -1" -c "select pg_sleep(60)"
+    b=$BGPID
+    wait_for "$(sleeping 'select pg_sleep(60)')"
+    t0=$SECONDS
+    refuses "$P an open transaction that wrote the queue: the apply waits for it, gives up at lock_timeout, nothing changed" \
+            'held a write lock on public\.webhook_jobs'
+    if (( SECONDS - t0 >= 4 && SECONDS - t0 < 30 )); then pass "$P and it waited about lock_timeout ($((SECONDS - t0)) s)"
+    else fail "$P it gave up after $((SECONDS - t0)) s, not about lock_timeout"; fi
+    end_sleepers; wait "$b" >/dev/null 2>&1 || true
+    dropdb_now "${PFX}_x$1"
+}
+ex_advisory() {
+    local b
+    newdb "${PFX}_x$1" "${PFX}_gb"
+    LAST_OUT="$(migrate "$V089")" || { fail "$P (setup) v0.89 did not apply"; return; }
+    start_bg psql "$DB" --no-psqlrc -qtAX -c "select pg_advisory_lock($LOCK_KEY)" -c "select pg_sleep(60)"
+    b=$BGPID
+    wait_for "$(sleeping 'select pg_sleep(60)')"
+    refuses "$P a re-run while a v0.89 worker run holds the worker's lock: it waits, gives up at lock_timeout, nothing changed" \
+            "held the worker's advisory lock"
+    end_sleepers; wait "$b" >/dev/null 2>&1 || true
+    dropdb_now "${PFX}_x$1"
+}
+ex_late_first() {
+    local m w rc=0
+    newdb "${PFX}_x$1" "${PFX}_gb"
+    held_copy "$MIG" "$WORK/held.$1.sql" "select pg_sleep(4);"
+    start_bg psql "$DB" -v ON_ERROR_STOP=1 --no-psqlrc -qtAX -f "$WORK/held.$1.sql"; m=$BGPID
+    wait_for "$(sleeping 'select pg_sleep(4)')"
+    start_bg psql "$DB" --no-psqlrc -qtAX -c "select public.process_webhook_jobs()"; w=$BGPID
+    if poll "exists (select 1 from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and query = 'select public.process_webhook_jobs()' and wait_event_type = 'Lock')" 30; then
+        pass "$P late starter (first apply): a worker call that starts during the apply waits on the queue lock"
+    else
+        fail "$P late starter (first apply): a worker call that starts during the apply waits on the queue lock (it did not wait)"
+    fi
+    wait "$m" || rc=$?
+    same "$P late starter (first apply): the apply commits regardless" "$rc / $(worker_md5)" "0 / $RAW89"
+    wait "$w" >/dev/null 2>&1 || true
+    same "$P late starter (first apply): the call then runs the body it started with (v0.25) and abandons row c's request without finalizing it: Q5 = 1" \
+         "$(q5) / $(q -c "select attempt_count || ' ' || coalesce(pg_net_request_id::text, 'noreq') || ' ' || (processed_at is null) from public.webhook_jobs where alert_id = 'bf-c'")" "1 / 3 noreq true"
+    q -c "$(hq BF)" >/dev/null
+    same "$P late starter (first apply): step 7's remedy, BF, finalizes it (Q5 = 0)" "$(q5)" "0"
+    dropdb_now "${PFX}_x$1"
+}
+ex_late_rerun() {
+    local m w before i rc=0
+    newdb "${PFX}_x$1" "${PFX}_gb"
+    LAST_OUT="$(migrate "$V089")" || { fail "$P (setup) v0.89 did not apply"; return; }
+    held_copy "$MIG" "$WORK/held.$1.sql" "select pg_sleep(4);"
+    start_bg psql "$DB" -v ON_ERROR_STOP=1 --no-psqlrc -qtAX -f "$WORK/held.$1.sql"; m=$BGPID
+    wait_for "$(sleeping 'select pg_sleep(4)')"
+    before="$(q -c "select b1t.snapshot()")"
+    start_bg psql "$DB" --no-psqlrc -qtAX -c "select public.process_webhook_jobs()"; w=$BGPID
+    for i in $(seq 1 30); do kill -0 "$w" 2>/dev/null || break; sleep 0.1; done
+    if ! kill -0 "$w" 2>/dev/null && poll "$(sleeping 'select pg_sleep(4)')" 1; then
+        pass "$P late starter (re-run): a v0.89 worker call during the apply returns at once (the apply holds the worker's lock)"
+    else
+        fail "$P late starter (re-run): the v0.89 worker call did not return while the apply held the lock"
+    fi
+    same "$P late starter (re-run): and touched nothing" "$(q -c "select b1t.snapshot()")" "$before"
+    wait "$m" || rc=$?
+    same "$P late starter (re-run): the re-run then commits" "$rc / $(worker_md5)" "0 / $RAW89"
+    dropdb_now "${PFX}_x$1"
+}
+P="[access]"
+ex_idle idle; ex_reader reader; ex_writer writer; ex_advisory advisory; ex_late_first late1; ex_late_rerun late2
+
+# =============================================================================
+echo "== 7c. recovery (APPLY step 6) and restoring the recorded value"
+P="[recovery]"
+poll_out() { # poll_out <sql> <expected output> <tenths of a second>
+    local i
+    for i in $(seq 1 "$3"); do [[ "$(q -c "$1" 2>/dev/null)" == "$2" ]] && return 0; sleep 0.1; done
+    return 1
+}
+# 6b: a reported error after the replace and the backfill
+newdb "${PFX}_y1" "${PFX}_gb"
+n="$(q5)"
+held_copy "$V089" "$WORK/fail.sql" "select 1/0;"
+MIG="$WORK/fail.sql"
+refuses "$P (6b) an error after the replace and the backfill (injected just before commit): reported, all rolled back, nothing changed" 'division by zero'
+MIG="$V089"
+same "$P (6b) Q0 as in step 0 and Q5 = N: the old body, no comment, the stuck rows still stuck" "$(q0) / $(q5)" \
+     "$PROD_WORKER_MD5|1|t|t|t|$ACL_UP| / $n"
+restore_job true
+same "$P ABORT: R8 puts back the recorded value (true)" "$(q3)" "1|true|$JOB_MD5"
+dropdb_now "${PFX}_y1"
+# 6c: no clear answer, and the apply had in fact committed (sent as one query string, as apply_migration does)
+newdb "${PFX}_y2" "${PFX}_gb"
+held_copy "$V089" "$WORK/held.y2.sql" "select pg_sleep(4);"
+start_bg psql "$DB" --no-psqlrc -qtAX -c "$(cat "$WORK/held.y2.sql")"; c=$BGPID
+wait_for "exists (select 1 from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and wait_event = 'PgSleep')"
+same "$P (6c) meanwhile another session still sees the old body: an old body_md5 proves nothing" "$(q0 | cut -d'|' -f1)" "$PROD_WORKER_MD5"
+same "$P (6c) Q6 sees the apply (sent as one string): the worker's lock, and its session's application_name" "$(q -c "$(hq Q6)")" "1|1"
+kill -TERM "$c" 2>/dev/null; wait "$c" >/dev/null 2>&1 || true
+if poll_out "$(hq Q6)" "0|0" 150; then pass "$P (6c) the client gone, the server finishes; Q6 reaches 0|0"; else fail "$P (6c) Q6 never reached 0|0"; fi
+same "$P (6c) then Q0 and Q5 show it committed" "$(q0) / $(q5)" "$RAW89|1|t|t|t|$ACL_UP|$COMMENT_MD5 / 0"
+restore_job true
+same "$P (6c) and R8 restores the recorded value (true)" "$(q3)" "1|true|$JOB_MD5"
+dropdb_now "${PFX}_y2"
+# 6c: no clear answer, and the apply had rolled back (psql -f, statement by
+# statement, client killed before the commit); the recorded value was false
+newdb "${PFX}_y3" "${PFX}_upbase"; backfill_rows
+q -c "update cron.job set active = false where jobid = 3" >/dev/null
+same "$P (1) the job was already paused by the owner: the recorded value is false" "$(q3)" "1|false|$JOB_MD5"
+pause_job
+same "$P (2, 3) P2 changes nothing; Q4 quiet" "$(q3) / $(q -c "$(hq Q4)")" "1|false|$JOB_MD5 / 0|0|0|0"
+n="$(q5)"
+held_copy "$V089" "$WORK/held.y3.sql" "select pg_sleep(4);"
+start_bg psql "$DB" -v ON_ERROR_STOP=1 --no-psqlrc -qtAX -f "$WORK/held.y3.sql"; c=$BGPID
+wait_for "$(sleeping 'select pg_sleep(4)')"
+same "$P (6c) Q6 sees the apply (statement by statement, now in its sleep): the worker's lock, and its application_name" "$(q -c "$(hq Q6)")" "1|1"
+kill -TERM "$c" 2>/dev/null; wait "$c" >/dev/null 2>&1 || true
+if poll_out "$(hq Q6)" "0|0" 150; then pass "$P (6c) the session ends; Q6 reaches 0|0"; else fail "$P (6c) Q6 never reached 0|0"; fi
+same "$P (6c) then Q0 and Q5 show it rolled back: old body, no comment, Q5 = N" "$(q0) / $(q5)" "$PROD_WORKER_MD5|1|t|t|t|$ACL_UP| / $n"
+restore_job false
+same "$P ABORT: R8 puts back the recorded value, false: the job stays paused" "$(q3)" "1|false|$JOB_MD5"
+dropdb_now "${PFX}_y3"
 
 # =============================================================================
 echo "== 8. negative controls (each mutant must fail its named assertion)"
@@ -937,6 +1166,33 @@ mutate "$B" "$MUT.b2.sql" 1 '\n\s*and attempt_count >= 3' ''
 cat "$W" "$MUT.b2.sql" > "$MUT.b2.full.sql"
 control "9b. backfill without 'attempt_count >= 3'" "${PFX}_upbase" "$MUT.b2.full.sql" "backfill_rows" backfill_checks \
         'backfill: row d is untouched'
+# the migration's own exclusive-access guards (A5), mutated in the whole file
+gcontrol() { # gcontrol <name> <mutant migration> <test function> <regex of the FAIL label it must produce>
+    local out hit
+    M=$((M + 1))
+    out="$( (P="[mutant]"; MIG="$2"; fails=0; "$3" "gm$M") 2>&1 )" || true
+    hit="$(grep -m1 -E -- "^  FAIL  \[mutant\] $4" <<<"$out" || true)"
+    if [[ -n "$hit" ]]; then
+        pass "control: $1"
+        echo "          fails: ${hit#  FAIL  [mutant] }" | cut -c1-200
+    else
+        fail "control: $1 — did not fail /$4/"
+        grep -E 'FAIL|ERROR' <<<"$out" | head -5 >&2 || true
+    fi
+    dropdb_now "${PFX}_xgm$M"
+}
+mutate "$V089" "$MUT.g1.sql" 1 '(?s)    -- b\. an open, idle transaction.*?    end if;\n' ''
+gcontrol "G1. the migration without the idle-transaction check (A5b)" "$MUT.g1.sql" ex_idle \
+         'an idle transaction that already ran the worker: refused'
+mutate "$V089" "$MUT.g2.sql" 1 '(?s)    -- e\. the authority.*?    end if;\n' ''
+gcontrol "G2. the migration without the pg_locks check (A5e)" "$MUT.g2.sql" ex_reader \
+         'an open transaction that read the queue'
+mutate "$V089" "$MUT.g3.sql" 1 '(?s)    -- d\. writers of the queue.*?    end;\n' ''
+gcontrol "G3. the migration without LOCK TABLE (A5d)" "$MUT.g3.sql" ex_late_first \
+         'late starter \(first apply\): a worker call that starts during the apply waits on the queue lock'
+mutate "$V089" "$MUT.g4.sql" 1 "(?s)    -- c\\. the worker's own lock.*?    end;\\n" ''
+gcontrol "G4. the migration without the worker's advisory lock (A5c)" "$MUT.g4.sql" ex_advisory \
+         "a re-run while a v0.89 worker run holds the worker's lock"
 # and the unmutated cut passes the same checks (the controls fail for the mutation, not the harness)
 cat "$W" "$B" > "$WORK/unmutated.full.sql"
 newdb "${PFX}_m0" "${PFX}_upbase"; backfill_rows; apply "$WORK/unmutated.full.sql"
