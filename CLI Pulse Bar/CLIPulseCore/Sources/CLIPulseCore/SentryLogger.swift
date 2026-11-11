@@ -77,11 +77,10 @@ public enum SentryLogger {
             options.releaseName = "cli-pulse@\(version)+\(build)"
             options.environment = Self.environment()
             options.tracesSampleRate = 0.0
-            options.sendDefaultPii = false
             options.attachStacktrace = true
             options.enableAutoSessionTracking = true
-            options.enableCaptureFailedRequests = false
             options.maxBreadcrumbs = 50
+            applyPrivacyOptions(options)
             // macOS menu-bar app: when App-Napped in the background the main
             // run loop is throttled, which the default 2s app-hang watchdog
             // misreports as a hang with a benign idle stack (Sentry
@@ -109,6 +108,18 @@ public enum SentryLogger {
             scope.setTag(value: platform.rawValue, key: "platform_family")
         }
         runAfterStart()
+    }
+
+    /// The options that decide what leaves the device beyond crash reports,
+    /// set in one place so a test can read them back.
+    ///
+    /// 1.63: `enableMetrics` is on by default in sentry-cocoa 9.12
+    /// (`Options.enableMetrics`, read by `SentryMetricsIntegration`). The app
+    /// records no metrics, and PRIVACY.md describes none, so it is off.
+    static func applyPrivacyOptions(_ options: Options) {
+        options.sendDefaultPii = false
+        options.enableCaptureFailedRequests = false
+        options.enableMetrics = false
     }
 
     // MARK: - Reports made before the SDK has started (1.62)
@@ -207,6 +218,20 @@ public enum SentryLogger {
             user.email = nil
             user.ipAddress = nil
             user.username = nil
+        }
+
+        // 1.63: sentry-cocoa writes `device_app_hash` into every crash
+        // report's app context (`SentryDefaultCrashReporter`, 9.12.1): a
+        // SHA-1 of the identifier for vendor on iPhone and Apple Watch, of the
+        // network interface's MAC address on the Mac. It is the same for every
+        // report from one device, across reinstalls on the Mac, and nothing in
+        // a crash needs it. No option turns it off; only this can remove it.
+        // The rest of the app context (name, version, build) stays.
+        if var context = event.context, var app = context["app"],
+           app["device_app_hash"] != nil {
+            app.removeValue(forKey: "device_app_hash")
+            context["app"] = app
+            event.context = context
         }
 
         // The breadcrumbs went through `beforeBreadcrumb` when they were
@@ -326,11 +351,24 @@ public enum SentryLogger {
     /// (`id=eq.<user id>`), and nothing in a crash report needs it.
     static let droppedAddressKeys = ["http.query", "http.fragment"]
 
+    /// 1.63: the breadcrumb categories whose `title` is a screen's or a
+    /// button's title, as sentry-cocoa's breadcrumb tracker (9.12.1) records
+    /// them on iPhone: a screen opening (`ui.lifecycle`, the view controller's
+    /// navigation title) and a control's action (`touch`, the button's title).
+    /// On iPhone those titles name things: the Machine screen's title is the
+    /// Mac's name, a session's screen shows the session's title, the remote
+    /// screens show a paired Mac's name and a session's client. A crash needs
+    /// the screen (`screen`, the class name), not what it was showing.
+    static let titledCategories: Set<String> = ["ui.lifecycle", "touch"]
+
     static func scrub(breadcrumb: Breadcrumb) -> Breadcrumb? {
         if let message = breadcrumb.message {
             breadcrumb.message = redact(message)
         }
         if var data = breadcrumb.data {
+            if titledCategories.contains(breadcrumb.category) {
+                data.removeValue(forKey: "title")
+            }
             for key in droppedAddressKeys {
                 data.removeValue(forKey: key)
             }
