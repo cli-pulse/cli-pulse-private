@@ -6,6 +6,7 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.clipulse.android.R
+import com.clipulse.android.data.remote.ApiError
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
 import com.clipulse.android.di.ApplicationScope
@@ -39,17 +40,20 @@ class PushService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         Log.d(TAG, "FCM token refreshed")
         val deviceId = tokenStore.deviceId
-        if (deviceId != null && tokenStore.accessToken != null) {
+        val signedIn = tokenStore.accessToken != null
+        if (deviceId != null && signedIn) {
             applicationScope.launch {
                 try {
                     supabase.updatePushToken(deviceId, token)
-                    Log.d(TAG, "Push token registered for device $deviceId")
+                    Log.d(TAG, "Push token registered")
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to register push token: ${e.message}")
+                    // Class name and HTTP status only: an ApiError.Http message carries the server body.
+                    val status = (e as? ApiError.Http)?.code
+                    Log.w(TAG, "Failed to register push token: ${e.javaClass.simpleName} status=$status")
                 }
             }
         } else {
-            Log.d(TAG, "Skipping push token upload: deviceId=$deviceId, authenticated=${tokenStore.accessToken != null}")
+            Log.d(TAG, "Skipping push token upload: signedIn=$signedIn")
         }
     }
 

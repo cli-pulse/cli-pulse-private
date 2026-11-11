@@ -5,10 +5,14 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Backup: allowBackup=false disables backup on API 26-30; dataExtractionRules (API 31+)
+         excludes every domain from cloud backup AND device transfer. No fullBackupContent:
+         a legacy file that only restates "exclude everything" would add nothing. -->
     <application
         android:name=".CLIPulseApp"
         android:allowBackup="false"
         tools:replace="android:allowBackup"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
