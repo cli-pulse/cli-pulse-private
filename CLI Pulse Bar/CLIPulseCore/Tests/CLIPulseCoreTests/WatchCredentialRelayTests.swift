@@ -513,8 +513,14 @@ final class WatchCredentialRelayWiringTests: XCTestCase {
         let app = try Self.code("CLIPulseCore/Sources/CLIPulseCore/AppState.swift")
         let installed = try Self.section(app, from: "await api.setTokenRefreshHandler {", to: "await restoreSession()")
         XCTAssertTrue(installed.contains("Self.persistRotatedTokens("))
+        // 1.63 (A1): the write runs under the API client's sign-out fence lock,
+        // and telling the Watch comes after it, outside that lock.
+        XCTAssertTrue(installed.contains("await api.setTokenRotationObserver {"))
+        XCTAssertTrue(installed.contains("Self.announceRotatedAccessToken("))
         let auth2 = try Self.code("CLIPulseCore/Sources/CLIPulseCore/AuthManager.swift")
-        let handler = try Self.section(auth2, from: "static func persistRotatedTokens(", to: "static func persistAuthTokens(")
+        let persist = try Self.section(auth2, from: "static func persistRotatedTokens(", to: "static func announceRotatedAccessToken(")
+        XCTAssertFalse(persist.contains("NotificationCenter"), "nothing but the write runs under the fence lock")
+        let handler = try Self.section(auth2, from: "static func announceRotatedAccessToken(", to: "static func persistAuthTokens(")
         XCTAssertTrue(handler.contains("name: .cliPulseDidRotateAccessToken"))
         XCTAssertFalse(handler.contains("\"refresh_token\""), "the rotation notice carries no refresh token")
     }

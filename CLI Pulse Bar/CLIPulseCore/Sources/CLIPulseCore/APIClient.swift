@@ -124,6 +124,14 @@ public struct SessionRefreshPostponed: Error, Equatable {
 /// that sign-out's revocation is done (`complete`). While any is pending, a
 /// refresh of a session that was left keeps its new pair for it
 /// (`APIClient.parkRotation`).
+///
+/// Lock order: this lock → `SessionTokenStore`'s lock → the Keychain.
+/// `ifNotAdvanced` runs the token handler's persist step
+/// (`APIClient.setTokenRefreshHandler`) under this lock, and that writes
+/// through `SessionTokenStore`, which writes the Keychain under its own
+/// lock. Nothing takes them in the other order: `SessionTokenStore` and the
+/// Keychain never call the fence, and the persist step never calls the
+/// fence API or waits for the main thread.
 final class SignOutFence: @unchecked Sendable {
     private let lock = NSLock()
     private var count: UInt64 = 0
@@ -278,7 +286,10 @@ public actor APIClient {
 
     /// Called after a successful token refresh with (newAccessToken, newRefreshToken).
     /// Set by AppState to persist rotated tokens to Keychain.
+    /// 1.63 (A1): runs under the sign-out fence's lock (`setTokenRefreshHandler`).
     public var onTokenRefreshed: (@Sendable (String, String) -> Void)?
+    /// 1.63 (A1): `setTokenRotationObserver`.
+    private var onTokenRotated: (@Sendable (String) -> Void)?
 
     /// 1.61 (B1): who renews a session this client does not own. Returns a new
     /// access token, or throws (and the session is kept: the renewer decides
@@ -431,8 +442,26 @@ public actor APIClient {
         self.refreshToken = token
     }
 
+    /// The persist step for each new pair of the held session: a refresh's
+    /// rotation, an identity link's new pair.
+    ///
+    /// 1.63 (A1): it runs under the sign-out fence's lock (see
+    /// `SignOutFence`), so that no sign-out can come between the decision to
+    /// keep the pair and its write. It must only write the pair (AppState:
+    /// `persistRotatedTokens`, which goes through `SessionTokenStore`): never
+    /// call the fence API (`fenceCurrentSession`, `signOutFenceValue`,
+    /// `hasPendingSignOut`, `releaseFence`), and never hop to or wait for the
+    /// main thread. Anything else goes in `setTokenRotationObserver`.
     public func setTokenRefreshHandler(_ handler: @escaping @Sendable (String, String) -> Void) {
         self.onTokenRefreshed = handler
+    }
+
+    /// 1.63 (A1): called with the new access token after each pair the
+    /// handler above wrote, outside the fence's lock and still on this actor,
+    /// so rotations are announced in the order they were written (AppState:
+    /// `announceRotatedAccessToken`, which tells the paired Watch).
+    public func setTokenRotationObserver(_ observer: (@Sendable (String) -> Void)?) {
+        self.onTokenRotated = observer
     }
 
     public func getToken() -> String? {
@@ -679,6 +708,17 @@ public actor APIClient {
     /// 1.63 (A1): revocations begun and not finished (`beginRevocation`).
     private var activeRevocations = 0
 
+    /// Tests only: right before each step whose decision a sign-out's fence
+    /// can change (each is atomic with the fence): a refresh's install, its
+    /// refusal's clear, the classification of its failure (the decision is
+    /// made; the waiter checks again), an identity link's install.
+    enum FenceCheckSite: Sendable { case refreshInstall, refreshRefusal, refreshFailureDecided, linkInstall }
+    private var fenceCheckHookForTesting: (@Sendable (FenceCheckSite) -> Void)?
+
+    func setFenceCheckHookForTesting(_ hook: (@Sendable (FenceCheckSite) -> Void)?) {
+        fenceCheckHookForTesting = hook
+    }
+
     /// Tests only: where a flight is.
     enum RefreshStage: Sendable { case willStart, didFinish }
     typealias RefreshStageHook = @Sendable (RefreshStage) async -> Void
@@ -723,7 +763,18 @@ public actor APIClient {
             identity = flightIdentity
             task = flightTask
         }
-        let pair = try await task.value
+        let pair: (accessToken: String, refreshToken: String)
+        do {
+            pair = try await task.value
+        } catch {
+            // 1.63 (A1): a failure, too, is for a caller of the session still
+            // held and not signed out of. For one left meanwhile it is a
+            // cancellation: no expiry to act on, no error to show.
+            if identity.renewer == nil, sessionEpoch != identity.epoch || isSessionFenced {
+                throw CancellationError()
+            }
+            throw error
+        }
         // 1.63 (A1): the session may have changed between the flight's end
         // and this caller resuming: its pair goes to a caller of that same
         // session only. (A renewal's answer is returned as before, 1.61.)
@@ -812,6 +863,7 @@ public actor APIClient {
             answer = try await session.data(for: request)
         } catch {
             guard isCurrent(flight) else { throw CancellationError() }
+            fenceCheckHookForTesting?(.refreshFailureDecided)
             throw error
         }
         let (data, response) = answer
@@ -831,6 +883,7 @@ public actor APIClient {
             throw CancellationError()
         }
         guard let http = response as? HTTPURLResponse else {
+            fenceCheckHookForTesting?(.refreshFailureDecided)
             throw APIError.invalidResponse
         }
         guard (200...299).contains(http.statusCode) else {
@@ -840,18 +893,26 @@ public actor APIClient {
             // signed the user out exactly as a dead refresh token does. Those
             // are "no answer": keep the session and report the status.
             guard Self.isDefinitiveRefreshRejection(status: http.statusCode, body: body) else {
+                fenceCheckHookForTesting?(.refreshFailureDecided)
                 throw Self.httpFailure(status: http.statusCode, body: body)
             }
-            // Refused, for the session still held (checked above): its
-            // tokens go, and the expiry is recorded for the lease that saw it.
-            let expiredLease = APIAuthorizationLease(
-                generation: authorizationGeneration,
-                userID: userId
-            )
-            authorizationGeneration &+= 1
-            self.accessToken = nil
-            self.refreshToken = nil
-            pendingExpiredAuthorizationLease = expiredLease
+            // Refused, for the session still held: its tokens go, and the
+            // expiry is recorded for the lease that saw it. 1.63 (A1): under
+            // the fence's lock, as the success side installs: a sign-out that
+            // came after the check above makes it a cancellation, with nothing
+            // cleared and no expiry recorded.
+            fenceCheckHookForTesting?(.refreshRefusal)
+            let cleared = signOutFence.ifNotAdvanced(since: sessionFenceMark) {
+                let expiredLease = APIAuthorizationLease(
+                    generation: self.authorizationGeneration,
+                    userID: self.userId
+                )
+                self.authorizationGeneration &+= 1
+                self.accessToken = nil
+                self.refreshToken = nil
+                self.pendingExpiredAuthorizationLease = expiredLease
+            }
+            guard cleared else { throw CancellationError() }
             throw APIError.tokenExpired
         }
 
@@ -864,7 +925,9 @@ public actor APIClient {
         // after the write, and reads the pair it wrote, or before it, and the
         // pair is parked for its revocation instead. Nothing is written back
         // after a sign-out has read and deleted the stored session (the Watch
-        // fences before it reads and deletes).
+        // fences before it reads and deletes). Only the install and the write
+        // run under that lock; the Watch is told after (`onTokenRotated`).
+        fenceCheckHookForTesting?(.refreshInstall)
         let installed = signOutFence.ifNotAdvanced(since: sessionFenceMark) {
             self.accessToken = newAccess
             self.refreshToken = newRefresh
@@ -879,6 +942,7 @@ public actor APIClient {
             )
             throw CancellationError()
         }
+        onTokenRotated?(newAccess)
 
         if let hook = refreshStageHookForTesting { await hook(.didFinish) }
         return (newAccess, newRefresh)
@@ -3159,12 +3223,19 @@ public actor APIClient {
             throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
         let auth = try decode(SupabaseAuthResponse.self, from: data)
-        guard sessionEpoch == epoch, !isSessionFenced else { throw CancellationError() }
-        self.accessToken = auth.access_token
-        if let refresh = auth.refresh_token {
-            self.refreshToken = refresh
+        guard sessionEpoch == epoch else { throw CancellationError() }
+        // 1.63 (A1): installed and written under the sign-out fence's lock, as
+        // a refresh's rotation is: never written back after a sign-out.
+        fenceCheckHookForTesting?(.linkInstall)
+        let installed = signOutFence.ifNotAdvanced(since: sessionFenceMark) {
+            self.accessToken = auth.access_token
+            if let refresh = auth.refresh_token {
+                self.refreshToken = refresh
+            }
+            self.onTokenRefreshed?(auth.access_token, auth.refresh_token ?? self.refreshToken ?? "")
         }
-        onTokenRefreshed?(auth.access_token, auth.refresh_token ?? refreshToken ?? "")
+        guard installed else { throw CancellationError() }
+        onTokenRotated?(auth.access_token)
     }
 
     /// Link an Apple identity to the current user using an Apple identity token.
@@ -3201,11 +3272,17 @@ public actor APIClient {
         // 1.61: as in `exchangeOAuthCodeForLink`.
         guard sessionEpoch == epoch, !isSessionFenced else { throw CancellationError() }
         if let auth = try? decode(SupabaseAuthResponse.self, from: data) {
-            self.accessToken = auth.access_token
-            if let refresh = auth.refresh_token {
-                self.refreshToken = refresh
+            // 1.63 (A1): as in `exchangeOAuthCodeForLink`.
+            fenceCheckHookForTesting?(.linkInstall)
+            let installed = signOutFence.ifNotAdvanced(since: sessionFenceMark) {
+                self.accessToken = auth.access_token
+                if let refresh = auth.refresh_token {
+                    self.refreshToken = refresh
+                }
+                self.onTokenRefreshed?(auth.access_token, auth.refresh_token ?? self.refreshToken ?? "")
             }
-            onTokenRefreshed?(auth.access_token, auth.refresh_token ?? refreshToken ?? "")
+            guard installed else { throw CancellationError() }
+            onTokenRotated?(auth.access_token)
         }
     }
 
@@ -4366,6 +4443,8 @@ public actor APIClient {
             // signed out of or replaced is not retried with the next one's.
             if sessionEpoch != sentEpoch || isSessionFenced { throw CancellationError() }
             if accessToken == sentToken { _ = try await refreshAccessToken() }
+            // And after that wait, right before the retry is built.
+            if sessionEpoch != sentEpoch || isSessionFenced { throw CancellationError() }
             return try await restGet(path, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -4397,6 +4476,8 @@ public actor APIClient {
             // signed out of or replaced is not retried with the next one's.
             if sessionEpoch != sentEpoch || isSessionFenced { throw CancellationError() }
             if accessToken == sentToken { _ = try await refreshAccessToken() }
+            // And after that wait, right before the retry is built.
+            if sessionEpoch != sentEpoch || isSessionFenced { throw CancellationError() }
             return try await restPatch(path, body: body, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -4451,6 +4532,8 @@ public actor APIClient {
             // signed out of or replaced is not retried with the next one's.
             if sessionEpoch != sentEpoch || isSessionFenced { throw CancellationError() }
             if accessToken == sentToken { _ = try await refreshAccessToken() }
+            // And after that wait, right before the retry is built.
+            if sessionEpoch != sentEpoch || isSessionFenced { throw CancellationError() }
             return try await restPost(path, body: body, extraHeaders: extraHeaders, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -4486,6 +4569,8 @@ public actor APIClient {
             // signed out of or replaced is not retried with the next one's.
             if sessionEpoch != sentEpoch || isSessionFenced { throw CancellationError() }
             if accessToken == sentToken { _ = try await refreshAccessToken() }
+            // And after that wait, right before the retry is built.
+            if sessionEpoch != sentEpoch || isSessionFenced { throw CancellationError() }
             return try await rpcRaw(function, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -4555,6 +4640,8 @@ public actor APIClient {
             // signed out of or replaced is not retried with the next one's.
             if sessionEpoch != sentEpoch || isSessionFenced { throw CancellationError() }
             if accessToken == sentToken { _ = try await refreshAccessToken() }
+            // And after that wait, right before the retry is built.
+            if sessionEpoch != sentEpoch || isSessionFenced { throw CancellationError() }
             try ensureAuthorizationLeaseIsCurrent(
                 requiredAuthorizationLease
             )

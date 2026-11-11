@@ -2610,6 +2610,14 @@ internal final class DataRefreshManager {
 }
 
 extension AppState {
+    /// 1.63 (A1): what a failed request shows, or nil to show nothing. A
+    /// `CancellationError` means a sign-out or a new sign-in overtook the
+    /// request: the session it was for is gone, and its text
+    /// ("Swift.CancellationError error 1.") is never for the screen.
+    nonisolated static func shownError(for error: Error, _ message: @autoclosure () -> String) -> String? {
+        error is CancellationError ? nil : message()
+    }
+
     public func refreshAll() async {
         guard runtimeEnvironment.capabilities.allowsLiveCollection else {
             return
@@ -2748,7 +2756,7 @@ extension AppState {
             _ = try await api.acknowledgeAlert(id: alert.id)
             await refreshAll()
         } catch {
-            lastError = error.localizedDescription
+            if let shown = Self.shownError(for: error, error.localizedDescription) { lastError = shown }
         }
     }
 
@@ -2785,7 +2793,7 @@ extension AppState {
                 await refreshAll()
             }
         } catch {
-            lastError = error.localizedDescription
+            if let shown = Self.shownError(for: error, error.localizedDescription) { lastError = shown }
         }
     }
 
@@ -2830,7 +2838,7 @@ extension AppState {
             _ = try await api.snoozeAlert(id: alert.id, minutes: minutes)
             await refreshAll()
         } catch {
-            lastError = error.localizedDescription
+            if let shown = Self.shownError(for: error, error.localizedDescription) { lastError = shown }
         }
     }
 
@@ -3389,11 +3397,10 @@ extension AppState {
         return Task {
             do {
                 try await api.updateSettings(patch)
-            } catch is CancellationError {
-                // 1.63 (A1): the session it was for was signed out of or
-                // replaced while its token refresh was out. Nothing to show.
             } catch {
-                lastError = L10n.integrations.saveSettingsFailed(error.localizedDescription)
+                if let shown = Self.shownError(for: error, L10n.integrations.saveSettingsFailed(error.localizedDescription)) {
+                    lastError = shown
+                }
             }
         }
     }
@@ -3441,10 +3448,10 @@ extension AppState {
                     // goes to the API's account: it refuses rather than write
                     // this filter into that account's row.
                     try await self.api.updateWebhookEventFilter(self.webhookEventFilter, forUser: account)
-                } catch is CancellationError {
-                    // 1.63 (A1): as in `pushSettingsToServer`.
                 } catch {
-                    self.lastError = L10n.integrations.saveSettingsFailed(error.localizedDescription)
+                    if let shown = Self.shownError(for: error, L10n.integrations.saveSettingsFailed(error.localizedDescription)) {
+                        self.lastError = shown
+                    }
                 }
             }
             self.webhookEventFilterSavesInFlight -= 1
@@ -3510,7 +3517,9 @@ extension AppState {
             )
             try await api.sendWebhook(alert: testAlert)
         } catch {
-            lastError = L10n.integrations.testWebhookFailed(error.localizedDescription)
+            if let shown = Self.shownError(for: error, L10n.integrations.testWebhookFailed(error.localizedDescription)) {
+                lastError = shown
+            }
         }
     }
 
@@ -3712,7 +3721,9 @@ extension AppState {
                     track_git_activity: gitTrackingEnabled
                 ))
             } catch {
-                lastError = L10n.advanced.trackGitSaveFailed(error.localizedDescription)
+                if let shown = Self.shownError(for: error, L10n.advanced.trackGitSaveFailed(error.localizedDescription)) {
+                    lastError = shown
+                }
             }
         }
     }
@@ -3786,7 +3797,9 @@ extension AppState {
                 registeredPushToken = token
                 pendingPushTokenRegistration = nil
             } catch {
-                lastError = L10n.settings.pushRegistrationFailed(error.localizedDescription)
+                if let shown = Self.shownError(for: error, L10n.settings.pushRegistrationFailed(error.localizedDescription)) {
+                    lastError = shown
+                }
             }
         }
     }
@@ -3918,8 +3931,10 @@ extension AppState {
                 // was disabling and the disable failed, the existing pending
                 // list is still the truth from the server's perspective.
                 remoteControlEnabled = previousValue
-                lastError = L10n.advanced.remoteControlSaveFailed(error.localizedDescription)
-                remoteApprovalsError = lastError
+                if let shown = Self.shownError(for: error, L10n.advanced.remoteControlSaveFailed(error.localizedDescription)) {
+                    lastError = shown
+                    remoteApprovalsError = shown
+                }
             }
             // Always clear saving so a follow-up toggle (or a deferred
             // settings refresh) can proceed.

@@ -124,7 +124,8 @@ final class ProviderAccountAPITests: XCTestCase {
             transitionGeneration: 2
         )
 
-        // The Watch's call: no fence, the pair it read for session A.
+        // A call without a fence (as account deletion makes): the client holds
+        // B, which does not carry A's token, so only A's pair is revoked.
         await api.signOutServer(
             fence: nil,
             snapshot: RevocationSnapshot(accessToken: "token-a", refreshToken: "refresh-a")

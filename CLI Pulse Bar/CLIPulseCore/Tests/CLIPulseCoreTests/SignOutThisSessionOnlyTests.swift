@@ -1138,7 +1138,167 @@ final class SignOutThisSessionOnlyTests: XCTestCase {
         state.stopRefreshLoop()
     }
 
+    // MARK: - Round 4: each fence-guarded step is atomic with the fence
+
+    /// The server refuses the refresh; a sign-out comes after the check that
+    /// the session is still held and before its tokens would be cleared.
+    /// Nothing is cleared and no expiry is recorded: the refusal and the
+    /// clear are one step under the fence's lock.
+    func test_a_sign_out_between_a_refusal_and_its_clear_clears_nothing() async throws {
+        SessionRestoreStub.respond { request in
+            request.url?.path == Self.tokenPath
+                ? .status(400, #"{"code":400,"error_code":"refresh_token_not_found","msg":"Invalid Refresh Token"}"#)
+                : .status(500)
+        }
+        let (api, _) = await Self.makeClient(access: "access-a", refresh: "refresh-a")
+        await api.setFenceCheckHookForTesting { site in
+            if site == .refreshRefusal { _ = api.fenceCurrentSession() }
+        }
+
+        do {
+            _ = try await api.refreshAccessToken()
+            XCTFail("a refused refresh hands nothing back")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        let access = await api.getToken()
+        let refresh = await api.getRefreshToken()
+        XCTAssertEqual(access, "access-a",
+                       "nothing is cleared for a session a sign-out fenced between the check and the clear")
+        XCTAssertEqual(refresh, "refresh-a")
+    }
+
+    /// A refresh fails for the session still held (no answer), and a sign-out
+    /// comes before its caller resumes. The caller gets a cancellation, not
+    /// the error, which would be shown.
+    func test_a_failure_whose_session_was_signed_out_of_before_its_caller_resumed_is_a_cancellation() async throws {
+        SessionRestoreStub.respond { request in
+            request.url?.path == Self.tokenPath ? .fail(URLError(.networkConnectionLost)) : .status(500)
+        }
+        let (api, _) = await Self.makeClient(access: "access-a", refresh: "refresh-a")
+        await api.setFenceCheckHookForTesting { site in
+            if site == .refreshFailureDecided { _ = api.fenceCurrentSession() }
+        }
+
+        do {
+            _ = try await api.refreshAccessToken()
+            XCTFail("a failed refresh hands nothing back")
+        } catch {
+            XCTAssertTrue(error is CancellationError,
+                          "a failure for a session signed out of before its caller resumed is a cancellation: \(error)")
+        }
+    }
+
+    /// A sign-out comes between a refresh's check and its write. The pair is
+    /// not installed or written; it is parked for the revocation.
+    func test_a_sign_out_between_a_refreshs_check_and_its_write_writes_nothing() async throws {
+        SessionRestoreStub.respond { request in
+            request.url?.path == Self.tokenPath ? .status(200, Self.rotated("access-new", "refresh-new")) : .status(500)
+        }
+        let (api, rotations) = await Self.makeClient(access: "access-a", refresh: "refresh-a")
+        await api.setFenceCheckHookForTesting { site in
+            if site == .refreshInstall { _ = api.fenceCurrentSession() }
+        }
+
+        do {
+            _ = try await api.refreshAccessToken()
+            XCTFail("the caller gets no pair of a session signed out of")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        XCTAssertEqual(rotations.count, 0, "a sign-out between a refresh's check and its write: nothing is written")
+        let access = await api.getToken()
+        XCTAssertEqual(access, "access-a", "nothing installed")
+        let parked = await api.parkedRotationCountForTesting
+        XCTAssertEqual(parked, 1, "the pair is kept for the revocation")
+    }
+
+    /// An identity link's new pair arrives; a sign-out comes between its check
+    /// and its write. Nothing is installed or written.
+    func test_an_identity_link_answered_across_a_sign_out_writes_nothing() async throws {
+        SessionRestoreStub.respond { request in
+            request.url?.path == Self.tokenPath ? .status(200, Self.rotated("access-linked", "refresh-linked")) : .status(500)
+        }
+        let (api, rotations) = await Self.makeClient(access: "access-a", refresh: "refresh-a")
+        await api.setFenceCheckHookForTesting { site in
+            if site == .linkInstall { _ = api.fenceCurrentSession() }
+        }
+
+        do {
+            try await api.exchangeOAuthCodeForLink(code: "code", codeVerifier: "verifier")
+            XCTFail("a link answered across a sign-out is dropped")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        XCTAssertEqual(rotations.count, 0, "an identity link's pair is never written after a sign-out")
+        let access = await api.getToken()
+        XCTAssertEqual(access, "access-a")
+    }
+
+    /// A read for a session the iPhone renews gets a 401. While the iPhone is
+    /// asked, another session is installed. The renewal's answer still goes
+    /// to its caller (1.61), but the read is checked again after that wait,
+    /// right before its retry: it is not retried with the new session's token.
+    func test_a_read_whose_session_changed_during_its_refresh_is_not_retried() async throws {
+        SessionRestoreStub.respond { request in
+            switch (request.url?.path, Self.bearer(request)) {
+            case ("/rest/v1/sessions", "phone-access"):
+                return .status(401, #"{"code":"PGRST301","message":"JWT expired"}"#)
+            default:
+                return .status(200, "[]")
+            }
+        }
+        let api = APIClient(supabaseURL: Self.base, supabaseAnonKey: "anon", session: SessionRestoreStub.session())
+        _ = await api.beginExternalAuthorizationTransition(generation: 1)
+        _ = await api.installExternalAuthenticatedSession(
+            accessToken: "phone-access", refreshToken: nil, userID: Self.userA, transitionGeneration: 1,
+            renewer: {
+                // Another session is installed while the iPhone is asked.
+                _ = await api.beginExternalAuthorizationTransition(generation: 2)
+                _ = await api.installExternalAuthenticatedSession(
+                    accessToken: "other-access", refreshToken: "other-refresh", userID: Self.userA,
+                    transitionGeneration: 2)
+                return "phone-access-2"
+            }
+        )
+
+        do {
+            _ = try await api.sessions()
+            XCTFail("a read for the session that changed is not answered")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        XCTAssertFalse(SessionRestoreStub.requests().contains { Self.bearer($0) == "other-access" },
+                       "a read is never retried with the token of a session installed during its refresh")
+    }
+
+    /// Each rotation is written (under the fence's lock) and then announced
+    /// to the Watch (outside it), in that order.
+    func test_a_rotation_is_written_and_then_announced() async throws {
+        SessionRestoreStub.respond { request in
+            request.url?.path == Self.tokenPath ? .status(200, Self.rotated("access-new", "refresh-new")) : .status(500)
+        }
+        let api = APIClient(supabaseURL: Self.base, supabaseAnonKey: "anon", session: SessionRestoreStub.session())
+        await api.updateToken("access-a")
+        await api.updateRefreshToken("refresh-a")
+        let log = EventLog()
+        await api.setTokenRefreshHandler { access, _ in log.add("write \(access)") }
+        await api.setTokenRotationObserver { access in log.add("announce \(access)") }
+
+        _ = try await api.refreshAccessToken()
+
+        XCTAssertEqual(log.entries, ["write access-new", "announce access-new"])
+    }
+
     // MARK: - Helpers
+
+    final class EventLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private var events: [String] = []
+        func add(_ event: String) { lock.lock(); events.append(event); lock.unlock() }
+        var entries: [String] { lock.lock(); defer { lock.unlock() }; return events }
+    }
+
 
     /// An app signed in to account A over `api`, launch setup off.
     private static func signedInState(api: APIClient) -> AppState {

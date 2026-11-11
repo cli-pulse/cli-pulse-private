@@ -1105,12 +1105,22 @@ extension AppState {
     }
 
     /// What the API client does with each rotation of the signed-in session
-    /// (`setTokenRefreshHandler`): keeps it, and tells the paired Watch.
+    /// (`setTokenRefreshHandler`): keeps it.
+    ///
+    /// 1.63 (A1): runs under the API client's sign-out fence lock. Only the
+    /// write: through `SessionTokenStore` to the Keychain (lock order: fence
+    /// → `SessionTokenStore` → Keychain). Never the fence API, never the main
+    /// thread; telling the Watch is `announceRotatedAccessToken`, after.
     nonisolated static func persistRotatedTokens(access: String, refresh: String) {
         persistAuthTokens(access: access, refresh: refresh)
-        // 1.61 (B1): the iPhone sends the paired Watch each access token its
-        // refreshes produce; the Watch never refreshes a session it got from
-        // the iPhone itself.
+    }
+
+    /// 1.63 (A1): what the API client does after each rotation is written
+    /// (`setTokenRotationObserver`), outside the fence lock: tells the paired
+    /// Watch. 1.61 (B1): the iPhone sends the paired Watch each access token
+    /// its refreshes produce; the Watch never refreshes a session it got from
+    /// the iPhone itself.
+    nonisolated static func announceRotatedAccessToken(_ access: String) {
         NotificationCenter.default.post(
             name: .cliPulseDidRotateAccessToken,
             object: nil,

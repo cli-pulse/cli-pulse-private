@@ -309,6 +309,35 @@ final class WatchSignOutTests: XCTestCase {
         SessionRestoreStub.assertEveryLogoutIsLocal()
     }
 
+    /// The stored session is the Watch's own, but the client holds a session
+    /// the iPhone relayed (a relay that landed late). The sign-out revokes the
+    /// stored own session; it never takes or revokes the relayed one, which
+    /// is the iPhone's (`beginRevocation` skips a held session renewed
+    /// elsewhere).
+    func test_a_Watch_own_sign_out_never_revokes_the_relayed_session_the_client_holds() async throws {
+        SessionRestoreStub.respond { request in
+            request.url?.path == Self.logoutPath ? .status(204, "") : .status(500)
+        }
+        let store = Store([
+            WatchSignOut.accessTokenKey: "own-access",
+            WatchSignOut.refreshTokenKey: "own-refresh",
+            WatchSessionRecord.keychainKey: WatchSessionRecord(source: .watch, userID: Self.userID).encoded,
+        ])
+        let (api, auth) = await Self.watchClient(access: "phone-access", refresh: nil, relayed: true)
+
+        let revocation = WatchSignOut.captureAndClear(store.credentials, lastPhoneUserID: nil, currentSource: .watch,
+                                                      fence: { api.fenceCurrentSession() })
+        XCTAssertEqual(revocation, .own(RevocationSnapshot(accessToken: "own-access", refreshToken: "own-refresh"),
+                                        fence: 1))
+        await WatchSignOut.finish(revocation, transitionGeneration: 2, api: api, authManager: auth)
+
+        XCTAssertEqual(SessionRestoreStub.authorizations(Self.logoutPath), ["own-access"],
+                       "the stored own session is revoked, never the relayed one the client holds")
+        XCTAssertFalse(SessionRestoreStub.requests().contains {
+            $0.value(forHTTPHeaderField: "Authorization") == "Bearer phone-access"
+        })
+    }
+
     // MARK: - Helpers
 
     /// The Watch's Keychain items, recording each read and delete in order.
