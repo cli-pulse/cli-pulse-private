@@ -67,7 +67,8 @@
 #      and booleans only) before and after, Q1 (counts only), Q2, Q2b, Q3
 #      (by name and by command), R0, the pause P2 and the restore R9 against
 #      the cron stand-in, the quiesce checks Q4/Q4b (a stale 'running' row
-#      older than 10 minutes does not count), the recount Q5 and Q5r, Q6; the
+#      older than 10 minutes does not count), the recount Q5 and Q5r, Q6,
+#      Q8r; the
 #      header's expected acl_md5, job_md5 and comment_md5 are the real ones;
 #      a catalog fingerprint of the app-push objects moves only in the
 #      worker's body md5 and the comment on processed_at; the contract
@@ -75,14 +76,17 @@
 #      (same md5 and ACL, nothing backfilled).
 #   3. behaviour: 502; transport failures (timed out, error); no answer (a
 #      row with nothing completed is no answer; the live third request is
-#      not finalized, then it is); raises; 2xx on the first and on the third
-#      request; malformed rows; one call at a time; the trigger's gates and
+#      not finalized, then it is); a failed answer or a transport failure
+#      that reaches attempt 3 after an abandoned first request; raises; 2xx
+#      on the first and on the third request; malformed rows; one call at a
+#      time; the trigger's gates and
 #      the request_id dedup slot (a second job for a request only after its
 #      first is finalized). Each path's notification_attempts and
 #      notification_last_error on the approval request.
 #   4. backfill: exactly the stuck rows (no request id, attempt_count >= 3);
 #      rows with a request id are left to the worker; no approval request
-#      row changes (Q5r before and after, and row by row); the NOTICE equals
+#      row changes (Q5r before and Q5r and Q8r after, and row by row); the
+#      NOTICE equals
 #      the recount Q5 taken after the pause, not Q1's preliminary count (a
 #      job stuck in between is counted); above 5000 it refuses, and the
 #      header's BF batch then lets it apply, the job still paused; the
@@ -91,7 +95,9 @@
 #   5. re-runs: accepted on v0.32 raw, on v0.90 raw and on v0.90 without its
 #      comment-only lines (a client that strips them), in every order.
 #   6. guards: each refuses and changes nothing (worker, ACL, jobs, approval
-#      requests, comment, cron jobs), the baseline-only database included; a
+#      requests, comment, cron jobs), the baseline-only database included,
+#      and EXECUTE that reaches anon only through a role it inherits (no
+#      direct grant: the effective has_function_privilege check); a
 #      monitoring query and a session in another database do not block; an
 #      applier that is a member of the owner role applies; a session holding
 #      the worker's catalog row makes it give up at lock_timeout.
@@ -103,8 +109,11 @@
 #      lock during a re-run; a worker call that starts during a first apply
 #      (against the header's precondition) waits on the queue lock, then runs
 #      the old body after the commit and can leave a stuck row: step 7's
-#      post-commit drain (Q4, Q6) waits for it, step 8's Q5 shows the row and
-#      BF clears it; during a re-run a v0.90 worker call returns at once and
+#      post-commit drain (Q4, Q6) waits for it, step 8's Q5 shows the row,
+#      Q5r then differs from R by that row's request while Q8r (the
+#      backfilled cohort) still equals R, BF clears the row, and Q8r after it
+#      is the new baseline R', equal to Q5r; during a re-run a v0.90 worker
+#      call returns at once and
 #      touches nothing.
 #   6c. recovery (APPLY step 6): an error injected after the replace and the
 #      backfill rolls everything back (old body, no comment, stuck rows still
@@ -131,7 +140,8 @@
 #      (bypassing the guards), must each fail the assertion named for them;
 #      and copies of the migration without each exclusive-access guard (A5b
 #      idle check, A5c advisory lock, A5d LOCK TABLE, A5e pg_locks check),
-#      or with the idle check unscoped again, must each fail theirs.
+#      or with the idle check unscoped again, or without the effective
+#      EXECUTE check (A3), must each fail theirs.
 #
 # Usage (creates and drops its own b1b_<pid>_* databases and roles there):
 #   DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres \
@@ -178,6 +188,7 @@ CREATED=()
 BGPIDS=()
 STRANGER="${PFX}_stranger"
 MEMBER="${PFX}_member"
+CARRIER="${PFX}_carrier"   # holds EXECUTE on the worker; anon inherits it in one guard case
 cleanup() { # best-effort: every step runs, failures only warn, the exit status is the script's own
     set +e
     local p d r
@@ -188,7 +199,8 @@ cleanup() { # best-effort: every step runs, failures only warn, the exit status 
         PGOPTIONS='-c client_min_messages=warning' psql "$DATABASE_URL" -qtAX -c "drop database if exists $d with (force)" >/dev/null 2>&1 \
             || echo "warning: could not drop database $d (drop it by hand)" >&2
     done
-    for r in "$STRANGER" "$MEMBER"; do
+    PGOPTIONS='-c client_min_messages=warning' psql "$DATABASE_URL" -qtAX -c "do \$\$ begin if to_regrole('$CARRIER') is not null then execute 'revoke $CARRIER from anon'; end if; end \$\$" >/dev/null 2>&1
+    for r in "$STRANGER" "$MEMBER" "$CARRIER"; do
         PGOPTIONS='-c client_min_messages=warning' psql "$DATABASE_URL" -qtAX -c "drop role if exists $r" >/dev/null 2>&1 \
             || echo "warning: could not drop role $r (drop it by hand)" >&2
     done
@@ -572,6 +584,11 @@ case_502() {
     same "$P 502: a further call changes nothing and sends nothing" "$(st "$j") $(pat "$j") / $(rq a502)" "4 noreq final calls=2 $t / 4 edge HTTP 502"
     second_job a502
     same "$P 502: once finalized, a second job for that request can be enqueued (its dedup slot is free)" "$(req_jobs a502)" "1 pending of 2"
+    reset_queue; j="$(push a5023)"; respond 1 empty; age "$j" '6 minutes'; invoke
+    same "$P 502 at attempt 3: (setup) request 1 abandoned after 5 minutes, request 2 sent" "$(st "$j")" "2 req2 pending calls=2"
+    respond 2 502; invoke
+    same "$P 502 at attempt 3: a failed answer that reaches attempt 3 finalizes the job (after an abandoned first request)" \
+         "$(st "$j") / $(lasterr "$j") / $(rq a5023)" "3 noreq final calls=2 / edge HTTP 502 / 3 edge HTTP 502"
 }
 case_transport() { # case_transport <timeout|error> <expected detail>
     local j
@@ -583,6 +600,11 @@ case_transport() { # case_transport <timeout|error> <expected detail>
     same "$P transport ($1): the second failure finalizes the job" "$(st "$j")" "4 noreq final calls=2"
     same "$P transport ($1): its last_error names the transport failure" "$(lasterr "$j")" "edge transport: $2"
     same "$P transport ($1): the request row as after a failed answer" "$(rq "at-$1")" "4 edge transport: $2"
+    reset_queue; j="$(push "at3-$1")"; respond 1 empty; age "$j" '6 minutes'; invoke
+    same "$P transport ($1) at attempt 3: (setup) request 1 abandoned after 5 minutes, request 2 sent" "$(st "$j")" "2 req2 pending calls=2"
+    respond 2 "$1"; invoke
+    same "$P transport ($1): a failure that reaches attempt 3 finalizes the job (after an abandoned first request)" \
+         "$(st "$j") / $(lasterr "$j") / $(rq "at3-$1")" "3 noreq final calls=2 / edge transport: $2 / 3 edge transport: $2"
 }
 case_noresp() {
     local j t
@@ -598,7 +620,7 @@ case_noresp() {
          "3 req3 pending calls=3 / pg_net response not yet available"
     age "$j" '5 minutes'; invoke
     same "$P no answer: after the third request has had no answer for 5 minutes, the job is finalized" "$(st "$j")" "3 noreq final calls=3"
-    same "$P no answer: its last_error says it gave up" "$(lasterr "$j")" "gave up: no response from pg_net after 3 attempts"
+    same "$P no answer: its last_error says it gave up" "$(lasterr "$j")" "gave up: no response from pg_net (attempt budget used)"
     same "$P no answer: the request row counts the three requests and no error" "$(rq anr)" "3 <null>"
     t="$(pat "$j")"; invoke
     same "$P no answer: a further call changes nothing" "$(st "$j") $(pat "$j")" "3 noreq final calls=3 $t"
@@ -759,6 +781,7 @@ q0() { q -c "$(hq Q0)"; }
 q3() { q -c "$(hq Q3)"; }
 q5() { q -c "$(hq Q5)"; }
 q5r() { q -c "$(hq Q5r)"; }
+q8r() { q -c "$(hq Q8r)"; }
 worker_md5() { q -c "select md5(prosrc) from pg_proc where oid = 'public.process_app_push_jobs()'::regprocedure"; }
 notice() { grep -E 'NOTICE: +v0\.90: ' <<<"$1" | grep -v 'queue lock was held' | sed -E 's/.*NOTICE: +v0\.90: //' | paste -sd'|' -; }
 lock_ms() { grep -oE 'queue lock was held [0-9]+ ms' <<<"$1" | grep -oE '[0-9]+' | tail -1; }
@@ -888,7 +911,7 @@ if [[ "$SU" == postgres ]]; then   # the header states production's values, whos
     same "$P the header's expected job_md5 is this job's (production's)" "$(hvals job_md5)" "$JOB_MD5"
 fi
 FP_BEFORE="$(fingerprint)"
-for l in Q1 Q1b Q2b Q3b Q9; do q -c "$(hq "$l")" >/dev/null || fail "$P $l does not run as printed"; done
+for l in Q1 Q1b Q2b Q3b Q8r Q9; do q -c "$(hq "$l")" >/dev/null || fail "$P $l does not run as printed"; done
 same "$P Q1 returns counts only (no timestamp column)" \
      "$(psql "$DB" --no-psqlrc -X -A -c "$(hq Q1)" | head -1)" \
      "total|pending|stuck|awaiting|pending_id_without_dispatch|pending_over_1_day|finalized_with_request_id|odd_counts"
@@ -978,12 +1001,13 @@ same "$P its NOTICE backfilled the recount (not Q1's preliminary count)" "$(noti
 backfill_checks
 same "$P Q5 after: stuck = 0" "$(q5)" "0"
 same "$P Q5r after equals step 4's: the backfill changed no approval request" "$(q5r)" "$r_before"
+same "$P Q8r (step 8b: the backfilled cohort only) equals step 4's R as well" "$(q8r)" "$r_before"
 restore_job true
 invoke
 same "$P row b (third request live for 1 minute) stays pending under the new worker" "$(q -c "select attempt_count || ' ' || pg_net_request_id || ' ' || (processed_at is null) from public.app_push_jobs where request_id = md5('bf-b')::uuid")" "3 950 true"
 same "$P row c (third request, no answer for 10 minutes) is given up by the new worker" \
      "$(q -c "select (processed_at is not null) || ' ' || coalesce(pg_net_request_id::text, 'noreq') || ' ' || last_error from public.app_push_jobs where request_id = md5('bf-c')::uuid")" \
-     "true noreq gave up: no response from pg_net after 3 attempts"
+     "true noreq gave up: no response from pg_net (attempt budget used)"
 same "$P row d (attempt 2) gets its third request, counted on its approval request" \
      "$(q -c "select attempt_count || ' req' || pg_net_request_id || ' ' || (processed_at is null) from public.app_push_jobs where request_id = md5('bf-d')::uuid") calls=$(calls) / $(rq bf-d)" \
      "3 req1 true calls=1 / 3 edge HTTP 500"
@@ -1018,6 +1042,7 @@ same "$P and backfills the rest (the recount after the batch)" "$(notice "$LAST_
      "backfilled $n_stuck stuck job(s): finalized with failure, nothing re-sent"
 backfill_checks
 same "$P Q5r after equals the value before BF and the apply" "$(q5r)" "$r_before"
+same "$P Q8r (the backfilled cohort, BF's and the migration's) equals it too" "$(q8r)" "$r_before"
 dropdb_now "${PFX}_bfs"
 
 # =============================================================================
@@ -1044,7 +1069,8 @@ dropdb_now "${PFX}_rr32"
 # =============================================================================
 echo "== 6. guards: each refuses and changes nothing"
 psql "$DATABASE_URL" -qtAX -v ON_ERROR_STOP=1 \
-    -c "create role $STRANGER nologin" -c "create role $MEMBER nologin" -c "grant $SU to $MEMBER" >/dev/null
+    -c "create role $STRANGER nologin" -c "create role $MEMBER nologin" -c "grant $SU to $MEMBER" \
+    -c "create role $CARRIER nologin" >/dev/null
 P="[guard]"
 newdb "${PFX}_fresh"; build_baseline
 refuses "$P a baseline-only database (a fresh install: no app-push queue): refused, nothing changed" 'public\.app_push_jobs does not exist'
@@ -1106,6 +1132,23 @@ guard "a cron job whose user cannot execute the worker" 'cron job 5 runs as anon
       "update cron.job set username = 'anon' where jobid = 5;"
 guard "a cron job whose user does not exist" 'cron job 5 runs as no_such_role_v090, which cannot execute' \
       "update cron.job set username = 'no_such_role_v090' where jobid = 5;"
+# EXECUTE that reaches anon only through a role it inherits: no direct grant
+# to PUBLIC, anon or authenticated, so only the effective check refuses it
+# (PostgreSQL 16+: the membership is granted WITH INHERIT TRUE, since the
+# shim's anon, like Supabase's, is NOINHERIT)
+ex_inherited() {
+    newdb "${PFX}_x$1" "${PFX}_gb"
+    q -c "grant execute on function public.process_app_push_jobs() to $CARRIER" >/dev/null
+    psql "$DATABASE_URL" -qtAX -v ON_ERROR_STOP=1 -c "grant $CARRIER to anon with inherit true" >/dev/null
+    same "$P (setup) no direct grant to PUBLIC, anon or authenticated, yet anon can execute the worker: Q0's anon_auth_denied is false" \
+         "$(q -c "select proacl::text from pg_proc where oid = 'public.process_app_push_jobs()'::regprocedure") / $(q0 | cut -d'|' -f5)" \
+         "{$SU=X/$SU,service_role=X/$SU,$CARRIER=X/$SU} / f"
+    refuses "$P EXECUTE reaching anon through an inherited role (no direct grant): refused, nothing changed" \
+            'anon may execute public\.process_app_push_jobs\(\) through a role it inherits'
+    psql "$DATABASE_URL" -qtAX -c "revoke $CARRIER from anon" >/dev/null
+    dropdb_now "${PFX}_x$1"
+}
+ex_inherited inherited
 # a session running the worker (upper case: tools may upper-case SQL)
 G=$((G + 1)); newdb "${PFX}_g$G" "${PFX}_gb"
 psql "$DB" --no-psqlrc -qtAX -c "SELECT PUBLIC.PROCESS_APP_PUSH_JOBS(), PG_SLEEP(60)" >/dev/null 2>&1 &
@@ -1220,8 +1263,9 @@ ex_advisory() {
     dropdb_now "${PFX}_x$1"
 }
 ex_late_first() {
-    local m w rc=0
+    local m w r r2 rc=0
     newdb "${PFX}_x$1" "${PFX}_gb"
+    r="$(q5r)"   # step 4's R
     held_copy "$MIG" "$WORK/held.$1.sql" "select pg_sleep(1.5);"
     start_bg psql "$DB" -v ON_ERROR_STOP=1 --no-psqlrc -qtAX -f "$WORK/held.$1.sql"; m=$BGPID
     wait_for "$(sleeping 'select pg_sleep(1.5)')"
@@ -1241,8 +1285,15 @@ ex_late_first() {
     fi
     same "$P late starter (first apply): it ran the body it started with (v0.32) and abandoned row c's request without finalizing it: step 8's Q5 = 1" \
          "$(q5) / $(q -c "select attempt_count || ' ' || coalesce(pg_net_request_id::text, 'noreq') || ' ' || (processed_at is null) from public.app_push_jobs where request_id = md5('bf-c')::uuid")" "1 / 3 noreq true"
+    if [[ "$(q5r)" != "$r" && "$(q5r | cut -d'|' -f1)" == "$(( ${r%%|*} + 1 ))" ]]; then
+        pass "$P late starter (first apply): Q5r now also takes the new stuck job's request, so it no longer equals R (step 8c: do not compare it)"
+    else fail "$P late starter (first apply): Q5r was expected to differ from R by one request: got '$(q5r)', R '$r'"; fi
+    same "$P late starter (first apply): step 8b, before any repair: Q8r (the backfilled cohort only) = R: the backfill changed no approval request" "$(q8r)" "$r"
     q -c "$(hq BF)" >/dev/null
-    same "$P late starter (first apply): step 8's remedy, BF, finalizes it (Q5 = 0)" "$(q5)" "0"
+    same "$P late starter (first apply): step 8c's repair, BF, finalizes it (Q5 = 0)" "$(q5)" "0"
+    r2="$(q8r)"
+    same "$P late starter (first apply): step 8c's new baseline R' (Q8r after BF) counts that job's request too" "${r2%%|*}" "$(( ${r%%|*} + 1 ))"
+    same "$P late starter (first apply): with nothing stuck, Q5r and Q8r take the same requests: Q5r = R'" "$(q5r)" "$r2"
     wait "$w" >/dev/null 2>&1 || true
     dropdb_now "${PFX}_x$1"
 }
@@ -1490,6 +1541,9 @@ control "3. non-2xx branch never finalizes" "${PFX}_up" "$MUT.3.sql" "" case_502
 mutate "$W" "$MUT.4.sql" 1 'send the retry\n\s*pg_net_request_id = null,\n\s*dispatched_at\s+= null,\n\s*processed_at\s+= case when attempt_count \+ 1 >= \K3' '2'
 control "4. non-2xx branch finalizes at 2" "${PFX}_up" "$MUT.4.sql" "" case_502 \
         '502: the first 502 is counted and the retry sent in the same call, not finalized'
+mutate "$W" "$MUT.4b.sql" 1 'send the retry\n\s*pg_net_request_id = null,\n\s*dispatched_at\s+= null,\n\s*processed_at\s+= case when attempt_count \+ 1 >= \K3' '4'
+control "4b. non-2xx branch finalizes at 4" "${PFX}_up" "$MUT.4b.sql" "" case_502 \
+        '502 at attempt 3: a failed answer that reaches attempt 3 finalizes the job'
 mutate "$W" "$MUT.5.sql" 1 'dispatched_at\s+= now\(\),\n\s*attempt_count\s+= attempt_count \+ 1,\K' $'\n            processed_at = case when attempt_count + 1 >= 3 then now() else processed_at end,'
 control "5a. finalized right after the third dispatch (502 path)" "${PFX}_up" "$MUT.5.sql" "" case_502 \
         '502: the first 502 is counted and the retry sent in the same call, not finalized'
@@ -1503,6 +1557,12 @@ control "7a. a transport failure read as no answer (timed out)" "${PFX}_up" "$MU
         'transport \(timeout\): the failure counts at once'
 control "7b. a transport failure read as no answer (error)" "${PFX}_up" "$MUT.7.sql" "" "case_transport_error" \
         'transport \(error\): the failure counts at once'
+mutate "$W" "$MUT.7c.sql" 1 "last_error\\s+= 'edge transport: ' \\|\\| left\\(coalesce\\(v_error, 'timed out'\\), 200\\),\\n\\s*pg_net_request_id = null,\\n\\s*dispatched_at\\s+= null\\K,\\n\\s*processed_at\\s+= case when attempt_count \\+ 1 >= 3 then now\\(\\) else processed_at end" ''
+control "7c. the transport branch never finalizes (its processed_at clause removed)" "${PFX}_up" "$MUT.7c.sql" "" "case_transport_timeout" \
+        'transport \(timeout\): the second failure finalizes the job'
+mutate "$W" "$MUT.7d.sql" 1 "last_error\\s+= 'edge transport: ' \\|\\| left\\(coalesce\\(v_error, 'timed out'\\), 200\\),\\n\\s*pg_net_request_id = null,\\n\\s*dispatched_at\\s+= null,\\n\\s*processed_at\\s+= case when attempt_count \\+ 1 >= \\K3" '4'
+control "7d. the transport branch finalizes at 4" "${PFX}_up" "$MUT.7d.sql" "" "case_transport_timeout" \
+        'transport \(timeout\): a failure that reaches attempt 3 finalizes the job'
 mutate "$W" "$MUT.8a.sql" 2 'coalesce\(dispatched_at, enqueued_at\)' 'dispatched_at'
 mutate "$MUT.8a.sql" "$MUT.8.sql" 1 'coalesce\(v_job\.dispatched_at, v_job\.enqueued_at\)' 'v_job.dispatched_at'
 control "8a. age without coalesce(dispatched_at, enqueued_at)" "${PFX}_up" "$MUT.8.sql" "" case_malformed \
@@ -1561,6 +1621,9 @@ printf -v unscoped '%s\n%s\n' "    select count(*) into v_n from pg_stat_activit
 mutate "$V090" "$MUT.g5.sql" 1 "(?s)    -- b\\. an idle open transaction that touched the queue.*?l\\.relation = 'public\\.app_push_jobs'::regclass;\\n" "$unscoped"
 gcontrol "G5. the idle check unscoped again (any idle transaction refuses)" "$MUT.g5.sql" ex_idle_unrelated \
          'an idle transaction that never touched the queue does not stop the apply'
+mutate "$V090" "$MUT.g6.sql" 1 '(?s)    -- and in effect: no grant reaches anon or authenticated.*?    end loop;\n' ''
+gcontrol "G6. the migration without the effective EXECUTE check (A3)" "$MUT.g6.sql" ex_inherited \
+         'EXECUTE reaching anon through an inherited role \(no direct grant\): refused'
 # and the unmutated cut passes the same checks (the controls fail for the mutation, not the harness)
 cat "$W" "$B" > "$WORK/unmutated.full.sql"
 newdb "${PFX}_m0" "${PFX}_upbase"; backfill_rows; apply "$WORK/unmutated.full.sql"

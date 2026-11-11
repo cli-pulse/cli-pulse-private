@@ -21,9 +21,12 @@
 -- way at 3, and so does a retry whose http_post raises at 3.
 -- Such a job is never finalized. It stays pending until the nightly remote
 -- retention (remote_retention_cleanup_nightly, v0.28) deletes its approval
--- request, 30 days after the request was created, and the job with it (ON
--- DELETE CASCADE): until then processed_at gives no answer to "is the worker
--- done with it". Its slot in idx_app_push_jobs_pending_dedup (request_id,
+-- request, and the job with it (ON DELETE CASCADE). That run first marks
+-- still-pending approval requests 'expired' once they are an hour past
+-- their expires_at, then deletes only requests that are not pending and are
+-- older than 30 days; so the job goes about 30 days after its request was
+-- created. Until then processed_at gives no answer to "is the worker done
+-- with it". Its slot in idx_app_push_jobs_pending_dedup (request_id,
 -- while pending) only blocks a second job for the same approval request,
 -- which the trigger never makes (one job per request): no later push is
 -- silenced by it.
@@ -76,7 +79,10 @@
 --       owner, 'USAGE'), i.e. it is the owner or a member of the owner role,
 --       which is what CREATE OR REPLACE needs (production's owner is
 --       postgres; the applier and the owner are logged in a NOTICE); its ACL
---       grants EXECUTE to none of PUBLIC, anon, authenticated.
+--       grants EXECUTE to none of PUBLIC, anon, authenticated, and neither
+--       anon nor authenticated can execute it in effect either
+--       (has_function_privilege: no grant reaches them through a role they
+--       inherit, as APPLY Q0 also checks).
 --    4. net._http_response, where it exists, has the columns the new
 --       worker reads (status_code, timed_out, error_msg; pg_net 0.20 has
 --       them). Where pg_cron's cron.job exists: exactly one job whose command
@@ -162,7 +168,11 @@
 --      200 jobs and dispatches at most 100, so a backlog drains over calls;
 --    * when net.http_post raises inside the trigger, the trigger's own
 --      exception handler rolls back its job row too, so that approval
---      request has no job for this worker to retry.
+--      request has no job for this worker to retry;
+--    * the worker never checks the approval request's status, so a retry
+--      can push for a request that is already decided or expired; and a
+--      transport failure now gets its retry within about 30 s (one worker
+--      call) instead of v0.32's 5 minutes.
 -- C. Says what processed_at means, on the column: FINALIZED, not delivered.
 --    processed_at set and last_error NULL: finalized successfully (a 2xx
 --    answer from send-approval-push, which it also gives when it sent
@@ -238,8 +248,8 @@
 -- ways.
 --   before  v0.32, as production runs it (no comment-only lines)  fab8e1a9cfb25294eb7386baa248c236
 --   before  v0.32, as the file has it                             163c3c4f3983e4b4d582ae8109f8b28c
---   after   v0.90, this file as written                           1cfa9de8b8b1bca6e2865397668c61e5
---   after   v0.90, this file without comment-only lines           dd70ea811e1f7ac3249069d21493cdff
+--   after   v0.90, this file as written                           8507646f49cf55e1d0875fb8af635360
+--   after   v0.90, this file without comment-only lines           3890319e7b32513b9dd6f0f2f6f3a12d
 -- A2 accepts exactly these four; E accepts the two "after" values. The test
 -- suite recomputes all four from the files and fails on drift.
 --
@@ -265,8 +275,8 @@
 --    worker's ACL was not read on 2026-11-12). If acl_md5 differs, record
 --    it and go on only if anon_auth_denied is true: the migration requires
 --    that, and compares the ACL before and after.
---    RE-RUN OR RECOVERY: body_md5 = 1cfa9de8b8b1bca6e2865397668c61e5 or
---    dd70ea811e1f7ac3249069d21493cdff (v0.90 is already in), comment_md5 =
+--    RE-RUN OR RECOVERY: body_md5 = 8507646f49cf55e1d0875fb8af635360 or
+--    3890319e7b32513b9dd6f0f2f6f3a12d (v0.90 is already in), comment_md5 =
 --    71bf2ed678ce3ea230b5bc64690bd6af, the rest as above. The migration
 --    accepts all four bodies in MD5 VALUES; seeing a v0.90 value before a
 --    first apply means it is already applied: verify (step 8) instead.
@@ -335,7 +345,8 @@
 --    count; the job is paused and quiesced, so they no longer move):
 --    Q5: select count(*) as stuck from public.app_push_jobs where processed_at is null and attempt_count >= 3 and pg_net_request_id is null;
 --    and the approval requests of those jobs (and of any BF has already
---    finalized), as a count and a hash of their notification columns:
+--    finalized), as a count and a hash of their notification columns (step
+--    8 compares it with Q8r):
 --    Q5r: select count(*) as requests, md5(coalesce(string_agg(r.id::text || '|' || r.notification_attempts || '|' || coalesce(r.notification_last_error, '~') || '|' || coalesce(r.notified_at::text, '~') || '|' || coalesce(r.notification_queued_at::text, '~'), ',' order by r.id), '')) as notification_md5 from public.remote_permission_requests r where r.id in (select request_id from public.app_push_jobs where (processed_at is null and attempt_count >= 3 and pg_net_request_id is null) or last_error like 'v0.90 backfill: %');
 --    If Q5 is over 5000: run BF (step 0) until Q5 is 5000 or less. The job
 --    stays paused and the value recorded in step 1 stays the one to restore;
@@ -375,17 +386,26 @@
 --    worker call that broke the precondition and waited on the queue lock
 --    runs now, with the old body; this step waits until it has finished,
 --    so that step 8's Q5 sees what it did.
--- 8. Verify, read-only, with the job still paused: Q0: body_md5 one of the
---    two v0.90 values, comment_md5 71bf2ed678ce3ea230b5bc64690bd6af, every
---    other column as in step 0. Q5 = 0; if not, an old-body call ran during
---    the window (against the precondition): run BF until Q5 = 0. Q5r = R:
---    the backfill changed no approval request (its count and hash are
---    step 4's; if BF ran in this step, Q5r also counts the requests of the
---    jobs it finalized, so compare before that BF). Q3: by_command, by_name
---    and same_job 1, job_md5 as in step
---    0, active false. The migration's NOTICE "backfilled N" equals step 4's
---    N, and its NOTICE "the queue lock was held ... ms" is production's hold
---    time.
+-- 8. Verify, read-only, with the job still paused, in this order:
+--    a. Q0: body_md5 one of the two v0.90 values, comment_md5
+--       71bf2ed678ce3ea230b5bc64690bd6af, every other column as in step 0. Q3:
+--       by_command, by_name and same_job 1, job_md5 as in step 0, active
+--       false. The migration's NOTICE "backfilled N" equals step 4's N, and
+--       its NOTICE "the queue lock was held ... ms" is production's hold
+--       time.
+--    b. The backfill changed no approval request: Q8r = R. Q8r takes only
+--       the requests of jobs that carry the backfill prefix. After the
+--       commit those are exactly the jobs step 4's Q5r took (stuck then, or
+--       finalized by BF before the window), and a job that got stuck after
+--       the commit is not among them, so this holds before any repair in c:
+--       Q8r: select count(*) as requests, md5(coalesce(string_agg(r.id::text || '|' || r.notification_attempts || '|' || coalesce(r.notification_last_error, '~') || '|' || coalesce(r.notified_at::text, '~') || '|' || coalesce(r.notification_queued_at::text, '~'), ',' order by r.id), '')) as notification_md5 from public.remote_permission_requests r where r.id in (select request_id from public.app_push_jobs where last_error like 'v0.90 backfill: %');
+--       Q8r differs from R: STOP with the job paused, and investigate.
+--    c. Q5 = 0. If not, an old-body call ran during the window (against the
+--       precondition) and left jobs stuck after the commit; Q5r then differs
+--       from R for that reason alone, so do not compare it. Run BF until
+--       Q5 = 0, then run Q8r again and record its answer as the new
+--       baseline R' (it also counts the requests of the jobs that BF just
+--       finalized): any later check compares with R', not with R.
 -- 9. Restore the value recorded in step 1 (put it in place of
 --    <recorded active>), then run Q3 and see it:
 --    R9: select cron.alter_job(jobid, active := <recorded active>) from cron.job where jobname = 'app_push_jobs_drain' and command ilike '%process_app_push_jobs%';
@@ -445,6 +465,7 @@ declare
     v_stuck     bigint;
     v_missing   text;
     v_n         bigint;
+    v_role      name;
 begin
     -- 1. the objects
     if to_regclass('public.app_push_jobs') is null then
@@ -481,8 +502,8 @@ begin
     -- 2. the exact body (MD5 VALUES in the header)
     if v_md5 not in ('fab8e1a9cfb25294eb7386baa248c236',   -- v0.32, as production runs it
                      '163c3c4f3983e4b4d582ae8109f8b28c',   -- v0.32, as the file has it
-                     '1cfa9de8b8b1bca6e2865397668c61e5',   -- v0.90, this file
-                     'dd70ea811e1f7ac3249069d21493cdff')   -- v0.90, without comment-only lines
+                     '8507646f49cf55e1d0875fb8af635360',   -- v0.90, this file
+                     '3890319e7b32513b9dd6f0f2f6f3a12d')   -- v0.90, without comment-only lines
     then
         raise exception 'v0.90: public.process_app_push_jobs() has an unexpected definition (body md5 %), rebase required; nothing changed', v_md5;
     end if;
@@ -510,6 +531,13 @@ begin
     ) then
         raise exception 'v0.90: PUBLIC, anon or authenticated may execute public.process_app_push_jobs() (acl %); nothing changed', v_acl;
     end if;
+    -- and in effect: no grant reaches anon or authenticated through a role
+    -- they inherit (has_function_privilege, as APPLY Q0 checks)
+    for v_role in select r.rolname from pg_roles r where r.rolname in ('anon', 'authenticated') order by 1 loop
+        if has_function_privilege(v_role, v_fn, 'EXECUTE') then
+            raise exception 'v0.90: % may execute public.process_app_push_jobs() through a role it inherits (has_function_privilege; acl %); nothing changed', v_role, v_acl;
+        end if;
+    end loop;
 
     -- 4. the environment the new worker reads; one schedule, by name and
     -- by command, paused
@@ -718,7 +746,7 @@ begin
           set pg_net_request_id = case when v_expired then null else pg_net_request_id end,
               processed_at      = case when v_expired and attempt_count >= 3 then now() else processed_at end,
               last_error        = case when v_expired and attempt_count >= 3
-                                       then 'gave up: no response from pg_net after 3 attempts'
+                                       then 'gave up: no response from pg_net (attempt budget used)'
                                        else 'pg_net response not yet available' end
           where id = v_job.id;
       elsif v_status between 200 and 299 then
@@ -836,7 +864,7 @@ declare
     v_stuck  bigint;
 begin
     select md5(prosrc) into v_md5 from pg_proc where oid = v_fn;
-    if v_md5 is null or v_md5 not in ('1cfa9de8b8b1bca6e2865397668c61e5', 'dd70ea811e1f7ac3249069d21493cdff') then
+    if v_md5 is null or v_md5 not in ('8507646f49cf55e1d0875fb8af635360', '3890319e7b32513b9dd6f0f2f6f3a12d') then
         raise exception 'v0.90: after the replace the worker''s body md5 is %, not this file''s', v_md5;
     end if;
     if not exists (
