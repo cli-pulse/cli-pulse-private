@@ -9,7 +9,11 @@ migration number.
 
 **Who runs it: the owner.** Steps 1, 3 and 4 read and delete one person's
 account in production. Agents do not run them; an agent may only prepare the
-SQL and check this file against the schema.
+SQL and check this file against the schema. Run the SQL in the Supabase SQL
+editor of the production project, as its default `postgres` role: that role
+bypasses row-level security, which the checks below rely on to see every row
+(setting the JWT claims in step 3 does not change the database role). When you
+paste an address into SQL, double any `'` in it (`o'neil@…` → `o''neil@…`).
 
 **Nothing about a request goes into this repository** (it is public), nor into
 a commit, PR, issue, CI log or session note: no address, no user ID, no dates.
@@ -67,7 +71,8 @@ from the account's address proves nothing. Prove control of the mailbox:
    replying with the phrase confirms it; if they did not ask for this, they
    can ignore the email and nothing happens.
 3. Go on to step 3 only after a reply that contains the phrase arrives in that
-   thread. No reply within 30 days of the request: close it, delete nothing.
+   thread (see *Keeping the deadline* for late replies). If none comes, nothing
+   is deleted: PRIVACY.md says an unconfirmed request is not carried out.
 
 Shortcut worth offering in that email: if they can still sign in, Settings →
 Delete Account in the Mac, iPhone or Android app does the same at once.
@@ -75,25 +80,40 @@ Delete Account in the Mac, iPhone or Android app does the same at once.
 **Sign in with Apple with a hidden address** (`…@privaterelay.appleid.com`):
 Apple forwards mail to a relay address only from senders registered for the app
 (Apple Developer › Certificates, Identifiers & Profiles › Services › Sign in
-with Apple for Email Communication). Check whether the support address is
-registered there:
+with Apple for Email Communication). Mail from an unregistered sender is
+dropped, so step 2 cannot reach the person.
 
-* **registered:** send step 2's email to the relay address as above;
-* **not registered:** a reply from any other address cannot prove the account
-  is theirs. Ask them to sign in with Apple in any CLI Pulse app and use
-  Delete Account (their Apple ID proves it), or agree with them another way to
-  prove control of that Apple ID. Do not delete on an unproven request.
+* **One-time setup:** register the support address there as an email source,
+  then check it works by sending a test to the relay address of an Apple
+  sign-in you own and seeing it arrive. Then change this bullet to say it is
+  done, and when (status on 2026-11-12: **not confirmed**).
+* **Once registered:** a request naming a relay address is confirmed exactly
+  as above: step 2's email goes to the relay address (the account's
+  `u.email`), Apple forwards it to the person's real mailbox, and their reply
+  with the phrase confirms it. Replies come back through the relay too.
+* **Until then:** the only proof available is the person signing in with that
+  Apple ID: in any CLI Pulse app (then Delete Account does it). Tell them so,
+  and do not delete on any other evidence.
 
 A request made on someone else's behalf is confirmed the same way: by the
 account's own mailbox.
 
 ## 3. Delete
 
-Run as **one script** in the Supabase SQL editor (production project). Fill in
-the user ID and the account address from step 1. It refuses to run unless both
-name the same account, deletes through `delete_user_account()` exactly as the
-app does, then checks that nothing linked to the account is left; if anything
-is, it raises, and the whole transaction rolls back (nothing is deleted).
+Run as **one script** in the Supabase SQL editor (production project, `postgres`
+role). Fill in the user ID and the account address from step 1. It refuses to
+run unless both name the same account and every link to the account is one it
+can check; deletes through `delete_user_account()` exactly as the app does;
+then checks that nothing linked to the account is left. If any check fails it
+raises, and the whole transaction rolls back (nothing is deleted).
+
+The links are read from the schema each time it runs, so a table added later
+is covered as long as its link has the shape checked here: a single-column
+foreign key to `auth.users(id)` or `public.profiles(id)`. Any other shape stops
+the script before it deletes anything (update this file to handle it). A link
+that would survive the delete by being set to NULL (`auth.scim_users`; unused
+here, no rows on 2026-11-12) stops it too if the account has such a row,
+because after the delete that row could no longer be found by the account's ID.
 
 ```sql
 begin;
@@ -101,15 +121,41 @@ begin;
 select set_config('cli_pulse.delete_uid',   '<USER-ID>', true),
        set_config('cli_pulse.delete_email', '<ACCOUNT-ADDRESS>', true);
 
--- Both values must name the same account.
+-- Both values must name the same account; every link to it must be checkable.
 do $$
+declare
+  v_uid uuid := current_setting('cli_pulse.delete_uid')::uuid;
+  r record;
+  n bigint;
 begin
   if not exists (
        select 1 from auth.users
-        where id = current_setting('cli_pulse.delete_uid')::uuid
+        where id = v_uid
           and lower(email) = lower(current_setting('cli_pulse.delete_email'))) then
     raise exception 'user id and address do not name the same account; nothing deleted';
   end if;
+  for r in
+    select c.conname, c.conrelid::regclass as tbl, c.confdeltype,
+           cardinality(c.conkey) as ncols,
+           (select attname from pg_attribute
+             where attrelid = c.confrelid and attnum = c.confkey[1]) as refcol,
+           (select attname from pg_attribute
+             where attrelid = c.conrelid and attnum = c.conkey[1]) as col
+      from pg_constraint c
+     where c.contype = 'f'
+       and c.confrelid in ('auth.users'::regclass, 'public.profiles'::regclass)
+  loop
+    if r.ncols <> 1 or r.refcol <> 'id' then
+      raise exception 'foreign key % on % has a shape this script cannot check; nothing deleted', r.conname, r.tbl;
+    end if;
+    if r.confdeltype <> 'c' then
+      execute format('select count(*) from %s where %I = $1', r.tbl, r.col) into n using v_uid;
+      if n > 0 then
+        raise exception '% has % row(s) for this account that the delete would keep (on delete %); nothing deleted',
+          r.tbl, n, r.confdeltype;
+      end if;
+    end if;
+  end loop;
 end $$;
 
 -- Act as that user for this transaction only, so auth.uid() returns its id.
@@ -198,10 +244,21 @@ it in their Apple ID or Google Play subscriptions.
 
 ## Keeping the deadline
 
-The 30 days run from the day the request arrived. Keep the request's thread in
-the support mailbox (label it, for example, `account-deletion`) and set a
-reminder for day 21 outside this repository. The thread holds the request
-date, the confirmation and the reply; nothing else is recorded anywhere.
+The 30 days run from the day the request arrived: the due date is that day
+plus 30. Keep the request's thread in the support mailbox (label it, for
+example, `account-deletion`) and set a reminder for day 21 outside this
+repository. The thread holds the request date, the confirmation and the reply;
+nothing else is recorded anywhere.
+
+* **Confirmed:** delete the same day or the next; do not wait for the due date.
+* **Confirmation arrives late, even after the due date:** delete the day it
+  arrives, and say in the reply when the request came and when it was done.
+* **No confirmation by the due date:** send one last note to the account's
+  address (step 2's thread) that the account was not deleted and how to ask
+  again; close the thread.
+* **Step 3 fails** (it raised): nothing was deleted. Fix the cause and run it
+  again before the due date; if that cannot happen in time, tell the person
+  why and by when it will be done.
 
 ## Not covered here
 
