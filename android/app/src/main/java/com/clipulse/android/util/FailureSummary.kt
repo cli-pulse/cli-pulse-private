@@ -7,4 +7,4 @@ import com.clipulse.android.data.remote.ApiError
  * Never the message or stack: an [ApiError.Http] message carries the server response body.
  */
 internal fun failureSummary(e: Throwable): String =
-    "${e.javaClass.simpleName} status=${(e as? ApiError.Http)?.code}"
+    e.javaClass.simpleName + "/" + ((e as? ApiError.Http)?.code ?: "-")
