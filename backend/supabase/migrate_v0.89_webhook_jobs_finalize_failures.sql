@@ -27,14 +27,21 @@
 --
 -- ── WHAT THIS DOES (one transaction) ──────────────────────────
 -- A0. A time budget for the whole transaction, set first: on PostgreSQL 17
---    and later (production runs 17), transaction_timeout = 5s, counted from
+--    and later (production runs 17), transaction_timeout = 2s, counted from
 --    the moment it is set. When it runs out the server ends the session and
 --    the transaction rolls back: nothing is changed. On older servers, which
---    have no transaction_timeout, statement_timeout = 5s instead, which is a
---    limit PER STATEMENT, not for the whole transaction. lock_timeout = 2s
---    for each lock wait (A5c, A5d, and CREATE OR REPLACE behind a session
---    holding the worker's catalog row), so a wait ends in a readable refusal
---    well inside the budget. And application_name =
+--    have no transaction_timeout, statement_timeout = 2s instead, which is a
+--    limit PER STATEMENT, not for the whole transaction. Why 2 s: while the
+--    apply holds the queue lock, alert uploads wait for it (THE QUEUE LOCK
+--    AND ALERT UPLOADS), and the shortest of them gives up first. The
+--    helpers upload through helper_sync as anon, whose statement_timeout is
+--    3 s in production; the apps' evaluate_budget_alerts runs as
+--    authenticated, 8 s (role settings read 2026-11-12; APPLY Q2b reads
+--    them). A budget under 3 s means even a pathological apply ends before
+--    an anon upload gives up. lock_timeout = 1s for each lock wait (A5c,
+--    A5d, and CREATE OR REPLACE behind a session holding the worker's
+--    catalog row), so a wait ends in a readable refusal inside the budget.
+--    And application_name =
 --    'v0_89_webhook_jobs_finalize_failures', set LOCAL, so the session is
 --    named in pg_stat_activity until the transaction ends (a query text is
 --    cut at track_activity_query_size, and a client may strip the comments
@@ -152,9 +159,10 @@
 --   * when the apply aborts (a refusal, a lock wait past lock_timeout, the
 --     budget of A0 running out), the insert goes on the same way;
 --   so the apply itself never loses an insert. How long it can wait is the
---   budget: on PostgreSQL 17, at most transaction_timeout from A0 for the
---   whole apply. The time the lock is actually held is printed in a NOTICE
---   (from A5d to the end of verification; the commit follows) and was
+--   budget: on PostgreSQL 17, at most transaction_timeout from A0 (2 s) for
+--   the whole apply, under anon's 3 s and authenticated's 8 s
+--   statement_timeout. The time the lock is actually held is printed in a
+--   NOTICE (from A5d to the end of verification; the commit follows) and was
 --   measured in the test suite with a queue at the size guard's limit plus
 --   thousands of finalized rows: a small fraction of the budget there.
 --   Production's own number is that NOTICE.
@@ -225,10 +233,13 @@
 --    Role settings (config values, not data): how long an alert upload
 --    waits on the queue lock before it gives up (THE QUEUE LOCK AND ALERT
 --    UPLOADS):
---    Q2b: select rolname, coalesce((select substr(c, 19) from unnest(rolconfig) c where c like 'statement_timeout=%'), '(database default)') as statement_timeout from pg_roles where rolname in ('anon', 'authenticated', 'service_role') order by rolname;
---    A role whose statement_timeout is shorter than the budget of A0 can
---    see an upload fail if the apply holds the lock that long; the measured
---    hold time is far shorter (the apply's NOTICE gives production's).
+--    Q2b: select rolname, coalesce((select substr(c, 19) from unnest(rolconfig) c where c like 'statement_timeout=%'), '(database default)') as statement_timeout, coalesce((select substr(c, 14) from unnest(rolconfig) c where c like 'lock_timeout=%'), '(database default)') as lock_timeout from pg_roles where rolname in ('anon', 'authenticated', 'authenticator', 'service_role') order by rolname;
+--    On 2026-11-12: anon statement_timeout 3s (the helpers' helper_sync),
+--    authenticated 8s (the apps' evaluate_budget_alerts), authenticator
+--    (PostgREST's login role) 8s with lock_timeout 8s; service_role is not
+--    an alert upload path. The budget of A0 (2 s) must stay below anon's and
+--    authenticated's statement_timeout: if either now reads 2 s or less,
+--    STOP and lower the budget in this file first.
 --    Q3: select count(*) as jobs, string_agg(active::text, ',' order by jobid) as active, md5(string_agg(jobid || '|' || coalesce(jobname, '') || '|' || schedule || '|' || command || '|' || username, ',' order by jobid)) as job_md5 from cron.job where command ilike '%process_webhook_jobs%';
 --    Expect jobs = 1 (more is a duplicate schedule: STOP). On 2026-11-12:
 --    active true, job_md5 = 83e638ff8913d9c58a400d46a084b26d (jobid 3,
@@ -340,16 +351,17 @@
 
 begin;
 -- A0: each lock wait, the session's name, and the budget for the whole apply
-set local lock_timeout = '2s';
+set local lock_timeout = '1s';
 set local application_name = 'v0_89_webhook_jobs_finalize_failures';
 do $budget$
 begin
     if current_setting('server_version_num')::int >= 170000 then
-        -- the whole transaction, from here: the server ends the session at 5 s
-        perform set_config('transaction_timeout', '5s', true);
+        -- the whole transaction, from here: the server ends the session at 2 s,
+        -- before an anon upload waiting on the queue lock (3 s) gives up
+        perform set_config('transaction_timeout', '2s', true);
     else
         -- no transaction_timeout before PostgreSQL 17: per statement only
-        perform set_config('statement_timeout', '5s', true);
+        perform set_config('statement_timeout', '2s', true);
     end if;
 end
 $budget$;

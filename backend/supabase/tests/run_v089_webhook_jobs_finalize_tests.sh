@@ -87,15 +87,17 @@
 #      apply open, and once Q6 is 0, Q0/Q5 tell a commit (sent as one string,
 #      as apply_migration does) from a rollback (psql -f, killed before the
 #      commit); R9 then restores a recorded value of false as false.
-#   6d. the budget (A0) and alert uploads: an alert insert as authenticated
-#      with statement_timeout 8s, made while the apply holds the queue lock,
-#      waits and then succeeds with its job enqueued; one whose own
-#      statement_timeout runs out first fails and leaves nothing, and sent
-#      again it lands; an apply made to run past 5 s is stopped
-#      (transaction_timeout on PostgreSQL 17, and the pre-17 per-statement
-#      branch forced) with nothing changed, and an insert waiting on it goes
-#      on; the lock hold time with the size guard's limit of stuck jobs plus
-#      thousands of finalized ones is measured from the apply's NOTICE.
+#   6d. the budget (A0, 2 s, under anon's 3 s statement_timeout) and alert
+#      uploads: while the apply holds the queue lock, a helper upload
+#      (helper_sync as anon with statement_timeout 3s, as the helpers call
+#      it) and an insert as authenticated (8s) wait, then land with their
+#      jobs enqueued; an upload whose own statement_timeout runs out first
+#      fails and leaves nothing, and sent again it lands; an apply made to
+#      run past 2 s is stopped (transaction_timeout on PostgreSQL 17, and the
+#      pre-17 per-statement branch forced) with nothing changed, and a helper
+#      upload waiting on it goes on; the lock hold time with the size guard's
+#      limit of stuck jobs plus thousands of finalized ones is measured from
+#      the apply's NOTICE.
 #   7. negative controls: mutants of the worker and the backfill, cut from
 #      between the markers and applied directly to a throwaway database
 #      (bypassing the guards), must each fail the assertion named for them;
@@ -124,6 +126,7 @@ PROD_ENQUEUE_MD5=6bf7c08ada157c7fd949222e09ca9134
 
 UA='b1000000-b100-4b10-8b10-00000000000a'
 UB='b1000000-b100-4b10-8b10-00000000000b'
+DEV='b1000000-b100-4b10-8b10-0000000000d1'   # a paired Mac; its helper secret is a test value
 LOCK_KEY="hashtextextended('process_webhook_jobs', 0)"
 
 if [[ -z "${DATABASE_URL:-}" ]]; then
@@ -366,6 +369,8 @@ SQL
 
 cat > "$WORK/users.sql" <<SQL
 insert into auth.users (id, email) values ('$UA', 'a@test.local'), ('$UB', 'b@test.local');
+insert into public.devices (id, user_id, name, helper_secret)
+values ('$DEV', '$UA', 'test-mac', encode(extensions.digest('test-helper-secret', 'sha256'), 'hex'));
 SQL
 
 # The upgrade path's database: production's shape before v0.89.
@@ -625,6 +630,7 @@ notice() { grep -E 'NOTICE: +v0\.89: ' <<<"$1" | grep -v 'queue lock was held' |
 lock_ms() { grep -oE 'queue lock was held [0-9]+ ms' <<<"$1" | grep -oE '[0-9]+' | tail -1; }
 
 SU="$(psql "$DATABASE_URL" -qtAX -c 'select current_user')"
+now_ms() { perl -MTime::HiRes=time -e 'printf "%d\n", time() * 1000'; }
 
 # =============================================================================
 echo "== 0. md5 values (the header's and the guard's against the files)"
@@ -716,7 +722,7 @@ if [[ "$SU" == postgres ]]; then   # the header states production's values, whos
     same "$P the header's expected job_md5 is this job's (production's)" "$(hvals job_md5)" "$JOB_MD5"
 fi
 FP_BEFORE="$(q -f "$OPS")"
-for l in Q1 Q1b Q3b Q9; do q -c "$(hq "$l")" >/dev/null || fail "$P $l does not run as printed"; done
+for l in Q1 Q1b Q2b Q3b Q9; do q -c "$(hq "$l")" >/dev/null || fail "$P $l does not run as printed"; done
 same "$P Q1 returns counts only (no timestamp column)" \
      "$(psql "$DB" --no-psqlrc -X -A -c "$(hq Q1)" | head -1)" \
      "total|pending|stuck|awaiting|malformed_id_without_dispatch|never_dispatched_old|finalized_with_request_id|odd_counts"
@@ -1008,11 +1014,12 @@ ex_writer() {
     start_bg psql "$DB" --no-psqlrc -qtAX -c "begin" -c "update public.webhook_jobs set attempt_count = attempt_count where id = -1" -c "select pg_sleep(60)"
     b=$BGPID
     wait_for "$(sleeping 'select pg_sleep(60)')"
-    t0=$SECONDS
+    t0=$(now_ms)
     refuses "$P an open transaction that wrote the queue: the apply waits for it, gives up at lock_timeout, nothing changed" \
             'held a write lock on public\.webhook_jobs'
-    if (( SECONDS - t0 >= 1 && SECONDS - t0 < 30 )); then pass "$P and it waited about lock_timeout ($((SECONDS - t0)) s)"
-    else fail "$P it gave up after $((SECONDS - t0)) s, not about lock_timeout"; fi
+    t0=$(( $(now_ms) - t0 ))
+    if (( t0 >= 900 && t0 < 10000 )); then pass "$P and it waited about lock_timeout (1 s; the whole apply took $t0 ms)"
+    else fail "$P it gave up after $t0 ms, not about lock_timeout (1 s)"; fi
     end_sleepers; wait "$b" >/dev/null 2>&1 || true
     dropdb_now "${PFX}_x$1"
 }
@@ -1031,9 +1038,9 @@ ex_advisory() {
 ex_late_first() {
     local m w rc=0
     newdb "${PFX}_x$1" "${PFX}_gb"
-    held_copy "$MIG" "$WORK/held.$1.sql" "select pg_sleep(3);"
+    held_copy "$MIG" "$WORK/held.$1.sql" "select pg_sleep(1.5);"
     start_bg psql "$DB" -v ON_ERROR_STOP=1 --no-psqlrc -qtAX -f "$WORK/held.$1.sql"; m=$BGPID
-    wait_for "$(sleeping 'select pg_sleep(3)')"
+    wait_for "$(sleeping 'select pg_sleep(1.5)')"
     start_bg psql "$DB" --no-psqlrc -qtAX -c "select public.process_webhook_jobs()"; w=$BGPID
     if poll "exists (select 1 from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and query = 'select public.process_webhook_jobs()' and wait_event_type = 'Lock')" 30; then
         pass "$P late starter (first apply): a worker call that starts during the apply waits on the queue lock"
@@ -1059,13 +1066,13 @@ ex_late_rerun() {
     local m w before i rc=0
     newdb "${PFX}_x$1" "${PFX}_gb"
     LAST_OUT="$(migrate "$V089")" || { fail "$P (setup) v0.89 did not apply"; return; }
-    held_copy "$MIG" "$WORK/held.$1.sql" "select pg_sleep(3);"
+    held_copy "$MIG" "$WORK/held.$1.sql" "select pg_sleep(1.5);"
     start_bg psql "$DB" -v ON_ERROR_STOP=1 --no-psqlrc -qtAX -f "$WORK/held.$1.sql"; m=$BGPID
-    wait_for "$(sleeping 'select pg_sleep(3)')"
+    wait_for "$(sleeping 'select pg_sleep(1.5)')"
     before="$(q -c "select b1t.snapshot()")"
     start_bg psql "$DB" --no-psqlrc -qtAX -c "select public.process_webhook_jobs()"; w=$BGPID
     for i in $(seq 1 30); do kill -0 "$w" 2>/dev/null || break; sleep 0.1; done
-    if ! kill -0 "$w" 2>/dev/null && poll "$(sleeping 'select pg_sleep(3)')" 1; then
+    if ! kill -0 "$w" 2>/dev/null && poll "$(sleeping 'select pg_sleep(1.5)')" 1; then
         pass "$P late starter (re-run): a v0.89 worker call during the apply returns at once (the apply holds the worker's lock)"
     else
         fail "$P late starter (re-run): the v0.89 worker call did not return while the apply held the lock"
@@ -1095,7 +1102,7 @@ same "$P ABORT: R9 puts back the recorded value (true)" "$(q3)" "1|true|$JOB_MD5
 dropdb_now "${PFX}_y1"
 # 6c: no clear answer, and the apply had in fact committed (sent as one query string, as apply_migration does)
 newdb "${PFX}_y2" "${PFX}_gb"
-held_copy "$V089" "$WORK/held.y2.sql" "select pg_sleep(3);"
+held_copy "$V089" "$WORK/held.y2.sql" "select pg_sleep(1.5);"
 start_bg psql "$DB" --no-psqlrc -qtAX -c "$(cat "$WORK/held.y2.sql")"; c=$BGPID
 wait_for "exists (select 1 from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and wait_event = 'PgSleep')"
 same "$P (6c) meanwhile another session still sees the old body: an old body_md5 proves nothing" "$(q0 | cut -d'|' -f1)" "$PROD_WORKER_MD5"
@@ -1114,9 +1121,9 @@ same "$P (1) the job was already paused by the owner: the recorded value is fals
 pause_job
 same "$P (2, 3) P2 changes nothing; Q4 quiet" "$(q3) / $(q -c "$(hq Q4)")" "1|false|$JOB_MD5 / 0|0|0|0"
 n="$(q5)"
-held_copy "$V089" "$WORK/held.y3.sql" "select pg_sleep(3);"
+held_copy "$V089" "$WORK/held.y3.sql" "select pg_sleep(1.5);"
 start_bg psql "$DB" -v ON_ERROR_STOP=1 --no-psqlrc -qtAX -f "$WORK/held.y3.sql"; c=$BGPID
-wait_for "$(sleeping 'select pg_sleep(3)')"
+wait_for "$(sleeping 'select pg_sleep(1.5)')"
 same "$P (6c) Q6 sees the apply (statement by statement, now in its sleep): the worker's lock, and its application_name" "$(q -c "$(hq Q6)")" "1|1"
 kill -TERM "$c" 2>/dev/null; wait "$c" >/dev/null 2>&1 || true
 if poll_out "$(hq Q6)" "0|0" 150; then pass "$P (6c) the session ends; Q6 reaches 0|0"; else fail "$P (6c) Q6 never reached 0|0"; fi
@@ -1163,61 +1170,85 @@ ex_idle_unrelated() {
 }
 P="[access]"; ex_idle_unrelated unrelated; P="[budget]"
 
-# an alert insert (statement_timeout 8 s, as authenticated) while the apply holds the queue lock
+# helper_upload <alert id> <statement_timeout>: one helper_sync carrying one
+# alert, as both helpers call it (the anon key: role anon); prints psql's
+# output, returns its status
+helper_upload() {
+    psql "$DB" --no-psqlrc -qtAX -v ON_ERROR_STOP=1 \
+        -c "set statement_timeout = '$2'" \
+        -c "set role anon" \
+        -c "select public.helper_sync('$DEV', 'test-helper-secret', '[]'::jsonb, '[{\"id\": \"$1\", \"type\": \"Usage Spike\", \"severity\": \"Warning\", \"title\": \"t\", \"grouping_key\": \"k-$1\"}]'::jsonb, '{}'::jsonb, '{}'::jsonb)" 2>&1
+}
+uploading() { # uploading: a helper_sync waits on a lock
+    echo "exists (select 1 from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and query like 'select public.helper_sync(%' and wait_event_type = 'Lock')"
+}
+
+# while the apply holds the queue lock: a helper upload (anon, statement_timeout 3s,
+# as production's anon) and an app-side insert (authenticated, 8s) both wait, then land
 newdb "${PFX}_z1" "${PFX}_gb"
-held_copy "$V089" "$WORK/held.z1.sql" "select pg_sleep(2);"
+held_copy "$V089" "$WORK/held.z1.sql" "select pg_sleep(1.5);"
 run_bg_to "$WORK/z1.mig" psql "$DB" -v ON_ERROR_STOP=1 --no-psqlrc -qtAX -f "$WORK/held.z1.sql"; m=$BGPID
-wait_for "$(sleeping 'select pg_sleep(2)')"
+wait_for "$(sleeping 'select pg_sleep(1.5)')"
+run_bg_to "$WORK/z1.up" helper_upload up3 3s; u=$BGPID
 run_bg_to "$WORK/z1.ins" alert_insert ins8 8s; w=$BGPID
-if poll "$(inserting ins8)" 30; then pass "$P an alert insert (statement_timeout 8s) during the apply waits on the queue lock"
-else fail "$P the alert insert did not wait on the queue lock"; fi
+if poll "$(uploading)" 10; then pass "$P a helper upload (helper_sync as anon, statement_timeout 3s) during the apply waits on the queue lock"
+else fail "$P the helper upload did not wait on the queue lock"; fi
+if poll "$(inserting ins8)" 10; then pass "$P so does an insert as authenticated (statement_timeout 8s)"
+else fail "$P the authenticated insert did not wait on the queue lock"; fi
 rc=0; wait "$m" || rc=$?
 same "$P the apply commits" "$rc / $(worker_md5)" "0 / $RAW89"
+rc=0; wait "$u" || rc=$?
+same "$P then the helper upload succeeds, and its alert's webhook job is enqueued" "$rc / $(alert_of up3) / $(job_of up3)" "0 / 1 / 1 pending of 1"
 rc=0; wait "$w" || rc=$?
-same "$P then the insert succeeds, and its webhook job is enqueued" "$rc / $(alert_of ins8) / $(job_of ins8)" "0 / 1 / 1 pending of 1"
+same "$P and so does the authenticated insert" "$rc / $(alert_of ins8) / $(job_of ins8)" "0 / 1 / 1 pending of 1"
 dropdb_now "${PFX}_z1"
 
-# an insert whose own statement_timeout runs out first: it fails and rolls back entirely; sent again, it lands
+# an upload whose own statement_timeout runs out first: it fails and rolls back
+# entirely; sent again (the helper's next cycle), it lands
 newdb "${PFX}_z2" "${PFX}_gb"
-held_copy "$V089" "$WORK/held.z2.sql" "select pg_sleep(3);"
+held_copy "$V089" "$WORK/held.z2.sql" "select pg_sleep(1.5);"
 run_bg_to "$WORK/z2.mig" psql "$DB" -v ON_ERROR_STOP=1 --no-psqlrc -qtAX -f "$WORK/held.z2.sql"; m=$BGPID
-wait_for "$(sleeping 'select pg_sleep(3)')"
-out="$(alert_insert insshort 1s)" && rc=0 || rc=$?
+wait_for "$(sleeping 'select pg_sleep(1.5)')"
+out="$(helper_upload upshort 500ms)" && rc=0 || rc=$?
 if (( rc != 0 )) && grep -q 'canceling statement due to statement timeout' <<<"$out"; then
-    pass "$P an insert whose own statement_timeout (1s here) runs out while it waits fails with a statement timeout"
-else fail "$P the short-timeout insert: rc $rc, $(head -1 <<<"$out")"; fi
+    pass "$P a helper upload whose own statement_timeout (500ms here) runs out while it waits fails with a statement timeout"
+else fail "$P the short-timeout upload: rc $rc, $(head -1 <<<"$out")"; fi
 rc=0; wait "$m" || rc=$?
 same "$P the apply commits" "$rc / $(worker_md5)" "0 / $RAW89"
-same "$P the failed insert left nothing: no alert row, no job" "$(alert_of insshort) / $(job_of insshort)" "0 / 0 pending of 0"
-out="$(alert_insert insshort 8s)" && rc=0 || rc=$?
-same "$P sent again (as a helper's next cycle sends it), it lands and its job is enqueued" "$rc / $(alert_of insshort) / $(job_of insshort)" "0 / 1 / 1 pending of 1"
+same "$P the failed upload left nothing: no alert row, no job" "$(alert_of upshort) / $(job_of upshort)" "0 / 0 pending of 0"
+out="$(helper_upload upshort 3s)" && rc=0 || rc=$?
+same "$P sent again (the helper's next cycle sends it while its condition holds), it lands and its job is enqueued" \
+     "$rc / $(alert_of upshort) / $(job_of upshort)" "0 / 1 / 1 pending of 1"
 dropdb_now "${PFX}_z2"
 
-# an apply made to run past the budget: it aborts, nothing changed, and a waiting insert then goes on
-budget_overrun() { # budget_overrun <tag> <migration> <regex of the abort>
+# an apply made to run past the 2 s budget: it is stopped with nothing changed,
+# and a helper upload (anon, 3s) waiting on it goes on, since 2 s < 3 s
+budget_overrun() { # budget_overrun <tag> <migration> <regex of the abort> <label>
     local m w rc t0 before n
     newdb "${PFX}_z$1" "${PFX}_gb"
     before="$(q0)"; n="$(q5)"
-    held_copy "$2" "$WORK/held.z$1.sql" "select pg_sleep(6);"
-    t0=$SECONDS
+    held_copy "$2" "$WORK/held.z$1.sql" "select pg_sleep(3);"
+    t0=$(now_ms)
     run_bg_to "$WORK/z$1.mig" psql "$DB" -v ON_ERROR_STOP=1 --no-psqlrc -qtAX -f "$WORK/held.z$1.sql"; m=$BGPID
-    wait_for "$(sleeping 'select pg_sleep(6)')"
-    run_bg_to "$WORK/z$1.ins" alert_insert "ins$1" 8s; w=$BGPID
+    wait_for "$(sleeping 'select pg_sleep(3)')"
+    run_bg_to "$WORK/z$1.up" helper_upload "up$1" 3s; w=$BGPID
     rc=0; wait "$m" || rc=$?
-    if (( rc != 0 )) && grep -q -E -- "$3" "$WORK/z$1.mig"; then
-        pass "$P $4: the apply runs past 5 s and is stopped ($((SECONDS - t0)) s): /$3/"
-    else fail "$P $4: rc $rc, not /$3/: $(grep -m1 -E 'ERROR|FATAL' "$WORK/z$1.mig")"; fi
+    t0=$(( $(now_ms) - t0 ))
+    if (( rc != 0 )) && grep -q -E -- "$3" "$WORK/z$1.mig" && (( t0 < 2900 )); then
+        pass "$P $4: the apply runs past 2 s and is stopped after $t0 ms: /$3/"
+    else fail "$P $4: rc $rc after $t0 ms, not /$3/ within 2.9 s: $(grep -m1 -E 'ERROR|FATAL' "$WORK/z$1.mig")"; fi
     same "$P $4: nothing changed (Q0 and Q5 as before)" "$(q0) / $(q5)" "$before / $n"
     rc=0; wait "$w" || rc=$?
-    same "$P $4: the insert that waited goes on, its job enqueued" "$rc / $(alert_of "ins$1") / $(job_of "ins$1")" "0 / 1 / 1 pending of 1"
+    same "$P $4: the helper upload (anon, 3s) that waited goes on, its job enqueued" \
+         "$rc / $(alert_of "up$1") / $(job_of "up$1")" "0 / 1 / 1 pending of 1"
     dropdb_now "${PFX}_z$1"
 }
 if (( SVN >= 170000 )); then
-    budget_overrun 3 "$V089" "$BUDGET_RE" "PostgreSQL $((SVN / 10000)), transaction_timeout"
+    budget_overrun 3 "$V089" "$BUDGET_RE" "PostgreSQL $((SVN / 10000)), transaction_timeout 2s"
     mutate "$V089" "$WORK/v089.fallback.sql" 1 "current_setting\\('server_version_num'\\)::int >= 170000" "current_setting('server_version_num')::int >= 990000"
-    budget_overrun 4 "$WORK/v089.fallback.sql" 'canceling statement due to statement timeout' "the pre-17 branch, forced (statement_timeout per statement)"
+    budget_overrun 4 "$WORK/v089.fallback.sql" 'canceling statement due to statement timeout' "the pre-17 branch, forced (statement_timeout 2s per statement)"
 else
-    budget_overrun 3 "$V089" "$BUDGET_RE" "PostgreSQL $((SVN / 10000)) (before 17), statement_timeout per statement"
+    budget_overrun 3 "$V089" "$BUDGET_RE" "PostgreSQL $((SVN / 10000)) (before 17), statement_timeout 2s per statement"
 fi
 
 # how long the apply holds the queue lock with a full queue: the size guard's
@@ -1234,7 +1265,7 @@ pause_job
 applies "$P the apply with 5000 stuck and 3000 finalized jobs"
 ms="$(lock_ms "$LAST_OUT")"
 same "$P it backfilled the 5000" "$(notice "$LAST_OUT" | cut -d'|' -f2)" "backfilled 5000 stuck job(s): finalized with failure, nothing re-sent"
-if [[ -n "$ms" ]] && (( ms < 5000 )); then pass "$P MEASURED (test environment): the queue lock was held $ms ms, inside the 5 s budget"
+if [[ -n "$ms" ]] && (( ms < 2000 )); then pass "$P MEASURED (test environment): the queue lock was held $ms ms, inside the 2 s budget"
 else fail "$P the queue lock hold time: '$ms' ms"; fi
 dropdb_now "${PFX}_z5"
 
