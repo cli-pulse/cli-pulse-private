@@ -19,6 +19,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -306,6 +307,25 @@ class SessionLifecycleTest {
         }
         assertEquals("one deadline, not more", env.lifecycle.writeTimeoutMillis, currentTime - start)
         hold.complete(Unit)
+        env.scope.cancel()
+    }
+
+    @Test
+    fun `a writer whose deadline fires right after it took the lock still releases it`() = runTest(timeout = 10.seconds) {
+        val env = Env(this)
+        env.installA()
+        val ctxA = env.store.snapshot()!!
+        // The deadline fires after lock() returned and before the timeout block did.
+        env.lifecycle.afterWriteLockAcquired = { delay(env.lifecycle.writeTimeoutMillis + 1) }
+        runCatching { env.lifecycle.write(ctxA) { env.dao.saveDashboard(CachedDashboard(json = "first")) } }
+        env.lifecycle.afterWriteLockAcquired = null
+
+        val start = currentTime
+        env.lifecycle.write(ctxA) { env.dao.saveDashboard(CachedDashboard(json = "A")) }
+
+        assertEquals("the lock was free at once", 0L, currentTime - start)
+        assertEquals(listOf("A"), env.dao.allRows())
+        assertNotNull("an end is not stuck behind a lost lock", env.lifecycle.endIfCurrent(ctxA.sessionId, EndReason.UserSignedOut))
         env.scope.cancel()
     }
 

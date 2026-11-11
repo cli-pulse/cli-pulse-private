@@ -71,6 +71,9 @@ class SessionLifecycle internal constructor(
     internal var retryBaseMillis: Long = RETRY_BASE_MS
     internal var retryMaxMillis: Long = RETRY_MAX_MS
 
+    /** Tests only: runs inside [write]'s deadline right after it took the lock. */
+    internal var afterWriteLockAcquired: (suspend () -> Unit)? = null
+
     private val retryLock = Any()
     private var retryJob: Job? = null
     private var retryDelayMillis: Long = RETRY_BASE_MS
@@ -155,11 +158,22 @@ class SessionLifecycle internal constructor(
      * and again under the lock); [ApiError.TeardownPending] if the lock is not free within one
      * overall deadline, or a previous session's data has not been deleted yet. Nothing is
      * reset here: only transitions empty the in-memory rows, under the lock.
+     *
+     * Ownership of the lock is recorded the moment `lock()` returns, inside the deadline, and the
+     * `finally` that releases it is entered before the deadline starts. A deadline can fire after
+     * `lock()` returned but before the timeout block did; `withTimeoutOrNull` then returns null
+     * although the lock is held. So its result never decides whether to unlock: the flag does.
      */
     suspend fun <T> write(ctx: SessionContext, block: suspend () -> T): T {
         if (tokenStore.sessionId != ctx.sessionId) throw ApiError.SessionSuperseded
-        withTimeoutOrNull(writeTimeoutMillis) { stateMutex.lock() } ?: throw ApiError.TeardownPending
+        var owned = false
         try {
+            withTimeoutOrNull(writeTimeoutMillis) {
+                stateMutex.lock()
+                owned = true
+                afterWriteLockAcquired?.invoke()
+            }
+            if (!owned) throw ApiError.TeardownPending
             if (tokenStore.sessionId != ctx.sessionId) throw ApiError.SessionSuperseded
             if (tokenStore.teardownPending != null || !tokenStore.isDurable) {
                 scheduleRetry()
@@ -167,7 +181,7 @@ class SessionLifecycle internal constructor(
             }
             return block()
         } finally {
-            stateMutex.unlock()
+            if (owned) stateMutex.unlock()
         }
     }
 
