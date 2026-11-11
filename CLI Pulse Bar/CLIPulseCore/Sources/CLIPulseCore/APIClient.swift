@@ -3696,7 +3696,11 @@ public actor APIClient {
             } catch let error as APIError where error == .tokenExpired {
                 return .notAnswered(.sessionExpired)
             } catch is CancellationError {
-                return .notAnswered(.cancelled)
+                // 1.63 (A1): a refresh whose session was replaced while it was
+                // out throws this now (it used to hand back the old session's
+                // pair, and the lease check below said the account changed).
+                // Still an account change when that is what happened.
+                return .notAnswered(isAuthorizationLeaseCurrent(authorizationLease) ? .cancelled : .authorizationChanged)
             } catch {
                 // No usable answer from the auth server (network, decoding):
                 // there is no new token to retry with.
