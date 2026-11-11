@@ -342,13 +342,15 @@ public final class WatchAppState: ObservableObject {
         // it, so a session stored before 1.61 that is the iPhone's is not
         // revoked from here either.
         // 1.63 (A1): the Watch's own session is read with its refresh token,
-        // as one pair, before the Keychain is cleared: by the time the revoke
-        // runs the client holds nothing, and an expired access token can only
-        // be revoked after a refresh. Then the Keychain items are deleted.
+        // as one pair, before the Keychain is cleared, and fenced as the app
+        // fences its sign-outs: a refresh of it still out keeps its new pair
+        // for the revoke instead of racing it with the same refresh token.
+        // Then the Keychain items are deleted.
         let revocation = WatchSignOut.captureAndClear(
             .keychain,
             lastPhoneUserID: WatchSessionManager.shared.lastPhoneUserID,
-            currentSource: sessionSource
+            currentSource: sessionSource,
+            fence: { api.fenceCurrentSession() }
         )
         stopRefreshLoop()
         refreshGate.authDidChange()

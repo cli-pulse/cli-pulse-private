@@ -119,20 +119,35 @@ public struct SessionRefreshPostponed: Error, Equatable {
 
 /// 1.61: a count of the app's sign-outs that any thread can read and advance
 /// without waiting for the API client's actor (`fenceCurrentSession()`).
+///
+/// 1.63 (A1): each value it advances to names one sign-out, pending until
+/// that sign-out's revocation is done (`complete`). While any is pending, a
+/// refresh of a session that was left keeps its new pair for it
+/// (`APIClient.parkRotation`).
 final class SignOutFence: @unchecked Sendable {
     private let lock = NSLock()
     private var count: UInt64 = 0
+    private var pending: Set<UInt64> = []
     var value: UInt64 { lock.lock(); defer { lock.unlock() }; return count }
     /// 1.63 (A1): returns the value it advanced to, which names this sign-out.
     @discardableResult
-    func advance() -> UInt64 { lock.lock(); defer { lock.unlock() }; count &+= 1; return count }
+    func advance() -> UInt64 {
+        lock.lock(); defer { lock.unlock() }
+        count &+= 1
+        pending.insert(count)
+        return count
+    }
+    /// 1.63 (A1): whether a sign-out's revocation is still to be done.
+    var hasPending: Bool { lock.lock(); defer { lock.unlock() }; return !pending.isEmpty }
+    /// 1.63 (A1): sign-out `value`'s revocation is done.
+    func complete(_ value: UInt64) { lock.lock(); pending.remove(value); lock.unlock() }
 }
 
 /// 1.63 (A1): the session a sign-out leaves, as the caller read it at the
 /// moment of the sign-out: the app's stored pair, or the Watch's. Both tokens
 /// come from one read, so the pair is never an access token of one session
-/// with the refresh token of another. `APIClient.signOutServer` revokes with
-/// it when the client no longer holds that session itself. Empty strings
+/// with the refresh token of another. `APIClient.beginRevocation` revokes
+/// with it when the client no longer holds that session itself. Empty strings
 /// read as nil.
 public struct RevocationSnapshot: Equatable, Sendable {
     public let accessToken: String?
@@ -144,18 +159,52 @@ public struct RevocationSnapshot: Equatable, Sendable {
     }
 }
 
-/// 1.63 (A1): resumes a sign-out's bounded wait once, from whichever side
-/// gets there first: the refresh finishing, or the time running out.
-private final class SignOutWaitResume: @unchecked Sendable {
+/// 1.63 (A1): one sign-out's revocation, bound to the session it leaves.
+/// `APIClient.beginRevocation` makes it (and takes that session out of the
+/// client); `APIClient.revoke` finishes it. Opaque outside CLIPulseCore.
+public struct RevocationHandle: Sendable {
+    /// The access token of the session taken out of the client, as the client
+    /// held it; nil when the client did not hold the session being left.
+    public let removedAccessToken: String?
+    /// What the caller read at the sign-out (`AuthManager` compares the
+    /// Keychain with it).
+    let snapshotAccessToken: String?
+    /// The sign-out's fence value, nil for a caller that does not fence.
+    let fence: UInt64?
+    /// The session's epoch, when the client held it.
+    let epoch: UInt64?
+    /// The pair to revoke with, from exactly one source.
+    let accessToken: String?
+    let refreshToken: String?
+    /// The refresh of that session still out when the revocation began.
+    let flightID: UInt64?
+}
+
+/// 1.63 (A1): one waiter on a refresh flight (a sign-out's bounded wait),
+/// woken once by whichever comes first: the flight finishing, the deadline,
+/// or the waiter's task being cancelled. Removed from the flight afterwards,
+/// so nothing keeps observing a flight past its deadline.
+private final class FlightObserver: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Void, Never>?
+    private var fired = false
 
-    init(_ continuation: CheckedContinuation<Void, Never>) {
-        self.continuation = continuation
+    func wait() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if fired {
+                lock.unlock()
+                continuation.resume()
+                return
+            }
+            self.continuation = continuation
+            lock.unlock()
+        }
     }
 
     func fire() {
         lock.lock()
+        fired = true
         let pending = continuation
         continuation = nil
         lock.unlock()
@@ -314,8 +363,6 @@ public actor APIClient {
     private func beginSessionEpoch() {
         sessionEpoch &+= 1
         sessionFenceMark = signOutFence.value
-        // 1.63 (A1): a rotation parked for an earlier session is nobody's now.
-        fencedRotation = nil
     }
 
     /// Whether the app signed out after the session held now was installed.
@@ -330,8 +377,9 @@ public actor APIClient {
     /// tokens survived the sign-out and the next restore signed back in.
     ///
     /// 1.63 (A1): returns the fence value it advanced to. The caller hands it
-    /// to `signOutServer(fence:snapshot:)`: the session the client holds then
-    /// is the one this sign-out leaves only if it was installed before it.
+    /// to `beginRevocation(fence:snapshot:)`: the session the client holds
+    /// then is the one this sign-out leaves only if it was installed before it.
+    /// The Watch fences a sign-out of its own session too.
     @discardableResult
     public nonisolated func fenceCurrentSession() -> UInt64 {
         signOutFence.advance()
@@ -562,72 +610,149 @@ public actor APIClient {
     /// captured token; the server rotated it on the first and rejected the rest,
     /// which then wiped the freshly-set tokens → spurious forced logout.
     ///
-    /// 1.63 (A1): bound to the session it refreshes (`epoch`, and that
-    /// session's `fenceMark`), so a sign-out can tell whether it is a refresh
-    /// of the session being left, and a caller of a newer session never joins
-    /// it (it would be handed the older session's pair).
-    private struct InFlightRefresh {
+    /// 1.63 (A1): a flight is bound to the session it refreshes, captured when
+    /// it is created and handed to `performRefresh`: the session's epoch and
+    /// the refresh token it spends (or the renewer, for a session renewed
+    /// elsewhere). Up to 1.62 the task read the refresh token only when it
+    /// started, so a session change queued in between made a flight labelled
+    /// for one session refresh another.
+    private struct RefreshIdentity: Sendable {
         let id: UInt64
         let epoch: UInt64
-        let fenceMark: UInt64
-        let task: Task<(accessToken: String, refreshToken: String), Error>
+        /// The refresh token it spends; nil for a renewal.
+        let refreshToken: String?
+        let renewer: SessionRenewer?
     }
-    private var inFlightRefresh: InFlightRefresh?
+    private struct RefreshFlight {
+        let identity: RefreshIdentity
+        let task: Task<(accessToken: String, refreshToken: String), Error>
+        /// Sign-outs waiting for it (`waitForFlight`), each removed by its
+        /// waiter once it wakes.
+        var observers: [UInt64: FlightObserver] = [:]
+    }
+    /// Every flight still out, by id. Usually one; one per session at most
+    /// joins (`joinableFlightID`).
+    private var refreshFlights: [UInt64: RefreshFlight] = [:]
+    private var joinableFlightID: UInt64?
     private var lastRefreshID: UInt64 = 0
+    private var lastObserverID: UInt64 = 0
 
-    /// 1.63 (A1): a refresh's new pair that came back for a session the app
+    /// 1.63 (A1): refresh tokens a flight has sent, most recent last. A
+    /// revocation never sends one of them again: it is spent, or being spent
+    /// by a flight still out.
+    private var sentRefreshTokens: [String] = []
+    private static let sentRefreshTokenLimit = 8
+
+    /// 1.63 (A1): a flight's new pair that came back for a session the app
     /// had signed out of (`fenceCurrentSession`), or that this client no
-    /// longer held. Never installed, never persisted, never returned to the
-    /// refresh's callers: the server has spent `spentRefreshToken` for it, so
-    /// it is the only pair that session still has, and only `signOutServer`
-    /// reads it (take-and-clear), to revoke that session with. Cleared when a
-    /// new session epoch begins.
-    private struct FencedRotation {
+    /// longer held, while a revocation was pending. Never installed, never
+    /// persisted, never returned to the flight's callers: the server spent
+    /// `spentRefreshToken` for it, so it is the only pair that session still
+    /// has. Only the revocation of that same session takes it out
+    /// (`takeParkedRotation`, matching the refresh token it was minted from
+    /// and the epoch); kept at most `parkedRotationLimit`, and cleared once no
+    /// revocation is pending.
+    private struct ParkedRotation {
         let epoch: UInt64
         let spentRefreshToken: String
         let accessToken: String
         let refreshToken: String
     }
-    private var fencedRotation: FencedRotation?
+    private var parkedRotations: [ParkedRotation] = []
+    private static let parkedRotationLimit = 4
+
+    /// 1.63 (A1): revocations begun and not finished (`beginRevocation`).
+    private var activeRevocations = 0
+
+    /// Tests only: where a flight is.
+    enum RefreshStage: Sendable { case willStart, didFinish }
+    typealias RefreshStageHook = @Sendable (RefreshStage) async -> Void
+    private var refreshStageHookForTesting: RefreshStageHook?
+
+    func setRefreshStageHookForTesting(_ hook: RefreshStageHook?) {
+        refreshStageHookForTesting = hook
+    }
 
     public func refreshAccessToken() async throws -> (accessToken: String, refreshToken: String) {
+        let identity: RefreshIdentity
+        let task: Task<(accessToken: String, refreshToken: String), Error>
         // Single-flight: if a refresh is already running, await its result
         // instead of starting a second one with the same (one-time) token.
         // 1.63 (A1): only one for this same session. One started for a
-        // session that has since been replaced or removed is that session's:
-        // a caller of the newer one starts its own (or is told there is no
-        // session), and never receives the older session's pair.
-        if let existing = inFlightRefresh, existing.epoch == sessionEpoch {
-            return try await existing.task.value
+        // session that has since been replaced or removed is that session's.
+        if let id = joinableFlightID, let flight = refreshFlights[id], flight.identity.epoch == sessionEpoch {
+            identity = flight.identity
+            task = flight.task
+        } else {
+            let renewer = sessionRenewer
+            guard renewer != nil || refreshToken != nil else { throw APIError.tokenExpired }
+            lastRefreshID &+= 1
+            let flightIdentity = RefreshIdentity(
+                id: lastRefreshID,
+                epoch: sessionEpoch,
+                refreshToken: renewer == nil ? refreshToken : nil,
+                renewer: renewer
+            )
+            let flightTask = Task { () async throws -> (accessToken: String, refreshToken: String) in
+                let result: Result<(accessToken: String, refreshToken: String), Error>
+                do {
+                    result = .success(try await self.performRefresh(flightIdentity))
+                } catch {
+                    result = .failure(error)
+                }
+                await self.flightDidFinish(flightIdentity.id)
+                return try result.get()
+            }
+            refreshFlights[flightIdentity.id] = RefreshFlight(identity: flightIdentity, task: flightTask)
+            joinableFlightID = flightIdentity.id
+            identity = flightIdentity
+            task = flightTask
         }
-        lastRefreshID &+= 1
-        let id = lastRefreshID
-        let task = Task { try await self.performRefresh() }
-        inFlightRefresh = InFlightRefresh(id: id, epoch: sessionEpoch, fenceMark: sessionFenceMark, task: task)
-        defer {
-            if inFlightRefresh?.id == id { inFlightRefresh = nil }
+        let pair = try await task.value
+        // 1.63 (A1): the session may have changed between the flight's end
+        // and this caller resuming: its pair goes to a caller of that same
+        // session only. (A renewal's answer is returned as before, 1.61.)
+        if identity.renewer == nil, sessionEpoch != identity.epoch || isSessionFenced {
+            throw CancellationError()
         }
-        return try await task.value
+        return pair
     }
 
-    private func performRefresh() async throws -> (accessToken: String, refreshToken: String) {
-        if let renewer = sessionRenewer {
-            return try await performRenewal(with: renewer)
+    /// 1.63 (A1): a flight is over: it no longer joins, and every sign-out
+    /// waiting for it wakes.
+    private func flightDidFinish(_ id: UInt64) {
+        guard let flight = refreshFlights.removeValue(forKey: id) else { return }
+        if joinableFlightID == id { joinableFlightID = nil }
+        for observer in flight.observers.values { observer.fire() }
+    }
+
+    /// 1.63 (A1): whether the session `flight` is for is still the one held,
+    /// with the refresh token it spends, and no sign-out has fenced it.
+    private func isCurrent(_ flight: RefreshIdentity) -> Bool {
+        sessionEpoch == flight.epoch && refreshToken == flight.refreshToken && !isSessionFenced
+    }
+
+    private func performRefresh(_ flight: RefreshIdentity) async throws -> (accessToken: String, refreshToken: String) {
+        if let hook = refreshStageHookForTesting { await hook(.willStart) }
+        if let renewer = flight.renewer {
+            return try await performRenewal(flight, with: renewer)
         }
-        guard let currentRefreshToken = refreshToken else {
+        guard let spending = flight.refreshToken else {
             throw APIError.tokenExpired
         }
-        // 1.63 (A1): the session this refresh is for.
-        let epoch = sessionEpoch
+        // 1.63 (A1): the session may have changed before this task started.
+        guard isCurrent(flight) else { throw CancellationError() }
         // 1.61: no answer for now, never a refusal: the session is kept, and
         // the refresh happens once the device is unlocked.
-        if let check = rotationPersistenceCheck, !(await check()) {
-            throw SessionRefreshPostponed()
+        if let check = rotationPersistenceCheck {
+            let canPersist = await check()
+            guard isCurrent(flight) else { throw CancellationError() }
+            if !canPersist { throw SessionRefreshPostponed() }
         }
         let endBackgroundTime = await refreshBackgroundTime?()
         defer { endBackgroundTime?() }
-        // 1.61: the two waits above let a sign-out or another refresh in.
-        guard self.refreshToken == currentRefreshToken, !isSessionFenced else { throw CancellationError() }
+        // 1.61: the waits above let a sign-out or another refresh in.
+        guard isCurrent(flight) else { throw CancellationError() }
         guard let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=refresh_token") else {
             throw APIError.invalidResponse
         }
@@ -635,8 +760,9 @@ public actor APIClient {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
-        request.httpBody = try encoder.encode(RefreshTokenRequest(refresh_token: currentRefreshToken))
+        request.httpBody = try encoder.encode(RefreshTokenRequest(refresh_token: spending))
 
+        noteRefreshTokenSent(spending)
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
@@ -653,7 +779,7 @@ public actor APIClient {
             // Refused. Compare-and-clear: only wipe tokens if the stored
             // refresh token is still the one we used — never clobber tokens a
             // concurrent successful refresh already rotated in (NEW-H5).
-            if self.refreshToken == currentRefreshToken {
+            if sessionEpoch == flight.epoch, self.refreshToken == spending {
                 let expiredLease = APIAuthorizationLease(
                     generation: authorizationGeneration,
                     userID: userId
@@ -668,32 +794,27 @@ public actor APIClient {
 
         let auth = try decode(SupabaseAuthResponse.self, from: data)
         let newAccess = auth.access_token
-        let newRefresh = auth.refresh_token ?? currentRefreshToken
+        let newRefresh = auth.refresh_token ?? spending
 
-        // Success-side stale guard (Codex review of NEW-H5): if the stored
-        // refresh token changed while we were awaiting the network — sign-out
-        // cleared it, a different account signed in, or `updateRefreshToken`
-        // landed — this result is stale. Do NOT resurrect the old session's
-        // tokens into actor state or persist them to Keychain; the actor
-        // already reflects the newer reality.
+        // Success-side stale guard (Codex review of NEW-H5): if the session
+        // changed while we were awaiting the network — sign-out cleared it, a
+        // different account signed in, or `updateRefreshToken` landed — this
+        // result is stale. Do NOT resurrect the old session's tokens into
+        // actor state or persist them to Keychain.
         //
         // 1.61: the same for a session the app has signed out of since
-        // (`fenceCurrentSession`), even while this actor still holds it: the
-        // sign-out's own work may not have reached here yet.
+        // (`fenceCurrentSession`), even while this actor still holds it.
         //
         // 1.63 (A1): and the pair is not returned to the callers either (up
-        // to 1.62 it was, "so the caller's retry doesn't throw"): it belongs
-        // to the session that was left, and a caller holding it could send it
-        // or persist it. They get `CancellationError`, as a refresh stopped
-        // by a sign-out before it went out does. The pair is parked for the
-        // sign-out instead, which revokes that session with it: the server
-        // has spent the old refresh token, so it is the only pair left.
-        guard self.refreshToken == currentRefreshToken, !isSessionFenced else {
-            fencedRotation = FencedRotation(
-                epoch: epoch,
-                spentRefreshToken: currentRefreshToken,
-                accessToken: newAccess,
-                refreshToken: newRefresh
+        // to 1.62 it was): it belongs to the session that was left. They get
+        // `CancellationError`, as a refresh stopped by a sign-out before it
+        // went out does. The pair is parked for that session's revocation,
+        // if one is pending: the server spent the old refresh token, so it is
+        // the only pair the session still has.
+        guard isCurrent(flight) else {
+            parkRotation(
+                ParkedRotation(epoch: flight.epoch, spentRefreshToken: spending,
+                               accessToken: newAccess, refreshToken: newRefresh)
             )
             throw CancellationError()
         }
@@ -705,7 +826,38 @@ public actor APIClient {
         // Notify so caller can persist to Keychain
         onTokenRefreshed?(newAccess, newRefresh)
 
+        if let hook = refreshStageHookForTesting { await hook(.didFinish) }
         return (newAccess, newRefresh)
+    }
+
+    private func noteRefreshTokenSent(_ token: String) {
+        sentRefreshTokens.removeAll { $0 == token }
+        sentRefreshTokens.append(token)
+        if sentRefreshTokens.count > Self.sentRefreshTokenLimit {
+            sentRefreshTokens.removeFirst(sentRefreshTokens.count - Self.sentRefreshTokenLimit)
+        }
+    }
+
+    /// 1.63 (A1): keeps a left session's new pair for its revocation, when
+    /// one is pending; otherwise nobody could use it, and it is dropped.
+    private func parkRotation(_ rotation: ParkedRotation) {
+        guard activeRevocations > 0 || signOutFence.hasPending else { return }
+        parkedRotations.removeAll { $0.spentRefreshToken == rotation.spentRefreshToken }
+        parkedRotations.append(rotation)
+        if parkedRotations.count > Self.parkedRotationLimit {
+            parkedRotations.removeFirst(parkedRotations.count - Self.parkedRotationLimit)
+        }
+    }
+
+    /// 1.63 (A1): takes out the rotation minted from `spentRefreshToken`, and
+    /// of session `epoch` when the revocation knows it; leaves every other.
+    private func takeParkedRotation(spentRefreshToken: String, epoch: UInt64?) -> ParkedRotation? {
+        guard let index = parkedRotations.firstIndex(where: {
+            $0.spentRefreshToken == spentRefreshToken && (epoch == nil || $0.epoch == epoch)
+        }) else {
+            return nil
+        }
+        return parkedRotations.remove(at: index)
     }
 
     /// 1.61 (B1): a session renewed elsewhere. No request to the auth server:
@@ -714,13 +866,15 @@ public actor APIClient {
     /// never signs anyone out. A result that arrives after the session changed
     /// is returned to its caller and installed nowhere.
     ///
-    /// Not fenced (1.61): only the Watch has a renewer, and the Watch never
-    /// calls `fenceCurrentSession()`; its own transitions change the epoch.
-    private func performRenewal(with renewer: SessionRenewer) async throws -> (accessToken: String, refreshToken: String) {
-        let epoch = sessionEpoch
+    /// Not fenced (1.61): only the Watch has a renewer, and the Watch fences
+    /// (1.63) only a sign-out of a session of its own, never a renewed one.
+    private func performRenewal(
+        _ flight: RefreshIdentity,
+        with renewer: SessionRenewer
+    ) async throws -> (accessToken: String, refreshToken: String) {
         let newAccess = try await renewer()
         guard !newAccess.isEmpty else { throw APIError.invalidResponse }
-        guard sessionEpoch == epoch, sessionRenewer != nil, accessToken != nil else {
+        guard sessionEpoch == flight.epoch, sessionRenewer != nil, accessToken != nil else {
             return (newAccess, "")
         }
         accessToken = newAccess
@@ -878,7 +1032,7 @@ public actor APIClient {
     public func takeSession(
         ifEpoch epoch: UInt64
     ) async -> (accessToken: String?, refreshToken: String?)? {
-        if let refresh = inFlightRefresh {
+        if let id = joinableFlightID, let refresh = refreshFlights[id] {
             _ = try? await refresh.task.value
         }
         // 1.61: nor one the app has signed out of; the sign-out removes it.
@@ -898,49 +1052,46 @@ public actor APIClient {
 
     // MARK: - Sign Out (server-side token revocation)
 
-    /// 1.63 (A1): how long a sign-out waits for a refresh of the session it
+    /// 1.63 (A1): how long a revocation waits for a refresh of the session it
     /// leaves before it revokes that session without the refresh's answer.
     static let signOutRefreshWaitNanoseconds: UInt64 = 10_000_000_000
+    /// 1.63 (A1): the most a revocation spends on the network in all (its
+    /// refresh, the logout, the one retry).
+    static let revocationBudgetNanoseconds: UInt64 = 20_000_000_000
 
-    /// Tests only: called when a sign-out starts waiting for a refresh of the
-    /// session it leaves.
+    /// 1.63 (A1): starts a timer that calls `fire` after the given nanoseconds
+    /// and returns what stops it. Tests inject one they fire by hand.
+    typealias DeadlineTrigger = @Sendable (UInt64, @escaping @Sendable () -> Void) -> @Sendable () -> Void
+    static let sleepingDeadline: DeadlineTrigger = { nanoseconds, fire in
+        let timer = Task {
+            do {
+                try await Task.sleep(nanoseconds: nanoseconds)
+            } catch {
+                return
+            }
+            fire()
+        }
+        return { timer.cancel() }
+    }
+    private var deadlineTrigger: DeadlineTrigger = APIClient.sleepingDeadline
+
+    func setDeadlineTriggerForTesting(_ trigger: @escaping DeadlineTrigger) {
+        deadlineTrigger = trigger
+    }
+
+    /// Tests only: called when a revocation starts waiting for a refresh of
+    /// the session it leaves.
     private var signOutWaitHookForTesting: (@Sendable () -> Void)?
 
     func setSignOutWaitHookForTesting(_ hook: (@Sendable () -> Void)?) {
         signOutWaitHookForTesting = hook
     }
 
-    /// Ends the session a sign-out leaves: removes it from this client if the
-    /// client still holds it, and revokes it on the server.
-    ///
-    /// 1.63 (A1): the revoke ends that one session (`scope=local`). Up to 1.62
-    /// it sent no scope, and Supabase Auth's default is `global`: one device's
-    /// Sign Out revoked every session of the account, on every Mac, iPhone,
-    /// Watch and Android device signed in to it.
-    ///
-    /// Which session is left:
-    /// - `fence` given (the app: what `fenceCurrentSession()` returned for
-    ///   this sign-out): the session the client holds, if it was installed
-    ///   before this sign-out (`sessionFenceMark < fence`). One installed
-    ///   since, a sign-in after it, is never touched here, whatever later
-    ///   sign-outs say: those are its own.
-    /// - nil (the Watch, account deletion): the session the client holds, if
-    ///   it carries `snapshot.accessToken`, or whatever it holds when that is
-    ///   nil.
-    ///
-    /// The pair revoked comes from exactly one place: the held session when it
-    /// is the one left (its newest state: after the fence nothing persists
-    /// its rotations), else `snapshot`, the caller's read at the sign-out. A
-    /// rotation of that same pair parked since (`fencedRotation`) stands in
-    /// for it, as its newer form.
-    ///
-    /// An access token at or within a minute of its `exp` is refreshed first,
-    /// with the pair's own refresh token (`refreshForRevoke`, which installs
-    /// and persists nothing). A logout answered 401, or 403 `bad_jwt`, gets one
-    /// refresh and one retry; `session_not_found` and anything else, none. At
-    /// most one refresh per sign-out. All of it is best effort: the sign-out
-    /// has already happened on this device.
-    ///
+    /// Tests only.
+    var refreshObserverCountForTesting: Int { refreshFlights.values.reduce(0) { $0 + $1.observers.count } }
+    var parkedRotationCountForTesting: Int { parkedRotations.count }
+
+    /// Ends the session a sign-out leaves (`beginRevocation`, then `revoke`).
     /// Returns the access token of the session it removed from this client,
     /// as the client held it, nil when it removed none.
     @discardableResult
@@ -948,30 +1099,44 @@ public actor APIClient {
         fence: UInt64?,
         snapshot: RevocationSnapshot
     ) async -> String? {
-        // A refresh of the session being left may still be out. Its answer is
-        // parked (the session is fenced), and it is then the only pair the
-        // server still takes for that session: wait for it. Only for a refresh
-        // started for a session installed before this sign-out, and not long.
-        if let fence, let refresh = inFlightRefresh, refresh.fenceMark < fence {
-            signOutWaitHookForTesting?()
-            await Self.waitForRefresh(refresh.task, upToNanoseconds: Self.signOutRefreshWaitNanoseconds)
-        }
+        let handle = beginRevocation(fence: fence, snapshot: snapshot)
+        await revoke(handle)
+        return handle.removedAccessToken
+    }
 
+    /// 1.63 (A1): the first half of a sign-out, at once and without waiting:
+    /// decides which session is left, takes it out of this client, and binds
+    /// the revocation to it. The Watch calls it before its client lets go of
+    /// the session (`beginExternalAuthorizationTransition`).
+    ///
+    /// Which session is left:
+    /// - `fence` given (what `fenceCurrentSession()` returned for this
+    ///   sign-out): the session the client holds, if it was installed before
+    ///   this sign-out (`sessionFenceMark < fence`). One installed since, a
+    ///   sign-in after it, is never touched here, whatever later sign-outs
+    ///   say: those are its own.
+    /// - nil (account deletion): the session the client holds, if it carries
+    ///   `snapshot.accessToken`, or whatever it holds when that is nil.
+    ///
+    /// The pair revoked comes from exactly one place: the held session when it
+    /// is the one left (its newest state: after the fence nothing persists
+    /// its rotations), else `snapshot`, the caller's read at the sign-out. A
+    /// refresh of that pair still out (found by the refresh token it spends)
+    /// is waited for by `revoke`.
+    public func beginRevocation(fence: UInt64?, snapshot: RevocationSnapshot) -> RevocationHandle {
         let heldIsLeft: Bool
         if let fence {
             heldIsLeft = accessToken != nil && sessionFenceMark < fence
         } else {
             heldIsLeft = snapshot.accessToken == nil || accessToken == snapshot.accessToken
         }
-        let rotation = takeFencedRotation()
-        var removed: String?
-        var pair: (accessToken: String?, refreshToken: String?)
+        let removed: String?
+        let epoch: UInt64?
+        let pair: (accessToken: String?, refreshToken: String?)
         if heldIsLeft {
             removed = accessToken
+            epoch = sessionEpoch
             pair = (accessToken, refreshToken)
-            if let rotation, rotation.epoch == sessionEpoch, rotation.spentRefreshToken == refreshToken {
-                pair = (rotation.accessToken, rotation.refreshToken)
-            }
             if accessToken != nil || refreshToken != nil || userId != nil {
                 authorizationGeneration &+= 1
             }
@@ -982,25 +1147,87 @@ public actor APIClient {
             self.sessionRenewer = nil
             self.userId = nil
         } else {
+            removed = nil
+            epoch = nil
             pair = (snapshot.accessToken, snapshot.refreshToken)
-            // Which epoch the snapshot's session had is not known here; a
-            // rotation minted from its refresh token is its newer form.
-            if let rotation, rotation.spentRefreshToken == snapshot.refreshToken {
-                pair = (rotation.accessToken, rotation.refreshToken)
-            }
         }
-
-        guard let access = pair.accessToken, !access.isEmpty else { return removed }
-        await revokeSession(accessToken: access, refreshToken: pair.refreshToken)
-        return removed
+        let flightID = pair.refreshToken.flatMap { spending in
+            refreshFlights.values.first { $0.identity.refreshToken == spending }?.identity.id
+        }
+        activeRevocations += 1
+        return RevocationHandle(
+            removedAccessToken: removed,
+            snapshotAccessToken: snapshot.accessToken,
+            fence: fence,
+            epoch: epoch,
+            accessToken: pair.accessToken,
+            refreshToken: pair.refreshToken,
+            flightID: flightID
+        )
     }
 
-    /// 1.63 (A1): the parked rotation, if any, taken out so that no one reads
-    /// it twice.
-    private func takeFencedRotation() -> FencedRotation? {
-        let rotation = fencedRotation
-        fencedRotation = nil
-        return rotation
+    /// 1.63 (A1): the second half: revokes the session `handle` is bound to
+    /// on the server, `scope=local` (that session only; up to 1.62 no scope
+    /// was sent, and Supabase Auth's default `global` ended every session of
+    /// the account on every device).
+    ///
+    /// - A refresh of that session still out is waited for, at most
+    ///   `signOutRefreshWaitNanoseconds`; the pair it brings back is parked
+    ///   for this revocation and used instead (`takeParkedRotation`).
+    /// - A refresh token a refresh already sent is never sent again from here
+    ///   (it is spent, or being spent): no refresh for the revoke then, the
+    ///   logout goes out with the access token as it is.
+    /// - Otherwise an access token at or within a minute of its `exp` is
+    ///   refreshed first with the pair's own refresh token
+    ///   (`refreshForRevoke`, which installs and persists nothing), and a
+    ///   logout answered 401, or 403 `bad_jwt`, gets one refresh and one
+    ///   retry. At most one refresh, and `revocationBudgetNanoseconds` on the
+    ///   network in all.
+    ///
+    /// Best effort throughout: the sign-out has already happened here.
+    public func revoke(_ handle: RevocationHandle) async {
+        if let flightID = handle.flightID {
+            await waitForFlight(flightID)
+        }
+        var revokeAccess = handle.accessToken
+        var revokeRefresh = handle.refreshToken
+        if let spent = revokeRefresh,
+           let rotation = takeParkedRotation(spentRefreshToken: spent, epoch: handle.epoch) {
+            revokeAccess = rotation.accessToken
+            revokeRefresh = rotation.refreshToken
+        }
+        if let token = revokeRefresh, sentRefreshTokens.contains(token) {
+            revokeRefresh = nil
+        }
+        if let access = revokeAccess, !access.isEmpty {
+            await revokeWithinBudget(accessToken: access, refreshToken: revokeRefresh)
+        }
+        activeRevocations = max(0, activeRevocations - 1)
+        if let fence = handle.fence { signOutFence.complete(fence) }
+        if activeRevocations == 0, !signOutFence.hasPending {
+            parkedRotations.removeAll()
+        }
+    }
+
+    /// 1.63 (A1): waits for flight `id` to finish, at most
+    /// `signOutRefreshWaitNanoseconds`, or until this task is cancelled. The
+    /// observer is registered on the flight and removed when it wakes,
+    /// whatever woke it, and the deadline is stopped.
+    private func waitForFlight(_ id: UInt64) async {
+        guard refreshFlights[id] != nil else { return }
+        lastObserverID &+= 1
+        let observerID = lastObserverID
+        let observer = FlightObserver()
+        refreshFlights[id]?.observers[observerID] = observer
+        let stopDeadline = deadlineTrigger(Self.signOutRefreshWaitNanoseconds) { observer.fire() }
+        signOutWaitHookForTesting?()
+        await withTaskCancellationHandler {
+            await observer.wait()
+        } onCancel: {
+            observer.fire()
+        }
+        stopDeadline()
+        refreshFlights[id]?.observers[observerID] = nil
     }
 
     /// 1.63 (A1): where a revoke's requests go. The functions that send them
@@ -1013,25 +1240,44 @@ public actor APIClient {
         let session: URLSession
     }
 
+    /// 1.63 (A1): the revoke's requests, cancelled when the budget runs out
+    /// or when the caller's task is cancelled.
+    private func revokeWithinBudget(accessToken: String, refreshToken: String?) async {
+        let endpoint = RevokeEndpoint(supabaseURL: supabaseURL, anonKey: supabaseAnonKey, session: session)
+        let work = Task {
+            await Self.revokeSession(accessToken: accessToken, refreshToken: refreshToken, at: endpoint)
+        }
+        let stopDeadline = deadlineTrigger(Self.revocationBudgetNanoseconds) { work.cancel() }
+        await withTaskCancellationHandler {
+            await work.value
+        } onCancel: {
+            work.cancel()
+        }
+        stopDeadline()
+    }
+
     /// 1.63 (A1): `POST /auth/v1/logout?scope=local` for one session, with at
     /// most one refresh of its access token (`didAttemptRevokeRefresh`), spent
     /// either before the first request (a token at or near its `exp`) or after
-    /// a rejected one. Uses only its arguments.
-    private func revokeSession(accessToken leftAccess: String, refreshToken leftRefresh: String?) async {
-        let endpoint = RevokeEndpoint(supabaseURL: supabaseURL, anonKey: supabaseAnonKey, session: session)
+    /// a rejected one. `leftRefresh` nil: no refresh at all.
+    private static func revokeSession(
+        accessToken leftAccess: String,
+        refreshToken leftRefresh: String?,
+        at endpoint: RevokeEndpoint
+    ) async {
         var didAttemptRevokeRefresh = false
         var bearer = leftAccess
-        if let leftRefresh, Self.expiresWithinAMinute(bearer) {
+        if let leftRefresh, expiresWithinAMinute(bearer) {
             didAttemptRevokeRefresh = true
-            if let fresh = await Self.refreshForRevoke(refreshToken: leftRefresh, at: endpoint) {
+            if let fresh = await refreshForRevoke(refreshToken: leftRefresh, at: endpoint) {
                 bearer = fresh
             }
         }
-        let answer = await Self.sendLogout(bearer: bearer, to: endpoint)
+        let answer = await sendLogout(bearer: bearer, to: endpoint)
         guard answer == .tokenRejected, !didAttemptRevokeRefresh, let leftRefresh else { return }
         didAttemptRevokeRefresh = true
-        guard let fresh = await Self.refreshForRevoke(refreshToken: leftRefresh, at: endpoint) else { return }
-        _ = await Self.sendLogout(bearer: fresh, to: endpoint)
+        guard let fresh = await refreshForRevoke(refreshToken: leftRefresh, at: endpoint) else { return }
+        _ = await sendLogout(bearer: fresh, to: endpoint)
     }
 
     /// 1.63 (A1): what a logout's answer means for the one retry.
@@ -1129,27 +1375,6 @@ public actor APIClient {
         } catch {
             apiLogger.warning("sign-out refresh failed: \(error.localizedDescription, privacy: .public)")
             return nil
-        }
-    }
-
-    /// Waits for `task` to finish or for `nanoseconds`, whichever is first.
-    /// Awaiting `task.value` alone cannot be cut short: cancelling the waiter
-    /// does not cancel the task, and the wait goes on.
-    private static func waitForRefresh(
-        _ task: Task<(accessToken: String, refreshToken: String), Error>,
-        upToNanoseconds nanoseconds: UInt64
-    ) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let resume = SignOutWaitResume(continuation)
-            let timer = Task {
-                try? await Task.sleep(nanoseconds: nanoseconds)
-                resume.fire()
-            }
-            Task {
-                _ = try? await task.value
-                timer.cancel()
-                resume.fire()
-            }
         }
     }
 

@@ -530,7 +530,439 @@ final class SignOutThisSessionOnlyTests: XCTestCase {
         XCTAssertNil(RevocationSnapshot(accessToken: nil, refreshToken: "").refreshToken)
     }
 
+    // MARK: - Parked rotations belong to one session each (review MUST 1)
+
+    /// A is fenced; B is installed; B refreshes, is fenced by its own sign-out,
+    /// and its refresh comes back parked. A's delayed sign-out arrives first:
+    /// it must leave B's rotation alone, or B's sign-out (whose access token
+    /// has expired and whose old refresh token the server now refuses) could
+    /// not revoke B. Up to the first 1.63 draft a single slot was taken and
+    /// cleared by whichever sign-out came first.
+    func test_a_delayed_sign_out_never_takes_another_sessions_parked_rotation() async throws {
+        let expiredB = Self.jwt("b", expiresIn: -3_600)
+        let refreshBOut = expectation(description: "B's refresh is out")
+        SessionRestoreStub.respond { request in
+            switch (request.url?.path, Self.refreshToken(in: request)) {
+            case (Self.tokenPath, "refresh-b"):
+                // The server takes a refresh token once.
+                guard SessionRestoreStub.refreshTokensSent().filter({ $0 == "refresh-b" }).count == 1 else {
+                    return .status(400, Self.alreadyUsed)
+                }
+                refreshBOut.fulfill()
+                return .held(200, Self.rotated("access-b2", "refresh-b2"))
+            case (Self.logoutPath, _):
+                return .status(204, "")
+            default:
+                return .status(500)
+            }
+        }
+        let (api, rotations) = await Self.makeClient(access: "access-a", refresh: "refresh-a")
+        let auth = AuthManager(api: api, persistTokens: AppState.persistAuthTokens)
+        AppState.persistAuthTokens(access: "access-a", refresh: "refresh-a")
+
+        // 1. A is fenced; its sign-out has not reached the client yet.
+        let fenceA = api.fenceCurrentSession()
+        let snapshotA = SessionTokenStore.shared.revocationSnapshot()
+        // 2. B is installed.
+        await api.updateToken(expiredB)
+        await api.updateRefreshToken("refresh-b")
+        AppState.persistAuthTokens(access: expiredB, refresh: "refresh-b")
+        // 3. B refreshes.
+        let refreshB = Task { try await api.refreshAccessToken() }
+        await fulfillment(of: [refreshBOut], timeout: 5)
+        // 4. B is fenced by its own sign-out.
+        let fenceB = api.fenceCurrentSession()
+        let snapshotB = SessionTokenStore.shared.revocationSnapshot()
+        // 5. B's refresh comes back: parked for B's revocation.
+        SessionRestoreStub.releaseHeld(path: Self.tokenPath)
+        do {
+            _ = try await refreshB.value
+            XCTFail("B's refresh caller gets no pair of a session signed out of")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        let parked = await api.parkedRotationCountForTesting
+        XCTAssertEqual(parked, 1, "control: B's rotation is parked")
+        // 6. A's delayed sign-out arrives first.
+        await auth.signOut(fence: fenceA, snapshot: snapshotA)
+        // 7. Then B's.
+        await auth.signOut(fence: fenceB, snapshot: snapshotB)
+
+        XCTAssertEqual(SessionRestoreStub.authorizations(Self.logoutPath), ["access-a", "access-b2"],
+                       "B's sign-out revokes with B's parked rotation")
+        XCTAssertEqual(SessionRestoreStub.refreshTokensSent(), ["refresh-b"], "B's spent refresh token is not sent again")
+        XCTAssertEqual(rotations.count, 0)
+        let held = await api.getToken()
+        XCTAssertNil(held)
+        let left = await api.parkedRotationCountForTesting
+        XCTAssertEqual(left, 0, "nothing parked once no revocation is pending")
+        SessionRestoreStub.assertEveryLogoutIsLocal()
+    }
+
+    // MARK: - A flight is bound to its session (review MUST 2)
+
+    /// A's flight is created; B is installed before the flight's task starts.
+    /// The flight was captured with A's refresh token, finds A gone, and sends
+    /// nothing. (Up to the first 1.63 draft the task read the refresh token
+    /// when it started, and refreshed B under A's label.)
+    func test_a_session_change_before_a_flight_starts_never_lets_it_spend_the_new_sessions_token() async throws {
+        let started = expectation(description: "A's flight is about to start")
+        let gate = Gate()
+        SessionRestoreStub.respond { request in
+            request.url?.path == Self.tokenPath ? .status(200, Self.rotated("access-x", "refresh-x")) : .status(500)
+        }
+        let (api, rotations) = await Self.makeClient(access: "access-a", refresh: "refresh-a")
+        await api.setRefreshStageHookForTesting { stage in
+            guard stage == .willStart else { return }
+            started.fulfill()
+            await gate.wait()
+        }
+
+        let refreshA = Task { try await api.refreshAccessToken() }
+        await fulfillment(of: [started], timeout: 5)
+        await api.updateToken("access-b")
+        await api.updateRefreshToken("refresh-b")
+        gate.open()
+
+        do {
+            _ = try await refreshA.value
+            XCTFail("A's caller gets no pair once A is gone")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        XCTAssertFalse(SessionRestoreStub.refreshTokensSent().contains("refresh-b"),
+                       "an A-labelled flight never spends B's refresh token")
+        XCTAssertEqual(SessionRestoreStub.count(Self.tokenPath), 0, "nothing sent for a session that is gone")
+        let access = await api.getToken()
+        let refresh = await api.getRefreshToken()
+        XCTAssertEqual(access, "access-b")
+        XCTAssertEqual(refresh, "refresh-b")
+        XCTAssertEqual(rotations.count, 0)
+    }
+
+    /// A's refresh finishes (installed and written while A was held); B signs
+    /// in before A's caller resumes. That caller is not handed A's pair.
+    func test_a_session_change_after_a_refresh_finished_keeps_its_pair_from_the_waiting_caller() async throws {
+        SessionRestoreStub.respond { request in
+            request.url?.path == Self.tokenPath ? .status(200, Self.rotated("access-a2", "refresh-a2")) : .status(500)
+        }
+        let (api, rotations) = await Self.makeClient(access: "access-a", refresh: "refresh-a")
+        await api.setRefreshStageHookForTesting { stage in
+            guard stage == .didFinish else { return }
+            await api.updateToken("access-b")
+            await api.updateRefreshToken("refresh-b")
+        }
+
+        do {
+            _ = try await api.refreshAccessToken()
+            XCTFail("a waiter never receives the pair of a session that changed after the refresh")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        XCTAssertEqual(rotations.accessTokens, ["access-a2"], "control: A's refresh was written while A was held")
+        let access = await api.getToken()
+        XCTAssertEqual(access, "access-b")
+    }
+
+    // MARK: - The wait's deadline, cancellation, the network budget (review SHOULD)
+
+    /// The refresh of the session being left does not come back in time. The
+    /// revocation stops waiting at the (injected) deadline, stops observing
+    /// the flight, and revokes with the access token as it is: it never
+    /// refreshes with the refresh token the flight is spending. The flight's
+    /// late answer lands nowhere.
+    func test_a_wait_that_times_out_never_refreshes_with_the_token_being_spent() async throws {
+        let expired = Self.jwt("a", expiresIn: -3_600)
+        let refreshOut = expectation(description: "the ordinary refresh is out")
+        let waiting = expectation(description: "the revocation waits for it")
+        SessionRestoreStub.respond { request in
+            switch request.url?.path {
+            case Self.tokenPath:
+                guard SessionRestoreStub.count(Self.tokenPath) == 1 else { return .status(400, Self.alreadyUsed) }
+                refreshOut.fulfill()
+                return .held(200, Self.rotated("access-new", "refresh-new"))
+            case Self.logoutPath:
+                return .status(403, Self.badJWT)
+            default:
+                return .status(500)
+            }
+        }
+        let (api, rotations) = await Self.makeClient(access: expired, refresh: "refresh-a")
+        let deadlines = ManualDeadlines()
+        await api.setDeadlineTriggerForTesting(deadlines.trigger)
+        await api.setSignOutWaitHookForTesting { waiting.fulfill() }
+
+        let refresh = Task { try await api.refreshAccessToken() }
+        await fulfillment(of: [refreshOut], timeout: 5)
+        let fence = api.fenceCurrentSession()
+        let signOut = Task {
+            await api.signOutServer(fence: fence, snapshot: RevocationSnapshot(accessToken: expired, refreshToken: "refresh-a"))
+        }
+        await fulfillment(of: [waiting], timeout: 5)
+        XCTAssertEqual(deadlines.fire(APIClient.signOutRefreshWaitNanoseconds), 1, "control: the wait's deadline was armed")
+        let removed = await signOut.value
+
+        XCTAssertEqual(removed, expired)
+        XCTAssertEqual(SessionRestoreStub.refreshTokensSent(), ["refresh-a"],
+                       "a timed-out wait never refreshes with a token that is being spent")
+        XCTAssertEqual(SessionRestoreStub.authorizations(Self.logoutPath), [expired])
+        let observers = await api.refreshObserverCountForTesting
+        XCTAssertEqual(observers, 0, "the timed-out wait no longer observes the refresh")
+
+        SessionRestoreStub.releaseHeld(path: Self.tokenPath)
+        do {
+            _ = try await refresh.value
+            XCTFail("the late refresh hands its pair to nobody")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        let parked = await api.parkedRotationCountForTesting
+        XCTAssertEqual(parked, 0, "a late rotation with no revocation pending is not kept")
+        XCTAssertEqual(rotations.count, 0)
+        let held = await api.getToken()
+        XCTAssertNil(held)
+    }
+
+    /// The task running the sign-out is cancelled while it waits: it stops
+    /// observing the flight at once and starts no refresh of its own.
+    func test_a_cancelled_sign_out_stops_observing_the_refresh() async throws {
+        let expired = Self.jwt("a", expiresIn: -3_600)
+        let refreshOut = expectation(description: "the ordinary refresh is out")
+        let waiting = expectation(description: "the revocation waits for it")
+        SessionRestoreStub.respond { request in
+            switch request.url?.path {
+            case Self.tokenPath:
+                guard SessionRestoreStub.count(Self.tokenPath) == 1 else { return .status(400, Self.alreadyUsed) }
+                refreshOut.fulfill()
+                return .held(200, Self.rotated("access-new", "refresh-new"))
+            case Self.logoutPath:
+                return .status(204, "")
+            default:
+                return .status(500)
+            }
+        }
+        let (api, _) = await Self.makeClient(access: expired, refresh: "refresh-a")
+        let deadlines = ManualDeadlines()
+        await api.setDeadlineTriggerForTesting(deadlines.trigger)
+        await api.setSignOutWaitHookForTesting { waiting.fulfill() }
+
+        let refresh = Task { try await api.refreshAccessToken() }
+        await fulfillment(of: [refreshOut], timeout: 5)
+        let fence = api.fenceCurrentSession()
+        let signOut = Task {
+            await api.signOutServer(fence: fence, snapshot: RevocationSnapshot(accessToken: expired, refreshToken: "refresh-a"))
+        }
+        await fulfillment(of: [waiting], timeout: 5)
+        signOut.cancel()
+        _ = await signOut.value
+
+        let observers = await api.refreshObserverCountForTesting
+        XCTAssertEqual(observers, 0, "a cancelled wait no longer observes the refresh")
+        XCTAssertEqual(SessionRestoreStub.refreshTokensSent(), ["refresh-a"], "and starts no refresh of its own")
+        XCTAssertEqual(deadlines.armedCount, 0, "every deadline it armed is stopped")
+        SessionRestoreStub.releaseHeld(path: Self.tokenPath)
+        _ = try? await refresh.value
+    }
+
+    /// A logout that never answers: the revocation ends at its network budget
+    /// (an injected deadline), and the sign-out returns.
+    func test_the_revocation_stops_at_its_network_budget() async throws {
+        let logoutOut = expectation(description: "the logout is out")
+        SessionRestoreStub.respond { request in
+            guard request.url?.path == Self.logoutPath else { return .status(500) }
+            logoutOut.fulfill()
+            return .held(204, "")
+        }
+        let (api, _) = await Self.makeClient(access: "access-a", refresh: "refresh-a")
+        let deadlines = ManualDeadlines()
+        await api.setDeadlineTriggerForTesting(deadlines.trigger)
+
+        let signOut = Task {
+            await api.signOutServer(fence: api.fenceCurrentSession(),
+                                    snapshot: RevocationSnapshot(accessToken: "access-a", refreshToken: "refresh-a"))
+        }
+        await fulfillment(of: [logoutOut], timeout: 5)
+        await Self.until { deadlines.armed(APIClient.revocationBudgetNanoseconds) == 1 }
+        XCTAssertEqual(deadlines.fire(APIClient.revocationBudgetNanoseconds), 1, "control: the budget was armed")
+        let removed = await signOut.value
+
+        XCTAssertEqual(removed, "access-a", "the sign-out ends when the budget runs out")
+        XCTAssertEqual(SessionRestoreStub.count(Self.logoutPath), 1)
+        XCTAssertEqual(deadlines.armedCount, 0)
+    }
+
+    // MARK: - Callers of a refresh a sign-out overtook (review SHOULD)
+
+    /// The Watch asks the iPhone for a token; the iPhone signs out while the
+    /// refresh is out. The Watch is handed nothing, the iPhone shows no error,
+    /// and the cancelled refresh is not read as a refused session.
+    func test_a_sign_out_overtaking_the_Watchs_refresh_hands_the_Watch_nothing_and_shows_no_error() async throws {
+        let refreshOut = expectation(description: "the refresh for the Watch is out")
+        SessionRestoreStub.respond { request in
+            guard request.url?.path == Self.tokenPath else { return .status(500) }
+            refreshOut.fulfill()
+            return .held(200, Self.rotated("access-a2", "refresh-a2"))
+        }
+        let (api, rotations) = await Self.makeAccountClient()
+        let state = AppState(
+            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            defaults: UploadOutcomeTests.freshDefaults(),
+            api: api,
+            performLaunchSetup: false)
+        state.isAuthenticated = true
+        state.userId = Self.userA
+
+        let answer = Task { await state.refreshSessionForWatch() }
+        await fulfillment(of: [refreshOut], timeout: 5)
+        api.fenceCurrentSession()
+        SessionRestoreStub.releaseHeld(path: Self.tokenPath)
+        let token = await answer.value
+
+        XCTAssertNil(token, "the Watch is handed no token of the session being left")
+        XCTAssertNil(state.lastError, "no error shown")
+        XCTAssertTrue(state.isAuthenticated, "a cancelled refresh is not a refused session: nothing signs out here")
+        XCTAssertEqual(rotations.count, 0)
+    }
+
+    /// A cloud refresh (the lease-backed reads the dashboard shows) gets 401s,
+    /// and their token refresh is overtaken by a sign-out. The reads end in
+    /// `CancellationError`, which shows nothing.
+    func test_a_cloud_refresh_whose_token_refresh_a_sign_out_overtakes_shows_no_error() async throws {
+        let refreshOut = expectation(description: "the reads' token refresh is out")
+        SessionRestoreStub.respond { request in
+            switch (request.url?.path, Self.bearer(request)) {
+            case ("/auth/v1/health", _):
+                return .status(200, "{}")
+            case (Self.tokenPath, _):
+                if SessionRestoreStub.count(Self.tokenPath) == 1 { refreshOut.fulfill() }
+                return .held(200, Self.rotated("access-a2", "refresh-a2"))
+            case (_, "access-a"):
+                return .status(401, #"{"code":"PGRST301","message":"JWT expired"}"#)
+            default:
+                return .status(500)
+            }
+        }
+        let (api, _) = await Self.makeAccountClient()
+        let state = AppState(
+            runtimeEnvironment: RefreshAfterSessionRestoreTests.refreshOnlyRuntime,
+            defaults: UploadOutcomeTests.freshDefaults(),
+            api: api,
+            performLaunchSetup: false)
+        state.isAuthenticated = true
+        state.isPaired = true
+        state.userId = Self.userA
+        XCTAssertEqual(state.refreshRoute, .cloud)
+
+        let refresh = Task {
+            await state.dataRefreshManager.refreshAll(context: state.refreshContext(), callbacks: state.refreshCallbacks())
+        }
+        await fulfillment(of: [refreshOut], timeout: 5)
+        api.fenceCurrentSession()
+        SessionRestoreStub.releaseHeld(path: Self.tokenPath)
+        await refresh.value
+
+        XCTAssertNil(state.lastError, "no error shown for a read the sign-out overtook")
+        XCTAssertEqual(SessionRestoreStub.count(Self.tokenPath), 1, "one refresh, shared, and none after the fence")
+        XCTAssertFalse(SessionRestoreStub.requests().contains { Self.bearer($0) == "access-a2" },
+                       "the left session's new token is sent nowhere")
+    }
+
     // MARK: - Helpers
+
+    private static let userA = "00000000-0000-0000-0000-0000000000a1"
+
+    /// A client holding account A's session as a sign-in leaves it (user id
+    /// set), with each rotation it would persist recorded.
+    private static func makeAccountClient() async -> (APIClient, Rotations) {
+        let api = APIClient(supabaseURL: base, supabaseAnonKey: "anon", session: SessionRestoreStub.session())
+        _ = await api.installExternalAuthenticatedSession(
+            accessToken: "access-a", refreshToken: "refresh-a", userID: userA, transitionGeneration: 0)
+        let rotations = Rotations()
+        await api.setTokenRefreshHandler { rotations.record($0, $1) }
+        return (api, rotations)
+    }
+
+    /// Deadlines the test fires by hand instead of waiting for them.
+    final class ManualDeadlines: @unchecked Sendable {
+        private struct Armed {
+            let id: Int
+            let nanoseconds: UInt64
+            let fire: @Sendable () -> Void
+        }
+        private let lock = NSLock()
+        private var armedDeadlines: [Armed] = []
+        private var lastID = 0
+
+        var trigger: APIClient.DeadlineTrigger {
+            { [self] nanoseconds, fire in
+                lock.lock()
+                lastID += 1
+                let id = lastID
+                armedDeadlines.append(Armed(id: id, nanoseconds: nanoseconds, fire: fire))
+                lock.unlock()
+                return { [self] in
+                    lock.lock()
+                    armedDeadlines.removeAll { $0.id == id }
+                    lock.unlock()
+                }
+            }
+        }
+
+        var armedCount: Int { lock.lock(); defer { lock.unlock() }; return armedDeadlines.count }
+
+        func armed(_ nanoseconds: UInt64) -> Int {
+            lock.lock(); defer { lock.unlock() }
+            return armedDeadlines.filter { $0.nanoseconds == nanoseconds }.count
+        }
+
+        /// Fires every armed deadline of that length; returns how many.
+        @discardableResult
+        func fire(_ nanoseconds: UInt64) -> Int {
+            lock.lock()
+            let due = armedDeadlines.filter { $0.nanoseconds == nanoseconds }
+            armedDeadlines.removeAll { $0.nanoseconds == nanoseconds }
+            lock.unlock()
+            due.forEach { $0.fire() }
+            return due.count
+        }
+    }
+
+    /// Holds whoever waits until the test opens it.
+    final class Gate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var isOpen = false
+        private var waiters: [CheckedContinuation<Void, Never>] = []
+
+        func wait() async {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                lock.lock()
+                if isOpen {
+                    lock.unlock()
+                    continuation.resume()
+                    return
+                }
+                waiters.append(continuation)
+                lock.unlock()
+            }
+        }
+
+        func open() {
+            lock.lock()
+            isOpen = true
+            let pending = waiters
+            waiters = []
+            lock.unlock()
+            pending.forEach { $0.resume() }
+        }
+    }
+
+    private static func until(seconds: TimeInterval = 5, _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(seconds)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
 
     final class Rotations: @unchecked Sendable {
         private let lock = NSLock()

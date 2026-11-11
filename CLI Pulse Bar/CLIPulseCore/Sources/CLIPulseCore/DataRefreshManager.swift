@@ -962,6 +962,12 @@ internal final class DataRefreshManager {
             // new tokens could not be written. Nothing to show; the next
             // refresh after it is unlocked brings the data.
             outcome = .cancelled
+        } catch is CancellationError {
+            // 1.63 (A1): a read whose token refresh a sign-out or a new
+            // sign-in overtook (`APIClient.refreshAccessToken` no longer hands
+            // the left session's pair to its callers). Nothing to show: the
+            // session it was for is gone, and the next refresh is the new one's.
+            outcome = .cancelled
         } catch {
             callbacks.setLastError(error.localizedDescription)
             outcome = Self.cloudReadOutcome(error)

@@ -195,14 +195,23 @@ public final class AuthManager {
     /// `snapshot`: the session being left, its access and refresh token read
     /// together at the sign-out, before anything was deleted.
     public func signOut(fence: UInt64?, snapshot: RevocationSnapshot) async {
+        let revocation = await api.beginRevocation(fence: fence, snapshot: snapshot)
+        await finishSignOut(revocation)
+    }
+
+    /// 1.63 (A1): the rest of a sign-out whose revocation has begun
+    /// (`APIClient.beginRevocation`): the revoke on the server, then the
+    /// Keychain.
+    public func finishSignOut(_ revocation: RevocationHandle) async {
         // Attempt server-side token revocation
-        let removed = await api.signOutServer(fence: fence, snapshot: snapshot)
+        await api.revoke(revocation)
         // Only clear tokens if they haven't been replaced by a new sign-in.
         // 1.61: the session the client removed is the one signed out of, even
         // when a refresh rotated it (and wrote the new pair) after the app
         // read the snapshot.
+        let removed = revocation.removedAccessToken
         let storedToken = AppState.loadStoredAccessToken()
-        if storedToken == nil || storedToken?.isEmpty == true || storedToken == snapshot.accessToken
+        if storedToken == nil || storedToken?.isEmpty == true || storedToken == revocation.snapshotAccessToken
             || (removed != nil && storedToken == removed) {
             storeAuthTokens(access: "", refresh: nil)
         }
