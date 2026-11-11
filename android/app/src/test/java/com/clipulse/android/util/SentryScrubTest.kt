@@ -64,6 +64,26 @@ class SentryScrubTest {
     }
 
     @Test
+    fun `quotes and angle brackets inside a query do not end the redaction`() {
+        for (q in listOf("next='ok'&code=opaque", "next=\"ok\"&code=opaque", "a=<x>&code=opaque", "a=%27&b='&c=\"&code=opaque")) {
+            val out = redact("https://host/cb?$q")
+            assertEquals("https://host/cb?[query]", out)
+            assertEquals("second pass: $q", out, redact(out))
+        }
+        assertEquals("https://host/cb#[query]", redact("https://host/cb#a='1'&code=opaque"))
+        // Over-redaction accepted: JSON closing punctuation touching the URL goes with the query.
+        assertEquals("""{"u":"https://host/cb?[query]""", redact("""{"u":"https://host/cb?a=1"}"""))
+    }
+
+    @Test
+    fun `the cap and a second pass agree`() {
+        val long = "https://host/cb?code=" + "x".repeat(20000)
+        val once = redact(long)
+        assertEquals("https://host/cb?[query]", once.removeSuffix("[truncated]").ifEmpty { once })
+        assertEquals(once, redact(once))
+    }
+
+    @Test
     fun `a left boundary keeps sk and Bearer matches to whole tokens`() {
         assertEquals("disk-encryption-configuration", redact("disk-encryption-configuration"))
         assertEquals("task-abcdefghijklmnopqrstuvwxyz", redact("task-abcdefghijklmnopqrstuvwxyz"))

@@ -9,15 +9,15 @@ import org.junit.Test
 /**
  * Release builds keep every Log call (no ProGuard stripping), so a log line is a disclosure.
  *
- * In `fcm/`, `worker/` and `data/remote/` every `Log.<level>(` call must have one of a few
- * permitted shapes (an allowlist, not a search for bad words): exactly two arguments, a tag and ONE
- * string literal, whose interpolations are limited to a plain lower-case variable, `x.size`,
- * `x.code`, `e.javaClass.simpleName` or `failureSummary(e)`. So a throwable argument
- * (`Log.w(tag, msg, e)`), `${e.toString()}`, `$ex`, `.message` and string concatenation are all
- * rejected whatever the exception variable is called. A plain variable could still hold an
- * identifier under an unexpected name, so identifier names are also rejected. Calls are found with
- * a balanced-parenthesis scanner that understands Kotlin strings and templates, and import forms
- * that would let a call dodge the scan (`import ... as`, member imports) are rejected everywhere.
+ * In `fcm/`, `worker/` and `data/remote/` every `Log.<level>(` call must have this exact shape:
+ * two arguments, a tag and ONE ordinary (not raw `"""`) string literal. The only things the
+ * literal may interpolate are the expressions in an explicit allowlist (`signedIn`, `status`,
+ * `results.size`, `payloads.size`, `r.code`, `e.javaClass.simpleName`, `failureSummary(e)`).
+ * Any other `$name` or `${expression}` fails whatever it is called, so throwable arguments,
+ * `${e.toString()}`, renamed exceptions (`$failure`), `$body`, `$url` and string concatenation are
+ * all rejected. Calls are found with a balanced-parenthesis scanner that understands Kotlin strings,
+ * templates and char literals, and import forms that would let a call dodge the scan
+ * (`import ... as`, member imports) are rejected everywhere.
  */
 class NoIdentifierLoggingTest {
     private val sourceRoot = "src/main/java/com/clipulse/android"
@@ -158,6 +158,7 @@ class NoIdentifierLoggingTest {
         val args = topLevelArgs(call)
         if (args.size != 2) return "must have exactly two arguments (tag, message); a throwable argument logs its stack: ${normalized(call)}"
         val message = args[1]
+        if (message.startsWith("\"\"\"")) return "raw string literals are not allowed in log messages: ${normalized(call)}"
         if (!message.startsWith("\"") || skipString(message, 0) != message.length) {
             return "message must be a single string literal: ${normalized(call)}"
         }
@@ -240,6 +241,9 @@ class NoIdentifierLoggingTest {
             "(TAG, \"r \$url\")",
             "(TAG, \"r \$email\")",
             "(TAG, \"r \$response\")",
+            "(TAG, \"\"\"failed \\\$failure\"\"\")",
+            "(TAG, \"\"\"failed \${failure}\"\"\")",
+            "(TAG, \"\"\"plain\"\"\")",
         )
         for (c in bad) assertTrue("should be rejected: $c", violation(c) != null)
         val good = listOf(

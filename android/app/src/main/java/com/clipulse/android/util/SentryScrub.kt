@@ -36,15 +36,15 @@ internal object SentryScrub {
 
     private val EMAIL_PATTERN = Regex("""(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
 
-    // scheme://authority/path, then a query or fragment that is dropped whole: everything after the
-    // "?" or "#" up to whitespace, a quote or an angle bracket, or the end of the text. Brackets,
-    // parentheses, braces, commas and semicolons are all legal inside a query, so none of them
-    // may end the match; the price is that punctuation from surrounding prose that touches the
-    // URL ("(see https://h/cb?code=1)") is dropped with it. "?[query]" matches itself, so a second
-    // pass changes nothing. The left boundary keeps the scan linear: a match can only start at the
-    // beginning of a scheme token, not at every letter inside it.
+    // scheme://authority/path, then a query or fragment that is dropped whole: once the "?" or "#"
+    // starts, EVERYTHING up to whitespace or the end of the text goes. Whitespace is the only
+    // terminator because every other character (quotes, brackets, angle brackets, commas) is legal
+    // inside a query, and any other rule leaves the next parameter behind. The price is that
+    // quotes or brackets from surrounding prose or JSON that touch the URL are dropped with it.
+    // "?[query]" matches itself, so a second pass changes nothing. The left boundary keeps the
+    // scan linear: a match can only start at the beginning of a scheme token.
     private val URL_QUERY_PATTERN =
-        Regex("""(?<![A-Za-z0-9+.-])([A-Za-z][A-Za-z0-9+.-]*://[^\s"'<>?#]*)([?#])[^\s"'<>]*""")
+        Regex("""(?<![A-Za-z0-9+.-])([A-Za-z][A-Za-z0-9+.-]*://[^\s"'<>?#]*)([?#])\S*""")
 
     /** Inputs longer than this are cut (and marked) before any pattern runs, bounding the work. */
     const val MAX_REDACT_CHARS = 8192
