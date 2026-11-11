@@ -126,6 +126,12 @@ class SentryInitCallbacksTest {
     }
 
     @Test
+    fun `event extra map keys are redacted`() {
+        val out = send { setExtra("blob", mapOf("a.b@example.com" to "fine", "ok" to "x")) }
+        assertEquals(mapOf("[email]" to "fine", "ok" to "x"), out.extras!!["blob"])
+    }
+
+    @Test
     fun `event contexts values are redacted`() {
         val out = send { contexts.put("custom", mapOf("inner" to dirty, "keep" to "fine")) }
         assertEquals(mapOf("inner" to clean, "keep" to "fine"), out.contexts.get("custom"))

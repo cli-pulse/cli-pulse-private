@@ -23,7 +23,7 @@ class NoIdentifierLoggingTest {
     private val sourceRoot = "src/main/java/com/clipulse/android"
     private val guardedDirs = listOf("fcm", "worker", "data/remote")
 
-    private val logCall = Regex("""\bLog\.(v|d|i|w|e|wtf)\s*\(""")
+    private val logCall = Regex("""\bLog\s*\.\s*(v|d|i|w|e|wtf)\s*\(""")
     private val aliasImport = Regex("""import\s+android\.util\.Log\s+as\b""")
     private val memberImport = Regex("""import\s+android\.util\.Log\.""")
 
@@ -157,6 +157,10 @@ class NoIdentifierLoggingTest {
     private fun violation(call: String): String? {
         val args = topLevelArgs(call)
         if (args.size != 2) return "must have exactly two arguments (tag, message); a throwable argument logs its stack: ${normalized(call)}"
+        val tag = args[0]
+        if (tag != "TAG" && !Regex("\"[A-Za-z0-9_.-]+\"").matches(tag)) {
+            return "tag must be the TAG constant or a plain literal, not an expression: ${normalized(call)}"
+        }
         val message = args[1]
         if (message.startsWith("\"\"\"")) return "raw string literals are not allowed in log messages: ${normalized(call)}"
         if (!message.startsWith("\"") || skipString(message, 0) != message.length) {
@@ -185,10 +189,40 @@ class NoIdentifierLoggingTest {
         return null
     }
 
-    private fun calls(file: File): List<String> {
-        val text = file.readText()
+    /** Blanks line and (nested) block comments, leaving strings and char literals alone. */
+    private fun stripComments(s: String): String {
+        val out = StringBuilder()
+        var i = 0
+        while (i < s.length) {
+            when {
+                s[i] == '"' -> { val end = skipString(s, i); out.append(s, i, end); i = end }
+                s[i] == '\'' -> { val end = skipChar(s, i); out.append(s, i, end); i = end }
+                s.startsWith("//", i) -> { while (i < s.length && s[i] != '\n') i++ }
+                s.startsWith("/*", i) -> {
+                    var depth = 1
+                    i += 2
+                    while (i < s.length && depth > 0) {
+                        when {
+                            s.startsWith("/*", i) -> { depth++; i += 2 }
+                            s.startsWith("*/", i) -> { depth--; i += 2 }
+                            else -> i++
+                        }
+                    }
+                    out.append(' ')
+                }
+                else -> { out.append(s[i]); i++ }
+            }
+        }
+        return out.toString()
+    }
+
+    /** Every log call in the source text, however the tokens are spaced or commented. */
+    private fun callsIn(source: String): List<String> {
+        val text = stripComments(source)
         return logCall.findAll(text).map { balancedCall(text, it.range.last) }.toList()
     }
+
+    private fun calls(file: File): List<String> = callsIn(file.readText())
 
     private fun kotlinFiles(dir: String): List<File> =
         repoFile("$sourceRoot/$dir").walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()
@@ -253,6 +287,41 @@ class NoIdentifierLoggingTest {
             "(TAG, \"x \${failureSummary(e)}\")",
         )
         for (c in good) assertEquals("should be accepted: $c", null, violation(c))
+    }
+
+    @Test
+    fun `tag must be the TAG constant or a plain literal`() {
+        for (c in listOf("(deviceId, \"failed\")", "(failure.toString(), \"failed\")", "(\"t\$x\", \"m\")", "(tag, \"m\")")) {
+            assertTrue("should be rejected: $c", violation(c) != null)
+        }
+        assertEquals(null, violation("(TAG, \"m\")"))
+        assertEquals(null, violation("(\"SupabaseClient\", \"m\")"))
+    }
+
+    @Test
+    fun `discovery finds calls despite whitespace and comments`() {
+        val src = """
+            |Log . w(TAG, "a")
+            |Log.w/*c*/(TAG, "b")
+            |Log.
+            |   d(TAG, "c")
+            |android . util . Log . e ( TAG , "d" )
+            |/* Log.w(TAG, "commented") */ // Log.w(TAG, "also commented")
+            |val s = "text // not a comment"; Log.i(TAG, "e")
+            |/* outer /* nested */ Log.w(TAG, "still commented") */
+        """.trimMargin()
+        assertEquals(5, callsIn(src).size)
+    }
+
+    @Test
+    fun `a planted extra call is found and judged`() {
+        val real = repoFile("$sourceRoot/fcm/PushService.kt").readText()
+        val before = callsIn(real).size
+        val planted = real + "\nfun x() { Log . d(TAG, \"id \$deviceId\") }\nfun y() { Log.w/*c*/(TAG, \"f \$failure\") }\n"
+        val found = callsIn(planted)
+        assertEquals(before + 2, found.size)
+        assertTrue(found.takeLast(2).all { violation(it) != null })
+        assertTrue("the real file must stay clean", callsIn(real).all { violation(it) == null })
     }
 
     @Test

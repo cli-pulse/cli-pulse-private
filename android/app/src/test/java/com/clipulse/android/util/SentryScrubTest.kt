@@ -79,8 +79,52 @@ class SentryScrubTest {
     fun `the cap and a second pass agree`() {
         val long = "https://host/cb?code=" + "x".repeat(20000)
         val once = redact(long)
-        assertEquals("https://host/cb?[query] [truncated]", once)
+        assertEquals("[truncated]", once)
         assertEquals(once, redact(once))
+    }
+
+    @Test
+    fun `apostrophes and other legal path characters before the query are fine`() {
+        for (u in listOf("https://host/it's?code=opaque", "https://host/a'b'c#code=opaque", "https://host/(x)/[y]/{z}?code=opaque")) {
+            val out = redact(u)
+            assertEquals(u.substringBefore("?").substringBefore("#") + u[u.indexOfFirst { it == '?' || it == '#' }] + "[query]", out)
+            assertEquals("second pass: $u", out, redact(out))
+        }
+    }
+
+    @Test
+    fun `bearer is case insensitive and takes the whole token`() {
+        assertEquals("[scrubbed]", redact("Bearer abc+def/ghi"))
+        assertEquals("[scrubbed]", redact("bearer opaque"))
+        assertEquals("h: [scrubbed]", redact("h: BEARER a/b+c="))
+        assertEquals("[scrubbed]", redact(redact("Bearer abc+def/ghi")))
+    }
+
+    @Test
+    fun `a secret crossing the cap is dropped whole`() {
+        val tokens = listOf(
+            "sk-abcdefghijklmnopqrstuvwxyz1234",
+            "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+            "someone.longname@example.com",
+            "eyJhbGciOiJIUzI1.eyJzdWIiOiIxMjM0NTY3.SflKxwRJSMeKKF2QT4",
+        )
+        for (t in tokens) {
+            val pad = SentryScrub.MAX_REDACT_CHARS - 8
+            val input = " ".repeat(pad) + t
+            val out = redact(input)
+            assertEquals(t, " ".repeat(pad) + "[truncated]", out)
+            assertEquals("second pass: $t", out, redact(out))
+        }
+        // Whitespace at the cut keeps everything before it.
+        val exact = "sk-abcdefghijklmnopqrstuvwxyz1234".let { it + " ".repeat(SentryScrub.MAX_REDACT_CHARS - it.length) + "tail" }
+        assertEquals("[scrubbed]" + " ".repeat(SentryScrub.MAX_REDACT_CHARS - 33) + "[truncated]", redact(exact))
+    }
+
+    @Test
+    fun `map keys are redacted and collisions keep both`() {
+        @Suppress("UNCHECKED_CAST")
+        val out = SentryScrub.scrubValue("root", mapOf("a@b.com" to "fine", "c@d.org" to "also", "plain" to 1)) as Map<String, Any?>
+        assertEquals(mapOf("[email]" to "fine", "[email]#2" to "also", "plain" to 1), out)
     }
 
     @Test

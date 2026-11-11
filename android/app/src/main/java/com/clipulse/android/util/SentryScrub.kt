@@ -28,7 +28,7 @@ internal object SentryScrub {
         Regex("""eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"""),
         Regex("""(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}"""),
         Regex("""(?<![A-Za-z0-9])sk_(live|test)_[A-Za-z0-9]{16,}"""),
-        Regex("""\bBearer\s+[A-Za-z0-9_\-.=]+""")
+        Regex("""(?i)\bbearer\s+\S+""")
     )
 
     private val UUID_PATTERN =
@@ -36,7 +36,8 @@ internal object SentryScrub {
 
     private val EMAIL_PATTERN = Regex("""(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
 
-    // scheme://authority/path, then a query or fragment that is dropped whole: once the "?" or "#"
+    // scheme://authority/path (any character except whitespace, "?" and "#": an apostrophe is a legal
+    // path character), then a query or fragment that is dropped whole: once the "?" or "#"
     // starts, EVERYTHING up to whitespace or the end of the text goes. Whitespace is the only
     // terminator because every other character (quotes, brackets, angle brackets, commas) is legal
     // inside a query, and any other rule leaves the next parameter behind. The price is that
@@ -44,7 +45,7 @@ internal object SentryScrub {
     // "?[query]" matches itself, so a second pass changes nothing. The left boundary keeps the
     // scan linear: a match can only start at the beginning of a scheme token.
     private val URL_QUERY_PATTERN =
-        Regex("""(?<![A-Za-z0-9+.-])([A-Za-z][A-Za-z0-9+.-]*://[^\s"'<>?#]*)([?#])\S*""")
+        Regex("""(?<![A-Za-z0-9+.-])([A-Za-z][A-Za-z0-9+.-]*://[^\s?#]*)([?#])\S*""")
 
     /** Inputs longer than this are cut (and marked) before any pattern runs, bounding the work. */
     const val MAX_REDACT_CHARS = 8192
@@ -54,9 +55,20 @@ internal object SentryScrub {
         return SENSITIVE_KEY_FRAGMENTS.any { lower.contains(it) }
     }
 
+    /**
+     * The first [MAX_REDACT_CHARS] characters minus a trailing partial token: a secret cut by the cap
+     * could fall below its pattern's minimum length and survive, so everything after the last
+     * whitespace of the kept part is dropped (a complete last token goes too; that is harmless).
+     * The kept part therefore ends in whitespace (or is empty), so the marker that follows it is its own
+     * token and a URL query cannot swallow it; that also keeps a second pass stable.
+     */
+    private fun completeTokens(input: String): String {
+        val kept = input.take(MAX_REDACT_CHARS)
+        return kept.substring(0, kept.indexOfLast { it.isWhitespace() } + 1)
+    }
+
     fun redact(input: String): String {
-        // The marker follows a space: a URL query runs to whitespace and would swallow it.
-        if (input.length > MAX_REDACT_CHARS) return redact(input.take(MAX_REDACT_CHARS)) + " " + TRUNCATED
+        if (input.length > MAX_REDACT_CHARS) return redact(completeTokens(input)) + TRUNCATED
         // URLs first, so a placeholder inserted by a later step can never end a query early.
         var out = URL_QUERY_PATTERN.replace(input) { m -> "${m.groupValues[1]}${m.groupValues[2]}[query]" }
         for (pattern in SECRET_PATTERNS) out = pattern.replace(out, SCRUBBED)
@@ -83,8 +95,13 @@ internal object SentryScrub {
             is Map<*, *> -> container(value, depth, path) {
                 val out = LinkedHashMap<String, Any?>()
                 for ((k, v) in value) {
-                    val name = k.toString()
-                    out[name] = scrubValue(name, v, depth + 1, path)
+                    val raw = k.toString()
+                    // Keys are redacted like values; two keys that collide afterwards both stay.
+                    val base = redact(raw)
+                    var name = base
+                    var n = 2
+                    while (out.containsKey(name)) name = "$base#${n++}"
+                    out[name] = scrubValue(raw, v, depth + 1, path)
                 }
                 out
             }
