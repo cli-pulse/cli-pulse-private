@@ -191,9 +191,10 @@ public final class AuthManager {
     /// 1.63) and in the Keychain.
     ///
     /// `fence` (1.63, A1): what `APIClient.fenceCurrentSession()` returned for
-    /// this sign-out; nil for a caller that does not fence (the Watch).
-    /// `snapshot`: the session being left, its access and refresh token read
-    /// together at the sign-out, before anything was deleted.
+    /// this sign-out. `snapshot`: the session being left, its access and
+    /// refresh token read together at the sign-out, before anything was
+    /// deleted. (The Watch begins its revocation itself and finishes it here,
+    /// `finishSignOut`.)
     public func signOut(fence: UInt64?, snapshot: RevocationSnapshot) async {
         let revocation = await api.beginRevocation(fence: fence, snapshot: snapshot)
         await finishSignOut(revocation)
@@ -601,6 +602,12 @@ extension AppState {
         // the sign-out's work reaches it (a sign-in may have landed first).
         let fence = api.fenceCurrentSession()
         let snapshot = SessionTokenStore.shared.revocationSnapshot()
+        // 1.63 (A1): and the stored pair goes now, not when the revoke is
+        // done: until then a restore (the unlock's, or the one a Watch's
+        // question starts) could read it and sign back in. A refresh can no
+        // longer write after the fence (`APIClient` writes under its lock);
+        // `finishSignOut` still clears what the client held, as before.
+        Self.persistAuthTokens(access: "", refresh: nil)
         stopRefreshLoop()
         dataRefreshManager.cancelInFlightRefresh()
         // Best-effort: drop the user's APNs token from app_push_tokens so
@@ -669,6 +676,11 @@ extension AppState {
                 isLoading = false
                 signOut()
                 lastError = L10n.account.deleteSessionExpired
+                return false
+            case .cancelled:
+                // 1.63 (A1): a sign-out or a new sign-in overtook the
+                // up-front refresh. Nothing was deleted; nothing to show.
+                isLoading = false
                 return false
             case .other(let message):
                 // Server side did NOT confirm. Surface the error and keep
@@ -806,6 +818,9 @@ extension AppState {
 
     public func restoreSession() async {
         launchRestorePending = false
+        // 1.63 (A1): not while a sign-out is still revoking its session: the
+        // session it would find is the one being left.
+        guard !api.hasPendingSignOut else { return }
         sessionRestoresInFlight += 1
         defer { sessionRestoresInFlight -= 1 }
         #if os(iOS)
@@ -1179,7 +1194,7 @@ extension AppState {
     /// calls it when it is unlocked and when the Watch asks for a token it
     /// cannot give.
     public func restoreSessionIfIdle() {
-        guard !isAuthenticated, !isDemoMode, !isLocalMode,
+        guard !isAuthenticated, !isDemoMode, !isLocalMode, !api.hasPendingSignOut,
               sessionRestoresInFlight == 0, idleSessionRestoreTask == nil, !launchRestorePending else { return }
         if deferredSessionRestoreTask != nil || deferredSessionRestoreInFlight {
             retryDeferredSessionRestoreNow()

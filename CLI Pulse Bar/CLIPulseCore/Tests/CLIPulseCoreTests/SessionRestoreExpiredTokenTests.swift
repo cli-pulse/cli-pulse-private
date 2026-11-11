@@ -625,6 +625,8 @@ final class SessionRestoreStub: URLProtocol {
         case status(Int, String = "{}")
         case fail(URLError)
         case held(Int, String)
+        /// 1.63: a failure delivered only when the test releases it.
+        case heldFail(URLError)
     }
     typealias Responder = (URLRequest) -> Answer
 
@@ -751,11 +753,23 @@ final class SessionRestoreStub: URLProtocol {
             Self.lock.lock()
             Self.held.append((copy.url?.path ?? "", runLoop, { [weak self] in self?.deliver(status: status, body: body) }))
             Self.lock.unlock()
+        case .heldFail(let error):
+            let runLoop = CFRunLoopGetCurrent()!
+            Self.lock.lock()
+            Self.held.append((copy.url?.path ?? "", runLoop, { [weak self] in
+                guard let self, !self.stopped, let client = self.client else { return }
+                client.urlProtocol(self, didFailWithError: error)
+            }))
+            Self.lock.unlock()
         }
     }
 
+    /// 1.63: a request URLSession has stopped (its task was cancelled) gets
+    /// nothing more. Set and read on the run loop `startLoading` ran on.
+    private var stopped = false
+
     private func deliver(status: Int, body: String) {
-        guard let client else { return }
+        guard !stopped, let client else { return }
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil,
                                        headerFields: ["Content-Type": "application/json"])!
         client.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
@@ -763,5 +777,5 @@ final class SessionRestoreStub: URLProtocol {
         client.urlProtocolDidFinishLoading(self)
     }
 
-    override func stopLoading() {}
+    override func stopLoading() { stopped = true }
 }

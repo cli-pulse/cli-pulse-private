@@ -429,7 +429,7 @@ final class LockedKeychainTests: XCTestCase {
         await api.updateToken("access-old")
         await api.updateRefreshToken("refresh-1")
         await api.setRotationPersistenceCheck { [api] in
-            api.fenceCurrentSession()
+            _ = api.fenceCurrentSession()
             return true
         }
 

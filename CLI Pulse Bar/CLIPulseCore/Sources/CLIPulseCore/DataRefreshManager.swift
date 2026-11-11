@@ -3389,6 +3389,9 @@ extension AppState {
         return Task {
             do {
                 try await api.updateSettings(patch)
+            } catch is CancellationError {
+                // 1.63 (A1): the session it was for was signed out of or
+                // replaced while its token refresh was out. Nothing to show.
             } catch {
                 lastError = L10n.integrations.saveSettingsFailed(error.localizedDescription)
             }
@@ -3438,6 +3441,8 @@ extension AppState {
                     // goes to the API's account: it refuses rather than write
                     // this filter into that account's row.
                     try await self.api.updateWebhookEventFilter(self.webhookEventFilter, forUser: account)
+                } catch is CancellationError {
+                    // 1.63 (A1): as in `pushSettingsToServer`.
                 } catch {
                     self.lastError = L10n.integrations.saveSettingsFailed(error.localizedDescription)
                 }

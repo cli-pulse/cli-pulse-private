@@ -7,28 +7,29 @@ private let watchSignOutLogger = Logger(subsystem: "com.clipulse", category: "Wa
 //
 // The Watch clears its Keychain, and its API client lets go of the session
 // (`APIClient.beginExternalAuthorizationTransition`), before the sign-out's
-// revoke runs. A session the Watch signed in to on its own (a code sent by
-// email) is fenced when the user signs out, as the app's are, and its
-// revocation is bound to it (`APIClient.beginRevocation`) before the client
-// lets go: the client's newest pair if it still holds the session, else the
-// pair read here before anything was deleted, and a refresh of it still out
-// is waited for and its new pair used, never raced with the same refresh
-// token. A session the iPhone relayed is the iPhone's: the iPhone's Sign Out
-// ends it, and the Watch sends nothing for it.
+// revoke runs. Every Watch sign-out is fenced first, as the app's are, before
+// anything is read or deleted: a refresh that comes back after that writes
+// nothing and keeps its new pair for the revocation. A session the Watch
+// signed in to on its own (a code sent by email) has its revocation bound to
+// it (`APIClient.beginRevocation`) before the client lets go: the client's
+// newest pair if it still holds the session, else the pair read here, and a
+// refresh of it still out is waited for and its new pair used. A session the
+// iPhone relayed is the iPhone's: the iPhone's Sign Out ends it, the Watch
+// sends nothing for it, and its fence is released at once.
 //
 // `WatchAppState.signOut` (the Watch target, which no test target builds)
 // calls these two steps; the tests drive them with an in-memory store and a
 // stubbed client.
 
-/// What a Watch sign-out does with its session on the server.
+/// What a Watch sign-out does with its session on the server. `fence`: what
+/// `APIClient.fenceCurrentSession()` returned for this sign-out.
 public enum WatchSignOutRevocation: Equatable, Sendable {
-    /// Signed in on the Watch: revoked from here, with its own pair. `fence`:
-    /// what `APIClient.fenceCurrentSession()` returned for this sign-out.
+    /// Signed in on the Watch: revoked from here, with its own pair.
     case own(RevocationSnapshot, fence: UInt64)
     /// The iPhone's session, relayed to the Watch: not revoked here.
-    case relayed
+    case relayed(fence: UInt64)
     /// Nothing stored that a revoke could use.
-    case nothing
+    case nothing(fence: UInt64)
 }
 
 public enum WatchSignOut {
@@ -54,10 +55,11 @@ public enum WatchSignOut {
         }
     }
 
-    /// Reads the stored session and decides what the server is told, THEN
-    /// deletes the stored credentials, so the pair is the one the Watch held.
-    /// The Watch's own session is fenced (`fence`, called once, only then), so
-    /// a refresh of it still out keeps its new pair for the revocation.
+    /// Fences the sign-out (`fence`, called once, first), THEN reads the
+    /// stored session and decides what the server is told, THEN deletes the
+    /// stored credentials. After the fence no refresh writes the stored pair
+    /// (`APIClient` writes under the fence's lock), so the pair read is the
+    /// last one written, and nothing is written back after the deletes.
     ///
     /// Whose session it is is resolved as a restore resolves it
     /// (`WatchSessionRecord.resolve`): the stored record first (a restore or a
@@ -70,6 +72,7 @@ public enum WatchSignOut {
         currentSource: WatchSessionSource,
         fence: () -> UInt64
     ) -> WatchSignOutRevocation {
+        let fenceValue = fence()
         let token = store.load(accessTokenKey) ?? ""
         let refreshToken = store.load(refreshTokenKey) ?? ""
         let revokesOnServer = (
@@ -83,9 +86,9 @@ public enum WatchSignOut {
         store.delete(accessTokenKey)
         store.delete(refreshTokenKey)
         store.delete(WatchSessionRecord.keychainKey)
-        guard revokesOnServer else { return .relayed }
-        guard !token.isEmpty else { return .nothing }
-        return .own(RevocationSnapshot(accessToken: token, refreshToken: refreshToken), fence: fence())
+        guard revokesOnServer else { return .relayed(fence: fenceValue) }
+        guard !token.isEmpty else { return .nothing(fence: fenceValue) }
+        return .own(RevocationSnapshot(accessToken: token, refreshToken: refreshToken), fence: fenceValue)
     }
 
     /// The rest of the sign-out, after the Watch shows signed out. The Watch's
@@ -104,11 +107,13 @@ public enum WatchSignOut {
             let bound = await api.beginRevocation(fence: fence, snapshot: snapshot)
             _ = await api.beginExternalAuthorizationTransition(generation: transitionGeneration)
             await authManager.finishSignOut(bound)
-        case .relayed:
+        case .relayed(let fence):
             _ = await api.beginExternalAuthorizationTransition(generation: transitionGeneration)
+            api.releaseFence(fence)
             watchSignOutLogger.info("relayed session: not revoked here")
-        case .nothing:
+        case .nothing(let fence):
             _ = await api.beginExternalAuthorizationTransition(generation: transitionGeneration)
+            api.releaseFence(fence)
         }
     }
 }
