@@ -26,7 +26,8 @@ class SentryScrubTest {
         val jwt = "eyJhbGciOiJIUzI1.eyJzdWIiOiIxMjM0NTY3.SflKxwRJSMeKKF2QT4"
         assertEquals("a [scrubbed] b", redact("a $jwt b"))
         assertEquals("k=[scrubbed]", redact("k=sk-abcdefghijklmnopqrstuvwxyz"))
-        assertEquals("[scrubbed]", redact("sk_" + "live_abcdefghijklmnop1234") // split so secret scanners do not flag the vector)
+        // The literal is split so secret scanners do not flag the vector.
+        assertEquals("[scrubbed]", redact("sk_" + "live_abcdefghijklmnop1234"))
         assertEquals("h: [scrubbed]", redact("h: Bearer abc.def-123="))
     }
 
