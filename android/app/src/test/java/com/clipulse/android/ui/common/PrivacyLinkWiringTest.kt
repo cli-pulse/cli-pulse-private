@@ -51,10 +51,21 @@ class PrivacyLinkWiringTest {
     }
 
     @Test
-    fun `login link is also the last call after the form chain`() {
-        val src = login()
-        val last = src.lastIndexOf("PrivacyPolicyLink()")
-        val demo = src.lastIndexOf("viewModel.enterDemoMode()")
-        assertTrue("the trailing PrivacyPolicyLink() must come after the Try Demo button", last > demo && demo > 0)
+    fun `login trailing link sits after the closing brace of the whole form chain`() {
+        val lines = login().lines()
+        val chain = lines.indexOfFirst { it.trim() == "if (state.showOtpInput) {" }
+        assertTrue("form chain not found in LoginScreen", chain >= 0)
+        val chainIndent = lines[chain].takeWhile { it == ' ' }.length
+        val call = lines.indexOfLast { it.trim() == "PrivacyPolicyLink()" }
+        assertTrue("trailing PrivacyPolicyLink() not found", call > chain)
+        assertTrue(
+            "the trailing link must be at the form chain's indentation, not nested in a branch",
+            lines[call].takeWhile { it == ' ' }.length == chainIndent,
+        )
+        val previous = lines.subList(chain + 1, call).lastOrNull { it.isNotBlank() }
+        assertTrue(
+            "the line before the trailing link must close the whole if/else chain",
+            previous != null && previous.trim() == "}" && previous.takeWhile { it == ' ' }.length == chainIndent,
+        )
     }
 }
