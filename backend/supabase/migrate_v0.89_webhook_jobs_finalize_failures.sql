@@ -31,14 +31,15 @@
 --    the moment it is set. When it runs out the server ends the session and
 --    the transaction rolls back: nothing is changed. On older servers, which
 --    have no transaction_timeout, statement_timeout = 2s instead, which is a
---    limit PER STATEMENT, not for the whole transaction. Why 2 s: while the
---    apply holds the queue lock, alert uploads wait for it (THE QUEUE LOCK
---    AND ALERT UPLOADS), and the shortest of them gives up first. The
---    helpers upload through helper_sync as anon, whose statement_timeout is
---    3 s in production; the apps' evaluate_budget_alerts runs as
---    authenticated, 8 s (role settings read 2026-11-12; APPLY Q2b reads
---    them). A budget under 3 s means even a pathological apply ends before
---    an anon upload gives up. lock_timeout = 1s for each lock wait (A5c,
+--    limit PER STATEMENT, not for the whole transaction. The budget limits
+--    how long the apply can block the queue: while it holds the queue lock,
+--    alert uploads wait (THE QUEUE LOCK AND ALERT UPLOADS). The helpers
+--    upload through helper_sync as anon, statement_timeout 3 s in
+--    production; the apps' evaluate_budget_alerts runs as authenticated, 8 s
+--    (role settings read 2026-11-12; APPLY Q2b reads them). 2 s keeps the
+--    block under anon's timeout, but an upload's timeout also counts its own
+--    work before and after the wait, so one already well into its 3 s can
+--    still time out while it waits. lock_timeout = 1s for each lock wait (A5c,
 --    A5d, and CREATE OR REPLACE behind a session holding the worker's
 --    catalog row), so a wait ends in a readable refusal inside the budget.
 --    And application_name =
@@ -158,16 +159,17 @@
 --     enqueued as usual (the trigger sees the committed queue);
 --   * when the apply aborts (a refusal, a lock wait past lock_timeout, the
 --     budget of A0 running out), the insert goes on the same way;
---   so the apply itself never loses an insert. How long it can wait is the
---   budget: on PostgreSQL 17, at most transaction_timeout from A0 (2 s) for
---   the whole apply, under anon's 3 s and authenticated's 8 s
---   statement_timeout. The time the lock is actually held is printed in a
---   NOTICE (from A5d to the end of verification; the commit follows) and was
---   measured in the test suite with a queue at the size guard's limit plus
---   thousands of finalized rows: a small fraction of the budget there.
+--   so the apply itself never loses an insert. How long the apply can block
+--   it is the budget: on PostgreSQL 17, at most transaction_timeout from A0
+--   (2 s). That bounds the block, not the upload (next point). The time the
+--   lock is actually held is printed in a NOTICE (from A5d to the end of
+--   verification; the commit follows) and was measured in the test suite
+--   with a queue at the size guard's limit plus thousands of finalized rows:
+--   a small fraction of the budget there.
 --   Production's own number is that NOTICE.
---   * An insert that waits longer than ITS OWN statement_timeout (the API
---     role's: APPLY Q2b reads them) is cancelled, and its whole statement
+--   * An upload can still time out in that window: its OWN statement_timeout
+--     (the API role's; APPLY Q2b reads them) counts the wait together with
+--     the rest of its work. It is then cancelled, and its whole statement
 --     rolls back, the alert row with its job. Who inserts alerts, and what
 --     then happens:
 --     - helper_sync, called by the macOS helper (HelperDaemon) and by the
@@ -176,8 +178,8 @@
 --       again from the current state (AlertGenerator in the macOS helper,
 --       collect_alerts in the Python one), and the next cycle's helper_sync
 --       sends them again. An alert whose condition still holds
---       then arrives (and is enqueued then); one whose condition ended in
---       between is not sent again.
+--       then arrives (and is enqueued then); one whose condition has already
+--       cleared is not sent again: that transient alert is lost.
 --     - evaluate_budget_alerts, called best-effort by the Apple apps
 --       (DataRefreshManager) and the Android app (DashboardRepository) as
 --       the signed-in user (authenticated): the failure is ignored, and the
@@ -356,8 +358,8 @@ set local application_name = 'v0_89_webhook_jobs_finalize_failures';
 do $budget$
 begin
     if current_setting('server_version_num')::int >= 170000 then
-        -- the whole transaction, from here: the server ends the session at 2 s,
-        -- before an anon upload waiting on the queue lock (3 s) gives up
+        -- the whole transaction, from here: the server ends the session at
+        -- 2 s, which bounds how long the apply can block the queue (header A0)
         perform set_config('transaction_timeout', '2s', true);
     else
         -- no transaction_timeout before PostgreSQL 17: per statement only

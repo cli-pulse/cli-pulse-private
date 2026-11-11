@@ -87,7 +87,7 @@
 #      apply open, and once Q6 is 0, Q0/Q5 tell a commit (sent as one string,
 #      as apply_migration does) from a rollback (psql -f, killed before the
 #      commit); R9 then restores a recorded value of false as false.
-#   6d. the budget (A0, 2 s, under anon's 3 s statement_timeout) and alert
+#   6d. the budget (A0, 2 s: how long the apply can block the queue) and alert
 #      uploads: while the apply holds the queue lock, a helper upload
 #      (helper_sync as anon with statement_timeout 3s, as the helpers call
 #      it) and an insert as authenticated (8s) wait, then land with their
@@ -1222,7 +1222,8 @@ same "$P sent again (the helper's next cycle sends it while its condition holds)
 dropdb_now "${PFX}_z2"
 
 # an apply made to run past the 2 s budget: it is stopped with nothing changed,
-# and a helper upload (anon, 3s) waiting on it goes on, since 2 s < 3 s
+# and a helper upload (anon, 3s) that started waiting at once goes on (its
+# timeout counts its own work too, so one already well into it could not)
 budget_overrun() { # budget_overrun <tag> <migration> <regex of the abort> <label>
     local m w rc t0 before n
     newdb "${PFX}_z$1" "${PFX}_gb"
