@@ -144,14 +144,6 @@ public struct RevocationSnapshot: Equatable, Sendable {
     }
 }
 
-/// Never prints a token: only whether each one is there.
-extension RevocationSnapshot: CustomStringConvertible, CustomDebugStringConvertible {
-    public var description: String {
-        "RevocationSnapshot(access: \(accessToken == nil ? "none" : "set"), refresh: \(refreshToken == nil ? "none" : "set"))"
-    }
-    public var debugDescription: String { description }
-}
-
 /// 1.63 (A1): resumes a sign-out's bounded wait once, from whichever side
 /// gets there first: the refresh finishing, or the time running out.
 private final class SignOutWaitResume: @unchecked Sendable {

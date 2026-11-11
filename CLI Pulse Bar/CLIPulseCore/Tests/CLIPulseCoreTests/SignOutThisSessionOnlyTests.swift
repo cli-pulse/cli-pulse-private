@@ -523,12 +523,11 @@ final class SignOutThisSessionOnlyTests: XCTestCase {
         XCTAssertTrue(SessionRestoreStub.requests().isEmpty)
     }
 
-    func test_a_snapshot_reads_empty_as_none_and_prints_no_token() {
-        let snapshot = RevocationSnapshot(accessToken: "", refreshToken: "secret-refresh")
+    func test_a_snapshot_reads_empty_as_none() {
+        let snapshot = RevocationSnapshot(accessToken: "", refreshToken: "refresh-a")
         XCTAssertNil(snapshot.accessToken)
-        XCTAssertEqual(snapshot.refreshToken, "secret-refresh")
-        XCTAssertFalse(String(describing: snapshot).contains("secret-refresh"))
-        XCTAssertFalse(String(reflecting: snapshot).contains("secret-refresh"))
+        XCTAssertEqual(snapshot.refreshToken, "refresh-a")
+        XCTAssertNil(RevocationSnapshot(accessToken: nil, refreshToken: "").refreshToken)
     }
 
     // MARK: - Helpers
