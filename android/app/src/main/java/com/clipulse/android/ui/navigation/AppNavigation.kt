@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -93,6 +94,15 @@ fun AppNavigation(
             onLoggedIn = gate::onLoggedIn,
         )
         return
+    }
+
+    // A sign-in callback (or its notice) that arrives while the tabs show belongs to a browser
+    // sign-in the user did not finish before this session started: consume and drop it, so it
+    // cannot complete over a later sign-in screen. (Its sign-in generation is stale anyway.)
+    val activity = LocalContext.current as? MainActivity
+    LaunchedEffect(loginCallback, loginNotice) {
+        if (loginCallback != null) activity?.consumePendingCallback()
+        if (loginNotice != null) activity?.consumePendingNotice()
     }
 
     // Everything below is one signed-in (or demo) session. Its view models live in a store of

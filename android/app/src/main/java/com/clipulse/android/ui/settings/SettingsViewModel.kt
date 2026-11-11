@@ -6,6 +6,7 @@ import com.clipulse.android.data.model.SettingsSnapshot
 import com.clipulse.android.data.model.UserIdentity
 import com.clipulse.android.data.remote.ApiError
 import com.clipulse.android.data.remote.EndReason
+import com.clipulse.android.data.remote.SessionContext
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
 import com.clipulse.android.data.session.SessionLifecycle
@@ -37,6 +38,13 @@ data class SettingsUiState(
     val linkIdentityError: UiError? = null,
 )
 
+/**
+ * Settings for ONE session: the one current when the view model was created ([owner]).
+ * Every call it makes, destructive ones included, runs for that session and ends only that
+ * session (`endIfCurrent(owner)`): if another account has signed in by the time a queued
+ * tap runs, the tap does nothing to it. The gate drops this view model when the session
+ * changes, but asynchronously, so the ownership check cannot rely on that.
+ */
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val supabase: SupabaseClient,
@@ -45,12 +53,16 @@ class SettingsViewModel @Inject constructor(
     @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
+    /** The session this screen belongs to; null if it opened with none (it then does nothing). */
+    private val owner: SessionContext? = tokenStore.snapshot()
+    private val isDemo = owner?.isDemo == true
+
     private val _state = MutableStateFlow(
         SettingsUiState(
             // Demo mode's name is copy, rendered by SettingsScreen in the app's language.
-            userName = if (tokenStore.isDemoMode) null else tokenStore.userName,
-            userEmail = if (tokenStore.isDemoMode) "demo@clipulse.app" else tokenStore.userEmail,
-            isDemoMode = tokenStore.isDemoMode,
+            userName = if (isDemo) null else tokenStore.userName,
+            userEmail = if (isDemo) "demo@clipulse.app" else tokenStore.userEmail,
+            isDemoMode = isDemo,
         )
     )
     val state: StateFlow<SettingsUiState> = _state
@@ -63,11 +75,13 @@ class SettingsViewModel @Inject constructor(
     // ── Identity linking ─────────────────────────────
 
     fun refreshLinkedIdentities() {
-        if (tokenStore.isDemoMode) return
+        val session = owner?.takeIf { !it.isDemo } ?: return
         viewModelScope.launch {
             try {
-                val list = supabase.userIdentities()
+                val list = supabase.userIdentities(session)
                 _state.value = _state.value.copy(linkedIdentities = list)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // Non-fatal — surface via linkIdentityError if something important failed
                 _state.value = _state.value.copy(linkIdentityError = UiError.action(UiError.Action.LoadLinkedAccounts, e))
@@ -82,8 +96,8 @@ class SettingsViewModel @Inject constructor(
     suspend fun startLinkIdentity(provider: String): String? {
         _state.value = _state.value.copy(linkIdentityError = null)
         return try {
-            val ctx = supabase.session() ?: throw ApiError.TokenExpired
-            val (url, verifier, state) = supabase.linkIdentityAuthorizeUrl(provider, ctx)
+            val session = owner ?: throw ApiError.TokenExpired
+            val (url, verifier, state) = supabase.linkIdentityAuthorizeUrl(provider, session)
             tokenStore.savePendingOAuthFlow(
                 TokenStore.PendingOAuthFlow(
                     kind = "link",
@@ -92,7 +106,7 @@ class SettingsViewModel @Inject constructor(
                     state = state,
                     createdAt = System.currentTimeMillis(),
                     // The callback completes the link for this session only.
-                    sessionId = ctx.sessionId,
+                    sessionId = session.sessionId,
                 )
             )
             url
@@ -104,14 +118,20 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Completes a link for the session the flow belongs to ([sessionId], bound when
+     * MainActivity claimed the flow); null means the flow could not be bound and is ignored.
+     */
     fun completeLinkIdentity(code: String, codeVerifier: String, sessionId: String?) {
+        if (sessionId == null) return
         viewModelScope.launch {
             _state.value = _state.value.copy(isLinkingIdentity = true, linkIdentityError = null)
             try {
-                // MainActivity already claimed the pending-flow record.
                 supabase.exchangeOAuthCodeForLink(code, codeVerifier, sessionId)
-                val list = supabase.userIdentities()
+                val list = supabase.userIdentities(tokenStore.snapshotIfCurrent(sessionId) ?: throw ApiError.SessionSuperseded)
                 _state.value = _state.value.copy(isLinkingIdentity = false, linkedIdentities = list)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLinkingIdentity = false,
@@ -122,12 +142,15 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun unlinkIdentity(identity: UserIdentity) {
+        val session = owner ?: return
         viewModelScope.launch {
             _state.value = _state.value.copy(isLinkingIdentity = true, linkIdentityError = null)
             try {
-                supabase.unlinkIdentity(identity.id)
-                val list = supabase.userIdentities()
+                supabase.unlinkIdentity(identity.id, session)
+                val list = supabase.userIdentities(session)
                 _state.value = _state.value.copy(isLinkingIdentity = false, linkedIdentities = list)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLinkingIdentity = false,
@@ -140,24 +163,27 @@ class SettingsViewModel @Inject constructor(
     private fun loadSettings() {
         // Demo mode has no account settings: leaving `settings` null keeps the notification
         // and threshold cards, which only edit a real account, off the screen.
-        if (tokenStore.isDemoMode) {
+        val session = owner
+        if (session == null || session.isDemo) {
             _state.value = _state.value.copy(tier = "free", isLoading = false)
             return
         }
         viewModelScope.launch {
             try {
-                val tier = supabase.serverTier()
-                val settings = supabase.settings()
-                val filter = settings?.webhookEventFilter
+                val tier = supabase.serverTier(session)
+                val settings = supabase.settings(session)
+                val filter = settings.webhookEventFilter
                 _state.value = _state.value.copy(
                     tier = tier,
                     settings = settings,
                     isLoading = false,
-                    webhookEnabled = settings?.webhookEnabled ?: false,
-                    webhookUrl = settings?.webhookUrl,
+                    webhookEnabled = settings.webhookEnabled,
+                    webhookUrl = settings.webhookUrl,
                     webhookFilterSeverities = filter?.severities ?: emptyList(),
                     webhookFilterTypes = filter?.types ?: emptyList(),
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 _state.value = _state.value.copy(isLoading = false)
             }
@@ -165,12 +191,15 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun updateSetting(key: String, value: Any) {
+        val session = owner ?: return
         viewModelScope.launch {
             try {
                 val patch = org.json.JSONObject().apply { put(key, value) }
-                supabase.updateSettings(patch)
+                supabase.updateSettings(patch, session)
                 // Reload to reflect server state
                 loadSettings()
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Silently fail — setting will revert on next load
             }
@@ -178,19 +207,25 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
-     * Ends demo mode through the same transition as any other end; the lifecycle empties the
-     * repository's demo rows. Navigation follows the session state, not this call.
+     * Ends demo mode through the same transition as any other end, for this screen's demo
+     * session only; the lifecycle empties the repository's demo rows. Navigation follows the
+     * session state, not this call.
      */
     fun exitDemoMode() {
-        val demo = tokenStore.snapshot()?.takeIf { it.isDemo }
-        if (demo != null) lifecycle.endIfCurrent(demo.sessionId, EndReason.DemoExit)
+        val demo = owner?.takeIf { it.isDemo } ?: return
         supabase.clearDemoState()
+        appScope.launch {
+            lifecycle.endIfCurrent(demo.sessionId, EndReason.DemoExit)
+        }
     }
 
     fun testWebhook() {
+        val session = owner ?: return
         viewModelScope.launch {
             try {
-                supabase.testWebhook()
+                supabase.testWebhook(session)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Best-effort test
             }
@@ -212,6 +247,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun pushWebhookFilter(severities: List<String>, types: List<String>) {
+        val session = owner ?: return
         viewModelScope.launch {
             try {
                 val filterJson = org.json.JSONObject().apply {
@@ -221,33 +257,36 @@ class SettingsViewModel @Inject constructor(
                 val patch = org.json.JSONObject().apply {
                     put("webhook_event_filter", if (severities.isEmpty() && types.isEmpty()) org.json.JSONObject.NULL else filterJson)
                 }
-                supabase.updateSettings(patch)
+                supabase.updateSettings(patch, session)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) { }
         }
     }
 
+    /**
+     * Ends THIS screen's session (never one that signed in since), then revokes it with the
+     * token captured in the same step, so the revocation can never use a rotated or a later
+     * account's token. Both run in the app's scope: the session's view models are cleared as
+     * soon as the sign-in screen shows. Revoking touches nothing on this device, so it cannot
+     * undo a sign-in that happens while it is still running.
+     */
     fun signOut() {
-        // End the session before anything else: the credentials and the teardown marker go
-        // in one step, which also captures the token to revoke, so the revocation can never
-        // use a rotated or a later account's token. The sign-in screen follows from the
-        // session state.
-        val ended = lifecycle.endCurrent(EndReason.UserSignedOut) ?: return
-        val token = ended.accessToken
-        // Revoking touches nothing on this device, so it cannot undo a sign-in that happens
-        // while it is still running. The app's scope, not this view model's: the session's
-        // view models are cleared as soon as the sign-in screen shows.
+        val session = owner?.takeIf { !it.isDemo } ?: return
         appScope.launch {
-            runCatching { supabase.revokeSession(token) }
+            val ended = lifecycle.endIfCurrent(session.sessionId, EndReason.UserSignedOut) ?: return@launch
+            runCatching { supabase.revokeSession(ended.accessToken) }
         }
     }
 
     /**
-     * Deletes the account of the session this tap was made in, then ends exactly that session
-     * (the client already did; this is the backstop that also starts the on-device deletion).
-     * The sign-in screen follows from the session state, not from `deleteSuccess`.
+     * Deletes the account of THIS screen's session. The client ends exactly that session
+     * after the server confirms the deletion (and deletes its on-device data); the
+     * `endIfCurrent` here is an idempotent backstop for the same session. The sign-in screen
+     * follows from the session state, not from `deleteSuccess`.
      */
     fun deleteAccount() {
-        val session = tokenStore.snapshot() ?: return
+        val session = owner?.takeIf { !it.isDemo } ?: return
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, deleteError = null)
             try {

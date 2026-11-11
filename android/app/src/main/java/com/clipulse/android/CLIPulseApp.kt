@@ -16,8 +16,10 @@ class CLIPulseApp : Application(), Configuration.Provider {
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
+    // Lazy: building it opens the encrypted preferences and the database, which must happen
+    // after crash reporting is installed, not during field injection.
     @Inject
-    lateinit var sessionLifecycle: SessionLifecycle
+    lateinit var sessionLifecycle: dagger.Lazy<SessionLifecycle>
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
@@ -29,7 +31,7 @@ class CLIPulseApp : Application(), Configuration.Provider {
         SentryInit.install(this)
         // Finishes a sign-out (or a refused session) whose on-device data deletion the last
         // process did not live to complete, then keeps doing so for every later end.
-        sessionLifecycle.start()
+        sessionLifecycle.get().start()
         // Don't enqueue periodic sync on a mis-configured release build.
         // Without SUPABASE_URL/SUPABASE_ANON_KEY the worker would loop on
         // 401s and burn battery; MainActivity surfaces a blocking diagnostics

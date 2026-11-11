@@ -3,6 +3,7 @@ package com.clipulse.android.data.remote
 import com.clipulse.android.BuildConfig
 import com.clipulse.android.data.DemoDataProvider
 import com.clipulse.android.data.model.*
+import com.clipulse.android.data.session.SessionLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -23,7 +24,6 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -58,12 +58,14 @@ internal const val OAUTH_REDIRECT_TO: String = "clipulse://auth/callback"
  */
 class SupabaseClient internal constructor(
     private val tokenStore: TokenStore,
+    private val lifecycle: SessionLifecycle,
     private val supabaseUrl: String,
     private val supabaseAnonKey: String,
     httpClientBuilder: OkHttpClient.Builder,
 ) {
-    constructor(tokenStore: TokenStore) : this(
+    constructor(tokenStore: TokenStore, lifecycle: SessionLifecycle) : this(
         tokenStore,
+        lifecycle,
         BuildConfig.SUPABASE_URL,
         BuildConfig.SUPABASE_ANON_KEY,
         OkHttpClient.Builder(),
@@ -73,9 +75,6 @@ class SupabaseClient internal constructor(
 
     /** One renewal at a time; it guards the token writes, not the reads. */
     private val refreshMutex = Mutex()
-
-    /** Each sign-in attempt takes the next number; only the latest may install its session. */
-    private val authAttempt = AtomicLong(0)
 
     /** Test seam: runs after a request came back for a still-current session, before the caller sees it. */
     @Volatile
@@ -105,7 +104,7 @@ class SupabaseClient internal constructor(
 
     suspend fun signInWithGoogle(idToken: String, name: String?, email: String?): AuthResponse =
         withContext(Dispatchers.IO) {
-            val attempt = authAttempt.incrementAndGet()
+            val attempt = tokenStore.beginAuthAttempt()
             val body = JSONObject().apply {
                 put("provider", "google")
                 put("id_token", idToken)
@@ -125,7 +124,7 @@ class SupabaseClient internal constructor(
 
     suspend fun verifyOTP(email: String, code: String): AuthResponse =
         withContext(Dispatchers.IO) {
-            val attempt = authAttempt.incrementAndGet()
+            val attempt = tokenStore.beginAuthAttempt()
             val body = JSONObject().apply {
                 put("email", email)
                 put("token", code)
@@ -137,7 +136,7 @@ class SupabaseClient internal constructor(
 
     suspend fun signInWithPassword(email: String, password: String): AuthResponse =
         withContext(Dispatchers.IO) {
-            val attempt = authAttempt.incrementAndGet()
+            val attempt = tokenStore.beginAuthAttempt()
             val body = JSONObject().apply {
                 put("email", email)
                 put("password", password)
@@ -179,7 +178,7 @@ class SupabaseClient internal constructor(
      * token captured in the same step.
      */
     suspend fun signOut(): Unit = withContext(Dispatchers.IO) {
-        val ended = tokenStore.endCurrent(EndReason.UserSignedOut) ?: return@withContext
+        val ended = lifecycle.endCurrent(EndReason.UserSignedOut) ?: return@withContext
         revoke(ended.accessToken)
     }
 
@@ -592,6 +591,14 @@ class SupabaseClient internal constructor(
         } catch (_: java.io.IOException) {
             // Network error — distinguishable from server rejection
             ReceiptResult(false, "free", isNetworkError = true)
+        } catch (_: ApiError.Http) {
+            // The receipt endpoint's own answers are read above and never thrown: an Http error
+            // here is the session renewal failing (5xx, 429, offline proxy). Not a rejection of
+            // the purchase, so the caller keeps the current tier and retries.
+            ReceiptResult(false, "free", isNetworkError = true)
+        } catch (_: ApiError.SessionSuperseded) {
+            // The account changed during the check: nothing was decided about this purchase.
+            ReceiptResult(false, "free", isNetworkError = true)
         } catch (_: Exception) {
             ReceiptResult(false, "free")
         }
@@ -701,50 +708,72 @@ class SupabaseClient internal constructor(
 
     /**
      * Exchange an OAuth authorization code for a Supabase session (PKCE). Returns the id of
-     * the session it installed; a newer sign-in attempt that started meanwhile wins
-     * ([ApiError.SessionSuperseded]).
+     * the session it installed.
+     *
+     * [authGeneration] is the sign-in generation saved with the pending flow when the user
+     * left for the browser (TokenStore.beginOAuthLogin), carried through the claim and the
+     * delivery. A callback does not become the newest attempt by arriving late: if any
+     * sign-in, demo entry or abandonment happened since the flow started, it installs
+     * nothing ([ApiError.SessionSuperseded]). A flow without a generation (saved by 1.62)
+     * cannot prove it is still the latest and is dropped the same way.
      */
-    suspend fun exchangeOAuthCode(code: String, codeVerifier: String): String = withContext(Dispatchers.IO) {
-        val attempt = authAttempt.incrementAndGet()
-        val body = JSONObject().apply {
-            put("auth_code", code)
-            put("code_verifier", codeVerifier)
-        }
-        val req = Request.Builder()
-            .url("$supabaseUrl/auth/v1/token?grant_type=pkce")
-            .post(body.toString().toRequestBody(jsonMedia))
-            .addHeader("Content-Type", "application/json")
-            .addHeader("apikey", supabaseAnonKey)
-            .build()
-        val resp: okhttp3.Response = client.newCall(req).execute()
-        resp.use { r: okhttp3.Response ->
-            val responseBody = r.body?.string() ?: ""
-            if (!r.isSuccessful) throw ApiError.Http(r.code, responseBody)
-            val json = JSONObject(responseBody)
-            // Use optString + explicit guard (not throwing getString) so a
-            // partial/non-conforming token response surfaces as a typed
-            // ApiError instead of an uncaught JSONException crashing the
-            // auth flow.
-            val at = json.optString("access_token")
-            val rt = json.optString("refresh_token")
-            if (at.isBlank() || rt.isBlank()) {
-                throw ApiError.Http(r.code, "OAuth code exchange: missing access/refresh token in response")
+    suspend fun exchangeOAuthCode(code: String, codeVerifier: String, authGeneration: Long?): String =
+        withContext(Dispatchers.IO) {
+            if (authGeneration == null || authGeneration != tokenStore.authGeneration) {
+                throw ApiError.SessionSuperseded
             }
-            val user = json.optJSONObject("user")
-            val uid = user?.optString("id") ?: ""
-            val meta = user?.optJSONObject("user_metadata")
-            val name = meta?.optString("name") ?: meta?.optString("full_name") ?: ""
-            val email = user?.optString("email") ?: ""
-            tokenStore.installSession(
-                accessToken = at,
-                refreshToken = rt,
-                userId = uid,
-                userName = name,
-                userEmail = email,
-                attemptOk = { authAttempt.get() == attempt },
+            val body = JSONObject().apply {
+                put("auth_code", code)
+                put("code_verifier", codeVerifier)
+            }
+            val req = Request.Builder()
+                .url("$supabaseUrl/auth/v1/token?grant_type=pkce")
+                .post(body.toString().toRequestBody(jsonMedia))
+                .addHeader("Content-Type", "application/json")
+                .addHeader("apikey", supabaseAnonKey)
+                .build()
+            val parsed = client.newCall(req).execute().use { r ->
+                val responseBody = r.body?.string() ?: ""
+                if (!r.isSuccessful) throw ApiError.Http(r.code, responseBody)
+                val json = JSONObject(responseBody)
+                // Use optString + explicit guard (not throwing getString) so a
+                // partial/non-conforming token response surfaces as a typed
+                // ApiError instead of an uncaught JSONException crashing the
+                // auth flow.
+                val at = json.optString("access_token")
+                val rt = json.optString("refresh_token")
+                if (at.isBlank() || rt.isBlank()) {
+                    throw ApiError.Http(r.code, "OAuth code exchange: missing access/refresh token in response")
+                }
+                val user = json.optJSONObject("user")
+                val meta = user?.optJSONObject("user_metadata")
+                OAuthSession(
+                    accessToken = at,
+                    refreshToken = rt,
+                    userId = user?.optString("id") ?: "",
+                    name = meta?.optString("name") ?: meta?.optString("full_name") ?: "",
+                    email = user?.optString("email") ?: "",
+                )
+            }
+            // A caller cancelled while the exchange was out installs nothing.
+            currentCoroutineContext().ensureActive()
+            lifecycle.install(
+                accessToken = parsed.accessToken,
+                refreshToken = parsed.refreshToken,
+                userId = parsed.userId,
+                userName = parsed.name,
+                userEmail = parsed.email,
+                attempt = authGeneration,
             ) ?: throw ApiError.SessionSuperseded
         }
-    }
+
+    private class OAuthSession(
+        val accessToken: String,
+        val refreshToken: String,
+        val userId: String,
+        val name: String,
+        val email: String,
+    )
 
     // ── Identity Linking ──────────────────────────────────
 
@@ -801,41 +830,43 @@ class SupabaseClient internal constructor(
 
     /**
      * Exchange a link-identity PKCE code for the session the link was started from
-     * ([sessionId], from the pending flow MainActivity claimed). The rotated tokens are
-     * stored only for that session and only while it is current: a callback that arrives
-     * after a sign-out, or after the next account signed in, changes nothing.
+     * ([sessionId], from the pending flow MainActivity claimed; TokenStore binds a 1.62 flow
+     * to its session at the claim). The rotated tokens are stored only for that session and
+     * only while it is current: a callback that arrives after a sign-out, or after the next
+     * account signed in, changes nothing.
      *
-     * A null [sessionId] is a flow saved by 1.62 or earlier; a sign-in or sign-out since
-     * then would have dropped it, so the current session is the one that started it.
+     * The whole exchange, request and commit, holds the refresh mutex: it produces tokens
+     * like a renewal does, and a renewal must not land between this request and its commit
+     * (or the reverse), so neither can overwrite the other's newer pair.
      */
-    suspend fun exchangeOAuthCodeForLink(code: String, codeVerifier: String, sessionId: String?): Unit =
+    suspend fun exchangeOAuthCodeForLink(code: String, codeVerifier: String, sessionId: String): Unit =
         withContext(Dispatchers.IO) {
-            val session = (if (sessionId != null) tokenStore.snapshotIfCurrent(sessionId) else tokenStore.snapshot())
-                ?: throw ApiError.SessionSuperseded
-            if (session.isDemo) throw DemoModeRequestBlocked("$supabaseUrl/auth/v1/token")
-            val body = JSONObject().apply {
-                put("auth_code", code)
-                put("code_verifier", codeVerifier)
-            }
-            val req = Request.Builder()
-                .url("$supabaseUrl/auth/v1/token?grant_type=pkce")
-                .post(body.toString().toRequestBody(jsonMedia))
-                .addHeader("Content-Type", "application/json")
-                .addHeader("apikey", supabaseAnonKey)
-                .build()
-            val (at, rt) = client.newCall(req).execute().use { r ->
-                val responseBody = r.body?.string() ?: ""
-                if (!r.isSuccessful) throw ApiError.Http(r.code, responseBody)
-                val json = JSONObject(responseBody)
-                json.optString("access_token", "") to json.optString("refresh_token", "")
-            }
-            currentCoroutineContext().ensureActive()
-            if (at.isBlank() || rt.isBlank()) {
-                if (tokenStore.snapshotIfCurrent(session.sessionId) == null) throw ApiError.SessionSuperseded
-                return@withContext
-            }
             refreshMutex.withLock {
-                if (!tokenStore.rotateIfCurrent(session.sessionId, at, rt)) throw ApiError.SessionSuperseded
+                val session = tokenStore.snapshotIfCurrent(sessionId) ?: throw ApiError.SessionSuperseded
+                if (session.isDemo) throw DemoModeRequestBlocked("$supabaseUrl/auth/v1/token")
+                val body = JSONObject().apply {
+                    put("auth_code", code)
+                    put("code_verifier", codeVerifier)
+                }
+                val req = Request.Builder()
+                    .url("$supabaseUrl/auth/v1/token?grant_type=pkce")
+                    .post(body.toString().toRequestBody(jsonMedia))
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("apikey", supabaseAnonKey)
+                    .build()
+                val (at, rt) = client.newCall(req).execute().use { r ->
+                    val responseBody = r.body?.string() ?: ""
+                    if (!r.isSuccessful) throw ApiError.Http(r.code, responseBody)
+                    val json = JSONObject(responseBody)
+                    json.optString("access_token", "") to json.optString("refresh_token", "")
+                }
+                currentCoroutineContext().ensureActive()
+                if (at.isBlank() || rt.isBlank()) {
+                    if (tokenStore.snapshotIfCurrent(sessionId) == null) throw ApiError.SessionSuperseded
+                } else if (!tokenStore.rotateIfCurrent(sessionId, at, rt)) {
+                    throw ApiError.SessionSuperseded
+                }
+                Unit
             }
         }
 
@@ -968,7 +999,7 @@ class SupabaseClient internal constructor(
     suspend fun deleteAccount(ctx: SessionContext? = null): Unit = withContext(Dispatchers.IO) {
         val session = sessionOrThrow(ctx)
         rpc(session, "delete_user_account")
-        val ended = tokenStore.endIfCurrent(session.sessionId, EndReason.AccountDeleted)
+        val ended = lifecycle.endIfCurrent(session.sessionId, EndReason.AccountDeleted)
         if (ended != null) revoke(ended.accessToken)
     }
 
@@ -999,12 +1030,16 @@ class SupabaseClient internal constructor(
      *
      *  - demo mode fails locally; a session that is no longer current is never sent for
      *    ([ApiError.SessionSuperseded]); no token at all is [ApiError.TokenExpired];
-     *  - an access token whose `exp` has passed is renewed first;
+     *  - an access token that has expired (by its lifetime from when this device received it)
+     *    is renewed first;
      *  - the answer is checked against the current session again before anything else;
      *  - a 401/403 is classified ([classifyAuthRejection]) from a peek at the body: an expiry
      *    or an ambiguous 401 renews once and retries once (a renewal before sending counts);
-     *    "session gone" ends the session at once; a second expiry ends it; a second ambiguous
-     *    401 is returned as it is, credentials kept; everything else is returned untouched.
+     *    "session gone" ends the session at once. A rejection of the RENEWED token is returned
+     *    as it is with the credentials kept: the server just issued that token, so a rejection
+     *    says something about the server (a signing-key rotation, a proxy), not about this
+     *    session. Sessions end only for "session gone" or a refused renewal. Everything else
+     *    is returned untouched.
      *
      * Cancellation is never turned into an error: after the blocking call returns, a cancelled
      * caller gets its CancellationException and nothing else happens.
@@ -1020,7 +1055,7 @@ class SupabaseClient internal constructor(
         var access: String? = start.accessToken
         var renewed = false
         if (!start.refreshToken.isNullOrBlank() &&
-            (access.isNullOrBlank() || isAccessTokenExpired(access, nowMillis()))
+            (access.isNullOrBlank() || isAccessTokenExpired(access, nowMillis(), start.accessReceivedAt))
         ) {
             access = renew(ctx, access)
             renewed = true
@@ -1057,21 +1092,23 @@ class SupabaseClient internal constructor(
                 }
                 AuthRejection.SessionGone -> {
                     response.close()
-                    tokenStore.endIfCurrent(ctx.sessionId, EndReason.SessionGone)
+                    lifecycle.endIfCurrent(ctx.sessionId, EndReason.SessionGone)
                     throw ApiError.TokenExpired
                 }
                 AuthRejection.Expiry, AuthRejection.Ambiguous -> {
+                    if (renewed) {
+                        // Rejected with a token the server has just issued: an error to report,
+                        // not a verdict on the session. Nothing ends.
+                        afterRequestHook(path)
+                        return response
+                    }
                     val canRenew = !tokenStore.snapshotIfCurrent(ctx.sessionId)?.refreshToken.isNullOrBlank()
-                    if (renewed || !canRenew) {
+                    if (!canRenew) {
                         if (rejection == AuthRejection.Ambiguous) {
-                            // Unrecognisable even with a fresh token: an unknown error, not a
-                            // verdict on the session. The caller reports it; nothing ends.
                             afterRequestHook(path)
                             return response
                         }
-                        response.close()
-                        tokenStore.endIfCurrent(ctx.sessionId, EndReason.SessionRefused)
-                        throw ApiError.TokenExpired
+                        // An expired token and no way to renew it, ever: renew() ends it.
                     }
                     response.close()
                     access = renew(ctx, access)
@@ -1093,13 +1130,13 @@ class SupabaseClient internal constructor(
         val current = tokenStore.snapshotIfCurrent(ctx.sessionId) ?: throw ApiError.SessionSuperseded
         val currentAccess = current.accessToken
         if (!currentAccess.isNullOrBlank() && currentAccess != staleAccess &&
-            !isAccessTokenExpired(currentAccess, nowMillis())
+            !isAccessTokenExpired(currentAccess, nowMillis(), current.accessReceivedAt)
         ) {
             return@withLock currentAccess
         }
         val refreshToken = current.refreshToken
         if (refreshToken.isNullOrBlank()) {
-            tokenStore.endIfCurrent(ctx.sessionId, EndReason.SessionRefused)
+            lifecycle.endIfCurrent(ctx.sessionId, EndReason.SessionRefused)
             throw ApiError.TokenExpired
         }
         when (val outcome = performRefreshRequest(refreshToken)) {
@@ -1110,7 +1147,7 @@ class SupabaseClient internal constructor(
                 outcome.accessToken
             }
             is RefreshOutcome.Refused -> {
-                tokenStore.endIfCurrent(ctx.sessionId, EndReason.SessionRefused)
+                lifecycle.endIfCurrent(ctx.sessionId, EndReason.SessionRefused)
                 throw ApiError.TokenExpired
             }
             is RefreshOutcome.Failed -> throw outcome.error
@@ -1211,8 +1248,8 @@ class SupabaseClient internal constructor(
         }
 
     /**
-     * Installs the session a sign-in answered with, if [attempt] is still the latest sign-in
-     * attempt (an older attempt that answers last must not replace the newer session), then
+     * Installs the session a sign-in answered with, if [attempt] is still the current sign-in
+     * generation (an older attempt that answers last must not replace the newer session), then
      * fetches its profile for that session only.
      */
     private suspend fun handleAuthResponse(attempt: Long, json: JSONObject, fallbackEmail: String?): AuthResponse {
@@ -1222,11 +1259,15 @@ class SupabaseClient internal constructor(
         val user = json.optJSONObject("user") ?: JSONObject()
         val userId = user.optString("id")
 
-        val sessionId = tokenStore.installSession(
+        // A caller cancelled while the sign-in request was out installs nothing; neither does an
+        // attempt that a newer sign-in, demo mode or an abandonment overtook (checked under the
+        // store's lock together with the install).
+        currentCoroutineContext().ensureActive()
+        val sessionId = lifecycle.install(
             accessToken = token,
             refreshToken = refresh,
             userId = userId,
-            attemptOk = { authAttempt.get() == attempt },
+            attempt = attempt,
         ) ?: throw ApiError.SessionSuperseded
         val session = tokenStore.snapshotIfCurrent(sessionId) ?: throw ApiError.SessionSuperseded
 

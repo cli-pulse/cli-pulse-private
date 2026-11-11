@@ -17,9 +17,16 @@ import com.clipulse.android.ui.common.UiError
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
-import io.mockk.verify
+import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
+import com.clipulse.android.data.remote.TestJwt
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -45,7 +52,7 @@ class SessionGateViewModelTest {
     private val store = TokenStore(InMemorySharedPreferences())
     private val dao = FakeCacheDao()
     private val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher())
-    private val lifecycle = SessionLifecycle(store, dao, appScope)
+    private val lifecycle = SessionLifecycle(store, dao, appScope, Dispatchers.Unconfined)
     private val supabase = mockk<SupabaseClient>(relaxed = true)
 
     private fun gate(handle: SavedStateHandle = SavedStateHandle(), lc: SessionLifecycle = lifecycle) =
@@ -286,7 +293,7 @@ class SessionGateViewModelTest {
 
         val g = gate(lc = mockLifecycle)
 
-        verify(exactly = 1) { mockLifecycle.endIfCurrent(a, EndReason.SessionRefused) }
+        coVerify(exactly = 1) { mockLifecycle.endIfCurrent(a, EndReason.SessionRefused) }
         // The gate itself wiped nothing: with the lifecycle mocked, the session is still there.
         assertEquals(a, store.sessionId)
         g.viewModelScope.cancel()
@@ -343,6 +350,70 @@ class SessionGateViewModelTest {
             assertEquals("$error", GateState(GateScreen.Tabs, a, 0, restoreError = shown), g.state.value)
             assertEquals(a, store.sessionId)
             g.viewModelScope.cancel()
+        }
+    }
+
+    @Test
+    fun `the session expired notice survives a process death with the sign-in screen`() = runTest {
+        val (g, a) = onTabsWithA()
+        val handle = SavedStateHandle()
+        val live = gate(handle)
+        store.endIfCurrent(a, EndReason.SessionRefused)
+        assertEquals(UiError.SessionExpired, live.state.value.notice)
+
+        val revived = gate(handle)
+
+        assertEquals(GateScreen.Login, revived.state.value.screen)
+        assertEquals(UiError.SessionExpired, revived.state.value.notice)
+        g.viewModelScope.cancel()
+        live.viewModelScope.cancel()
+        revived.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `a 1_62 session with an expired token renews once and lands on the tabs`() = runTest {
+        val server = MockWebServer()
+        server.start()
+        try {
+            // What 1.62 left in the encrypted preferences: tokens and a user id, no session id.
+            val legacy = InMemorySharedPreferences()
+            legacy.edit()
+                .putString("access_token", TestJwt.expired())
+                .putString("refresh_token", "refresh-old")
+                .putString("user_id", "user-a")
+                .apply()
+            val legacyStore = TokenStore(legacy)
+            val legacyLifecycle = SessionLifecycle(legacyStore, FakeCacheDao(), appScope, Dispatchers.Unconfined)
+            val client = SupabaseClient(
+                legacyStore,
+                legacyLifecycle,
+                server.url("/").toString().trimEnd('/'),
+                "anon-key-for-tests",
+                OkHttpClient.Builder().retryOnConnectionFailure(false),
+            )
+            val refreshes = java.util.concurrent.atomic.AtomicInteger(0)
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse = when {
+                    request.path!!.startsWith("/auth/v1/token?grant_type=refresh_token") -> {
+                        refreshes.incrementAndGet()
+                        MockResponse().setResponseCode(200)
+                            .setBody("""{"access_token":"${TestJwt.fresh()}","refresh_token":"refresh-new"}""")
+                    }
+                    request.path == "/auth/v1/user" -> MockResponse().setResponseCode(200).setBody("""{"id":"user-a"}""")
+                    else -> MockResponse().setResponseCode(200).setBody("[]")
+                }
+            }
+            val id = legacyStore.sessionId!!
+
+            val g = SessionGateViewModel(SavedStateHandle(), legacyStore, client, legacyLifecycle)
+            val landed = g.state.first { it.screen != GateScreen.Restoring }
+
+            assertEquals(GateState(GateScreen.Tabs, id, 0), landed)
+            assertEquals("exactly one renewal", 1, refreshes.get())
+            assertEquals("refresh-new", legacyStore.refreshToken)
+            g.viewModelScope.cancel()
+        } finally {
+            server.shutdown()
         }
     }
 }

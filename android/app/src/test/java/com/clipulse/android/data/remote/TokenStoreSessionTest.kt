@@ -134,11 +134,147 @@ class TokenStoreSessionTest {
     }
 
     @Test
-    fun `a refused sign-in attempt writes nothing`() {
+    fun `a sign-in attempt that a newer one overtook writes nothing`() {
+        val older = store.beginAuthAttempt()
+        val newer = store.beginAuthAttempt()
         val before = prefs.commits
-        assertNull(store.installSession("access-X", "refresh-X", "user-X", attemptOk = { false }))
+
+        assertNull(store.installSession("access-X", "refresh-X", "user-X", attempt = older))
         assertEquals(before, prefs.commits)
         assertNull(store.snapshot())
+
+        assertNotNull(store.installSession("access-Y", "refresh-Y", "user-Y", attempt = newer))
+        assertEquals("access-Y", store.accessToken)
+    }
+
+    @Test
+    fun `demo mode abandons every sign-in still out`() {
+        val attempt = store.beginAuthAttempt()
+        val demo = store.enterDemoMode()
+
+        assertNull(store.installSession("access-X", "refresh-X", "user-X", attempt = attempt))
+        assertEquals(demo, store.sessionId)
+        assertTrue(store.isDemoMode)
+    }
+
+    @Test
+    fun `abandoning sign-ins overtakes every attempt started before`() {
+        val attempt = store.beginAuthAttempt()
+        store.abandonAuthAttempts()
+        assertNull(store.installSession("access-X", "refresh-X", "user-X", attempt = attempt))
+    }
+
+    @Test
+    fun `a browser sign-in carries the generation it started with, through the claim`() {
+        val generation = store.beginOAuthLogin(
+            TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
+        )
+        assertEquals(generation, store.authGeneration)
+
+        val claimed = store.claimPendingOAuthFlow()!!
+        assertEquals(generation, claimed.authGeneration)
+
+        // A password sign-in started after the browser flow: the late callback is no longer the latest.
+        store.beginAuthAttempt()
+        assertNull(store.installSession("access-X", "refresh-X", "user-X", attempt = claimed.authGeneration))
+    }
+
+    @Test
+    fun `the browser flow and its generation are saved together, across a process death`() {
+        val generation = store.beginOAuthLogin(
+            TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
+        )
+        prefs.flushApplies()
+
+        val afterDeath = TokenStore(prefs.restart())
+        assertEquals(generation, afterDeath.authGeneration)
+        assertEquals(generation, afterDeath.claimPendingOAuthFlow()!!.authGeneration)
+    }
+
+    @Test
+    fun `entering demo mode drops pending browser flows`() {
+        store.beginOAuthLogin(
+            TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
+        )
+        store.enterDemoMode()
+        assertNull(store.claimPendingOAuthFlow())
+    }
+
+    @Test
+    fun `a 1_62 link flow is bound to the current session when it is claimed`() {
+        val a = installA()
+        store.savePendingOAuthFlow(
+            TokenStore.PendingOAuthFlow("link", "github", "verifier-1", "state-1", System.currentTimeMillis()),
+        )
+        assertEquals(a, store.claimPendingOAuthFlow()!!.sessionId)
+    }
+
+    @Test
+    fun `a 1_62 link flow with no session to bind to is discarded`() {
+        store.savePendingOAuthFlow(
+            TokenStore.PendingOAuthFlow("link", "github", "verifier-1", "state-1", System.currentTimeMillis()),
+        )
+        assertNull(store.claimPendingOAuthFlow())
+        assertNull(store.loadPendingOAuthFlow())
+    }
+
+    @Test
+    fun `session transitions are on disk when they return`() {
+        val a = installA()
+        assertEquals("install", a, TokenStore(prefs.restart()).sessionId)
+
+        store.rotateIfCurrent(a, "access-A2", "refresh-A2")
+        assertEquals("rotation", "refresh-A2", TokenStore(prefs.restart()).refreshToken)
+
+        store.endIfCurrent(a, EndReason.UserSignedOut)
+        val afterEnd = TokenStore(prefs.restart())
+        assertNull("end", afterEnd.sessionId)
+        assertEquals("marker", a, afterEnd.teardownPending)
+
+        store.clearPendingIfEquals(a)
+        assertNull("marker cleared", TokenStore(prefs.restart()).teardownPending)
+    }
+
+    @Test
+    fun `a commit that did not reach disk is reported, and the next one recovers it`() {
+        prefs.failCommits = true
+        val a = installA()
+        assertFalse(store.isDurable)
+        assertNull("not on disk", TokenStore(prefs.restart()).sessionId)
+
+        prefs.failCommits = false
+        assertTrue(store.recommit())
+        assertTrue(store.isDurable)
+        assertEquals(a, TokenStore(prefs.restart()).sessionId)
+    }
+
+    @Test
+    fun `an end keeps the sign-in generation and the one-time cache check`() {
+        store.markLegacyCacheForTeardownIfNeeded()
+        store.clearPendingIfEquals(TokenStore.LEGACY_CACHE_MARKER)
+        val a = installA()
+        val generation = store.beginAuthAttempt()
+
+        store.endIfCurrent(a, EndReason.UserSignedOut)
+
+        assertEquals(generation, store.authGeneration)
+        assertFalse("checked once, not again after a sign-out", store.markLegacyCacheForTeardownIfNeeded())
+    }
+
+    @Test
+    fun `the first start with no session marks an older version's cache for deletion, once`() {
+        assertTrue(store.markLegacyCacheForTeardownIfNeeded())
+        assertEquals(TokenStore.LEGACY_CACHE_MARKER, store.teardownPending)
+        store.clearPendingIfEquals(TokenStore.LEGACY_CACHE_MARKER)
+        assertFalse(store.markLegacyCacheForTeardownIfNeeded())
+        assertNull(store.teardownPending)
+    }
+
+    @Test
+    fun `the first start with a session leaves its cache alone`() {
+        installA()
+        assertFalse(store.markLegacyCacheForTeardownIfNeeded())
+        assertNull(store.teardownPending)
     }
 
     @Test

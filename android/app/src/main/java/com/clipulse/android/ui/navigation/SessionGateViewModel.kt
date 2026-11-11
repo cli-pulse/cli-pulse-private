@@ -189,6 +189,7 @@ class SessionGateViewModel @Inject constructor(
         handle[KEY_SCREEN] = state.screen.name
         handle[KEY_SESSION] = state.activeSessionId
         handle[KEY_EPOCH] = state.epoch
+        handle[KEY_EXPIRED_NOTICE] = state.notice == UiError.SessionExpired
     }
 
     /** Fresh start, or the state a process death saved, reconciled with the session now stored. */
@@ -199,12 +200,14 @@ class SessionGateViewModel @Inject constructor(
         }
         val savedSession = handle.get<String>(KEY_SESSION)
         val savedEpoch = handle.get<Int>(KEY_EPOCH) ?: 0
+        // The "session expired" notice survives a process death with the sign-in screen.
+        val savedNotice = if (handle.get<Boolean>(KEY_EXPIRED_NOTICE) == true) UiError.SessionExpired else null
         val id = current.sessionId
         val sameTabs = savedScreen == GateScreen.Tabs && savedSession == id
         // Tabs that were shown for a session that is not the current one count as ended.
         val epoch = if (savedScreen == GateScreen.Tabs && !sameTabs) savedEpoch + 1 else savedEpoch
         return when {
-            id == null -> GateState(GateScreen.Login, null, epoch)
+            id == null -> GateState(GateScreen.Login, null, epoch, notice = savedNotice)
             sameTabs -> GateState(GateScreen.Tabs, id, epoch)
             current.isDemo -> GateState(GateScreen.Tabs, id, epoch)
             else -> GateState(GateScreen.Restoring, id, epoch)
@@ -219,5 +222,6 @@ class SessionGateViewModel @Inject constructor(
         const val KEY_SCREEN = "session_gate_screen"
         const val KEY_SESSION = "session_gate_session"
         const val KEY_EPOCH = "session_gate_epoch"
+        const val KEY_EXPIRED_NOTICE = "session_gate_expired_notice"
     }
 }

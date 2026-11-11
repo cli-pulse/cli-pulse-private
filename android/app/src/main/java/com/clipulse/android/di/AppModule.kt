@@ -30,8 +30,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideSupabaseClient(tokenStore: TokenStore): SupabaseClient =
-        SupabaseClient(tokenStore)
+    fun provideSupabaseClient(tokenStore: TokenStore, sessionLifecycle: SessionLifecycle): SupabaseClient =
+        SupabaseClient(tokenStore, sessionLifecycle)
 
     @Provides
     @Singleton

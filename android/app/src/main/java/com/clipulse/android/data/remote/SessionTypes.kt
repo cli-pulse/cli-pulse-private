@@ -31,6 +31,8 @@ data class SessionContext(
     val refreshToken: String?,
     val userId: String?,
     val isDemo: Boolean,
+    /** When this device received [accessToken] (its own clock); null for a 1.62 session. */
+    val accessReceivedAt: Long? = null,
 ) {
     // Tokens never go into logs or crash reports through a data class's generated toString.
     override fun toString(): String = "SessionContext(isDemo=$isDemo)"

@@ -1,10 +1,14 @@
 package com.clipulse.android.data.remote
 
+import com.clipulse.android.data.local.FakeCacheDao
+import com.clipulse.android.data.session.SessionLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
@@ -42,6 +46,9 @@ class SupabaseClientSessionTest {
     private lateinit var prefs: InMemorySharedPreferences
     private lateinit var store: TokenStore
     private lateinit var client: SupabaseClient
+    private lateinit var lifecycle: SessionLifecycle
+    private val dao = FakeCacheDao()
+    private val lifecycleScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
     private val recorded: MutableList<RecordedRequest> = Collections.synchronizedList(mutableListOf())
 
     @Before
@@ -50,8 +57,10 @@ class SupabaseClientSessionTest {
         server.start()
         prefs = InMemorySharedPreferences()
         store = TokenStore(prefs)
+        lifecycle = SessionLifecycle(store, dao, lifecycleScope, Dispatchers.Unconfined)
         client = SupabaseClient(
             store,
+            lifecycle,
             server.url("/").toString().trimEnd('/'),
             "anon-key-for-tests",
             OkHttpClient.Builder().retryOnConnectionFailure(false),
@@ -61,6 +70,7 @@ class SupabaseClientSessionTest {
     @After
     fun tearDown() {
         server.shutdown()
+        lifecycleScope.cancel()
     }
 
     // ── helpers ─────────────────────────────────────────
@@ -102,10 +112,13 @@ class SupabaseClientSessionTest {
         assertEquals(refresh, s.refreshToken)
     }
 
+    /** Ended through the coordinator: credentials gone, and its data deletion already done. */
     private fun assertEnded(id: String, reason: EndReason) {
         assertNull("the session must have ended", store.snapshot())
-        assertEquals(id, store.teardownPending)
         assertEquals(reason, store.state.value.endedReason)
+        assertNull("the teardown ran inside the end", store.teardownPending)
+        assertTrue("clear:dashboard" in dao.calls)
+        assertTrue(id.isNotBlank())
     }
 
     private inline fun <reified T : Throwable> expect(block: () -> Unit): T {
@@ -186,39 +199,48 @@ class SupabaseClientSessionTest {
     }
 
     @Test
-    fun `a PostgREST rejection of the renewed token ends the session`() = runBlocking<Unit> {
+    fun `a rejection of the renewed token keeps the session`() = runBlocking<Unit> {
+        // The server rejects even the token it has just issued: a signing-key rotation or a
+        // proxy, not a verdict on this session. Ending it would sign everyone out at once.
         val id = install()
         route { r ->
             if (r.isRefresh()) renewed("access-A2", "refresh-A2")
-            else json(401, """{"code":"PGRST303","message":"JWT expired"}""")
+            else json(401, """{"code":"PGRST301","message":"JWSError"}""")
         }
 
-        expect<ApiError.TokenExpired> { client.sessions() }
+        assertEquals(401, expect<ApiError.Http> { client.sessions() }.code)
 
         assertEquals("request, renewal, retry", 3, recorded.size)
         assertEquals("Bearer access-A2", recorded[2].bearer())
-        assertEnded(id, EndReason.SessionRefused)
+        assertSessionIntact(id, "access-A2", "refresh-A2")
     }
 
     @Test
-    fun `a GoTrue rejection of the renewed token ends the session`() = runBlocking<Unit> {
-        for (second in listOf("bad_jwt", "session_not_found")) {
-            recorded.clear()
-            val id = install()
-            route { r ->
-                when {
-                    r.isRefresh() -> renewed("access-A2", "refresh-A2")
-                    r.bearer() == "Bearer access-A" -> gotrue(403, "bad_jwt")
-                    else -> gotrue(403, second)
-                }
+    fun `a GoTrue expiry of the renewed token keeps the session too`() = runBlocking<Unit> {
+        val id = install()
+        route { r -> if (r.isRefresh()) renewed("access-A2", "refresh-A2") else gotrue(403, "bad_jwt") }
+
+        assertEquals(403, expect<ApiError.Http> { client.userIdentities() }.code)
+
+        assertEquals(3, recorded.size)
+        assertSessionIntact(id, "access-A2", "refresh-A2")
+    }
+
+    @Test
+    fun `session_not_found on the retry still ends the session`() = runBlocking<Unit> {
+        val id = install()
+        route { r ->
+            when {
+                r.isRefresh() -> renewed("access-A2", "refresh-A2")
+                r.bearer() == "Bearer access-A" -> gotrue(403, "bad_jwt")
+                else -> gotrue(403, "session_not_found")
             }
-
-            expect<ApiError.TokenExpired> { client.userIdentities() }
-
-            assertEquals(second, 3, recorded.size)
-            assertNull("$second: the twice-rejected session is gone", store.snapshot())
-            assertEquals(id, store.teardownPending)
         }
+
+        expect<ApiError.TokenExpired> { client.userIdentities() }
+
+        assertEquals(3, recorded.size)
+        assertEnded(id, EndReason.SessionGone)
     }
 
     @Test
@@ -654,5 +676,214 @@ class SupabaseClientSessionTest {
 
         expect<ApiError.SessionSuperseded> { client.sessions(ctxA) }
         assertEquals(0, count.get())
+    }
+
+    // ── sign-in generations (one synchronised counter) ──
+
+    private val signInAnswer =
+        """{"access_token":"access-new","refresh_token":"refresh-new","user":{"id":"user-new"}}"""
+
+    @Test
+    fun `of two overlapping sign-ins the newer one wins when the older answers first`() = runBlocking<Unit> {
+        val olderArrived = CountDownLatch(1)
+        val releaseOlder = CountDownLatch(1)
+        val newerArrived = CountDownLatch(1)
+        val releaseNewer = CountDownLatch(1)
+        route { r ->
+            val body = r.body.clone().readUtf8()
+            when {
+                r.path == "/auth/v1/verify" && body.contains("111111") -> {
+                    olderArrived.countDown()
+                    releaseOlder.await(5, TimeUnit.SECONDS)
+                    json(200, """{"access_token":"access-old","refresh_token":"refresh-old","user":{"id":"user-old"}}""")
+                }
+                r.path == "/auth/v1/verify" -> {
+                    newerArrived.countDown()
+                    releaseNewer.await(5, TimeUnit.SECONDS)
+                    json(200, signInAnswer)
+                }
+                else -> json(200, "[]")
+            }
+        }
+
+        val older = async(Dispatchers.IO) { runCatching { client.verifyOTP("a@example.test", "111111") } }
+        assertTrue(olderArrived.await(5, TimeUnit.SECONDS))
+        val newer = async(Dispatchers.IO) { client.verifyOTP("a@example.test", "222222") }
+        assertTrue(newerArrived.await(5, TimeUnit.SECONDS))
+        releaseOlder.countDown() // the older answers first
+        assertTrue(older.await().exceptionOrNull() is ApiError.SessionSuperseded)
+        assertNull("the older one installed nothing", store.snapshot())
+        releaseNewer.countDown()
+
+        assertEquals(newer.await().sessionId, store.sessionId)
+        assertEquals("access-new", store.accessToken)
+    }
+
+    @Test
+    fun `demo mode entered while a sign-in is out wins over its answer`() = runBlocking<Unit> {
+        val arrived = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        route { r ->
+            if (r.path!!.startsWith("/auth/v1/token")) {
+                arrived.countDown()
+                release.await(5, TimeUnit.SECONDS)
+                json(200, signInAnswer)
+            } else {
+                json(200, "[]")
+            }
+        }
+
+        val signIn = async(Dispatchers.IO) { runCatching { client.signInWithPassword("a@example.test", "pw-1") } }
+        assertTrue(arrived.await(5, TimeUnit.SECONDS))
+        val demo = lifecycle.enterDemoMode()
+        release.countDown()
+
+        assertTrue(signIn.await().exceptionOrNull() is ApiError.SessionSuperseded)
+        assertEquals(demo, store.sessionId)
+        assertTrue(store.isDemoMode)
+    }
+
+    @Test
+    fun `a sign-in cancelled while its request was out installs nothing`() = runBlocking<Unit> {
+        val arrived = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        route { r ->
+            if (r.path!!.startsWith("/auth/v1/token")) {
+                arrived.countDown()
+                release.await(5, TimeUnit.SECONDS)
+                json(200, signInAnswer)
+            } else {
+                json(200, "[]")
+            }
+        }
+        val job = CoroutineScope(Dispatchers.IO).launch { client.signInWithPassword("a@example.test", "pw-1") }
+        assertTrue(arrived.await(5, TimeUnit.SECONDS))
+
+        job.cancel()
+        release.countDown()
+        job.join()
+
+        assertNull(store.snapshot())
+        assertEquals("no profile request either", 1, recorded.size)
+    }
+
+    @Test
+    fun `a browser sign-in callback that arrives after a newer sign-in started installs nothing`() = runBlocking<Unit> {
+        val generation = store.beginOAuthLogin(
+            TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
+        )
+        val claimed = store.claimPendingOAuthFlow()!!
+        // A password sign-in starts while the claimed callback waits to be delivered.
+        route { json(400, """{"code":400,"error_code":"invalid_credentials","msg":"x"}""") }
+        expect<ApiError.Http> { client.signInWithPassword("a@example.test", "wrong") }
+        recorded.clear()
+        route { json(200, signInAnswer) }
+
+        expect<ApiError.SessionSuperseded> { client.exchangeOAuthCode("code-1", "verifier-1", claimed.authGeneration) }
+
+        assertEquals(generation, claimed.authGeneration)
+        assertEquals("the stale callback is not even exchanged", 0, recorded.size)
+        assertNull(store.snapshot())
+    }
+
+    @Test
+    fun `a browser sign-in callback with its own generation installs`() = runBlocking<Unit> {
+        store.beginOAuthLogin(
+            TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
+        )
+        val claimed = store.claimPendingOAuthFlow()!!
+        route { json(200, signInAnswer) }
+
+        val id = client.exchangeOAuthCode("code-1", "verifier-1", claimed.authGeneration)
+
+        assertEquals(id, store.sessionId)
+        assertEquals("access-new", store.accessToken)
+    }
+
+    // ── link flows ──────────────────────────────────────
+
+    @Test
+    fun `a 1_62 link flow bound at the claim cannot rotate the next account's session`() = runBlocking<Unit> {
+        val a = install()
+        store.savePendingOAuthFlow(
+            TokenStore.PendingOAuthFlow("link", "github", "verifier-1", "state-1", System.currentTimeMillis()),
+        )
+        val claimed = store.claimPendingOAuthFlow()!!
+        store.endIfCurrent(a, EndReason.UserSignedOut)
+        val b = install(access = "access-B", refresh = "refresh-B", user = "user-B")
+        route { json(200, """{"access_token":"access-link","refresh_token":"refresh-link"}""") }
+
+        expect<ApiError.SessionSuperseded> { client.exchangeOAuthCodeForLink("code-1", "verifier-1", claimed.sessionId!!) }
+
+        assertEquals(a, claimed.sessionId)
+        assertEquals(0, recorded.size)
+        assertSessionIntact(b, "access-B", "refresh-B")
+    }
+
+    @Test
+    fun `a link exchange is not sent while a renewal of the same session is out`() = runBlocking<Unit> {
+        val a = install()
+        val refreshArrived = CountDownLatch(1)
+        val releaseRefresh = CountDownLatch(1)
+        val linkArrived = CountDownLatch(1)
+        val refreshAnswered = java.util.concurrent.atomic.AtomicBoolean(false)
+        val linkSentDuringRenewal = java.util.concurrent.atomic.AtomicBoolean(false)
+        route { r ->
+            when {
+                r.isRefresh() -> {
+                    refreshArrived.countDown()
+                    releaseRefresh.await(5, TimeUnit.SECONDS)
+                    refreshAnswered.set(true)
+                    renewed("access-R", "refresh-R")
+                }
+                r.path!!.startsWith("/auth/v1/token?grant_type=pkce") -> {
+                    if (!refreshAnswered.get()) linkSentDuringRenewal.set(true)
+                    linkArrived.countDown()
+                    json(200, """{"access_token":"access-L","refresh_token":"refresh-L"}""")
+                }
+                r.bearer() == "Bearer access-A" -> html(401)
+                else -> json(200, "[]")
+            }
+        }
+
+        val request = async(Dispatchers.IO) { client.sessions() } // 401, then a renewal
+        assertTrue(refreshArrived.await(5, TimeUnit.SECONDS))
+        val link = async(Dispatchers.IO) { client.exchangeOAuthCodeForLink("code-1", "verifier-1", a) }
+        // Bounded negative wait: with the exchange serialised, it cannot reach the server now.
+        val sentEarly = linkArrived.await(1, TimeUnit.SECONDS)
+        releaseRefresh.countDown()
+        request.await()
+        link.await()
+
+        assertFalse("the link exchange went out during the renewal", sentEarly || linkSentDuringRenewal.get())
+        assertSessionIntact(a, "access-L", "refresh-L")
+    }
+
+    // ── clocks, receipts ────────────────────────────────
+
+    @Test
+    fun `a phone clock running ahead does not renew a token it just received`() = runBlocking<Unit> {
+        val serverNow = System.currentTimeMillis() / 1000
+        val phoneNow = (serverNow + 2 * 3600) * 1000L
+        val token = TestJwt.of("""{"sub":"user-a","iat":$serverNow,"exp":${serverNow + 3600}}""")
+        store.installSession(token, "refresh-A", "user-A", receivedAtMillis = phoneNow)
+        client.nowMillis = { phoneNow + 1000 }
+        route { r -> if (r.isRefresh()) renewed("x", "y") else json(200, "[]") }
+
+        client.sessions()
+        client.sessions()
+
+        assertEquals("no renewal on every request", 0, refreshCount())
+        assertEquals(2, recorded.size)
+    }
+
+    @Test
+    fun `a receipt check whose renewal fails is a network error, so the tier is kept`() = runBlocking<Unit> {
+        install()
+        route { r -> if (r.isRefresh()) MockResponse().setResponseCode(503) else json(401, """{"code":401,"message":"Invalid JWT"}""") }
+
+        val result = client.validateReceipt("purchase-1", "pro_monthly")
+
+        assertEquals(SupabaseClient.ReceiptResult(false, "free", isNetworkError = true), result)
     }
 }

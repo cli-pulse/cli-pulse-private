@@ -24,7 +24,12 @@ class DashboardRepositoryDemoModeTest {
     private val cache = mockk<CacheDao>(relaxed = true)
     private val tokenStore = TokenStore(InMemorySharedPreferences())
     private val demoId = tokenStore.enterDemoMode()
-    private val lifecycle = SessionLifecycle(tokenStore, cache, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
+    private val lifecycle = SessionLifecycle(
+        tokenStore,
+        cache,
+        CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        Dispatchers.Unconfined,
+    )
     private val repository = DashboardRepository(supabase, cache, tokenStore, lifecycle)
 
     @Test

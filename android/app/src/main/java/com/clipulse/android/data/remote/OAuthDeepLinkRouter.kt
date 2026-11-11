@@ -8,8 +8,10 @@ data class OAuthDeepLinkCallback(
     val kind: String,           // "login" or "link"
     val code: String,
     val codeVerifier: String,
-    /** The session a link flow was started for (null for login, and for flows saved by 1.62). */
+    /** The session a link flow belongs to (bound at the claim; null for login). */
     val sessionId: String? = null,
+    /** The sign-in generation a login flow was started with (null for link, and for 1.62 flows). */
+    val authGeneration: Long? = null,
 )
 
 /**
@@ -111,6 +113,7 @@ object OAuthDeepLinkRouter {
                                 code = parsed.code,
                                 codeVerifier = pending.codeVerifier,
                                 sessionId = pending.sessionId,
+                                authGeneration = pending.authGeneration,
                             )
                         )
                 }

@@ -18,6 +18,20 @@ class AuthRejectionTest {
     }
 
     @Test
+    fun `GoTrue's other error shape, a string code, is read the same way`() {
+        assertEquals(AuthRejection.SessionGone, classifyAuthRejection("/auth/v1/user", 403, """{"code":"session_not_found","message":"x"}"""))
+        assertEquals(AuthRejection.Expiry, classifyAuthRejection("/auth/v1/user", 403, """{"code":"bad_jwt","message":"x"}"""))
+        assertEquals(
+            RefreshOutcome.Refused(400, "refresh_token_not_found"),
+            classifyRefreshResponse(400, """{"code":"refresh_token_not_found","message":"x"}"""),
+        )
+        assertTrue(
+            "a numeric code is the HTTP status, not an error code",
+            classifyRefreshResponse(400, """{"code":400,"msg":"x"}""") is RefreshOutcome.Failed,
+        )
+    }
+
+    @Test
     fun `an ordinary 403 is not a rejection of the session`() {
         assertEquals(AuthRejection.None, classifyAuthRejection("/auth/v1/user", 403, gotrue("not_admin")))
         assertEquals(AuthRejection.None, classifyAuthRejection("/auth/v1/user", 403, "<html>Forbidden</html>"))
@@ -114,6 +128,22 @@ class AuthRejectionTest {
         assertTrue(classifyRefreshResponse(200, """{"refresh_token":"new-refresh"}""") is RefreshOutcome.Failed)
         val failed = classifyRefreshResponse(200, """{"access_token":"new-access"}""") as RefreshOutcome.Failed
         assertFalse("the token never goes into the error", failed.error.message!!.contains("new-access"))
+    }
+
+    @Test
+    fun `a phone clock running ahead does not make a token it just received look expired`() {
+        val serverNow = 1_800_000_000L
+        val token = TestJwt.of("""{"sub":"user-a","iat":$serverNow,"exp":${serverNow + 3600}}""")
+        val phoneNow = (serverNow + 7200) * 1000L // two hours ahead
+        assertTrue("by exp alone it looks expired", isAccessTokenExpired(token, phoneNow))
+        assertFalse(
+            "counted from when it arrived, it has an hour left",
+            isAccessTokenExpired(token, phoneNow, receivedAtMillis = phoneNow - 60_000L),
+        )
+        assertTrue(
+            "and it does expire an hour after it arrived",
+            isAccessTokenExpired(token, phoneNow + 3600_000L, receivedAtMillis = phoneNow),
+        )
     }
 
     @Test

@@ -49,4 +49,23 @@ class SessionNavigationWiringTest {
         assertFalse(login.contains("tryRestoreSession"))
         assertFalse(login.contains(".me("))
     }
+
+    @Test
+    fun `a sign-in callback that arrives while the tabs show is consumed and dropped`() {
+        val nav = source("navigation/AppNavigation.kt")
+        val tabsBranch = nav.substringAfter("if (gateState.screen != GateScreen.Tabs) {").substringAfter("return\n")
+        assertTrue(tabsBranch.contains("consumePendingCallback()"))
+        assertTrue(tabsBranch.contains("consumePendingNotice()"))
+    }
+
+    @Test
+    fun `only the coordinator starts, ends or replaces a session`() {
+        val transition = Regex("""tokenStore\s*\.\s*(installSession|enterDemoMode|endIfCurrent|endCurrent|clearPendingIfEquals)\s*\(""")
+        val offenders = repoFile("src/main/java/com/clipulse/android").walkTopDown()
+            .filter { it.isFile && it.extension == "kt" && it.name != "SessionLifecycle.kt" }
+            .filter { transition.containsMatchIn(it.readText()) }
+            .map { it.name }
+            .toList()
+        assertTrue("session transitions outside SessionLifecycle: $offenders", offenders.isEmpty())
+    }
 }

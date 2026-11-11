@@ -13,19 +13,22 @@ import com.clipulse.android.data.repository.DashboardRepository
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
-import okhttp3.OkHttpClient
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import okhttp3.OkHttpClient
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -36,205 +39,331 @@ import org.junit.Test
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The teardown that follows an end, its recovery after a process death, and the writer rule
- * (wait for the teardown, then write only for the current session). Real TokenStore, an
- * in-memory DAO, and an app scope on the test scheduler.
+ * The coordinator: transitions, teardown, hydration and writes under one lock; durable
+ * ordering between the preferences and Room; recovery after a process death and retry in the
+ * same process. Real TokenStore over a preferences double with separate memory and disk
+ * layers, an in-memory DAO, everything on the test scheduler.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SessionLifecycleTest {
 
-    private val prefs = InMemorySharedPreferences()
-    private val store = TokenStore(prefs)
-    private val dao = FakeCacheDao()
+    /** A store, an in-memory cache, a coordinator and a repository over a mocked client. */
+    private class Env(testScope: TestScope, val prefs: InMemorySharedPreferences = InMemorySharedPreferences()) {
+        val store = TokenStore(prefs)
+        val dao = FakeCacheDao()
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScope.testScheduler))
+        val lifecycle = SessionLifecycle(store, dao, scope, StandardTestDispatcher(testScope.testScheduler))
+        val supabase = mockk<SupabaseClient>(relaxed = true)
+        val repo = DashboardRepository(supabase, dao, store, lifecycle)
 
-    private fun TestScope.appScope() = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
-
-    private fun installA(): String = store.installSession("access-A", "refresh-A", "user-A")!!
-
-    private fun assertAllTablesEmpty() {
-        for (t in FakeCacheDao.TABLES) assertEquals("table $t", 0, dao.rowCount(t))
+        fun installA(): String = store.installSession("access-A", "refresh-A", "user-A")!!
+        fun allTablesEmpty() = FakeCacheDao.TABLES.all { dao.rowCount(it) == 0 }
     }
+
+    private class Probe : SessionScopedState {
+        val rows = MutableStateFlow<String?>(null)
+        var resets = 0
+        override fun reset() {
+            resets++
+            rows.value = null
+        }
+    }
+
+    // ── recovery ────────────────────────────────────────
 
     @Test
     fun `startup finishes a teardown that a killed process left pending`() = runTest {
-        val a = installA()
-        dao.fill("A")
-        // The process died right after the credentials went: marker written, nothing deleted.
-        store.endIfCurrent(a, EndReason.SessionRefused)
-        val scope = appScope()
+        val before = Env(this)
+        val a = before.installA()
+        before.dao.fill("A")
+        // The process died right after the end was committed, before any deletion ran.
+        before.store.endIfCurrent(a, EndReason.SessionRefused)
 
-        SessionLifecycle(store, dao, scope).start()
+        val revived = TokenStore(before.prefs.restart())
+        assertEquals("the marker reached disk with the end", a, revived.teardownPending)
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        SessionLifecycle(revived, before.dao, scope, StandardTestDispatcher(testScheduler)).start()
         runCurrent()
 
-        assertAllTablesEmpty()
-        assertNull(store.teardownPending)
-        for (t in FakeCacheDao.TABLES) assertEquals(1, dao.calls.count { it == "clear:$t" })
+        assertTrue(before.allTablesEmpty())
+        assertNull(revived.teardownPending)
+        for (t in FakeCacheDao.TABLES) assertEquals(1, before.dao.calls.count { it == "clear:$t" })
         scope.cancel()
     }
 
     @Test
-    fun `one failing delete does not stop the other five and keeps the marker for the next start`() = runTest {
-        val a = installA()
-        dao.fill("A")
-        store.endIfCurrent(a, EndReason.UserSignedOut)
-        dao.failingClears += "providers"
-        val scope = appScope()
+    fun `the first start of this version deletes an older version's leftover cache when no one is signed in`() = runTest {
+        val env = Env(this)
+        env.dao.fill("old")
 
-        assertFalse(SessionLifecycle(store, dao, scope).runPendingTeardown())
+        env.lifecycle.start()
+        runCurrent()
 
-        for (t in FakeCacheDao.TABLES - "providers") assertEquals("table $t", 0, dao.rowCount(t))
-        assertEquals(1, dao.rowCount("providers"))
-        assertEquals("retained for a retry", a, store.teardownPending)
-
-        // Next process start: the delete works now.
-        dao.failingClears.clear()
-        assertTrue(SessionLifecycle(store, dao, scope).runPendingTeardown())
-        assertAllTablesEmpty()
-        assertNull(store.teardownPending)
-        scope.cancel()
+        assertTrue(env.allTablesEmpty())
+        assertNull(env.store.teardownPending)
+        env.scope.cancel()
     }
 
     @Test
-    fun `an end through the lifecycle empties memory at once and the cache right after`() = runTest {
-        val a = installA()
-        dao.fill("A")
-        val scope = appScope()
-        val lifecycle = SessionLifecycle(store, dao, scope)
-        var resets = 0
-        lifecycle.register(object : SessionScopedState {
-            override fun reset() { resets++ }
-        })
+    fun `the first start of this version leaves a signed-in session's cache alone`() = runTest {
+        val env = Env(this)
+        env.installA()
+        env.dao.fill("A")
 
-        val ended = lifecycle.endIfCurrent(a, EndReason.UserSignedOut)
-
-        assertNotNull(ended)
-        assertTrue("in-memory rows go before the screen changes", resets >= 1)
+        env.lifecycle.start()
         runCurrent()
-        assertAllTablesEmpty()
-        assertNull(store.teardownPending)
-        assertNull("a second end is a no-op", lifecycle.endIfCurrent(a, EndReason.UserSignedOut))
-        scope.cancel()
+
+        assertEquals(6, FakeCacheDao.TABLES.sumOf { env.dao.rowCount(it) })
+        env.scope.cancel()
     }
+
+    @Test
+    fun `one failing delete keeps the other five and the marker, and a retry on the same instance finishes`() = runTest {
+        val env = Env(this)
+        val a = env.installA()
+        env.dao.fill("A")
+        env.dao.failingClears += "providers"
+
+        env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut)
+
+        for (t in FakeCacheDao.TABLES - "providers") assertEquals("table $t", 0, env.dao.rowCount(t))
+        assertEquals(1, env.dao.rowCount("providers"))
+        assertEquals("retained for a retry", a, env.store.teardownPending)
+
+        // Room recovers; no restart: the coordinator's own retry finishes the job.
+        env.dao.failingClears.clear()
+        advanceTimeBy(env.lifecycle.retryBaseMillis + 1)
+        runCurrent()
+        assertTrue(env.allTablesEmpty())
+        assertNull(env.store.teardownPending)
+        env.scope.cancel()
+    }
+
+    // ── transitions ─────────────────────────────────────
+
+    @Test
+    fun `an end empties memory and deletes the cache before it returns`() = runTest {
+        val env = Env(this)
+        val a = env.installA()
+        env.dao.fill("A")
+        val probe = Probe().also { env.lifecycle.register(it) }
+        probe.rows.value = "A"
+
+        assertNotNull(env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut))
+
+        assertNull(probe.rows.value)
+        assertTrue(env.allTablesEmpty())
+        assertNull(env.store.teardownPending)
+        assertNull("a second end is a no-op", env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut))
+        env.scope.cancel()
+    }
+
+    @Test
+    fun `an end waits for a hydration in progress, then empties what it published`() = runTest {
+        val env = Env(this)
+        coEvery { env.supabase.dashboard(any()) } returns DemoDataProvider.dashboard()
+        val a = env.installA()
+        env.repo.refreshDashboard() // A's dashboard is in Room now
+        assertTrue("A's row is cached", env.dao.allRows().isNotEmpty())
+
+        // A's hydration has passed the writer's check and is suspended inside Room.
+        val readGate = CompletableDeferred<Unit>()
+        env.dao.beforeRead = { readGate.await() }
+        val hydration = env.scope.launch { env.repo.loadFromCache() }
+        runCurrent()
+        // A ends and B signs in meanwhile.
+        val end = env.scope.async { env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut) }
+        val install = env.scope.async { env.lifecycle.install("access-B", "refresh-B", "user-B") }
+        runCurrent()
+        assertEquals("the end waits for the hydration holding the lock", a, env.store.sessionId)
+
+        readGate.complete(Unit)
+        runCurrent()
+
+        assertTrue(hydration.isCompleted)
+        assertNotNull(end.await())
+        assertEquals(install.await(), env.store.sessionId)
+        assertNull("nothing of A's is left for B to see", env.repo.dashboard.value)
+        assertTrue(env.dao.allRows().isEmpty())
+        env.scope.cancel()
+    }
+
+    @Test
+    fun `a sign-in waits until the previous session's deletion has finished`() = runTest {
+        val env = Env(this)
+        val a = env.installA()
+        env.dao.fill("A")
+        val deleteGate = CompletableDeferred<Unit>()
+        env.dao.beforeClear = { table -> if (table == "dashboard") deleteGate.await() }
+
+        val end = env.scope.async { env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut) }
+        runCurrent() // the deletion holds the lock at the barrier
+        val install = env.scope.async { env.lifecycle.install("access-B", "refresh-B", "user-B") }
+        runCurrent()
+        assertNull("B is not installed while A's data is being deleted", env.store.sessionId)
+
+        deleteGate.complete(Unit)
+        runCurrent()
+        val b = install.await()!!
+        assertNotNull(end.await())
+        env.lifecycle.write(env.store.snapshot()!!) { env.dao.saveDashboard(CachedDashboard(json = "B")) }
+
+        assertEquals(b, env.store.sessionId)
+        assertEquals("exactly B's row", listOf("B"), env.dao.allRows())
+        env.scope.cancel()
+    }
+
+    // ── writes ──────────────────────────────────────────
 
     @Test
     fun `a write runs for the current session and is refused for one that ended`() = runTest {
-        installA()
-        val ctxA = store.snapshot()!!
-        val scope = appScope()
-        val lifecycle = SessionLifecycle(store, dao, scope)
+        val env = Env(this)
+        env.installA()
+        val ctxA = env.store.snapshot()!!
 
-        lifecycle.write(ctxA) { dao.saveDashboard(CachedDashboard(json = "A")) }
-        assertEquals(listOf("A"), dao.allRows())
+        env.lifecycle.write(ctxA) { env.dao.saveDashboard(CachedDashboard(json = "A")) }
+        assertEquals(listOf("A"), env.dao.allRows())
 
-        lifecycle.endIfCurrent(ctxA.sessionId, EndReason.UserSignedOut)
-        runCurrent()
+        env.lifecycle.endIfCurrent(ctxA.sessionId, EndReason.UserSignedOut)
         var ran = false
         try {
-            lifecycle.write(ctxA) { ran = true }
+            env.lifecycle.write(ctxA) { ran = true }
             fail("a write for an ended session must be refused")
         } catch (e: ApiError.SessionSuperseded) {
             // expected
         }
         assertFalse(ran)
-        assertTrue(dao.allRows().isEmpty())
-        scope.cancel()
+        assertTrue(env.dao.allRows().isEmpty())
+        env.scope.cancel()
     }
 
     @Test
-    fun `the next account's first write waits for the previous account's teardown`() = runTest {
-        val a = installA()
-        dao.fill("A")
-        // Ended by the client (no teardown started yet), and B signs in at once.
-        store.endIfCurrent(a, EndReason.SessionRefused)
-        store.installSession("access-B", "refresh-B", "user-B")
-        val ctxB = store.snapshot()!!
-        val scope = appScope()
-        val lifecycle = SessionLifecycle(store, dao, scope)
-
-        val writer = scope.launch {
-            lifecycle.write(ctxB) { dao.saveDashboard(CachedDashboard(json = "B")) }
-        }
-        runCurrent()
-        assertFalse("B's write waits while A's teardown is pending", "B" in dao.allRows())
-
-        lifecycle.runPendingTeardown()
+    fun `a write for a replaced session is refused at once, without waiting for the lock`() = runTest {
+        val env = Env(this)
+        val a = env.installA()
+        val ctxA = env.store.snapshot()!!
+        env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut)
+        env.lifecycle.install("access-B", "refresh-B", "user-B")
+        val ctxB = env.store.snapshot()!!
+        val hold = CompletableDeferred<Unit>()
+        env.scope.launch { env.lifecycle.write(ctxB) { hold.await() } } // B's long write holds the lock
         runCurrent()
 
-        assertTrue(writer.isCompleted)
-        assertEquals("exactly B's row; A's are gone and B's was not deleted", listOf("B"), dao.allRows())
-        scope.cancel()
-    }
-
-    @Test
-    fun `a write waits for a teardown that is holding the lock`() = runTest {
-        val a = installA()
-        dao.fill("A")
-        val release = CompletableDeferred<Unit>()
-        dao.beforeClear = { table -> if (table == "dashboard") release.await() }
-        val scope = appScope()
-        val lifecycle = SessionLifecycle(store, dao, scope)
-
-        lifecycle.endIfCurrent(a, EndReason.UserSignedOut)
-        runCurrent() // the teardown holds the lock at the barrier
-        store.installSession("access-B", "refresh-B", "user-B")
-        val ctxB = store.snapshot()!!
-        val writer = scope.launch {
-            lifecycle.write(ctxB) { dao.saveDashboard(CachedDashboard(json = "B")) }
-        }
-        runCurrent()
-        assertFalse("B" in dao.allRows())
-
-        release.complete(Unit)
-        runCurrent()
-
-        assertTrue(writer.isCompleted)
-        assertEquals(listOf("B"), dao.allRows())
-        assertNull(store.teardownPending)
-        scope.cancel()
-    }
-
-    @Test
-    fun `a writer gives up with TeardownPending when the teardown keeps failing`() = runTest(timeout = 10.seconds) {
-        val a = installA()
-        dao.fill("A")
-        dao.failingClears += FakeCacheDao.TABLES
-        val scope = appScope()
-        val lifecycle = SessionLifecycle(store, dao, scope)
-        var resets = 0
-        lifecycle.register(object : SessionScopedState {
-            override fun reset() { resets++ }
-        })
-        lifecycle.endIfCurrent(a, EndReason.UserSignedOut)
-        runCurrent()
-        assertEquals(a, store.teardownPending)
-        store.installSession("access-B", "refresh-B", "user-B")
-        val ctxB = store.snapshot()!!
-        val resetsBefore = resets
-
-        var ran = false
+        val start = currentTime
         try {
-            // Virtual time: the bounded wait elapses at once instead of hanging the screen.
-            lifecycle.write(ctxB) { ran = true }
+            env.lifecycle.write(ctxA) {}
+            fail("expected SessionSuperseded")
+        } catch (e: ApiError.SessionSuperseded) {
+            // expected
+        }
+        assertEquals(0L, currentTime - start)
+        hold.complete(Unit)
+        env.scope.cancel()
+    }
+
+    @Test
+    fun `a writer gives up after one overall deadline when the lock is never free`() = runTest(timeout = 10.seconds) {
+        val env = Env(this)
+        env.installA()
+        val ctxA = env.store.snapshot()!!
+        val hold = CompletableDeferred<Unit>()
+        env.scope.launch { env.lifecycle.write(ctxA) { hold.await() } } // a write that never finishes
+        runCurrent()
+
+        val start = currentTime
+        try {
+            env.lifecycle.write(ctxA) { }
             fail("expected TeardownPending")
         } catch (e: ApiError.TeardownPending) {
             // expected
         }
-        assertFalse(ran)
-        assertTrue("the in-memory rows are emptied on the timeout", resets > resetsBefore)
-        scope.cancel()
+        assertEquals("one deadline, not more", env.lifecycle.writeTimeoutMillis, currentTime - start)
+        hold.complete(Unit)
+        env.scope.cancel()
+    }
+
+    @Test
+    fun `while a previous session's deletion is pending, writes are refused at once and the retry lets them through`() = runTest {
+        val env = Env(this)
+        val a = env.installA()
+        env.dao.fill("A")
+        env.dao.failingClears += FakeCacheDao.TABLES
+        env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut)
+        env.lifecycle.install("access-B", "refresh-B", "user-B")
+        val ctxB = env.store.snapshot()!!
+        assertEquals(a, env.store.teardownPending)
+
+        val start = currentTime
+        try {
+            env.lifecycle.write(ctxB) { env.dao.saveDashboard(CachedDashboard(json = "B")) }
+            fail("expected TeardownPending")
+        } catch (e: ApiError.TeardownPending) {
+            // expected
+        }
+        assertEquals("refused at once, not after the deadline", 0L, currentTime - start)
+        assertFalse("B" in env.dao.allRows())
+
+        env.dao.failingClears.clear()
+        advanceTimeBy(env.lifecycle.retryMaxMillis + 1)
+        runCurrent()
+        assertNull(env.store.teardownPending)
+        env.lifecycle.write(ctxB) { env.dao.saveDashboard(CachedDashboard(json = "B")) }
+        assertEquals(listOf("B"), env.dao.allRows())
+        env.scope.cancel()
+    }
+
+    // ── durability ──────────────────────────────────────
+
+    @Test
+    fun `after a process death the stored session and the cache agree`() = runTest {
+        val env = Env(this)
+        val a = env.installA()
+        env.dao.fill("A")
+        env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut)
+        val b = env.lifecycle.install("access-B", "refresh-B", "user-B")!!
+        env.lifecycle.write(env.store.snapshot()!!) { env.dao.saveDashboard(CachedDashboard(json = "B")) }
+
+        // The process dies now: only what reached disk survives, in both stores.
+        val revived = TokenStore(env.prefs.restart())
+
+        assertEquals("B's sign-in is on disk before B's rows are", b, revived.sessionId)
+        assertEquals("refresh-B", revived.refreshToken)
+        assertNull("A's teardown is recorded as done", revived.teardownPending)
+        assertEquals(listOf("B"), env.dao.allRows())
+        env.scope.cancel()
+    }
+
+    @Test
+    fun `an end that did not reach disk deletes nothing and keeps writers out until it does`() = runTest {
+        val env = Env(this)
+        val a = env.installA()
+        env.dao.fill("A")
+        env.prefs.failCommits = true
+
+        env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut)
+
+        assertEquals("no deletion before the end is durable", 6, FakeCacheDao.TABLES.sumOf { env.dao.rowCount(it) })
+        env.store.installSession("access-B", "refresh-B", "user-B")
+        val ctxB = env.store.snapshot()!!
+        try {
+            env.lifecycle.write(ctxB) { env.dao.saveDashboard(CachedDashboard(json = "B")) }
+            fail("expected TeardownPending")
+        } catch (e: ApiError.TeardownPending) {
+            // expected
+        }
+
+        env.prefs.failCommits = false
+        advanceTimeBy(env.lifecycle.retryMaxMillis + 1)
+        runCurrent()
+        assertTrue(env.store.isDurable)
+        assertTrue(env.allTablesEmpty())
+        assertNull(env.store.teardownPending)
+        env.lifecycle.write(ctxB) { env.dao.saveDashboard(CachedDashboard(json = "B")) }
+        assertEquals(listOf("B"), env.dao.allRows())
+        env.scope.cancel()
     }
 
     // ── the repository's writes ─────────────────────────
-
-    /** A store, an in-memory cache, a lifecycle on the test scheduler and a repository over a mocked client. */
-    private class Env(testScope: TestScope) {
-        val store = TokenStore(InMemorySharedPreferences())
-        val dao = FakeCacheDao()
-        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScope.testScheduler))
-        val lifecycle = SessionLifecycle(store, dao, scope)
-        val supabase = mockk<SupabaseClient>(relaxed = true)
-        val repo = DashboardRepository(supabase, dao, store, lifecycle)
-    }
 
     private class RepoWrite(
         val name: String,
@@ -284,7 +413,7 @@ class SessionLifecycleTest {
             // Positive control: the same write lands while its session is current.
             val live = Env(this)
             w.stub(live.supabase, CompletableDeferred(Unit))
-            live.store.installSession("access-A", "refresh-A", "user-A")
+            live.installA()
             w.refresh(live.repo)
             assertTrue("${w.name}: positive control", w.daoCall in live.dao.calls)
             assertFalse("${w.name}: positive control", w.flowEmpty(live.repo))
@@ -293,12 +422,11 @@ class SessionLifecycleTest {
             val env = Env(this)
             val gate = CompletableDeferred<Unit>()
             w.stub(env.supabase, gate)
-            val a = env.store.installSession("access-A", "refresh-A", "user-A")!!
+            val a = env.installA()
             val refresh = env.scope.async { runCatching { w.refresh(env.repo) } }
             runCurrent() // the fetch is out, waiting at the gate
 
             env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut)
-            runCurrent() // the teardown has run
             gate.complete(Unit)
             runCurrent()
 
@@ -311,28 +439,6 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `hydration from the cache never shows an ended session's rows`() = runTest {
-        val env = Env(this)
-        coEvery { env.supabase.dashboard(any()) } returns DemoDataProvider.dashboard()
-        val a = env.store.installSession("access-A", "refresh-A", "user-A")!!
-        env.repo.refreshDashboard()
-        assertTrue("A's row is cached", "saveDashboard" in env.dao.calls)
-
-        env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut)
-        env.repo.loadFromCache()
-        assertNull("nothing to hydrate for no session", env.repo.dashboard.value)
-
-        // B signs in before A's teardown ran: B's hydration waits for it, then finds nothing of A's.
-        env.store.installSession("access-B", "refresh-B", "user-B")
-        val hydration = env.scope.async { env.repo.loadFromCache() }
-        runCurrent()
-        hydration.await()
-        assertNull(env.repo.dashboard.value)
-        assertTrue(env.dao.allRows().isEmpty())
-        env.scope.cancel()
-    }
-
-    @Test
     fun `a refusal in the background tears everything down with no screen open`() = runTest {
         val server = MockWebServer()
         server.start()
@@ -340,13 +446,12 @@ class SessionLifecycleTest {
             val env = Env(this)
             val client = SupabaseClient(
                 env.store,
+                env.lifecycle,
                 server.url("/").toString().trimEnd('/'),
                 "anon-key-for-tests",
                 OkHttpClient.Builder().retryOnConnectionFailure(false),
             )
             val repo = DashboardRepository(client, env.dao, env.store, env.lifecycle)
-            env.lifecycle.start()
-            runCurrent()
             env.store.installSession(TestJwt.expired(), "refresh-A", "user-A")
             env.dao.fill("A")
             server.enqueue(
@@ -355,12 +460,11 @@ class SessionLifecycleTest {
             )
 
             val e = runCatching { repo.refreshDashboard() }.exceptionOrNull()
-            runCurrent()
 
             assertTrue("got $e", e is ApiError.TokenExpired)
             assertNull(env.store.state.value.sessionId)
             assertEquals(EndReason.SessionRefused, env.store.state.value.endedReason)
-            assertNull("the teardown ran", env.store.teardownPending)
+            assertNull("the teardown ran inside the end", env.store.teardownPending)
             assertTrue(env.dao.allRows().isEmpty())
             assertNull(repo.dashboard.value)
             assertTrue(repo.dailyUsage.value.isEmpty())

@@ -1,6 +1,11 @@
 package com.clipulse.android.data.remote
 
 import com.clipulse.android.data.DemoDataProvider
+import com.clipulse.android.data.local.FakeCacheDao
+import com.clipulse.android.data.session.SessionLifecycle
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -35,6 +40,12 @@ class SupabaseClientDemoModeTest {
         tokenStore = TokenStore(prefs)
         client = SupabaseClient(
             tokenStore,
+            SessionLifecycle(
+                tokenStore,
+                FakeCacheDao(),
+                CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+                Dispatchers.Unconfined,
+            ),
             server.url("/").toString().trimEnd('/'),
             "anon-key-for-tests",
             OkHttpClient.Builder(),

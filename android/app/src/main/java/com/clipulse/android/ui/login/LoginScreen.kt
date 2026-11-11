@@ -62,7 +62,7 @@ fun LoginScreen(
     // Handle deep-link OAuth callback (durable — verifier + state already validated by MainActivity).
     LaunchedEffect(loginCallback) {
         val cb = loginCallback ?: return@LaunchedEffect
-        viewModel.exchangeOAuthCode(cb.code, cb.codeVerifier)
+        viewModel.exchangeOAuthCode(cb.code, cb.codeVerifier, cb.authGeneration)
         (context as? MainActivity)?.consumePendingCallback()
     }
 

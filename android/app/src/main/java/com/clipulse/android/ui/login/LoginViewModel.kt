@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.clipulse.android.data.remote.ApiError
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
+import com.clipulse.android.data.session.SessionLifecycle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +36,7 @@ data class LoginUiState(
 class LoginViewModel @Inject constructor(
     private val supabase: SupabaseClient,
     private val tokenStore: TokenStore,
+    private val lifecycle: SessionLifecycle,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(LoginUiState())
@@ -101,11 +103,12 @@ class LoginViewModel @Inject constructor(
     /**
      * Start a login OAuth flow: build the Supabase authorize URL and persist the pending-flow
      * record (kind/provider/verifier/state) so we survive process death during the browser
-     * round-trip. Returns the URL to open.
+     * round-trip. The flow starts a new sign-in generation, saved with it: its callback may
+     * install a session only if nothing newer started meanwhile. Returns the URL to open.
      */
     fun startOAuthLogin(provider: String): String {
         val (url, verifier, state) = supabase.oauthAuthorizeUrl(provider)
-        tokenStore.savePendingOAuthFlow(
+        tokenStore.beginOAuthLogin(
             TokenStore.PendingOAuthFlow(
                 kind = "login",
                 provider = provider,
@@ -117,14 +120,24 @@ class LoginViewModel @Inject constructor(
         return url
     }
 
-    /** Exchange an OAuth authorization code obtained via deep link (MainActivity claimed the record). */
-    fun exchangeOAuthCode(code: String, codeVerifier: String) =
-        signIn { supabase.exchangeOAuthCode(code, codeVerifier) }
+    /**
+     * Exchange an OAuth authorization code obtained via deep link (MainActivity claimed the
+     * record), under the sign-in generation the browser flow started with.
+     */
+    fun exchangeOAuthCode(code: String, codeVerifier: String, authGeneration: Long?) =
+        signIn { supabase.exchangeOAuthCode(code, codeVerifier, authGeneration) }
 
-    /** Demo mode is a session of its own, with a synthetic id; it needs no check. */
+    /**
+     * Demo mode is a session of its own, with a synthetic id; it needs no check. Entering it
+     * abandons every sign-in still out (their answers install nothing).
+     */
     fun enterDemoMode() {
-        ++attempt
-        val sessionId = tokenStore.enterDemoMode()
-        _state.value = _state.value.copy(isLoading = false, error = null, completedSessionId = sessionId)
+        val mine = ++attempt
+        viewModelScope.launch {
+            val sessionId = lifecycle.enterDemoMode()
+            if (mine == attempt) {
+                _state.value = _state.value.copy(isLoading = false, error = null, completedSessionId = sessionId)
+            }
+        }
     }
 }

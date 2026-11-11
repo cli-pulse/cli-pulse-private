@@ -24,6 +24,9 @@ internal class FakeCacheDao : CacheDao {
     /** Runs at the start of every delete, with the table name; may suspend. */
     var beforeClear: suspend (String) -> Unit = {}
 
+    /** Runs at the start of every read, with the table name; may suspend (a slow hydration). */
+    var beforeRead: suspend (String) -> Unit = {}
+
     /** One row in every table, all belonging to [owner]. */
     fun fill(owner: String) {
         dashboardRow = CachedDashboard(json = "{\"owner\":\"$owner\"}")
@@ -63,7 +66,12 @@ internal class FakeCacheDao : CacheDao {
         delete()
     }
 
-    override suspend fun getDashboard(): CachedDashboard? = dashboardRow
+    override suspend fun getDashboard(): CachedDashboard? {
+        // The row is read first, then the call suspends: a read whose result is on its way back.
+        val row = dashboardRow
+        beforeRead("dashboard")
+        return row
+    }
     override suspend fun saveDashboard(dashboard: CachedDashboard) {
         calls += "saveDashboard"
         dashboardRow = dashboard

@@ -9,13 +9,15 @@ import com.clipulse.android.data.remote.SessionContext
 import com.clipulse.android.data.remote.TokenStore
 import com.clipulse.android.di.ApplicationScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
@@ -28,78 +30,169 @@ interface SessionScopedState {
 }
 
 /**
- * What happens on this device when a session ends, and the rule every session-owned write
- * follows so it can never land after (or on top of) that end.
+ * The one coordinator of a session's life on this device. ONE mutex serialises:
  *
- * Ending is [TokenStore.endIfCurrent]: credentials gone and a durable teardown marker
- * written in one transaction. The teardown that marker stands for, deleting the six Room
- * tables and emptying the in-memory rows, runs here: right after an end, whenever the
- * marker changes, and at every process start ([start]), so a process killed between the
- * two finishes the job next time.
+ *  - every session transition: [install], [enterDemoMode], [endIfCurrent], [endCurrent];
+ *  - the teardown of an ended session's data (empty the in-memory rows, delete the six Room
+ *    tables, clear the marker), which runs INSIDE the transition that ended it;
+ *  - every cache/flow write and hydration ([write]).
  *
- * One [stateMutex] covers teardown, cache hydration and every cache/flow write. A writer
- * ([write]) waits until no teardown is pending, then, under the lock, requires that its
- * session is still current. So the next account's first write waits for the previous
- * account's teardown, and a delayed teardown can never delete the next account's rows.
+ * So a write or hydration either finishes before an end (and the end then empties what it
+ * wrote) or starts after it (and is refused because its session is gone); a reset can only
+ * ever empty rows of the session that just ended; and the next account's first write cannot
+ * begin until the previous account's deletion has finished.
+ *
+ * Durability: the transition is committed (credentials wiped, marker written) before any
+ * deletion, and the cleared marker is committed before the lock is released to writers. If a
+ * commit or a delete fails, the marker stays, writers are refused ([ApiError.TeardownPending]),
+ * and a coalesced retry with backoff runs in this process; [start] also finishes whatever a
+ * previous process left.
  */
 @Singleton
-class SessionLifecycle @Inject constructor(
+class SessionLifecycle internal constructor(
     private val tokenStore: TokenStore,
     private val cache: CacheDao,
-    @ApplicationScope private val appScope: CoroutineScope,
+    private val appScope: CoroutineScope,
+    private val dispatcher: CoroutineDispatcher,
 ) {
+    @Inject
+    constructor(
+        tokenStore: TokenStore,
+        cache: CacheDao,
+        @ApplicationScope appScope: CoroutineScope,
+    ) : this(tokenStore, cache, appScope, Dispatchers.IO)
+
     private val stateMutex = Mutex()
     private val scopedStates = CopyOnWriteArrayList<SessionScopedState>()
     private val started = AtomicBoolean(false)
 
-    /** How long a writer waits for a pending teardown before giving up with [ApiError.TeardownPending]. */
-    internal var teardownWaitMillis: Long = TEARDOWN_WAIT_MS
+    /** One deadline for a writer: from its call to holding the lock. */
+    internal var writeTimeoutMillis: Long = WRITE_TIMEOUT_MS
+    internal var retryBaseMillis: Long = RETRY_BASE_MS
+    internal var retryMaxMillis: Long = RETRY_MAX_MS
+
+    private val retryLock = Any()
+    private var retryJob: Job? = null
+    private var retryDelayMillis: Long = RETRY_BASE_MS
 
     fun register(state: SessionScopedState) {
         scopedStates += state
     }
 
     /**
-     * From `Application.onCreate`: runs any teardown a previous process left pending, then
-     * again every time a new marker appears (a session ended in the background, by the client
-     * or the Worker, with no screen open). Running a teardown twice is harmless.
+     * From `Application.onCreate`: finishes whatever a previous process left (a marker
+     * written before a deletion that never ran), and, on the first start of this version
+     * with no session, deletes cache rows an older version may have left after a sign-out.
      */
     fun start() {
         if (!started.compareAndSet(false, true)) return
         appScope.launch {
-            tokenStore.state
-                .map { it.teardownPending }
-                .distinctUntilChanged()
-                .collect { marker -> if (marker != null) runPendingTeardown() }
+            locked {
+                tokenStore.markLegacyCacheForTeardownIfNeeded()
+                settleLocked()
+            }
         }
     }
 
+    // ── Transitions ──────────────────────────────────────────────────────
+
     /**
-     * Ends [sessionId] if it is still current ([TokenStore.endIfCurrent]), empties the
-     * in-memory rows at once and starts the teardown. Null when that session already ended
-     * or was replaced: nothing changes then.
+     * Installs a signed-in session if [attempt] is still the current sign-in generation
+     * (null: no check). A session it replaces is torn down in the same step. Null: overtaken.
      */
-    fun endIfCurrent(sessionId: String, reason: EndReason): EndedSession? =
-        tokenStore.endIfCurrent(sessionId, reason)?.also { afterEnd() }
+    suspend fun install(
+        accessToken: String?,
+        refreshToken: String?,
+        userId: String?,
+        userName: String? = null,
+        userEmail: String? = null,
+        attempt: Long? = null,
+    ): String? = locked {
+        val id = tokenStore.installSession(
+            accessToken = accessToken,
+            refreshToken = refreshToken,
+            userId = userId,
+            userName = userName,
+            userEmail = userEmail,
+            attempt = attempt,
+        )
+        if (id != null) settleLocked()
+        id
+    }
 
-    /** [endIfCurrent] for whatever session is current, read and ended under one lock. */
-    fun endCurrent(reason: EndReason): EndedSession? =
-        tokenStore.endCurrent(reason)?.also { afterEnd() }
-
-    private fun afterEnd() {
-        resetScopedStates()
-        appScope.launch { runPendingTeardown() }
+    /** Demo mode, with its synthetic session id; abandons every sign-in still out. */
+    suspend fun enterDemoMode(): String = locked {
+        val id = tokenStore.enterDemoMode()
+        settleLocked()
+        id
     }
 
     /**
-     * Deletes everything the ended session left on this device. Each table is deleted on its
-     * own, so one failure does not keep the other five; the marker is cleared only when all
-     * six went, and only if it still names the session this run started with. Otherwise it
-     * stays and the next start (or the next end) retries. Returns true when nothing is left
-     * pending from this run.
+     * Ends [sessionId] if it is still current and deletes its on-device data before
+     * returning. Null when that session already ended or was replaced: nothing changes then.
      */
-    suspend fun runPendingTeardown(): Boolean = stateMutex.withLock {
-        val marker = tokenStore.teardownPending ?: return@withLock true
+    suspend fun endIfCurrent(sessionId: String, reason: EndReason): EndedSession? = locked {
+        val ended = tokenStore.endIfCurrent(sessionId, reason)
+        if (ended != null) settleLocked()
+        ended
+    }
+
+    /** [endIfCurrent] for whatever session is current. */
+    suspend fun endCurrent(reason: EndReason): EndedSession? = locked {
+        val ended = tokenStore.endCurrent(reason)
+        if (ended != null) settleLocked()
+        ended
+    }
+
+    /** Runs any pending teardown now. True when nothing is left pending. */
+    suspend fun runPendingTeardown(): Boolean = locked { settleLocked() }
+
+    // ── Writes ───────────────────────────────────────────────────────────
+
+    /**
+     * Runs [block] (which sets the flows and writes Room) for [ctx]'s session, or not at all:
+     * [ApiError.SessionSuperseded] if that session is not the current one (checked at once,
+     * and again under the lock); [ApiError.TeardownPending] if the lock is not free within one
+     * overall deadline, or a previous session's data has not been deleted yet. Nothing is
+     * reset here: only transitions empty the in-memory rows, under the lock.
+     */
+    suspend fun <T> write(ctx: SessionContext, block: suspend () -> T): T {
+        if (tokenStore.sessionId != ctx.sessionId) throw ApiError.SessionSuperseded
+        withTimeoutOrNull(writeTimeoutMillis) { stateMutex.lock() } ?: throw ApiError.TeardownPending
+        try {
+            if (tokenStore.sessionId != ctx.sessionId) throw ApiError.SessionSuperseded
+            if (tokenStore.teardownPending != null || !tokenStore.isDurable) {
+                scheduleRetry()
+                throw ApiError.TeardownPending
+            }
+            return block()
+        } finally {
+            stateMutex.unlock()
+        }
+    }
+
+    // ── Internals ────────────────────────────────────────────────────────
+
+    private suspend fun <T> locked(block: suspend () -> T): T =
+        withContext(dispatcher) { stateMutex.withLock { block() } }
+
+    /**
+     * With the lock held: makes the stored session state durable, then deletes the data of
+     * the session the marker names. True when nothing is left pending; otherwise a retry is
+     * scheduled and writers stay refused.
+     */
+    private suspend fun settleLocked(): Boolean {
+        if (!tokenStore.isDurable && !tokenStore.recommit()) {
+            // The transition is not on disk: deleting now could leave Room ahead of the
+            // preferences after a process death. Keep the barrier and retry.
+            scheduleRetry()
+            return false
+        }
+        val marker = tokenStore.teardownPending
+        if (marker == null) {
+            resetRetry()
+            return true
+        }
         resetScopedStates()
         var allDeleted = true
         for (table in CacheTable.entries) {
@@ -112,44 +205,30 @@ class SessionLifecycle @Inject constructor(
                 logTeardownFailure(table)
             }
         }
-        if (allDeleted) tokenStore.clearPendingIfEquals(marker)
-        allDeleted
+        if (allDeleted && tokenStore.clearPendingIfEquals(marker)) {
+            resetRetry()
+            return true
+        }
+        scheduleRetry()
+        return false
     }
 
-    /**
-     * Runs [block] (which sets the flows and writes Room) for [ctx]'s session, or not at all.
-     *
-     * Waits, at most [teardownWaitMillis], until no teardown is pending; on timeout empties
-     * the in-memory rows, skips the write and throws [ApiError.TeardownPending] (a failing
-     * Room delete must never hang a screen; the next start or end retries the teardown).
-     * Then, under [stateMutex], throws [ApiError.SessionSuperseded] unless [ctx] is still the
-     * current session.
-     */
-    suspend fun <T> write(ctx: SessionContext, block: suspend () -> T): T {
-        while (true) {
-            awaitNoTeardown()
-            stateMutex.lock()
-            try {
-                val state = tokenStore.state.value
-                // A newer end slipped in between the wait and the lock: wait for it too.
-                if (state.teardownPending != null) continue
-                if (state.sessionId != ctx.sessionId) throw ApiError.SessionSuperseded
-                return block()
-            } finally {
-                stateMutex.unlock()
+    /** A coalesced retry of [runPendingTeardown], with doubling backoff. */
+    private fun scheduleRetry() {
+        synchronized(retryLock) {
+            if (retryJob?.isActive == true) return
+            val wait = retryDelayMillis
+            retryDelayMillis = minOf(retryDelayMillis * 2, retryMaxMillis)
+            retryJob = appScope.launch {
+                delay(wait)
+                synchronized(retryLock) { retryJob = null }
+                runPendingTeardown()
             }
         }
     }
 
-    private suspend fun awaitNoTeardown() {
-        if (tokenStore.state.value.teardownPending == null) return
-        val cleared = withTimeoutOrNull(teardownWaitMillis) {
-            tokenStore.state.first { it.teardownPending == null }
-        }
-        if (cleared == null) {
-            resetScopedStates()
-            throw ApiError.TeardownPending
-        }
+    private fun resetRetry() {
+        synchronized(retryLock) { retryDelayMillis = retryBaseMillis }
     }
 
     private fun resetScopedStates() {
@@ -182,6 +261,8 @@ class SessionLifecycle @Inject constructor(
 
     private companion object {
         const val TAG = "SessionLifecycle"
-        const val TEARDOWN_WAIT_MS = 5_000L
+        const val WRITE_TIMEOUT_MS = 5_000L
+        const val RETRY_BASE_MS = 5_000L
+        const val RETRY_MAX_MS = 5 * 60_000L
     }
 }

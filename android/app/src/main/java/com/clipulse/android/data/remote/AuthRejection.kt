@@ -32,7 +32,7 @@ internal fun classifyAuthRejection(path: String, code: Int, body: String?): Auth
     return when (code) {
         403 -> {
             if (!path.startsWith("/auth/v1/") || json == null) return AuthRejection.None
-            when (json.stringOrNull("error_code")) {
+            when (gotrueErrorCode(json)) {
                 "session_not_found", "user_not_found" -> AuthRejection.SessionGone
                 "bad_jwt" -> AuthRejection.Expiry
                 else -> AuthRejection.None
@@ -85,7 +85,7 @@ internal fun classifyRefreshResponse(code: Int, body: String): RefreshOutcome {
         }
     }
     if (code == 400 || code == 401 || code == 403) {
-        val errorCode = json?.stringOrNull("error_code")
+        val errorCode = json?.let(::gotrueErrorCode)
         if (errorCode != null) {
             if (errorCode in REFRESH_REFUSED_CODES) return RefreshOutcome.Refused(code, errorCode)
         } else if (json?.stringOrNull("error") == "invalid_grant") {
@@ -97,10 +97,22 @@ internal fun classifyRefreshResponse(code: Int, body: String): RefreshOutcome {
 }
 
 /**
- * True when [token] is a JWT whose `exp` is at or before [nowMillis] plus a small margin. A
- * token that is not a JWT, or has no readable `exp`, counts as not expired: the server decides.
+ * GoTrue's error code: `error_code` in current versions, a non-numeric string `code` in
+ * others (a numeric `code` is the HTTP status, a `PGRST…` one is PostgREST's).
  */
-internal fun isAccessTokenExpired(token: String, nowMillis: Long): Boolean {
+internal fun gotrueErrorCode(json: JSONObject): String? =
+    json.stringOrNull("error_code")
+        ?: json.stringOrNull("code")?.takeIf { c -> !c.startsWith("PGRST") && c.any { !it.isDigit() } }
+
+/**
+ * True when the access token [token] has expired, with a small margin. With
+ * [receivedAtMillis] (when this device received the token, by its own clock) and an `iat`
+ * claim, the lifetime `exp - iat` is counted from the receipt, so a phone clock that runs
+ * ahead does not make every fresh token look expired (and renew on every request). Without
+ * them, `exp` is compared with [nowMillis]. A token that is not a JWT, or has no readable
+ * `exp`, counts as not expired: the server decides.
+ */
+internal fun isAccessTokenExpired(token: String, nowMillis: Long, receivedAtMillis: Long? = null): Boolean {
     val parts = token.split('.')
     if (parts.size != 3) return false
     val payload = try {
@@ -112,7 +124,13 @@ internal fun isAccessTokenExpired(token: String, nowMillis: Long): Boolean {
     if (!json.has("exp") || json.isNull("exp")) return false
     val exp = json.optLong("exp", 0L)
     if (exp <= 0L) return false
-    return exp * 1000L <= nowMillis + EXPIRY_MARGIN_MS
+    val iat = if (json.has("iat") && !json.isNull("iat")) json.optLong("iat", 0L) else 0L
+    val expiresAt = if (receivedAtMillis != null && iat in 1 until exp) {
+        receivedAtMillis + (exp - iat) * 1000L
+    } else {
+        exp * 1000L
+    }
+    return expiresAt <= nowMillis + EXPIRY_MARGIN_MS
 }
 
 /** Renew a little before the exact second, so a request does not leave with a token that dies on the way. */
