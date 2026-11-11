@@ -123,7 +123,7 @@ class SyncWorker @AssistedInject constructor(
                 system = system,
             )
             tokenStore.deviceId = deviceId
-            Log.d(TAG, "Registered Android device: $deviceId")
+            Log.d(TAG, "Registered Android device")
         } catch (e: Exception) {
             Log.w(TAG, "Device registration failed (non-fatal)", e)
         }
