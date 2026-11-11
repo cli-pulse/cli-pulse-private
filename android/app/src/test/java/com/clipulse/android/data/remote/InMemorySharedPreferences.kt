@@ -11,7 +11,8 @@ import java.util.concurrent.ConcurrentHashMap
  * a new instance built from the disk layer only. [failCommits] makes commits report failure
  * without reaching disk (memory still changes, as on a device). [commits] counts
  * transactions, so a test can tell one atomic write from two. [diskWriteHook] holds a commit
- * between memory and disk, outside this double's lock, as a slow disk holds the real one.
+ * between memory and disk, outside this double's lock, as a slow disk holds the real one;
+ * [nextCommitThrows] makes one commit throw before it changes anything.
  */
 internal class InMemorySharedPreferences private constructor(initial: Map<String, Any>) : SharedPreferences {
     constructor() : this(emptyMap())
@@ -35,6 +36,10 @@ internal class InMemorySharedPreferences private constructor(initial: Map<String
      */
     @Volatile
     var diskWriteHook: (() -> Unit)? = null
+
+    /** The next commit throws this, before it changes anything. */
+    @Volatile
+    var nextCommitThrows: RuntimeException? = null
 
     /** The process dies now: only what reached disk survives. */
     @Synchronized
@@ -102,6 +107,10 @@ internal class InMemorySharedPreferences private constructor(initial: Map<String
         }
 
         override fun commit(): Boolean {
+            nextCommitThrows?.let {
+                nextCommitThrows = null
+                throw it
+            }
             val hook = diskWriteHook
             if (hook == null) {
                 return synchronized(this@InMemorySharedPreferences) {

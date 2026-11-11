@@ -167,6 +167,31 @@ class SessionLifecycleTest {
         env.scope.cancel()
     }
 
+    @Test
+    fun `a teardown that throws part-way is retried`() = runTest {
+        val env = Env(this)
+        val a = env.installA()
+        env.dao.fill("A")
+        // The six deletes succeed; the commit that clears the marker afterwards throws.
+        env.dao.beforeClear = { table ->
+            if (table == "daily_usage") {
+                env.prefs.nextCommitThrows = IllegalStateException("keystore unavailable")
+            }
+        }
+
+        val result = runCatching { env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut) }
+
+        assertTrue("got $result", result.exceptionOrNull() is IllegalStateException)
+        assertNull(env.store.sessionId)
+        assertEquals("the marker is still there", a, env.store.teardownPending)
+        env.dao.beforeClear = {}
+        advanceTimeBy(env.lifecycle.retryBaseMillis + 1)
+        runCurrent()
+        assertNull("the retry finished it", env.store.teardownPending)
+        assertTrue(env.allTablesEmpty())
+        env.scope.cancel()
+    }
+
     // ── transitions ─────────────────────────────────────
 
     @Test
@@ -213,6 +238,37 @@ class SessionLifecycleTest {
         assertEquals(install.await(), env.store.sessionId)
         assertNull("nothing of A's is left for B to see", env.repo.dashboard.value)
         assertTrue(env.dao.allRows().isEmpty())
+        env.scope.cancel()
+    }
+
+    @Test
+    fun `a caller cancelled during the deletes does not stop its teardown`() = runTest {
+        val env = Env(this)
+        val a = env.installA()
+        env.dao.fill("A")
+        val atDelete = CompletableDeferred<Unit>()
+        val deleteGate = CompletableDeferred<Unit>()
+        env.dao.beforeClear = { table ->
+            if (table == "dashboard") {
+                atDelete.complete(Unit)
+                deleteGate.await()
+            }
+        }
+        // Like Settings' delete-account: the caller's scope belongs to a screen that the end
+        // itself closes.
+        val callerScope = childScope()
+        val caller = callerScope.launch { env.lifecycle.endIfCurrent(a, EndReason.AccountDeleted) }
+        runCurrent()
+        assertTrue("the end has committed and is deleting", atDelete.isCompleted)
+        assertNull(env.store.sessionId)
+
+        callerScope.cancel()
+        deleteGate.complete(Unit)
+        runCurrent() // no virtual time passes: this is the same teardown, not the retry
+
+        assertTrue(caller.isCancelled)
+        assertTrue(env.allTablesEmpty())
+        assertNull(env.store.teardownPending)
         env.scope.cancel()
     }
 

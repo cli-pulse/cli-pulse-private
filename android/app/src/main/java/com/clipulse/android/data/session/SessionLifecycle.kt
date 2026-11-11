@@ -8,11 +8,11 @@ import com.clipulse.android.data.remote.EndedSession
 import com.clipulse.android.data.remote.SessionContext
 import com.clipulse.android.data.remote.TokenStore
 import com.clipulse.android.di.ApplicationScope
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -47,6 +47,10 @@ interface SessionScopedState {
  * commit or a delete fails, the marker stays, writers are refused ([ApiError.TeardownPending]),
  * and a coalesced retry with backoff runs in this process; [start] also finishes whatever a
  * previous process left.
+ *
+ * Once a transition has committed, its teardown runs to the end even if the caller is
+ * cancelled (a screen that the end itself closes, for instance), and any way out of it short of
+ * "nothing pending" schedules the retry.
  */
 @Singleton
 class SessionLifecycle internal constructor(
@@ -194,37 +198,39 @@ class SessionLifecycle internal constructor(
      * With the lock held: makes the stored session state durable, then deletes the data of
      * the session the marker names. True when nothing is left pending; otherwise a retry is
      * scheduled and writers stay refused.
+     *
+     * The transition before it has already committed, so this does not stop when its caller
+     * is cancelled (NonCancellable), and every exit short of "settled", an exception included,
+     * schedules the retry (finally).
      */
-    private suspend fun settleLocked(): Boolean {
-        if (!tokenStore.isDurable && !tokenStore.recommit()) {
-            // The transition is not on disk: deleting now could leave Room ahead of the
-            // preferences after a process death. Keep the barrier and retry.
-            scheduleRetry()
-            return false
+    private suspend fun settleLocked(): Boolean = withContext(NonCancellable) {
+        var settled = false
+        try {
+            settled = settleOnce()
+            settled
+        } finally {
+            if (settled) resetRetry() else scheduleRetry()
         }
-        val marker = tokenStore.teardownPending
-        if (marker == null) {
-            resetRetry()
-            return true
-        }
+    }
+
+    private suspend fun settleOnce(): Boolean {
+        // The transition is not on disk: deleting now could leave Room ahead of the
+        // preferences after a process death. Keep the barrier and retry.
+        if (!tokenStore.isDurable && !tokenStore.recommit()) return false
+        val marker = tokenStore.teardownPending ?: return true
         resetScopedStates()
         var allDeleted = true
         for (table in CacheTable.entries) {
             try {
                 delete(table)
-            } catch (e: CancellationException) {
-                throw e
             } catch (e: Exception) {
+                // CancellationException included: nothing here is cancellable from outside
+                // (NonCancellable), so one can only be the DAO's own failure. Retried later.
                 allDeleted = false
                 logTeardownFailure(table)
             }
         }
-        if (allDeleted && tokenStore.clearPendingIfEquals(marker)) {
-            resetRetry()
-            return true
-        }
-        scheduleRetry()
-        return false
+        return allDeleted && tokenStore.clearPendingIfEquals(marker)
     }
 
     /** A coalesced retry of [runPendingTeardown], with doubling backoff. */
