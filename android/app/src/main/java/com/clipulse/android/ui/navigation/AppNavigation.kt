@@ -11,10 +11,8 @@ import androidx.compose.material3.*
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -67,52 +65,50 @@ fun AppNavigation(
     pendingCallback: OAuthDeepLinkCallback? = null,
     pendingNotice: OAuthDeepLinkNotice? = null,
 ) {
-    var isLoggedIn by remember { mutableStateOf(false) }
-    // Bumped on every sign-out, demo exit and account deletion, so the sign-in screen gets a
-    // new LoginViewModel. The Activity keeps view models, and the previous one still says
-    // isLoggedIn = true: LoginScreen called onLoggedIn() at once and Exit Demo Mode (and
-    // Sign Out) dropped the user straight back into the tabs, in 1.37 as well.
-    var loginEpoch by rememberSaveable { mutableIntStateOf(0) }
-    // Activity-scoped, read here with the Activity as owner (before the session's own owner
-    // is provided below).
-    val sessionStores: SessionViewModelStores = viewModel()
+    // Activity-scoped (read with the Activity as owner, before the session's own owner is
+    // provided below). It decides between the sign-in screen and the tabs from the session's
+    // identity, survives a rotation with any restore still running, and comes back from a
+    // process death through its SavedStateHandle. It is the only thing that moves the epoch.
+    val gate: SessionGateViewModel = hiltViewModel()
+    val gateState by gate.state.collectAsState()
     val activityOwner = checkNotNull(LocalViewModelStoreOwner.current)
 
     // Only deliver a callback to the screen whose flow-kind matches. A login callback
     // received while we're on the authenticated stack, or vice versa, is ignored — the
-    // MainActivity has already cleared the pending-flow record.
+    // MainActivity has already claimed the pending-flow record.
     val loginCallback = pendingCallback?.takeIf { it.kind == "login" }
     val linkCallback = pendingCallback?.takeIf { it.kind == "link" }
     val loginNotice = pendingNotice?.takeIf { it.kind == "login" }
     val linkNotice = pendingNotice?.takeIf { it.kind == "link" }
 
-    if (!isLoggedIn) {
+    if (gateState.screen != GateScreen.Tabs) {
         LoginScreen(
-            viewModel = hiltViewModel(key = "login-$loginEpoch"),
+            // A new sign-in screen view model for every epoch: the previous one may still hold
+            // the last session's completed sign-in.
+            viewModel = hiltViewModel(key = "login-${gateState.epoch}"),
+            restoring = gateState.screen == GateScreen.Restoring,
+            sessionNotice = gateState.notice,
             loginCallback = loginCallback,
             loginNotice = loginNotice,
-            onLoggedIn = { isLoggedIn = true },
+            onLoggedIn = gate::onLoggedIn,
         )
         return
     }
 
     // Everything below is one signed-in (or demo) session. Its view models live in a store of
     // their own (see SessionViewModelStores), and the NavController starts afresh with each
-    // epoch, so nothing on the tabs survives into the next session.
-    val sessionOwner = remember(loginEpoch) { sessionStores.ownerFor(loginEpoch, activityOwner) }
-    DisposableEffect(sessionStores) {
-        onDispose { sessionStores.clearIfEnded() }
+    // epoch, so nothing on the tabs survives into the next session. Sign-out, demo exit and
+    // account deletion only end the session; the gate sees that and leaves the tabs.
+    val epoch = gateState.epoch
+    val sessionOwner = remember(epoch) { gate.sessionStores.ownerFor(epoch, activityOwner) }
+    DisposableEffect(gate) {
+        onDispose { gate.sessionStores.clearIfEnded() }
     }
     CompositionLocalProvider(LocalViewModelStoreOwner provides sessionOwner) {
-        key(loginEpoch) {
+        key(epoch) {
             SignedInApp(
                 linkCallback = linkCallback,
                 linkNotice = linkNotice,
-                onSignOut = {
-                    sessionStores.endSession()
-                    loginEpoch++
-                    isLoggedIn = false
-                },
             )
         }
     }
@@ -122,7 +118,6 @@ fun AppNavigation(
 private fun SignedInApp(
     linkCallback: OAuthDeepLinkCallback?,
     linkNotice: OAuthDeepLinkNotice?,
-    onSignOut: () -> Unit,
 ) {
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -238,7 +233,6 @@ private fun SignedInApp(
                 SettingsScreen(
                     linkCallback = linkCallback,
                     linkNotice = linkNotice,
-                    onSignOut = onSignOut,
                     onManageSubscription = { navController.navigate("subscription") },
                     onViewDevices = { navController.navigate("devices") },
                 )

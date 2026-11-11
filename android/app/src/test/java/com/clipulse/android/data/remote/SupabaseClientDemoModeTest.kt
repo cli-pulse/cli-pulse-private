@@ -47,7 +47,7 @@ class SupabaseClientDemoModeTest {
     }
 
     private fun enterDemo() {
-        tokenStore.isDemoMode = true
+        tokenStore.enterDemoMode()
     }
 
     @Test
@@ -140,7 +140,7 @@ class SupabaseClientDemoModeTest {
 
     @Test
     fun `signed in requests still carry the access token`() = runTest {
-        tokenStore.updateAuthState("access-1", "refresh-1", "user-1")
+        tokenStore.installSession("access-1", "refresh-1", "user-1")
         server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
 
         assertTrue(client.sessions().isEmpty())
@@ -154,7 +154,7 @@ class SupabaseClientDemoModeTest {
     @Test
     fun `a stale demo flag cannot outlive a real sign-in`() = runTest {
         enterDemo()
-        tokenStore.updateAuthState("access-1", "refresh-1", "user-1")
+        tokenStore.installSession("access-1", "refresh-1", "user-1")
         assertFalse(tokenStore.isDemoMode)
         server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
 
@@ -164,7 +164,7 @@ class SupabaseClientDemoModeTest {
 
     @Test
     fun `revoking an old session leaves the next account signed in`() = runTest {
-        tokenStore.updateAuthState("access-B", "refresh-B", "user-B")
+        tokenStore.installSession("access-B", "refresh-B", "user-B")
         server.enqueue(MockResponse().setResponseCode(204))
 
         client.revokeSession("access-A")
@@ -178,7 +178,7 @@ class SupabaseClientDemoModeTest {
 
     @Test
     fun `signOut ends the local session and revokes it`() = runTest {
-        tokenStore.updateAuthState("access-1", "refresh-1", "user-1")
+        tokenStore.installSession("access-1", "refresh-1", "user-1")
         server.enqueue(MockResponse().setResponseCode(204))
 
         client.signOut()
@@ -189,11 +189,11 @@ class SupabaseClientDemoModeTest {
 
     @Test
     fun `a refresh that returns after sign-out does not bring the session back`() = runTest {
-        tokenStore.updateAuthState("stale-1", "refresh-1", "user-1")
+        val id = tokenStore.installSession("stale-1", "refresh-1", "user-1")!!
         server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
             override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse =
                 if (request.path!!.startsWith("/auth/v1/token")) {
-                    tokenStore.clear() // the user signs out while the refresh is out
+                    tokenStore.endIfCurrent(id, EndReason.UserSignedOut) // signed out while the refresh is out
                     MockResponse().setResponseCode(200)
                         .setBody("""{"access_token":"new-1","refresh_token":"new-r"}""")
                 } else {

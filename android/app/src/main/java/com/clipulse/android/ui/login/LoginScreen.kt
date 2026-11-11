@@ -30,24 +30,33 @@ import com.clipulse.android.data.remote.OAuthDeepLinkNotice
 import com.clipulse.android.data.remote.OAuthDeepLinkNoticeReason
 import kotlinx.coroutines.launch
 import com.clipulse.android.ui.common.PrivacyPolicyLink
+import com.clipulse.android.ui.common.UiError
 import com.clipulse.android.ui.common.text
 
+/**
+ * The sign-in form, and the spinner while the gate checks a saved session ([restoring]).
+ * [onLoggedIn] gets the id of the session a sign-in here installed; the gate ignores it if
+ * that session is no longer the current one. This screen never restores a session itself.
+ */
 @Composable
 fun LoginScreen(
     viewModel: LoginViewModel = hiltViewModel(),
+    restoring: Boolean = false,
+    sessionNotice: UiError? = null,
     loginCallback: OAuthDeepLinkCallback? = null,
     loginNotice: OAuthDeepLinkNotice? = null,
-    onLoggedIn: () -> Unit,
+    onLoggedIn: (String) -> Unit,
 ) {
-    val state by viewModel.state.collectAsState()
+    val viewModelState by viewModel.state.collectAsState()
+    // While the gate checks a saved session, the form is replaced by the spinner.
+    val state = if (restoring) viewModelState.copy(isLoading = true) else viewModelState
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var oauthNoticeMessage by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) { viewModel.tryRestoreSession() }
-    LaunchedEffect(state.isLoggedIn) {
-        if (state.isLoggedIn) onLoggedIn()
+    LaunchedEffect(viewModelState.completedSessionId) {
+        viewModelState.completedSessionId?.let(onLoggedIn)
     }
 
     // Handle deep-link OAuth callback (durable — verifier + state already validated by MainActivity).
@@ -119,7 +128,7 @@ fun LoginScreen(
                 )
             }
 
-            state.error?.let { error ->
+            (state.error ?: sessionNotice)?.let { error ->
                 Text(
                     error.text(),
                     color = MaterialTheme.colorScheme.error,

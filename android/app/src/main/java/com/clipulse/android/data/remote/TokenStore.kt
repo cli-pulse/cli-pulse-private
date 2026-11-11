@@ -45,67 +45,19 @@ class TokenStore internal constructor(
 
     // ── Reads ─────────────────────────────────────────────────────────────
 
-    // LEGACY setters: kept only until the callers below move to the session API in this
-    // series; each one publishes [state] so the session id stays right meanwhile.
-    var accessToken: String?
-        get() = prefs.getString(KEY_ACCESS_TOKEN, null)
-        @Synchronized set(value) {
-            val edit = prefs.edit().putString(KEY_ACCESS_TOKEN, value)
-            if (!value.isNullOrBlank()) edit.putBoolean(KEY_DEMO_MODE, false)
-            edit.apply()
-            publishLocked()
-        }
+    val accessToken: String? get() = prefs.getString(KEY_ACCESS_TOKEN, null)
 
-    var refreshToken: String?
-        get() = prefs.getString(KEY_REFRESH_TOKEN, null)
-        @Synchronized set(value) {
-            prefs.edit().putString(KEY_REFRESH_TOKEN, value).apply()
-            publishLocked()
-        }
+    val refreshToken: String? get() = prefs.getString(KEY_REFRESH_TOKEN, null)
 
-    var userId: String?
-        get() = prefs.getString(KEY_USER_ID, null)
-        @Synchronized set(value) = prefs.edit().putString(KEY_USER_ID, value).apply()
+    val userId: String? get() = prefs.getString(KEY_USER_ID, null)
 
-    var userName: String?
-        get() = prefs.getString(KEY_USER_NAME, null)
-        @Synchronized set(value) = prefs.edit().putString(KEY_USER_NAME, value).apply()
+    val userName: String? get() = prefs.getString(KEY_USER_NAME, null)
 
-    var userEmail: String?
-        get() = prefs.getString(KEY_USER_EMAIL, null)
-        @Synchronized set(value) = prefs.edit().putString(KEY_USER_EMAIL, value).apply()
+    val userEmail: String? get() = prefs.getString(KEY_USER_EMAIL, null)
 
-    var deviceId: String?
-        get() = prefs.getString(KEY_DEVICE_ID, null)
-        @Synchronized set(value) = prefs.edit().putString(KEY_DEVICE_ID, value).apply()
+    val deviceId: String? get() = prefs.getString(KEY_DEVICE_ID, null)
 
-    var isDemoMode: Boolean
-        get() = prefs.getBoolean(KEY_DEMO_MODE, false)
-        @Synchronized set(value) {
-            prefs.edit().putBoolean(KEY_DEMO_MODE, value).apply()
-            publishLocked()
-        }
-
-    /** LEGACY: a sign-in that does not go through [installSession] yet. */
-    @Synchronized
-    fun updateAuthState(access: String?, refresh: String?, user: String?) {
-        val edit = prefs.edit()
-            .putString(KEY_ACCESS_TOKEN, access)
-            .putString(KEY_REFRESH_TOKEN, refresh)
-            .putString(KEY_USER_ID, user)
-            .putString(KEY_SESSION_ID, UUID.randomUUID().toString())
-        if (!access.isNullOrBlank()) edit.putBoolean(KEY_DEMO_MODE, false)
-        edit.apply()
-        lastEndReason = null
-        publishLocked()
-    }
-
-    /** LEGACY: a wipe without a teardown marker, as before this series. */
-    @Synchronized
-    fun clear() {
-        prefs.edit().clear().apply()
-        publishLocked()
-    }
+    val isDemoMode: Boolean get() = prefs.getBoolean(KEY_DEMO_MODE, false)
 
     val isLoggedIn: Boolean get() = isDemoMode || !accessToken.isNullOrBlank()
 

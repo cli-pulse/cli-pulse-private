@@ -5,18 +5,18 @@ import com.clipulse.android.MainDispatcherRule
 import com.clipulse.android.data.model.AuthResponse
 import com.clipulse.android.data.model.UserDTO
 import com.clipulse.android.data.remote.ApiError
+import com.clipulse.android.data.remote.InMemorySharedPreferences
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
 import io.mockk.coEvery
-import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
@@ -29,64 +29,31 @@ class LoginViewModelTest {
     private val supabase = mockk<SupabaseClient>(relaxed = true)
     private val tokenStore = mockk<TokenStore>(relaxed = true)
 
-    private val testAuth = AuthResponse(
+    private fun auth(sessionId: String) = AuthResponse(
         access_token = "test-token",
         refresh_token = "test-refresh",
         user = UserDTO(id = "u1", name = "Jason", email = "jason@test.com"),
         paired = true,
+        sessionId = sessionId,
     )
 
-    @Before
-    fun setUp() {
-        every { tokenStore.isLoggedIn } returns false
-        every { tokenStore.isDemoMode } returns false
-    }
-
     @Test
-    fun `initial state not logged in`() = runTest {
+    fun `initial state is the empty form`() = runTest {
         val vm = LoginViewModel(supabase, tokenStore)
-        assertFalse(vm.state.value.isLoggedIn)
+        assertNull(vm.state.value.completedSessionId)
         assertFalse(vm.state.value.isLoading)
+        assertNull(vm.state.value.error)
         vm.viewModelScope.cancel()
     }
 
     @Test
-    fun `initial state with cached non-demo session is loading not logged in`() = runTest {
-        // Regression: ensure cached tokens don't pre-flip isLoggedIn=true at
-        // construction. LoginScreen would otherwise call onLoggedIn() before
-        // tryRestoreSession validates the token, stranding the user in the
-        // authenticated stack if me() later returns 401 / TokenExpired.
-        every { tokenStore.isLoggedIn } returns true
-        every { tokenStore.isDemoMode } returns false
-
-        val vm = LoginViewModel(supabase, tokenStore)
-
-        assertFalse(vm.state.value.isLoggedIn)
-        assertTrue(vm.state.value.isLoading)
-        vm.viewModelScope.cancel()
-    }
-
-    @Test
-    fun `initial state with demo mode is logged in not loading`() = runTest {
-        // Demo mode bypasses session restore — no me() call, log in immediately.
-        every { tokenStore.isDemoMode } returns true
-
-        val vm = LoginViewModel(supabase, tokenStore)
-
-        assertTrue(vm.state.value.isLoggedIn)
-        assertFalse(vm.state.value.isLoading)
-        vm.viewModelScope.cancel()
-    }
-
-    @Test
-    fun `signInWithGoogle success sets logged in`() = runTest {
-        coEvery { supabase.signInWithGoogle("id-token", "Jason", "j@t.com") } returns testAuth
+    fun `signInWithGoogle completes with the session it installed`() = runTest {
+        coEvery { supabase.signInWithGoogle("id-token", "Jason", "j@t.com") } returns auth("session-G")
         val vm = LoginViewModel(supabase, tokenStore)
 
         vm.signInWithGoogle("id-token", "Jason", "j@t.com")
-        
 
-        assertTrue(vm.state.value.isLoggedIn)
+        assertEquals("session-G", vm.state.value.completedSessionId)
         assertFalse(vm.state.value.isLoading)
         assertNull(vm.state.value.error)
         vm.viewModelScope.cancel()
@@ -98,9 +65,8 @@ class LoginViewModelTest {
         val vm = LoginViewModel(supabase, tokenStore)
 
         vm.signInWithGoogle("bad-token", null, null)
-        
 
-        assertFalse(vm.state.value.isLoggedIn)
+        assertNull(vm.state.value.completedSessionId)
         assertEquals(UiError.Unknown("invalid token"), vm.state.value.error)
         vm.viewModelScope.cancel()
     }
@@ -111,7 +77,6 @@ class LoginViewModelTest {
         val vm = LoginViewModel(supabase, tokenStore)
 
         vm.sendOTP("test@test.com")
-        
 
         assertTrue(vm.state.value.showOtpInput)
         assertEquals("test@test.com", vm.state.value.otpEmail)
@@ -124,7 +89,6 @@ class LoginViewModelTest {
         val vm = LoginViewModel(supabase, tokenStore)
 
         vm.sendOTP("test@test.com")
-        
 
         assertFalse(vm.state.value.showOtpInput)
         assertEquals(UiError.Unknown("rate limited"), vm.state.value.error)
@@ -132,117 +96,110 @@ class LoginViewModelTest {
     }
 
     @Test
-    fun `verifyOTP success sets logged in`() = runTest {
+    fun `verifyOTP completes with its session`() = runTest {
         coEvery { supabase.sendOTP(any()) } returns Unit
-        coEvery { supabase.verifyOTP("test@test.com", "123456") } returns testAuth
+        coEvery { supabase.verifyOTP("test@test.com", "123456") } returns auth("session-O")
         val vm = LoginViewModel(supabase, tokenStore)
 
         vm.sendOTP("test@test.com")
-        
         vm.verifyOTP("123456")
-        
 
-        assertTrue(vm.state.value.isLoggedIn)
+        assertEquals("session-O", vm.state.value.completedSessionId)
         vm.viewModelScope.cancel()
     }
 
     @Test
-    fun `signInWithPassword success`() = runTest {
-        coEvery { supabase.signInWithPassword("j@t.com", "pass123") } returns testAuth
+    fun `signInWithPassword completes with its session`() = runTest {
+        coEvery { supabase.signInWithPassword("j@t.com", "pass123") } returns auth("session-P")
         val vm = LoginViewModel(supabase, tokenStore)
 
         vm.signInWithPassword("j@t.com", "pass123")
-        
 
-        assertTrue(vm.state.value.isLoggedIn)
+        assertEquals("session-P", vm.state.value.completedSessionId)
         vm.viewModelScope.cancel()
     }
 
     @Test
-    fun `tryRestoreSession success preserves login`() = runTest {
-        every { tokenStore.isLoggedIn } returns true
-        coEvery { supabase.me() } returns testAuth
+    fun `an OAuth exchange completes with its session`() = runTest {
+        coEvery { supabase.exchangeOAuthCode("code-1", "verifier-1") } returns "session-X"
         val vm = LoginViewModel(supabase, tokenStore)
 
-        vm.tryRestoreSession()
-        
+        vm.exchangeOAuthCode("code-1", "verifier-1")
 
-        assertTrue(vm.state.value.isLoggedIn)
+        assertEquals("session-X", vm.state.value.completedSessionId)
         vm.viewModelScope.cancel()
     }
 
     @Test
-    fun `tryRestoreSession with token expired clears session`() = runTest {
-        every { tokenStore.isLoggedIn } returns true
-        coEvery { supabase.me() } throws ApiError.TokenExpired
+    fun `a sign-in a newer one overtook is not an error`() = runTest {
+        coEvery { supabase.signInWithPassword(any(), any()) } throws ApiError.SessionSuperseded
         val vm = LoginViewModel(supabase, tokenStore)
 
-        vm.tryRestoreSession()
-        
+        vm.signInWithPassword("j@t.com", "pass123")
 
-        assertFalse(vm.state.value.isLoggedIn)
-        verify { tokenStore.clear() }
+        assertNull(vm.state.value.error)
+        assertNull(vm.state.value.completedSessionId)
+        assertFalse(vm.state.value.isLoading)
         vm.viewModelScope.cancel()
     }
 
     @Test
-    fun `tryRestoreSession with 401 clears session`() = runTest {
-        every { tokenStore.isLoggedIn } returns true
-        coEvery { supabase.me() } throws ApiError.Http(401, "unauthorized")
+    fun `an older attempt that answers last changes nothing`() = runTest {
+        val olderAnswer = CompletableDeferred<AuthResponse>()
+        coEvery { supabase.signInWithGoogle(any(), any(), any()) } coAnswers { olderAnswer.await() }
+        coEvery { supabase.signInWithPassword(any(), any()) } returns auth("session-new")
         val vm = LoginViewModel(supabase, tokenStore)
 
-        vm.tryRestoreSession()
-        
+        vm.signInWithGoogle("id-token", null, null) // older, still out
+        vm.signInWithPassword("j@t.com", "pass123") // newer, answers first
+        assertEquals("session-new", vm.state.value.completedSessionId)
 
-        assertFalse(vm.state.value.isLoggedIn)
+        olderAnswer.complete(auth("session-old"))
+        assertEquals("session-new", vm.state.value.completedSessionId)
+
         vm.viewModelScope.cancel()
     }
 
     @Test
-    fun `tryRestoreSession with network error stays logged in`() = runTest {
-        every { tokenStore.isLoggedIn } returns true
-        coEvery { supabase.me() } throws RuntimeException("no internet")
+    fun `an older attempt's failure does not cover the newer result`() = runTest {
+        val olderAnswer = CompletableDeferred<AuthResponse>()
+        coEvery { supabase.signInWithGoogle(any(), any(), any()) } coAnswers { olderAnswer.await() }
+        coEvery { supabase.signInWithPassword(any(), any()) } returns auth("session-new")
         val vm = LoginViewModel(supabase, tokenStore)
 
-        vm.tryRestoreSession()
-        
+        vm.signInWithGoogle("id-token", null, null)
+        vm.signInWithPassword("j@t.com", "pass123")
+        olderAnswer.completeExceptionally(RuntimeException("late failure"))
 
-        assertTrue(vm.state.value.isLoggedIn)
-        assertEquals(UiError.OfflineUsingCachedSession, vm.state.value.error)
+        assertNull(vm.state.value.error)
+        assertEquals("session-new", vm.state.value.completedSessionId)
         vm.viewModelScope.cancel()
     }
 
     @Test
-    fun `tryRestoreSession skipped when not logged in`() = runTest {
-        every { tokenStore.isLoggedIn } returns false
-        val vm = LoginViewModel(supabase, tokenStore)
-
-        vm.tryRestoreSession()
-        
-
-        assertFalse(vm.state.value.isLoggedIn)
-        vm.viewModelScope.cancel()
-    }
-
-    @Test
-    fun `enterDemoMode sets logged in`() = runTest {
-        val vm = LoginViewModel(supabase, tokenStore)
+    fun `demo mode completes with its own synthetic session`() = runTest {
+        val store = TokenStore(InMemorySharedPreferences())
+        val vm = LoginViewModel(supabase, store)
 
         vm.enterDemoMode()
 
-        assertTrue(vm.state.value.isLoggedIn)
-        verify { tokenStore.isDemoMode = true }
+        val id = vm.state.value.completedSessionId
+        assertNotNull(id)
+        assertTrue(id!!.startsWith(TokenStore.DEMO_ID_PREFIX))
+        assertEquals(id, store.sessionId)
+        assertTrue(store.isDemoMode)
         vm.viewModelScope.cancel()
     }
 
     @Test
-    fun `tryRestoreSession in demo mode sets logged in`() = runTest {
-        every { tokenStore.isDemoMode } returns true
+    fun `the sign-in screen never ends a session`() = runTest {
+        coEvery { supabase.signInWithPassword(any(), any()) } throws ApiError.TokenExpired
         val vm = LoginViewModel(supabase, tokenStore)
 
-        vm.tryRestoreSession()
+        vm.signInWithPassword("j@t.com", "pass123")
 
-        assertTrue(vm.state.value.isLoggedIn)
+        verify(exactly = 0) { tokenStore.endIfCurrent(any(), any()) }
+        verify(exactly = 0) { tokenStore.endCurrent(any()) }
         vm.viewModelScope.cancel()
     }
 }
