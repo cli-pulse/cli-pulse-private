@@ -6,6 +6,7 @@ import io.sentry.Breadcrumb
 import io.sentry.SentryEvent
 import io.sentry.SentryOptions
 import io.sentry.android.core.SentryAndroid
+import java.util.Collections
 import kotlin.concurrent.thread
 
 object SentryInit {
@@ -74,12 +75,12 @@ object SentryInit {
             val scrubbed = SentryScrub.scrubValue(key, event.extras?.get(key)) ?: return@forEach
             event.setExtra(key, scrubbed)
         }
-        // Contexts is a ConcurrentHashMap, whose keys() (Enumeration) hides the Kotlin keys property.
-        val contexts: MutableMap<String, Any> = event.contexts
-        contexts.keys.toList().forEach { key ->
-            val old = contexts[key] ?: return@forEach
-            val scrubbed = SentryScrub.scrubValue(key, old) ?: return@forEach
-            if (scrubbed !== old) contexts[key] = scrubbed
+        // Contexts is not a Kotlin Map: it exposes keys() as an Enumeration plus get/put.
+        val contexts = event.contexts
+        for (key in Collections.list(contexts.keys())) {
+            val old = contexts.get(key) ?: continue
+            val scrubbed = SentryScrub.scrubValue(key, old) ?: continue
+            if (scrubbed !== old) contexts.put(key, scrubbed)
         }
         event.exceptions?.forEach { ex ->
             ex.value = ex.value?.let(SentryScrub::redact)

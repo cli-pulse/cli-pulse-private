@@ -115,8 +115,8 @@ class SentryInitCallbacksTest {
 
     @Test
     fun `event contexts values are redacted`() {
-        val out = send { contexts["custom"] = mapOf("inner" to dirty) }
-        assertClean("contexts", out.contexts["custom"])
+        val out = send { contexts.put("custom", mapOf("inner" to dirty)) }
+        assertClean("contexts", out.contexts.get("custom"))
     }
 
     @Test
