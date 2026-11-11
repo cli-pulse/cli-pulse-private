@@ -80,8 +80,7 @@ class SessionLifecycleTest {
         dao.failingClears += "providers"
         val scope = appScope()
 
-        SessionLifecycle(store, dao, scope).start()
-        runCurrent()
+        assertFalse(SessionLifecycle(store, dao, scope).runPendingTeardown())
 
         for (t in FakeCacheDao.TABLES - "providers") assertEquals("table $t", 0, dao.rowCount(t))
         assertEquals(1, dao.rowCount("providers"))
@@ -89,8 +88,7 @@ class SessionLifecycleTest {
 
         // Next process start: the delete works now.
         dao.failingClears.clear()
-        SessionLifecycle(store, dao, scope).start()
-        runCurrent()
+        assertTrue(SessionLifecycle(store, dao, scope).runPendingTeardown())
         assertAllTablesEmpty()
         assertNull(store.teardownPending)
         scope.cancel()

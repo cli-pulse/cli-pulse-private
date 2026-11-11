@@ -186,31 +186,37 @@ class SupabaseClientSessionTest {
     }
 
     @Test
-    fun `a rejection of the renewed token ends the session`() = runBlocking<Unit> {
-        val retryAnswers = listOf(
-            "/auth/v1/user" to gotrue(403, "bad_jwt"),
-            "/auth/v1/user" to gotrue(403, "session_not_found"),
-            "/rest/v1/sessions" to json(401, """{"code":"PGRST303","message":"JWT expired"}"""),
-        )
-        for ((path, second) in retryAnswers) {
+    fun `a PostgREST rejection of the renewed token ends the session`() = runBlocking<Unit> {
+        val id = install()
+        route { r ->
+            if (r.isRefresh()) renewed("access-A2", "refresh-A2")
+            else json(401, """{"code":"PGRST303","message":"JWT expired"}""")
+        }
+
+        expect<ApiError.TokenExpired> { client.sessions() }
+
+        assertEquals("request, renewal, retry", 3, recorded.size)
+        assertEquals("Bearer access-A2", recorded[2].bearer())
+        assertEnded(id, EndReason.SessionRefused)
+    }
+
+    @Test
+    fun `a GoTrue rejection of the renewed token ends the session`() = runBlocking<Unit> {
+        for (second in listOf("bad_jwt", "session_not_found")) {
             recorded.clear()
             val id = install()
             route { r ->
                 when {
                     r.isRefresh() -> renewed("access-A2", "refresh-A2")
-                    r.bearer() == "Bearer access-A" ->
-                        if (path == "/auth/v1/user") gotrue(403, "bad_jwt")
-                        else json(401, """{"code":"PGRST303","message":"JWT expired"}""")
-                    else -> second
+                    r.bearer() == "Bearer access-A" -> gotrue(403, "bad_jwt")
+                    else -> gotrue(403, second)
                 }
             }
 
-            expect<ApiError.TokenExpired> {
-                if (path == "/auth/v1/user") client.userIdentities() else client.sessions()
-            }
+            expect<ApiError.TokenExpired> { client.userIdentities() }
 
-            assertEquals(3, recorded.size)
-            assertNull("$path: the twice-rejected session is gone", store.snapshot())
+            assertEquals(second, 3, recorded.size)
+            assertNull("$second: the twice-rejected session is gone", store.snapshot())
             assertEquals(id, store.teardownPending)
         }
     }
@@ -235,13 +241,13 @@ class SupabaseClientSessionTest {
             json(400, """{"error":"invalid_grant","error_description":"Invalid Refresh Token"}""")
         for (refusal in refusals) {
             recorded.clear()
-            val id = install(access = TestJwt.expired())
-            route { refusal }
+            val id = install()
+            route { r -> if (r.isRefresh()) refusal else html(401) }
 
             expect<ApiError.TokenExpired> { client.sessions() }
 
-            assertEquals("the expired token never went out; only the renewal did", 1, recorded.size)
-            assertTrue(recorded[0].isRefresh())
+            assertEquals("the request, then the refused renewal, no retry", 2, recorded.size)
+            assertTrue(recorded[1].isRefresh())
             assertEnded(id, EndReason.SessionRefused)
         }
     }
@@ -258,28 +264,38 @@ class SupabaseClientSessionTest {
             json(500, """{"code":500,"msg":"x"}"""),
             MockResponse().setResponseCode(503),
             html(502),
-            json(200, "{}"),
-            json(200, """{"access_token":"access-new"}"""),
         )
         for (failure in failures) {
-            val expired = TestJwt.expired()
-            val id = install(access = expired)
+            val id = install()
+            server.enqueue(html(401))
             server.enqueue(failure)
             val before = server.requestCount
 
             val e = expect<Exception> { client.sessions() }
 
             assertTrue("$failure -> $e", e is ApiError.Http)
-            assertEquals("$failure: one attempt, no retry", before + 1, server.requestCount)
-            assertSessionIntact(id, expired, "refresh-A")
+            assertEquals("$failure: the request and one renewal attempt, no retry", before + 2, server.requestCount)
+            assertSessionIntact(id, "access-A", "refresh-A")
         }
-        // Offline: the connection drops before an answer.
-        val expired = TestJwt.expired()
-        val id = install(access = expired)
+        // Offline: the renewal's connection drops before an answer.
+        val id = install()
+        server.enqueue(html(401).setHeader("Connection", "close"))
         server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
 
         expect<IOException> { client.sessions() }
-        assertSessionIntact(id, expired, "refresh-A")
+        assertSessionIntact(id, "access-A", "refresh-A")
+    }
+
+    @Test
+    fun `a 200 without both tokens renews nothing and keeps the session`() = runBlocking<Unit> {
+        for (answer in listOf(json(200, "{}"), json(200, """{"access_token":"access-new"}"""))) {
+            val id = install()
+            server.enqueue(html(401))
+            server.enqueue(answer)
+
+            assertTrue(expect<Exception> { client.sessions() } is ApiError.Http)
+            assertSessionIntact(id, "access-A", "refresh-A")
+        }
     }
 
     @Test
