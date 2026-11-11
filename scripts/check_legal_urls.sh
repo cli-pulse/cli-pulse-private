@@ -42,6 +42,13 @@ hits="$(
         | xargs -0 grep -l "jasonyeyuhe\.github\.io" 2>/dev/null || true
 )"
 
+# Android sources (Kotlin and XML) must not carry the legacy host either.
+android_hits="$(
+    find "$ROOT/android/app/src/main" \( -name '*.kt' -o -name '*.xml' \) -print0 2>/dev/null \
+        | xargs -0 grep -il "jasonyeyuhe\.github\.io" 2>/dev/null || true
+)"
+hits="$(printf '%s\n%s' "$hits" "$android_hits" | sed '/^$/d')"
+
 if [[ -n "$hits" ]]; then
     echo "✗ Source still points at the legacy Pages host:" >&2
     while IFS= read -r f; do
@@ -53,6 +60,13 @@ if [[ -n "$hits" ]]; then
   Use $CANONICAL instead. The legacy host is kept alive only so that ALREADY
   SHIPPED builds keep working — new code must not add to that debt.
 MSG
+    status=1
+fi
+
+# The Android privacy link must point at the canonical policy page.
+LEGAL_LINKS="$ROOT/android/app/src/main/java/com/clipulse/android/ui/common/LegalLinks.kt"
+if ! grep -qF "$CANONICAL/privacy.html" "$LEGAL_LINKS" 2>/dev/null; then
+    echo "✗ ${LEGAL_LINKS#"$ROOT/"} does not contain $CANONICAL/privacy.html" >&2
     status=1
 fi
 
@@ -83,6 +97,17 @@ MSG
                 fi
             done
         done
+        # The policy page must name the app and carry a contact link. That the
+        # developer name matches the Play listing stays a manual checklist item.
+        body="$(curl -s -L --max-time 15 "$CANONICAL/privacy.html" || true)"
+        if ! grep -qi "CLI Pulse" <<< "$body"; then
+            echo "✗ $CANONICAL/privacy.html does not mention the app name" >&2
+            status=1
+        fi
+        if ! grep -qi "mailto:" <<< "$body"; then
+            echo "✗ $CANONICAL/privacy.html has no contact link (mailto:)" >&2
+            status=1
+        fi
     fi
 fi
 

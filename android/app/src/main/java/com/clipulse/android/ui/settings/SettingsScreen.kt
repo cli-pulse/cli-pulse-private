@@ -28,6 +28,7 @@ import com.clipulse.android.data.remote.OAuthDeepLinkCallback
 import com.clipulse.android.data.remote.OAuthDeepLinkNotice
 import com.clipulse.android.data.remote.OAuthDeepLinkNoticeReason
 import kotlinx.coroutines.launch
+import com.clipulse.android.ui.common.PrivacyPolicyLink
 import com.clipulse.android.ui.common.text
 import com.clipulse.android.ui.common.DataTokenDisplay
 import com.clipulse.android.ui.common.tokenLabel
@@ -327,6 +328,16 @@ fun SettingsScreen(
                 }
             }
 
+        }
+
+        // About: the privacy policy is reachable in the app (also in demo mode).
+        Spacer(Modifier.height(16.dp))
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(stringResource(R.string.settings_about), style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(4.dp))
+                PrivacyPolicyLink()
+            }
         }
         Spacer(Modifier.height(24.dp))
 

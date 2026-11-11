@@ -14,6 +14,9 @@
     <string name="sign_in_password">Iniciar sesión con contraseña</string>
     <string name="verify">Verificar</string>
     <string name="sign_out">Cerrar sesión</string>
+    <string name="privacy_policy">Política de privacidad</string>
+    <string name="settings_about">Acerca de</string>
+    <string name="privacy_policy_unavailable">No se encontró ningún navegador para abrir la política de privacidad</string>
     <string name="delete_account">Eliminar cuenta</string>
     <string name="try_demo">Probar demo</string>
 
