@@ -1290,6 +1290,14 @@ final class SignOutThisSessionOnlyTests: XCTestCase {
         XCTAssertEqual(log.entries, ["write access-new", "announce access-new"])
     }
 
+    /// A request a sign-out or a new sign-in overtook shows nothing; any other
+    /// failure shows its message.
+    func test_a_cancelled_request_shows_no_error() {
+        XCTAssertNil(AppState.shownError(for: CancellationError(), "Swift.CancellationError error 1."),
+                     "a cancellation is never shown")
+        XCTAssertEqual(AppState.shownError(for: URLError(.timedOut), "could not save"), "could not save")
+    }
+
     // MARK: - Helpers
 
     final class EventLog: @unchecked Sendable {
