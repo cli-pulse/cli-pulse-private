@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.lifecycleScope
 import com.clipulse.android.data.remote.OAuthCallbackParser
 import com.clipulse.android.data.remote.OAuthDeepLinkCallback
 import com.clipulse.android.data.remote.OAuthDeepLinkNotice
@@ -19,6 +20,7 @@ import com.clipulse.android.ui.diagnostics.ConfigurationErrorScreen
 import com.clipulse.android.ui.navigation.AppNavigation
 import com.clipulse.android.ui.theme.CLIPulseTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -101,22 +103,26 @@ class MainActivity : ComponentActivity() {
         if (!isHttps && !isCustom) return
 
         val parsed = OAuthCallbackParser.parse(data)
-        // Claimed, not just read: the record is removed here, once. A second callback for
-        // the same flow (a replayed intent, a second tap on the browser's return) finds
-        // nothing, and a sign-in or sign-out since the flow started has already dropped it.
-        val pending = tokenStore.claimPendingOAuthFlow()
+        lifecycleScope.launch {
+            // Claimed, not just read: the record is removed here, once. A second callback for
+            // the same flow (a replayed intent, a second tap on the browser's return) finds
+            // nothing, and a sign-in or sign-out since the flow started has already dropped it.
+            // The claim takes the store's lock on an IO thread (a token rotation may be holding
+            // it while its commit waits for the disk); routing continues here, on main.
+            val pending = tokenStore.claimPendingOAuthFlow()
 
-        when (val outcome = OAuthDeepLinkRouter.route(parsed = parsed, pending = pending)) {
-            is OAuthDeepLinkOutcome.DeliverCallback -> {
-                pendingCallback = outcome.callback
-            }
+            when (val outcome = OAuthDeepLinkRouter.route(parsed = parsed, pending = pending)) {
+                is OAuthDeepLinkOutcome.DeliverCallback -> {
+                    pendingCallback = outcome.callback
+                }
 
-            is OAuthDeepLinkOutcome.DeliverNotice -> {
-                pendingNotice = outcome.notice
-            }
+                is OAuthDeepLinkOutcome.DeliverNotice -> {
+                    pendingNotice = outcome.notice
+                }
 
-            OAuthDeepLinkOutcome.Drop -> {
-                // Unsolicited deep link (no pending flow). Silently ignore.
+                OAuthDeepLinkOutcome.Drop -> {
+                    // Unsolicited deep link (no pending flow). Silently ignore.
+                }
             }
         }
     }

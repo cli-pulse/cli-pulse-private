@@ -9,6 +9,8 @@ import com.clipulse.android.data.remote.EndReason
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.InMemorySharedPreferences
 import com.clipulse.android.data.remote.TokenStore
+import com.clipulse.android.data.remote.BlockedCommit
+import com.clipulse.android.data.remote.BlockedCommit.Companion.returnsWithoutWaiting
 import com.clipulse.android.data.session.SessionLifecycle
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -44,7 +46,8 @@ class SettingsViewModelTest {
     private val appDispatcher = StandardTestDispatcher()
     private val appScope = CoroutineScope(SupervisorJob() + appDispatcher)
 
-    private val store = TokenStore(InMemorySharedPreferences())
+    private val prefs = InMemorySharedPreferences()
+    private val store = TokenStore(prefs)
     private val dao = FakeCacheDao()
     private val lifecycle = SessionLifecycle(store, dao, appScope, Dispatchers.Unconfined)
 
@@ -73,6 +76,16 @@ class SettingsViewModelTest {
         assertEquals("Name A", vm.state.value.userName)
         assertEquals("a@example.test", vm.state.value.userEmail)
         vm.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `opening Settings does not wait for a commit in progress`() = runTest {
+        val a = installA()
+        BlockedCommit(prefs) { store.rotateIfCurrent(a, "access-A2", "refresh-A2") }.use {
+            val vm = returnsWithoutWaiting("opening Settings") { vm() }
+            assertEquals("Name A", vm.state.value.userName)
+            vm.viewModelScope.cancel()
+        }
     }
 
     @Test

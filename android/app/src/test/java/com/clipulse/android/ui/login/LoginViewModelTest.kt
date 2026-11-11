@@ -228,8 +228,8 @@ class LoginViewModelTest {
 
         vm.startOAuthLogin("github")
 
-        verify(exactly = 1) { tokenStore.beginOAuthLogin(match { it.kind == "login" && it.state == "state-1" }) }
-        verify(exactly = 0) { tokenStore.savePendingOAuthFlow(any()) }
+        coVerify(exactly = 1) { tokenStore.beginOAuthLogin(match { it.kind == "login" && it.state == "state-1" }) }
+        coVerify(exactly = 0) { tokenStore.savePendingOAuthFlow(any()) }
         vm.viewModelScope.cancel()
     }
 }

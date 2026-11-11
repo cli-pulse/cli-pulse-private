@@ -4,8 +4,11 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 /**
@@ -21,9 +24,17 @@ import java.util.UUID
  * cache writes must never be durable while the transition that allowed them is not. Any
  * successful commit writes the whole map, so one success also makes every earlier change
  * durable; [isDurable] reports whether the last commit reached disk.
+ *
+ * Reading never takes the lock. A mutator holds the lock through its `commit()`, which can wait
+ * for the disk, so the session reads ([snapshot], [snapshotIfCurrent], [sessionId],
+ * [teardownPending], [isDurable], [authGeneration], [deviceIdFor], [state]) all come from one
+ * immutable view, published after every change: the main thread can call them at any time. The
+ * writers a screen calls ([beginOAuthLogin], [savePendingOAuthFlow], [claimPendingOAuthFlow])
+ * suspend and take the lock on an IO thread. Every other writer runs on an IO thread already.
  */
 class TokenStore internal constructor(
     private val prefs: SharedPreferences,
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     constructor(context: Context) : this(
         EncryptedSharedPreferences.create(
@@ -39,9 +50,21 @@ class TokenStore internal constructor(
     private var lastEndReason: EndReason? = null
 
     /** False after a commit that did not reach disk, until one does. */
+    @Volatile
     private var durable = true
 
-    private val _state = MutableStateFlow(readStateLocked())
+    /** What the lock-free reads return. Replaced as a whole, never changed. */
+    private class View(
+        val state: SessionState,
+        val session: SessionContext?,
+        val deviceId: String?,
+        val authGeneration: Long,
+    )
+
+    @Volatile
+    private var view: View = readViewLocked()
+
+    private val _state = MutableStateFlow(view.state)
 
     /** The current session id and teardown marker, re-published after every change. */
     val state: StateFlow<SessionState> get() = _state
@@ -68,34 +91,29 @@ class TokenStore internal constructor(
     val hasSession: Boolean get() = !isDemoMode && !accessToken.isNullOrBlank()
 
     /** The current session's id, or null when signed out. */
-    val sessionId: String?
-        @Synchronized get() = currentSessionIdLocked()
+    val sessionId: String? get() = view.session?.sessionId
 
     /** The id of an ended session whose on-device data still has to be deleted. */
-    val teardownPending: String?
-        @Synchronized get() = prefs.getString(KEY_TEARDOWN_PENDING, null)
+    val teardownPending: String? get() = view.state.teardownPending
 
     /** Whether the last commit reached disk (see the class comment). */
-    val isDurable: Boolean
-        @Synchronized get() = durable
+    val isDurable: Boolean get() = durable
 
     /** The current sign-in generation (see [beginAuthAttempt]). */
-    val authGeneration: Long
-        @Synchronized get() = prefs.getLong(KEY_AUTH_GENERATION, 0L)
+    val authGeneration: Long get() = view.authGeneration
 
     /** The current session in one read: id, tokens and user together, or null when signed out. */
-    @Synchronized
-    fun snapshot(): SessionContext? = snapshotLocked()
+    fun snapshot(): SessionContext? = view.session
 
     /** [snapshot], but only while [sessionId] is still the current session. */
-    @Synchronized
     fun snapshotIfCurrent(sessionId: String): SessionContext? =
-        snapshotLocked()?.takeIf { it.sessionId == sessionId }
+        view.session?.takeIf { it.sessionId == sessionId }
 
     /** The device row registered for [sessionId], if that session is still the current one. */
-    @Synchronized
-    fun deviceIdFor(sessionId: String): String? =
-        if (currentSessionIdLocked() == sessionId) prefs.getString(KEY_DEVICE_ID, null) else null
+    fun deviceIdFor(sessionId: String): String? {
+        val v = view
+        return if (v.session?.sessionId == sessionId) v.deviceId else null
+    }
 
     // ── Sign-in generations ───────────────────────────────────────────────
 
@@ -106,25 +124,34 @@ class TokenStore internal constructor(
      * older one, whichever order the answers come back in.
      */
     @Synchronized
-    fun beginAuthAttempt(): Long = nextGenerationLocked(prefs.edit()).also { it.second.apply() }.first
+    fun beginAuthAttempt(): Long {
+        val (generation, edit) = nextGenerationLocked(prefs.edit())
+        edit.apply()
+        publishLocked()
+        return generation
+    }
 
     /**
      * Starts a browser sign-in: the generation moves on and is saved WITH the pending flow
      * in one transaction, so the callback carries the generation of the moment the user
      * left for the browser (across a process death too), not of the moment it came back.
+     * Suspends: the sign-in screen calls it, and the lock is taken on an IO thread.
      */
-    @Synchronized
-    fun beginOAuthLogin(flow: PendingOAuthFlow): Long {
-        val (generation, edit) = nextGenerationLocked(prefs.edit())
-        putPendingFlow(edit, flow.copy(authGeneration = generation))
-        edit.apply()
-        return generation
+    suspend fun beginOAuthLogin(flow: PendingOAuthFlow): Long = withContext(io) {
+        synchronized(this@TokenStore) {
+            val (generation, edit) = nextGenerationLocked(prefs.edit())
+            putPendingFlow(edit, flow.copy(authGeneration = generation))
+            edit.apply()
+            publishLocked()
+            generation
+        }
     }
 
     /** Every sign-in attempt started so far may no longer install a session. */
     @Synchronized
     fun abandonAuthAttempts() {
         nextGenerationLocked(prefs.edit()).second.apply()
+        publishLocked()
     }
 
     private fun nextGenerationLocked(edit: SharedPreferences.Editor): Pair<Long, SharedPreferences.Editor> {
@@ -308,6 +335,7 @@ class TokenStore internal constructor(
         if (!name.isNullOrBlank()) edit.putString(KEY_USER_NAME, name)
         if (!email.isNullOrBlank()) edit.putString(KEY_USER_EMAIL, email)
         edit.apply()
+        publishLocked()
         return true
     }
 
@@ -316,6 +344,7 @@ class TokenStore internal constructor(
     fun setDeviceIdIfCurrent(sessionId: String, deviceId: String): Boolean {
         if (currentSessionIdLocked() != sessionId) return false
         prefs.edit().putString(KEY_DEVICE_ID, deviceId).apply()
+        publishLocked()
         return true
     }
 
@@ -340,12 +369,13 @@ class TokenStore internal constructor(
     /** Max age of a pending flow before it's considered stale. */
     private val PENDING_TTL_MS = 10 * 60 * 1000L // 10 min
 
-    /** Saves a link flow (login flows go through [beginOAuthLogin]). */
-    @Synchronized
-    fun savePendingOAuthFlow(flow: PendingOAuthFlow) {
-        val edit = prefs.edit()
-        putPendingFlow(edit, flow)
-        edit.apply()
+    /** Saves a link flow (login flows go through [beginOAuthLogin]). Suspends, like it. */
+    suspend fun savePendingOAuthFlow(flow: PendingOAuthFlow): Unit = withContext(io) {
+        synchronized(this@TokenStore) {
+            val edit = prefs.edit()
+            putPendingFlow(edit, flow)
+            edit.apply()
+        }
     }
 
     private fun putPendingFlow(edit: SharedPreferences.Editor, flow: PendingOAuthFlow) {
@@ -363,7 +393,7 @@ class TokenStore internal constructor(
     }
 
     @Synchronized
-    fun loadPendingOAuthFlow(): PendingOAuthFlow? {
+    internal fun loadPendingOAuthFlow(): PendingOAuthFlow? {
         val kind = prefs.getString(KEY_PENDING_KIND, null) ?: return null
         val provider = prefs.getString(KEY_PENDING_PROVIDER, null) ?: return null
         val verifier = prefs.getString(KEY_PENDING_VERIFIER, null) ?: return null
@@ -386,9 +416,14 @@ class TokenStore internal constructor(
      * saved would have dropped it, so it belongs to the session current NOW: it is bound to
      * that session here, under the same lock, and the exchange later requires exactly that
      * session. With no session, it is discarded.
+     *
+     * Suspends: MainActivity calls it, and the lock is taken on an IO thread.
      */
-    @Synchronized
-    fun claimPendingOAuthFlow(): PendingOAuthFlow? {
+    suspend fun claimPendingOAuthFlow(): PendingOAuthFlow? = withContext(io) {
+        synchronized(this@TokenStore) { claimPendingOAuthFlowLocked() }
+    }
+
+    private fun claimPendingOAuthFlowLocked(): PendingOAuthFlow? {
         val flow = loadPendingOAuthFlow() ?: return null
         clearPendingOAuthFlow()
         if (flow.kind == "link" && flow.sessionId == null) {
@@ -399,7 +434,7 @@ class TokenStore internal constructor(
     }
 
     @Synchronized
-    fun clearPendingOAuthFlow() {
+    private fun clearPendingOAuthFlow() {
         val edit = prefs.edit()
         removePendingFlow(edit)
         edit.apply()
@@ -467,18 +502,26 @@ class TokenStore internal constructor(
         )
     }
 
-    private fun readStateLocked(): SessionState {
-        val id = currentSessionIdLocked()
-        return SessionState(
-            sessionId = id,
-            isDemo = id != null && prefs.getBoolean(KEY_DEMO_MODE, false),
-            endedReason = if (id == null) lastEndReason else null,
-            teardownPending = prefs.getString(KEY_TEARDOWN_PENDING, null),
+    private fun readViewLocked(): View {
+        val session = snapshotLocked()
+        return View(
+            state = SessionState(
+                sessionId = session?.sessionId,
+                isDemo = session?.isDemo == true,
+                endedReason = if (session == null) lastEndReason else null,
+                teardownPending = prefs.getString(KEY_TEARDOWN_PENDING, null),
+            ),
+            session = session,
+            deviceId = if (session != null) prefs.getString(KEY_DEVICE_ID, null) else null,
+            authGeneration = prefs.getLong(KEY_AUTH_GENERATION, 0L),
         )
     }
 
+    /** Publishes the view, then the flow; the readers above see one or the other, both whole. */
     private fun publishLocked() {
-        _state.value = readStateLocked()
+        val next = readViewLocked()
+        view = next
+        _state.value = next.state
     }
 
     companion object {

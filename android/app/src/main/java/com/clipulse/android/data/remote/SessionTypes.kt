@@ -16,7 +16,7 @@ enum class EndReason {
 }
 
 /**
- * One session, read in ONE synchronized step ([TokenStore.snapshot]). Every request of an
+ * One session, read in ONE step ([TokenStore.snapshot], one immutable view). Every request of an
  * operation carries it, so a sign-out or the next account's sign-in between two requests can
  * never make the second one run as somebody else: the client refuses to send for a session
  * that is no longer current.

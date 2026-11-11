@@ -251,8 +251,11 @@ fun LoginScreen(
                 // GitHub Sign-In via Supabase OAuth PKCE
                 OutlinedButton(
                     onClick = {
-                        val url = viewModel.startOAuthLogin("github")
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        scope.launch {
+                            // The flow is saved (on an IO thread) before the browser opens.
+                            val url = viewModel.startOAuthLogin("github")
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) {

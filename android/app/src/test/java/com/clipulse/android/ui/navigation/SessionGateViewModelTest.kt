@@ -12,6 +12,8 @@ import com.clipulse.android.data.remote.InMemorySharedPreferences
 import com.clipulse.android.data.remote.SessionContext
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
+import com.clipulse.android.data.remote.BlockedCommit
+import com.clipulse.android.data.remote.BlockedCommit.Companion.returnsWithoutWaiting
 import com.clipulse.android.data.session.SessionLifecycle
 import com.clipulse.android.ui.common.UiError
 import io.mockk.coEvery
@@ -49,7 +51,8 @@ class SessionGateViewModelTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
 
-    private val store = TokenStore(InMemorySharedPreferences())
+    private val prefs = InMemorySharedPreferences()
+    private val store = TokenStore(prefs)
     private val dao = FakeCacheDao()
     private val appScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher())
     private val lifecycle = SessionLifecycle(store, dao, appScope, Dispatchers.Unconfined)
@@ -95,6 +98,17 @@ class SessionGateViewModelTest {
         assertEquals(GateScreen.Login, g.state.value.screen)
         coVerify(exactly = 0) { supabase.me(any()) }
         g.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `restoring a session does not wait for a commit in progress`() = runTest {
+        meAnswers()
+        val a = installA()
+        BlockedCommit(prefs) { store.rotateIfCurrent(a, "access-A2", "refresh-A2") }.use {
+            val g = returnsWithoutWaiting("the gate's restore") { gate() }
+            assertEquals(GateState(GateScreen.Tabs, a, 0), g.state.value)
+            g.viewModelScope.cancel()
+        }
     }
 
     @Test

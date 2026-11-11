@@ -105,8 +105,10 @@ class LoginViewModel @Inject constructor(
      * record (kind/provider/verifier/state) so we survive process death during the browser
      * round-trip. The flow starts a new sign-in generation, saved with it: its callback may
      * install a session only if nothing newer started meanwhile. Returns the URL to open.
+     * Suspends while the store saves the flow on an IO thread: the screen opens the browser
+     * once this returns, never blocking the main thread on the store's lock.
      */
-    fun startOAuthLogin(provider: String): String {
+    suspend fun startOAuthLogin(provider: String): String {
         val (url, verifier, state) = supabase.oauthAuthorizeUrl(provider)
         tokenStore.beginOAuthLogin(
             TokenStore.PendingOAuthFlow(

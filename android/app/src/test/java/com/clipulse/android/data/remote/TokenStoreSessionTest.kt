@@ -1,5 +1,11 @@
 package com.clipulse.android.data.remote
 
+import com.clipulse.android.data.remote.BlockedCommit.Companion.returnsWithoutWaiting
+import kotlinx.coroutines.async
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -7,6 +13,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.Executors
 
 /** The session identity and the one atomic end transition, against a real TokenStore. */
 class TokenStoreSessionTest {
@@ -165,7 +172,7 @@ class TokenStoreSessionTest {
     }
 
     @Test
-    fun `a browser sign-in carries the generation it started with, through the claim`() {
+    fun `a browser sign-in carries the generation it started with, through the claim`() = runBlocking<Unit> {
         val generation = store.beginOAuthLogin(
             TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
         )
@@ -180,7 +187,7 @@ class TokenStoreSessionTest {
     }
 
     @Test
-    fun `the browser flow and its generation are saved together, across a process death`() {
+    fun `the browser flow and its generation are saved together, across a process death`() = runBlocking<Unit> {
         val generation = store.beginOAuthLogin(
             TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
         )
@@ -192,7 +199,7 @@ class TokenStoreSessionTest {
     }
 
     @Test
-    fun `entering demo mode drops pending browser flows`() {
+    fun `entering demo mode drops pending browser flows`() = runBlocking<Unit> {
         store.beginOAuthLogin(
             TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
         )
@@ -201,7 +208,7 @@ class TokenStoreSessionTest {
     }
 
     @Test
-    fun `a 1_62 link flow is bound to the current session when it is claimed`() {
+    fun `a 1_62 link flow is bound to the current session when it is claimed`() = runBlocking<Unit> {
         val a = installA()
         store.savePendingOAuthFlow(
             TokenStore.PendingOAuthFlow("link", "github", "verifier-1", "state-1", System.currentTimeMillis()),
@@ -210,7 +217,7 @@ class TokenStoreSessionTest {
     }
 
     @Test
-    fun `a 1_62 link flow with no session to bind to is discarded`() {
+    fun `a 1_62 link flow with no session to bind to is discarded`() = runBlocking<Unit> {
         store.savePendingOAuthFlow(
             TokenStore.PendingOAuthFlow("link", "github", "verifier-1", "state-1", System.currentTimeMillis()),
         )
@@ -368,7 +375,7 @@ class TokenStoreSessionTest {
     }
 
     @Test
-    fun `a sign-in drops every pending OAuth flow`() {
+    fun `a sign-in drops every pending OAuth flow`() = runBlocking<Unit> {
         store.savePendingOAuthFlow(
             TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
         )
@@ -377,7 +384,7 @@ class TokenStoreSessionTest {
     }
 
     @Test
-    fun `a pending flow is claimed exactly once and keeps its session id`() {
+    fun `a pending flow is claimed exactly once and keeps its session id`() = runBlocking<Unit> {
         val a = installA()
         store.savePendingOAuthFlow(
             TokenStore.PendingOAuthFlow("link", "github", "verifier-1", "state-1", System.currentTimeMillis(), sessionId = a),
@@ -389,13 +396,65 @@ class TokenStoreSessionTest {
     }
 
     @Test
-    fun `ending a session drops a pending link flow started under it`() {
+    fun `ending a session drops a pending link flow started under it`() = runBlocking<Unit> {
         val a = installA()
         store.savePendingOAuthFlow(
             TokenStore.PendingOAuthFlow("link", "github", "verifier-1", "state-1", System.currentTimeMillis(), sessionId = a),
         )
         store.endIfCurrent(a, EndReason.UserSignedOut)
         assertNull(store.claimPendingOAuthFlow())
+    }
+
+    // ── the main thread never waits for a commit ────────
+
+    @Test
+    fun `every session read returns while a commit holds the store's lock`() {
+        val a = installA()
+        assertTrue(store.setDeviceIdIfCurrent(a, "device-A"))
+        val generation = store.beginAuthAttempt()
+
+        BlockedCommit(prefs) { store.rotateIfCurrent(a, "access-A2", "refresh-A2") }.use {
+            val reads = returnsWithoutWaiting("a session read") {
+                listOf(
+                    store.snapshot()?.sessionId,
+                    store.snapshotIfCurrent(a)?.sessionId,
+                    store.sessionId,
+                    store.teardownPending,
+                    store.isDurable,
+                    store.authGeneration,
+                    store.deviceIdFor(a),
+                    store.state.value.sessionId,
+                )
+            }
+            assertEquals(listOf(a, a, a, null, true, generation, "device-A", a), reads)
+            assertEquals("the rotation is not published before its commit returns", "access-A", store.snapshot()!!.accessToken)
+        }
+        assertEquals("access-A2", store.snapshot()!!.accessToken)
+    }
+
+    @Test
+    fun `the flow writers a screen calls wait for the lock off the calling thread`() = runBlocking<Unit> {
+        val a = installA()
+        val main = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        try {
+            BlockedCommit(prefs) { store.rotateIfCurrent(a, "access-A2", "refresh-A2") }.use {
+                val flow = TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis())
+                val begin = async(main) { store.beginOAuthLogin(flow) }
+                val save = async(main) { store.savePendingOAuthFlow(flow.copy(kind = "link", sessionId = a)) }
+                val claim = async(main) { store.claimPendingOAuthFlow() }
+
+                // All three are waiting for the lock now. The thread that called them is free.
+                val free = withTimeoutOrNull(2_000) { withContext(main) { true } }
+                assertEquals("the calling thread waited for a commit in progress", true, free)
+                assertFalse(begin.isCompleted || save.isCompleted || claim.isCompleted)
+                it.close()
+                begin.await()
+                save.await()
+                claim.await()
+            }
+        } finally {
+            main.close()
+        }
     }
 
     @Test

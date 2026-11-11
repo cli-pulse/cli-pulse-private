@@ -10,7 +10,8 @@ import java.util.concurrent.ConcurrentHashMap
  * `apply()` only queues it ([flushApplies] writes the queue). [restart] is a process death:
  * a new instance built from the disk layer only. [failCommits] makes commits report failure
  * without reaching disk (memory still changes, as on a device). [commits] counts
- * transactions, so a test can tell one atomic write from two.
+ * transactions, so a test can tell one atomic write from two. [diskWriteHook] holds a commit
+ * between memory and disk, outside this double's lock, as a slow disk holds the real one.
  */
 internal class InMemorySharedPreferences private constructor(initial: Map<String, Any>) : SharedPreferences {
     constructor() : this(emptyMap())
@@ -26,6 +27,14 @@ internal class InMemorySharedPreferences private constructor(initial: Map<String
 
     @Volatile
     var failCommits: Boolean = false
+
+    /**
+     * Runs inside a commit after memory changed and before the disk write, without this
+     * double's lock (SharedPreferencesImpl does not hold its lock while it writes the file
+     * either). A test blocks in it to keep a TokenStore mutator inside `commit()`.
+     */
+    @Volatile
+    var diskWriteHook: (() -> Unit)? = null
 
     /** The process dies now: only what reached disk survives. */
     @Synchronized
@@ -46,6 +55,16 @@ internal class InMemorySharedPreferences private constructor(initial: Map<String
         durable.putAll(values)
         appliedButNotWritten = false
     }
+
+    /** With the lock held: the disk half of a commit. */
+    private fun finishCommit(): Boolean =
+        if (failCommits) {
+            appliedButNotWritten = true
+            false
+        } else {
+            writeDisk()
+            true
+        }
 
     override fun getAll(): MutableMap<String, *> = HashMap(values)
     override fun getString(key: String, defValue: String?): String? =
@@ -82,15 +101,17 @@ internal class InMemorySharedPreferences private constructor(initial: Map<String
             pending.forEach { (k, v) -> if (v == null) values.remove(k) else values[k] = v }
         }
 
-        override fun commit(): Boolean = synchronized(this@InMemorySharedPreferences) {
-            toMemory()
-            if (failCommits) {
-                appliedButNotWritten = true
-                false
-            } else {
-                writeDisk()
-                true
+        override fun commit(): Boolean {
+            val hook = diskWriteHook
+            if (hook == null) {
+                return synchronized(this@InMemorySharedPreferences) {
+                    toMemory()
+                    finishCommit()
+                }
             }
+            synchronized(this@InMemorySharedPreferences) { toMemory() }
+            hook()
+            return synchronized(this@InMemorySharedPreferences) { finishCommit() }
         }
 
         override fun apply() {
