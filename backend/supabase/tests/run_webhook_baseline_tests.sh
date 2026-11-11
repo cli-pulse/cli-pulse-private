@@ -208,7 +208,8 @@ rebuild_from_migrations() { # rebuild_from_migrations <dir>
 
 # ── the forgotten-migration guard ───────────────────────────────────────────
 # SQL-aware comment stripping: removes `--` and (nested) `/* */` comments but
-# leaves single-quoted strings, "identifiers" and dollar-quoted bodies alone, so
+# leaves single-quoted strings (E'..' escape strings honour backslash, standard
+# strings do not), "identifiers" and dollar-quoted bodies alone, so
 # a string such as '/*' cannot swallow code after it. Output goes to a file that
 # is grepped afterwards: no pipe, so no SIGPIPE under pipefail.
 cat > "$WORK/strip.pl" <<'PERL'
@@ -223,8 +224,16 @@ while ($i < $n) {
     $o .= ' ';
   }
   elsif ($c eq "'" || $c eq '"') {
+    # E'...' / e'...' (not the tail of a longer word): a backslash escapes the next character
+    my $esc = $c eq "'" && $i > 0 && substr($s, $i - 1, 1) =~ /[Ee]/
+              && ($i < 2 || substr($s, $i - 2, 1) !~ /[A-Za-z0-9_\$]/);
     my $j = $i + 1;
-    while ($j < $n) { if (substr($s, $j, 1) eq $c) { if (substr($s, $j + 1, 1) eq $c) { $j += 2; next } last } $j++ }
+    while ($j < $n) {
+      my $ch = substr($s, $j, 1);
+      if ($esc && $ch eq "\\") { $j += 2; next }
+      if ($ch eq $c) { if (substr($s, $j + 1, 1) eq $c) { $j += 2; next } last }
+      $j++;
+    }
     $o .= substr($s, $i, $j + 1 - $i); $i = $j + 1;
   }
   elsif ($c eq '$' && substr($s, $i) =~ /^(\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$)/) {
@@ -427,6 +436,18 @@ if [[ -z "${B0_CONTROL:-}" ]]; then
     # a quoted '/*' must not swallow the code after it
     fresh_copy; printf '%s\n' "select '/*';" 'select 1 from public.webhook_jobs;' '/* a real comment */' > "$CTL/migrate_v0.99_x.sql"
     run_control "a quoted '/*' hiding a later webhook_jobs reference from the scan" 'FAIL  B\. every migration that uses the queue'
+    # E'..' strings: a backslash-escaped quote does not end the string
+    fresh_copy; printf '%s\n' "select E'it\\'s /*';" 'select 1 from public.webhook_jobs;' '/* actual comment */' > "$CTL/migrate_v0.99_x.sql"
+    grep -q -F "E'it\\'s" "$CTL/migrate_v0.99_x.sql" || { echo "control file not written as intended" >&2; exit 2; }
+    run_control "an E'it\\'s /*' string hiding a later webhook_jobs reference" 'FAIL  B\. every migration that uses the queue'
+    # a standard string keeps backslash literal: 'a\' ends at the second quote
+    fresh_copy; printf '%s\n' "select 'a\\';" 'select 1 from public.webhook_jobs;' "select 'b';" > "$CTL/migrate_v0.99_x.sql"
+    run_control "a standard string 'a\\' (backslash literal) followed by a webhook_jobs reference" 'FAIL  B\. every migration that uses the queue'
+    # E'\\' ends with its closing quote; the comment after it is a comment
+    fresh_copy; printf '%s\n' "select E'\\\\';" '-- webhook_jobs is named here, in a comment only' 'select 1;' > "$CTL/migrate_v0.99_x.sql"
+    grep -q -F "E'\\\\';" "$CTL/migrate_v0.99_x.sql" || { echo "control file not written as intended" >&2; exit 2; }
+    out="$(B0_CONTROL=1 B0_SQL_DIR="$CTL" bash "$HERE/run_webhook_baseline_tests.sh" 2>&1)" && pass "control: E'\\\\' followed by a comment naming the queue is not flagged" \
+        || { fail "control: E'\\\\' then a comment was flagged"; echo "$out" | tail -5 >&2; }
     # a comment that only names the queue is NOT a use
     fresh_copy; printf '%s\n' '-- webhook_jobs, process_webhook_jobs and alerts_enqueue_webhook, in prose only' '/* webhook_jobs */' 'select 1;' > "$CTL/migrate_v0.99_x.sql"
     out="$(B0_CONTROL=1 B0_SQL_DIR="$CTL" bash "$HERE/run_webhook_baseline_tests.sh" 2>&1)" && pass "control: a migration that names the queue only in comments is not flagged" \
