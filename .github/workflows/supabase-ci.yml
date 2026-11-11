@@ -677,13 +677,17 @@ jobs:
     # (idle and open transactions, a late worker call) and the recovery
     # branches (an error after the backfill, a client lost mid-apply), and
     # runs mutants of the worker, the backfill and the exclusive-access
-    # guards, each of which must fail the assertion named for it.
+    # guards, each of which must fail the assertion named for it. It also
+    # checks the apply's time budget and what alert uploads see while it
+    # holds the queue lock. PostgreSQL 17, as production runs: the budget is
+    # transaction_timeout there (the suite also forces the pre-17 branch, and
+    # the B0 job above applies v0.89 on 16).
     name: Webhook jobs finalize failures (v0.89)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres

@@ -2,9 +2,10 @@
 -- v0.89 — webhook jobs that keep failing are finalized, instead of staying
 -- pending forever and silencing that alert's later webhooks
 -- Date: 2026-11-12. Plan B1 (two review rounds; PR review: rollout protocol
--- tightened). Needs B0 (#756: the queue in the fresh-install baseline) and its
--- production catalog check (done 2026-11-12; its findings are in MD5 VALUES
--- and step 0 below). Applying it is the owner's call, with the APPLY steps.
+-- tightened twice). Needs B0 (#756: the queue in the fresh-install baseline)
+-- and its production catalog check (done 2026-11-12; its findings are in
+-- MD5 VALUES and step 0 below). Applying it is the owner's call, with the
+-- APPLY steps.
 --
 -- ── WHY ───────────────────────────────────────────────────────
 -- The worker (public.process_webhook_jobs, v0.25; v0.62 only revoked it) never
@@ -25,6 +26,19 @@
 -- a request id but no dispatched_at was never reconciled at all.
 --
 -- ── WHAT THIS DOES (one transaction) ──────────────────────────
+-- A0. A time budget for the whole transaction, set first: on PostgreSQL 17
+--    and later (production runs 17), transaction_timeout = 5s, counted from
+--    the moment it is set. When it runs out the server ends the session and
+--    the transaction rolls back: nothing is changed. On older servers, which
+--    have no transaction_timeout, statement_timeout = 5s instead, which is a
+--    limit PER STATEMENT, not for the whole transaction. lock_timeout = 2s
+--    for each lock wait (A5c, A5d, and CREATE OR REPLACE behind a session
+--    holding the worker's catalog row), so a wait ends in a readable refusal
+--    well inside the budget. And application_name =
+--    'v0_89_webhook_jobs_finalize_failures', set LOCAL, so the session is
+--    named in pg_stat_activity until the transaction ends (a query text is
+--    cut at track_activity_query_size, and a client may strip the comments
+--    that would name it). All three are LOCAL: they end with the transaction.
 -- A. Refuses, and changes nothing, unless all of this holds:
 --    1. public.webhook_jobs exists; the trigger alerts_webhook_enqueue on
 --       public.alerts is enabled and calls alerts_enqueue_webhook(); exactly
@@ -52,23 +66,27 @@
 --          process_webhook_jobs (pg_stat_activity; a query on
 --          pg_stat_activity itself does not count). A fast, readable refusal
 --          for the usual case, a cron run in flight; not the authority.
---       b. no other session in this database is idle in an open transaction:
---          it may already have run the worker and not committed.
+--       b. no session in this database that is idle in an open transaction
+--          holds a lock on public.webhook_jobs (pg_stat_activity joined to
+--          pg_locks): it may already have run the worker and not committed.
+--          Idle transactions that never touched the queue do not matter.
 --       c. it takes the worker's own advisory lock,
 --          pg_advisory_xact_lock(hashtextextended('process_webhook_jobs', 0)),
---          and holds it to commit: a v0.89 worker call during a re-run
---          returns at once and does nothing, and a running one makes the
---          apply wait (at most lock_timeout, then it refuses).
+--          and holds it to commit. A v0.89 worker call takes it with a
+--          try-lock, so during a re-run it returns at once and does nothing;
+--          a v0.89 call already running makes the apply wait (at most
+--          lock_timeout, then it refuses).
 --       d. it takes LOCK public.webhook_jobs IN EXCLUSIVE MODE and holds it
 --          to commit: every open transaction that wrote the queue makes the
 --          apply wait (at most lock_timeout, then it refuses), and a caller
 --          that starts during the apply waits for the commit before it can
 --          write the queue. Plain reads go on; writers, alert inserts
---          included, wait for the apply (well under a second).
+--          included, wait (see THE QUEUE LOCK AND ALERT UPLOADS).
 --       e. no other session holds any lock on public.webhook_jobs
---          (pg_locks): no open transaction that has read the queue. This is
---          the authority. It needs no privilege: pg_locks shows every
---          session's locks to every role.
+--          (pg_locks): no open transaction that has read the queue. This
+--          check and the locks of c and d are the synchronisation; a and b
+--          only give a clearer refusal. pg_locks needs no privilege: it
+--          shows every session's locks to every role.
 --       Visibility: (a) and (b) read other sessions' query and state from
 --       pg_stat_activity, which shows them only to a superuser, a member of
 --       pg_read_all_stats, or the session's own role; postgres on Supabase
@@ -79,12 +97,6 @@
 --    6. at most 5000 jobs need the backfill in D, counted under the lock of
 --       5d (one transaction holds its row locks until commit; above that,
 --       batch first: APPLY step 4).
---    It starts with lock_timeout = 5s, so no lock wait (5c, 5d, or CREATE OR
---    REPLACE behind a session holding the worker's catalog row) lasts longer,
---    and with application_name = 'v0_89_webhook_jobs_finalize_failures' set
---    LOCAL, so its session is named in pg_stat_activity until the transaction
---    ends (a query text is cut at track_activity_query_size, and a client may
---    strip the comments that would name it).
 -- B. Replaces the worker: same signature, SECURITY DEFINER, same search_path,
 --    owner and grants untouched (CREATE OR REPLACE keeps them). What changes:
 --    * one call at a time: pg_try_advisory_xact_lock first; a second caller
@@ -125,9 +137,45 @@
 --    Their dedup slots free up, so the next alert with each key is enqueued.
 -- E. Verifies: the body is this file's, the attributes, owner and ACL are
 --    what they were, the column comment is there, and no stuck job is left.
---    NOTICEs give the applier, the owner and the number backfilled.
+--    NOTICEs give the applier, the owner, the number backfilled, and how
+--    long the queue lock has been held (from A5d to the end of E).
 -- Not changed: the table, its indexes and policy, the enqueue trigger, the
 -- cron schedule, send-webhook.
+--
+-- ── THE QUEUE LOCK AND ALERT UPLOADS ─────────────────────────
+-- Every new alert row fires alerts_enqueue_webhook, which reads and writes
+-- webhook_jobs inside the inserting transaction. From A5d to its end the
+-- apply holds EXCLUSIVE on the queue, so an alert insert in that time WAITS
+-- (and so does one queued behind A5d's own wait for the lock):
+--   * when the apply commits, the insert goes on, and its webhook job is
+--     enqueued as usual (the trigger sees the committed queue);
+--   * when the apply aborts (a refusal, a lock wait past lock_timeout, the
+--     budget of A0 running out), the insert goes on the same way;
+--   so the apply itself never loses an insert. How long it can wait is the
+--   budget: on PostgreSQL 17, at most transaction_timeout from A0 for the
+--   whole apply. The time the lock is actually held is printed in a NOTICE
+--   (from A5d to the end of verification; the commit follows) and was
+--   measured in the test suite with a queue at the size guard's limit plus
+--   thousands of finalized rows: a small fraction of the budget there.
+--   Production's own number is that NOTICE.
+--   * An insert that waits longer than ITS OWN statement_timeout (the API
+--     role's: APPLY Q2b reads them) is cancelled, and its whole statement
+--     rolls back, the alert row with its job. Who inserts alerts, and what
+--     then happens:
+--     - helper_sync, called by the macOS helper (HelperDaemon) and by the
+--       Python Companion with the anon key, so as role anon. The RPC fails;
+--       neither helper keeps a queue of alerts: each cycle computes them
+--       again from the current state (AlertGenerator in the macOS helper,
+--       collect_alerts in the Python one), and the next cycle's helper_sync
+--       sends them again. An alert whose condition still holds
+--       then arrives (and is enqueued then); one whose condition ended in
+--       between is not sent again.
+--     - evaluate_budget_alerts, called best-effort by the Apple apps
+--       (DataRefreshManager) and the Android app (DashboardRepository) as
+--       the signed-in user (authenticated): the failure is ignored, and the
+--       next refresh evaluates again; it creates an alert only when none
+--       with that suppression key exists, so a still-exceeded budget gets
+--       its alert then.
 --
 -- ── MD5 VALUES (md5 of pg_proc.prosrc of public.process_webhook_jobs) ──
 -- Production's function bodies are the migration files' with every line that
@@ -143,9 +191,16 @@
 --
 -- ── APPLY (the owner approves each step) ─────────────────────
 -- Every Q query is read-only and returns counts, hashes and booleans only:
--- never a row's contents, a secret, a function body or a timestamp. The one
--- exception is R0, labelled below. Run each in its own statement (Supabase
--- MCP execute_sql), and keep every answer.
+-- never a row's contents, a secret, a function body or a timestamp. The
+-- exceptions are labelled: Q2b (role settings), the catalog file (metadata)
+-- and R0 (the function definition, kept privately). Run each in its own
+-- statement (Supabase MCP execute_sql), and keep every answer.
+-- PRECONDITION for the whole window, from step 2 until step 7 has drained:
+-- nothing but the paused cron job calls the worker. No manual call, no
+-- service_role client, no second schedule. A call that starts anyway during
+-- the apply waits for its commit and then runs the OLD body it started with,
+-- which can leave a job stuck again; steps 7 and 8 catch and repair that,
+-- but the precondition is what keeps it from happening.
 -- 0. Before the window, read-only.
 --    Q0: select md5(p.prosrc) as body_md5, (select count(*) from pg_proc where proname = 'process_webhook_jobs') as same_name, (p.prosecdef and p.proconfig = array['search_path=pg_catalog, extensions, public, net'] and p.prorettype = 'void'::regtype) as attrs_ok, pg_has_role(current_user, p.proowner, 'USAGE') as applier_can_replace, not (has_function_privilege('anon', p.oid, 'EXECUTE') or has_function_privilege('authenticated', p.oid, 'EXECUTE')) as anon_auth_denied, md5(coalesce(p.proacl::text, '')) as acl_md5, (select md5(col_description(a.attrelid, a.attnum)) from pg_attribute a where a.attrelid = 'public.webhook_jobs'::regclass and a.attname = 'processed_at') as comment_md5 from pg_proc p where p.oid = 'public.process_webhook_jobs()'::regprocedure;
 --    FIRST APPLY: expect body_md5 = 7e7c1040479aa3f0879cbb1b99911c21,
@@ -156,7 +211,7 @@
 --    485ce7e077540f5373eec5e6aeab394a (v0.89 is already in), comment_md5 =
 --    0c90c99eb47d4deedf654a2aa8375cb0, the rest as above. The migration
 --    accepts all four bodies in MD5 VALUES; seeing a v0.89 value before a
---    first apply means it is already applied: verify (step 7) instead.
+--    first apply means it is already applied: verify (step 8) instead.
 --    Any other body_md5: STOP (production runs a body this file was not
 --    written against).
 --    Q1: select count(*) total, count(*) filter (where processed_at is null) pending, count(*) filter (where processed_at is null and attempt_count >= 3 and pg_net_request_id is null) stuck, count(*) filter (where processed_at is null and pg_net_request_id is not null) awaiting, count(*) filter (where pg_net_request_id is not null and dispatched_at is null) malformed_id_without_dispatch, count(*) filter (where processed_at is null and pg_net_request_id is null and attempt_count = 0 and enqueued_at < now() - interval '1 hour') never_dispatched_old, count(*) filter (where processed_at is not null and pg_net_request_id is not null) finalized_with_request_id, count(*) filter (where attempt_count < 0 or attempt_count > 10) odd_counts from public.webhook_jobs;
@@ -167,6 +222,13 @@
 --    Q2: select n.name, count(s.name) as copies, count(*) filter (where s.decrypted_secret is not null and s.decrypted_secret <> '') as non_empty from (values ('app_supabase_url'),('app_service_role_key')) n(name) left join vault.decrypted_secrets s on s.name = n.name group by n.name;
 --    Expect copies = 1 and non_empty = 1 for both; otherwise STOP (nothing
 --    dispatches).
+--    Role settings (config values, not data): how long an alert upload
+--    waits on the queue lock before it gives up (THE QUEUE LOCK AND ALERT
+--    UPLOADS):
+--    Q2b: select rolname, coalesce((select substr(c, 19) from unnest(rolconfig) c where c like 'statement_timeout=%'), '(database default)') as statement_timeout from pg_roles where rolname in ('anon', 'authenticated', 'service_role') order by rolname;
+--    A role whose statement_timeout is shorter than the budget of A0 can
+--    see an upload fail if the apply holds the lock that long; the measured
+--    hold time is far shorter (the apply's NOTICE gives production's).
 --    Q3: select count(*) as jobs, string_agg(active::text, ',' order by jobid) as active, md5(string_agg(jobid || '|' || coalesce(jobname, '') || '|' || schedule || '|' || command || '|' || username, ',' order by jobid)) as job_md5 from cron.job where command ilike '%process_webhook_jobs%';
 --    Expect jobs = 1 (more is a duplicate schedule: STOP). On 2026-11-12:
 --    active true, job_md5 = 83e638ff8913d9c58a400d46a084b26d (jobid 3,
@@ -196,17 +258,19 @@
 --    `update cron.job set active = false where jobid = <that jobid>;` (Q3's jobid)
 --    Q3 again: active false. (If the recorded value was already false, P2
 --    changes nothing.)
--- 3. Quiesce. No other caller may run the worker during the window: no
---    manual call, no service_role client. Then repeat every few seconds
---    until every column of Q4 and Q4b is 0:
---    Q4: select (select count(*) from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and state = 'active' and query ilike '%process_webhook_jobs%' and query not ilike '%pg_stat_activity%') as running, (select count(*) from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and state like 'idle in transaction%') as idle_in_xact, (select count(distinct pid) from pg_locks where pid <> pg_backend_pid() and granted and locktype = 'relation' and database = (select oid from pg_database where datname = current_database()) and relation = 'public.webhook_jobs'::regclass) as queue_lock_holders, (select count(*) from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and query = '<insufficient privilege>') as invisible;
+-- 3. Quiesce, with the PRECONDITION above in force. Repeat every few
+--    seconds until Q4's running, idle_holding_queue and queue_lock_holders
+--    are 0 and Q4b is 0:
+--    Q4: select (select count(*) from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and state = 'active' and query ilike '%process_webhook_jobs%' and query not ilike '%pg_stat_activity%') as running, (select count(distinct a.pid) from pg_stat_activity a join pg_locks l on l.pid = a.pid where a.pid <> pg_backend_pid() and a.datname = current_database() and a.state like 'idle in transaction%' and l.locktype = 'relation' and l.database = (select oid from pg_database where datname = current_database()) and l.relation = 'public.webhook_jobs'::regclass) as idle_holding_queue, (select count(distinct pid) from pg_locks where pid <> pg_backend_pid() and granted and locktype = 'relation' and database = (select oid from pg_database where datname = current_database()) and relation = 'public.webhook_jobs'::regclass) as queue_lock_holders, (select count(*) from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and query = '<insufficient privilege>') as invisible;
 --    Q4b: select count(*) as recent_unfinished from cron.job_run_details d join cron.job j on j.jobid = d.jobid where j.command ilike '%process_webhook_jobs%' and d.status in ('running', 'starting') and d.start_time > now() - interval '10 minutes';
---    queue_lock_holders is the authority (pg_locks, no privilege needed);
---    running and idle_in_xact need the visibility described in A5, and
---    invisible must be 0 for them to be complete. A 'running' or 'starting'
---    cron row older than 10 minutes with no live backend is a leftover from
---    a crash or restart: note it, do not wait on it. queue_lock_holders may
---    blink to 1 while an alert insert commits; wait for 0.
+--    queue_lock_holders is the authority (pg_locks, no privilege needed).
+--    invisible is information, not a blocker: running only covers sessions
+--    the applier can see, and pg_locks covers what the others do to the
+--    queue. Idle transactions that never touched the queue do not count. A
+--    'running' or 'starting' cron row older than 10 minutes with no live
+--    backend is a leftover from a crash or restart: note it, do not wait on
+--    it. queue_lock_holders may blink to 1 while an alert insert commits;
+--    wait for 0.
 -- 4. Recount, immediately before the apply (this is the number that
 --    counts; the job is paused and quiesced, so it no longer moves):
 --    Q5: select count(*) as stuck from public.webhook_jobs where processed_at is null and attempt_count >= 3 and pg_net_request_id is null;
@@ -221,35 +285,43 @@
 --    b. it reports an ERROR (a refusal, a lock timeout, anything): the whole
 --       transaction rolled back; nothing changed. Confirm: Q0 as in step 0,
 --       Q5 = N. Then either fix the cause and go back to step 3, or ABORT.
---    c. no clear answer (client timeout, lost connection): the transaction
---       may still be running, and may yet commit; an old body_md5 seen from
---       another session meanwhile proves nothing. Do not retry and do not
---       restore. First wait until it has ended, repeating every few seconds
---       until both columns are 0. The apply's session carries
---       application_name v0_89_webhook_jobs_finalize_failures until its
---       transaction ends, and from A5c to its end it holds the worker's
---       advisory lock (with the job paused, nothing else does):
+--    c. no clear answer (client timeout, lost connection; also what the
+--       budget of A0 running out looks like on PostgreSQL 17: the server
+--       ends the session, "terminating connection due to transaction
+--       timeout"): the transaction may still be running, and may yet
+--       commit; an old body_md5 seen from another session meanwhile proves
+--       nothing. Do not retry and do not restore. First wait until it has
+--       ended, repeating every few seconds until both columns are 0. The
+--       apply's session carries application_name
+--       v0_89_webhook_jobs_finalize_failures until its transaction ends, and
+--       from A5c to its end it holds the worker's advisory lock (with the job
+--       paused, nothing else does):
 --       Q6: select (select count(*) from pg_locks where pid <> pg_backend_pid() and locktype = 'advisory' and database = (select oid from pg_database where datname = current_database()) and objsubid = 1 and classid = ((hashtextextended('process_webhook_jobs', 0) >> 32) & 4294967295)::oid and objid = (hashtextextended('process_webhook_jobs', 0) & 4294967295)::oid) as worker_lock, (select count(*) from pg_stat_activity where pid <> pg_backend_pid() and datname = current_database() and application_name = 'v0_89_webhook_jobs_finalize_failures') as apply_sessions;
 --       Then decide from Q0 and Q5:
 --       - body_md5 one of the two v0.89 values, acl_md5 as in step 0,
---         comment_md5 0c90c99eb47d4deedf654a2aa8375cb0, Q5 = 0: it
---         committed. Go to step 7 (the NOTICE is lost; N is the number
---         backfilled).
+--         comment_md5 0c90c99eb47d4deedf654a2aa8375cb0: it committed. Go to
+--         step 7 (the NOTICEs are lost; N is the number backfilled).
 --       - body_md5 and comment_md5 exactly as in step 0 and Q5 = N: it
 --         rolled back. Continue as in b.
 --       - anything else: STOP with the job paused, and investigate.
---    ABORT (from b or c): restore the value recorded in step 1 with R8, run
+--    ABORT (from b or c): restore the value recorded in step 1 with R9, run
 --    Q3 and see it. Nothing else to undo.
--- 7. Verify, read-only, with the job still paused: Q0: body_md5 one of the
+-- 7. Drain after the commit, with the job still paused: repeat Q6 and Q4
+--    until Q6 is 0 and 0 and Q4's running and queue_lock_holders are 0. A
+--    worker call that broke the precondition and waited on the queue lock
+--    runs now, with the old body; this step waits until it has finished,
+--    so that step 8's Q5 sees what it did.
+-- 8. Verify, read-only, with the job still paused: Q0: body_md5 one of the
 --    two v0.89 values, comment_md5 0c90c99eb47d4deedf654a2aa8375cb0, every
---    other column as in step 0. Q5 = 0 (if not, a caller ran the old body
---    during the window: run BF until Q5 = 0). Q3: jobs = 1, job_md5 as in
---    step 0, active false. The migration's NOTICE "backfilled N" equals step
---    4's N.
--- 8. Restore the value recorded in step 1 (put it in place of
+--    other column as in step 0. Q5 = 0; if not, an old-body call ran during
+--    the window (against the precondition): run BF until Q5 = 0. Q3: jobs =
+--    1, job_md5 as in step 0, active false. The migration's NOTICE
+--    "backfilled N" equals step 4's N, and its NOTICE "the queue lock was
+--    held ... ms" is production's hold time.
+-- 9. Restore the value recorded in step 1 (put it in place of
 --    <recorded active>), then run Q3 and see it:
---    R8: select cron.alter_job(jobid, active := <recorded active>) from cron.job where command ilike '%process_webhook_jobs%';
--- 9. Over the next hours, read-only: Q5 must stay 0, and
+--    R9: select cron.alter_job(jobid, active := <recorded active>) from cron.job where command ilike '%process_webhook_jobs%';
+-- 10. Over the next hours, read-only: Q5 must stay 0, and
 --    Q9: select count(*) as pending_over_1_day from public.webhook_jobs where processed_at is null and enqueued_at < now() - interval '1 day';
 --    should trend to 0 (that also needs the secrets and enough worker
 --    throughput, which v0.89 does not change). No WARNING from
@@ -257,7 +329,7 @@
 --
 -- ROLLBACK: steps 1 to 3, then re-apply the definition R0 saved; Q0 then
 -- shows step 0's body_md5 (comment_md5 stays: the comment remains true of the
--- rows v0.89 finalized); then step 8. The backfill is NOT undone: the jobs it
+-- rows v0.89 finalized); then step 9. The backfill is NOT undone: the jobs it
 -- finalized stay finalized (they were unrecoverable, and the prefix is not a
 -- restoration record). Undoing it exactly would need its own plan with
 -- captured ids and original values, built never to delete newer pending jobs.
@@ -267,9 +339,20 @@
 -- ============================================================
 
 begin;
-set local lock_timeout = '5s';
--- Names this transaction in pg_stat_activity until it ends (APPLY step 6c).
+-- A0: each lock wait, the session's name, and the budget for the whole apply
+set local lock_timeout = '2s';
 set local application_name = 'v0_89_webhook_jobs_finalize_failures';
+do $budget$
+begin
+    if current_setting('server_version_num')::int >= 170000 then
+        -- the whole transaction, from here: the server ends the session at 5 s
+        perform set_config('transaction_timeout', '5s', true);
+    else
+        -- no transaction_timeout before PostgreSQL 17: per statement only
+        perform set_config('statement_timeout', '5s', true);
+    end if;
+end
+$budget$;
 
 -- ── A: guards (refuse, change nothing) ────────────────────────
 do $guard$
@@ -383,15 +466,20 @@ begin
     ) then
         raise exception 'v0.89: another session is running a query that names process_webhook_jobs; wait until it ends (APPLY step 3); nothing changed';
     end if;
-    -- b. an open, idle transaction may already have run the worker
-    select count(*) into v_n from pg_stat_activity a
+    -- b. an idle open transaction that touched the queue may have run the worker
+    select count(distinct a.pid) into v_n
+      from pg_stat_activity a join pg_locks l on l.pid = a.pid
      where a.pid <> pg_backend_pid()
        and a.datname = current_database()
-       and a.state like 'idle in transaction%';
+       and a.state like 'idle in transaction%'
+       and l.locktype = 'relation'
+       and l.database = (select oid from pg_database where datname = current_database())
+       and l.relation = 'public.webhook_jobs'::regclass;
     if v_n > 0 then
-        raise exception 'v0.89: % session(s) in this database are idle in an open transaction (one may have run the worker); end them first (APPLY step 3); nothing changed', v_n;
+        raise exception 'v0.89: % session(s) idle in an open transaction hold a lock on public.webhook_jobs (one may have run the worker); end them first (APPLY step 3); nothing changed', v_n;
     end if;
-    -- c. the worker's own lock: v0.89 worker calls wait for us, or we for them
+    -- c. the worker's own lock: v0.89 worker calls try-lock it and return at
+    -- once while we hold it; a v0.89 call already running makes us wait
     begin
         perform pg_advisory_xact_lock(hashtextextended('process_webhook_jobs', 0));
     exception when lock_not_available then
@@ -403,6 +491,7 @@ begin
     exception when lock_not_available then
         raise exception 'v0.89: another session held a write lock on public.webhook_jobs (an open transaction that wrote the queue) for longer than lock_timeout; nothing changed';
     end;
+    perform set_config('v089.locked_at', clock_timestamp()::text, true);
     -- e. the authority: nobody else holds any lock on the queue
     select count(distinct l.pid) into v_n from pg_locks l
      where l.pid <> pg_backend_pid()
@@ -672,6 +761,8 @@ begin
         raise exception 'v0.89: % stuck job(s) left after the backfill', v_stuck;
     end if;
     raise notice 'v0.89: worker replaced (body md5 %), owner and ACL unchanged', v_md5;
+    raise notice 'v0.89: the queue lock was held % ms so far (from A5d to the end of verification; the commit follows)',
+        round(extract(epoch from clock_timestamp() - current_setting('v089.locked_at')::timestamptz) * 1000);
 end
 $verify$;
 
