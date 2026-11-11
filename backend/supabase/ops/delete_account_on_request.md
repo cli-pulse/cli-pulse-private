@@ -91,7 +91,7 @@ dropped, so step 2 cannot reach the person.
   as above: step 2's email goes to the relay address (the account's
   `u.email`), Apple forwards it to the person's real mailbox, and their reply
   with the phrase confirms it. Replies come back through the relay too.
-* **Until then:** the only proof available is the person signing in with that
+* **Until then:** the only route this runbook supports is the person signing in with that
   Apple ID: in any CLI Pulse app (then Delete Account does it). Tell them so,
   and do not delete on any other evidence.
 
