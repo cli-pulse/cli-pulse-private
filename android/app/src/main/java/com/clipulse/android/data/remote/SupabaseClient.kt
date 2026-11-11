@@ -1246,4 +1246,21 @@ sealed class ApiError : Exception() {
     data object TokenExpired : ApiError() {
         override val message: String get() = "Session expired. Please sign in again."
     }
+
+    /**
+     * The operation belonged to a session that is no longer the current one: it was signed
+     * out, or the next account signed in, while the operation was running. Not an expiry:
+     * nothing ends because of it, and no screen shows it (UiError.from maps it to nothing).
+     */
+    data object SessionSuperseded : ApiError() {
+        override val message: String get() = "The session this operation belonged to has ended."
+    }
+
+    /**
+     * The previous session's on-device data could not be deleted in time, so this write was
+     * skipped. Retryable: the next start or sign-out runs the deletion again.
+     */
+    data object TeardownPending : ApiError() {
+        override val message: String get() = "Previous session data is still being removed."
+    }
 }

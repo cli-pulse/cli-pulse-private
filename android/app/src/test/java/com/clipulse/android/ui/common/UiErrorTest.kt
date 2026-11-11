@@ -68,4 +68,10 @@ class UiErrorTest {
             UiError.action(UiError.Action.Resolve, IOException("reset")),
         )
     }
+
+    @Test
+    fun `an operation of a replaced session shows nothing`() {
+        assertEquals(null, UiError.from(ApiError.SessionSuperseded))
+        assertEquals(null, UiError.action(UiError.Action.Resolve, ApiError.SessionSuperseded))
+    }
 }
