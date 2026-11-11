@@ -101,6 +101,21 @@ class SentryScrubTest {
     }
 
     @Test
+    fun `keyed value inside a nested map is scrubbed`() {
+        @Suppress("UNCHECKED_CAST")
+        val out = SentryScrub.scrubValue("root", mapOf("a" to mapOf("api_key" to "opaque", "ok" to "x"))) as Map<String, Any?>
+        val inner = out["a"] as Map<*, *>
+        assertEquals("keyed filtering must apply below the top level", "[scrubbed]", inner["api_key"])
+        assertEquals("x", inner["ok"])
+    }
+
+    @Test
+    fun `strings inside a list are redacted`() {
+        val out = SentryScrub.scrubValue("root", mapOf("items" to listOf("a@b.com", "plain"))) as Map<*, *>
+        assertEquals("strings below the first level must be redacted", listOf("[email]", "plain"), out["items"])
+    }
+
+    @Test
     fun `array elements are scrubbed`() {
         val out = SentryScrub.scrubValue("k", arrayOf("a@b.com", "ok")) as List<*>
         assertEquals(listOf("[email]", "ok"), out)
