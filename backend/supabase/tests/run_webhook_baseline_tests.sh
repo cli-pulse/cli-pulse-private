@@ -22,10 +22,11 @@
 #   B. CURRENT FILES. The same comparison with today's baseline files against
 #      the objects rebuilt through WEBHOOK_MIGRATIONS (below), so a later
 #      webhook migration that is not mirrored in the baseline fails here. A
-#      guard fails if any migration uses the queue's names in CODE (comments
-#      stripped by a SQL-aware pass that leaves quoted strings and
-#      dollar-quoted bodies alone) and is neither in WEBHOOK_MIGRATIONS nor in
-#      the exclusion list (exact file names).
+#      guard fails if the RAW text of any migrate_v*.sql (comments and strings
+#      included, no lexing, so nothing can hide a mention) names a queue object
+#      and the file is neither one of the migrations the baseline is built from
+#      (WEBHOOK_MIGRATIONS) nor on the reviewed allowlist below (exact file name
+#      and a reason). A false positive costs one allowlist line.
 #   C. BEHAVIOUR on the fresh baseline: a non-Test alert enqueues one pending
 #      job, a Test alert none, the same grouping_key again still one; as
 #      `authenticated` the queue is not readable (0 rows: filtering), not
@@ -81,11 +82,18 @@ WEBHOOK_MIGRATIONS=(
     "policy55:migrate_v0.55_rls_initplan_and_fk_indexes.sql"
     "whole:migrate_v0.62_revoke_process_webhook_jobs.sql"
 )
-# Migrations that name the queue in code and are deliberately NOT in the list:
-# exact, reviewed file names only (a new migration, including B1b's, adds its own).
-WEBHOOK_EXCLUDED=(
-    "migrate_v0.78_unschedule_swarm_alert_eval.sql"  # lists 'process_webhook_jobs' as a cron job name to leave alone; changes no queue object
-    "migrate_v0.88_schedule_prune_anonymous_installs.sql"  # checks that the process_webhook_jobs cron job is untouched; changes no queue object
+# The raw-text guard (part B) fails on any migration that mentions a queue
+# object name anywhere, comments included, unless it is in WEBHOOK_MIGRATIONS or
+# listed here. Each entry is "<exact file name>|<why it is not a queue change>".
+# Reviewed entries only; a new migration that merely mentions the queue (B1b's
+# comparison with the app-push queue, say) adds its own line.
+QUEUE_NAMES='webhook_jobs|process_webhook_jobs|alerts_enqueue_webhook|alerts_webhook_enqueue'
+WEBHOOK_ALLOWLIST=(
+    "migrate_v0.32_remote_approvals_push.sql|comments only: app_push_jobs 'mirrors the webhook_jobs pattern'; changes no webhook object"
+    "migrate_v0.49_swarm_alerts.sql|comments only: describes the alert path through the queue; changes no webhook object"
+    "migrate_v0.78_unschedule_swarm_alert_eval.sql|lists 'process_webhook_jobs' as a cron job name to leave alone; changes no queue object"
+    "migrate_v0.87_retention_cleanup_and_fresh_counts.sql|comment only: a fixture alert 'queues a webhook' through alerts_enqueue_webhook; changes no queue object"
+    "migrate_v0.88_schedule_prune_anonymous_installs.sql|checks that the process_webhook_jobs cron job is untouched; changes no queue object"
 )
 
 if [[ -z "${DATABASE_URL:-}" ]]; then
@@ -207,55 +215,22 @@ rebuild_from_migrations() { # rebuild_from_migrations <dir>
 }
 
 # ── the forgotten-migration guard ───────────────────────────────────────────
-# SQL-aware comment stripping: removes `--` and (nested) `/* */` comments but
-# leaves single-quoted strings (E'..' escape strings honour backslash, standard
-# strings do not), "identifiers" and dollar-quoted bodies alone, so
-# a string such as '/*' cannot swallow code after it. Output goes to a file that
-# is grepped afterwards: no pipe, so no SIGPIPE under pipefail.
-cat > "$WORK/strip.pl" <<'PERL'
-undef $/; my $s = <STDIN>; my ($o, $i, $n) = ('', 0, length $s);
-while ($i < $n) {
-  my $c = substr($s, $i, 1); my $d = substr($s, $i, 2);
-  if ($d eq '--') { my $j = index($s, "\n", $i); $i = $j < 0 ? $n : $j; }
-  elsif ($d eq '/*') {
-    my $depth = 1; $i += 2;
-    while ($i < $n && $depth) { my $e = substr($s, $i, 2);
-      if ($e eq '/*') { $depth++; $i += 2 } elsif ($e eq '*/') { $depth--; $i += 2 } else { $i++ } }
-    $o .= ' ';
-  }
-  elsif ($c eq "'" || $c eq '"') {
-    # E'...' / e'...' (not the tail of a longer word): a backslash escapes the next character
-    my $esc = $c eq "'" && $i > 0 && substr($s, $i - 1, 1) =~ /[Ee]/
-              && ($i < 2 || substr($s, $i - 2, 1) !~ /[A-Za-z0-9_\$]/);
-    my $j = $i + 1;
-    while ($j < $n) {
-      my $ch = substr($s, $j, 1);
-      if ($esc && $ch eq "\\") { $j += 2; next }
-      if ($ch eq $c) { if (substr($s, $j + 1, 1) eq $c) { $j += 2; next } last }
-      $j++;
-    }
-    $o .= substr($s, $i, $j + 1 - $i); $i = $j + 1;
-  }
-  elsif ($c eq '$' && substr($s, $i) =~ /^(\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$)/) {
-    my $tag = $1; my $j = index($s, $tag, $i + length $tag);
-    $j = $j < 0 ? $n : $j + length $tag;
-    $o .= substr($s, $i, $j - $i); $i = $j;
-  }
-  else { $o .= $c; $i++ }
-}
-print $o;
-PERL
-guard_forgotten_migrations() { # guard_forgotten_migrations <dir> -> echoes offenders; returns 2 if stripping fails
-    local f base entry listed excluded pat out="$WORK/stripped.sql"
+# The forgotten-migration guard: raw text, no stripping, no lexing.
+guard_forgotten_migrations() { # guard_forgotten_migrations <dir> -> echoes offenders; returns 2 on a setup error
+    local f base entry e listed allowed rc
+    for e in "${WEBHOOK_ALLOWLIST[@]}"; do
+        [[ "${e%%|*}" == migrate_v*.sql && "$e" == *"|"?* ]] || { echo "bad allowlist entry (file|reason): $e" >&2; return 2; }
+        [[ -f "$1/${e%%|*}" ]] || { echo "allowlist names a missing file: ${e%%|*}" >&2; return 2; }
+    done
     for f in "$1"/migrate_v*.sql; do
         base="$(basename "$f")"
-        perl "$WORK/strip.pl" < "$f" > "$out" || { echo "cannot strip comments from $base" >&2; return 2; }
-        [[ -s "$out" || ! -s "$f" ]] || { echo "stripping $base left nothing" >&2; return 2; }
-        grep -q -E 'webhook_jobs|process_webhook_jobs|alerts_enqueue_webhook' "$out" || continue
-        listed=0; excluded=0
+        rc=0; grep -q -E "$QUEUE_NAMES" "$f" || rc=$?
+        if (( rc == 1 )); then continue; fi
+        (( rc == 0 )) || { echo "cannot read $base" >&2; return 2; }
+        listed=0; allowed=0
         for entry in "${WEBHOOK_MIGRATIONS[@]}"; do [[ "${entry#*:}" == "$base" ]] && listed=1; done
-        for pat in "${WEBHOOK_EXCLUDED[@]}"; do [[ "$base" == "${pat%%[[:space:]]*}" ]] && excluded=1; done
-        (( listed || excluded )) || echo "$base"
+        for e in "${WEBHOOK_ALLOWLIST[@]}"; do [[ "${e%%|*}" == "$base" ]] && allowed=1; done
+        (( listed || allowed )) || echo "$base"
     done
 }
 
@@ -298,7 +273,7 @@ done
 same "B. the current baseline's fingerprint equals the migration-built one" "$FP_C" "$FP_D"
 if [[ "$FP_C" != "$FP_D" ]]; then diff <(echo "$FP_C") <(echo "$FP_D") >&2 || true; fi
 offenders="$(guard_forgotten_migrations "$SQL_DIR")" || exit 2
-same "B. every migration that uses the queue in code is in WEBHOOK_MIGRATIONS or the exclusion list" "$offenders" ""
+same "B. every migration that mentions the queue (raw text) is in WEBHOOK_MIGRATIONS or the allowlist" "$offenders" ""
 
 # =============================================================================
 if [[ -z "${B0_CONTROL:-}" ]]; then echo "== C. behaviour on the fresh baseline"; fi
@@ -428,30 +403,30 @@ if [[ -z "${B0_CONTROL:-}" ]]; then
     fresh_copy; sed -i.bak '/^revoke execute on function public\.process_webhook_jobs() from PUBLIC, anon, authenticated;/d' "$CTL/app_rpc.sql"
     run_control "the v0.62 revoke dropped" 'FAIL  B\. the current baseline|FAIL  C\. (anon|authenticated) cannot execute'
     fresh_copy; printf '%s\n' '-- a later queue change someone forgot to mirror' 'create or replace function public.x() returns void language sql as $$ select 1 from public.webhook_jobs $$;' > "$CTL/migrate_v0.99_x.sql"
-    run_control "a migrate_v0.99 using webhook_jobs, not in the list" 'FAIL  B\. every migration that uses the queue'
-    # the guard must survive a match followed by a lot of SQL (a pipe into `grep -q` could lose it to SIGPIPE)
+X='FAIL  B\. every migration that mentions the queue'
+    mention() { # mention <label> <file content, printf args...>: a new migration; the suite must fail naming it
+        local label="$1"; shift; fresh_copy; printf '%s\n' "$@" > "$CTL/migrate_v0.99_x.sql"
+        run_control "$label" "$X"
+    }
+    mention "a new migration that uses webhook_jobs in code" '-- a later queue change someone forgot to mirror' 'create or replace function public.x() returns void language sql as $$ select 1 from public.webhook_jobs $$;'
+    mention "a new migration that names webhook_jobs only in a comment" '-- webhook_jobs is only named here' 'select 1;'
+    mention "a new migration that names it only in a block comment" '/* process_webhook_jobs */' 'select 1;'
+    mention "E'it\\'s /*' hiding a later reference (a lexer would lose it)" "select E'it\\'s /*';" 'select 1 from public.webhook_jobs;' '/* actual comment */'
+    mention "a non-ASCII identifier ending in E before a quote (éE'a\\') then a reference" "select 1 as éE'a\\';" 'select 1 from public.webhook_jobs;'
+    mention "a quoted '/*' hiding a later reference" "select '/*';" 'select 1 from public.webhook_jobs;' '/* a real comment */'
+    mention "the trigger's name, alerts_webhook_enqueue" 'drop trigger alerts_webhook_enqueue on public.alerts;'
     fresh_copy; { echo 'create or replace function public.x() returns void language sql as $$ select 1 from public.webhook_jobs $$;'
                   awk 'BEGIN { for (i = 0; i < 400000; i++) print "select 1; -- trailing statements" }'; } > "$CTL/migrate_v0.99_x.sql"
-    run_control "an early webhook_jobs reference followed by 400000 lines of SQL" 'FAIL  B\. every migration that uses the queue'
-    # a quoted '/*' must not swallow the code after it
-    fresh_copy; printf '%s\n' "select '/*';" 'select 1 from public.webhook_jobs;' '/* a real comment */' > "$CTL/migrate_v0.99_x.sql"
-    run_control "a quoted '/*' hiding a later webhook_jobs reference from the scan" 'FAIL  B\. every migration that uses the queue'
-    # E'..' strings: a backslash-escaped quote does not end the string
-    fresh_copy; printf '%s\n' "select E'it\\'s /*';" 'select 1 from public.webhook_jobs;' '/* actual comment */' > "$CTL/migrate_v0.99_x.sql"
-    grep -q -F "E'it\\'s" "$CTL/migrate_v0.99_x.sql" || { echo "control file not written as intended" >&2; exit 2; }
-    run_control "an E'it\\'s /*' string hiding a later webhook_jobs reference" 'FAIL  B\. every migration that uses the queue'
-    # a standard string keeps backslash literal: 'a\' ends at the second quote
-    fresh_copy; printf '%s\n' "select 'a\\';" 'select 1 from public.webhook_jobs;' "select 'b';" > "$CTL/migrate_v0.99_x.sql"
-    run_control "a standard string 'a\\' (backslash literal) followed by a webhook_jobs reference" 'FAIL  B\. every migration that uses the queue'
-    # E'\\' ends with its closing quote; the comment after it is a comment
-    fresh_copy; printf '%s\n' "select E'\\\\';" '-- webhook_jobs is named here, in a comment only' 'select 1;' > "$CTL/migrate_v0.99_x.sql"
-    grep -q -F "E'\\\\';" "$CTL/migrate_v0.99_x.sql" || { echo "control file not written as intended" >&2; exit 2; }
-    out="$(B0_CONTROL=1 B0_SQL_DIR="$CTL" bash "$HERE/run_webhook_baseline_tests.sh" 2>&1)" && pass "control: E'\\\\' followed by a comment naming the queue is not flagged" \
-        || { fail "control: E'\\\\' then a comment was flagged"; echo "$out" | tail -5 >&2; }
-    # a comment that only names the queue is NOT a use
-    fresh_copy; printf '%s\n' '-- webhook_jobs, process_webhook_jobs and alerts_enqueue_webhook, in prose only' '/* webhook_jobs */' 'select 1;' > "$CTL/migrate_v0.99_x.sql"
-    out="$(B0_CONTROL=1 B0_SQL_DIR="$CTL" bash "$HERE/run_webhook_baseline_tests.sh" 2>&1)" && pass "control: a migration that names the queue only in comments is not flagged" \
-        || { fail "control: a comment-only mention was flagged"; echo "$out" | tail -5 >&2; }
+    run_control "an early reference followed by 400000 lines of SQL" "$X"
+    # an allowlisted file passes, even when it mentions the queue again
+    fresh_copy; echo '-- webhook_jobs, once more, in an allowlisted file' >> "$CTL/migrate_v0.78_unschedule_swarm_alert_eval.sql"
+    out="$(B0_CONTROL=1 B0_SQL_DIR="$CTL" bash "$HERE/run_webhook_baseline_tests.sh" 2>&1)" && pass "control: an allowlisted migration that mentions the queue passes" \
+        || { fail "control: an allowlisted migration was flagged"; echo "$out" | tail -5 >&2; }
+    # removing an allowlist entry makes the suite fail for that file
+    fresh_copy; sed '/^    "migrate_v0\.78_unschedule_swarm_alert_eval\.sql|/d' "$HERE/run_webhook_baseline_tests.sh" > "$CTL/tests/run_webhook_baseline_tests.sh"
+    if cmp -s "$HERE/run_webhook_baseline_tests.sh" "$CTL/tests/run_webhook_baseline_tests.sh"; then echo "control: the allowlist line was not found" >&2; exit 2; fi
+    out="$(B0_CONTROL=1 bash "$CTL/tests/run_webhook_baseline_tests.sh" 2>&1)" && fail "control: the suite passed with the v0.78 allowlist entry removed" \
+        || { if grep -q "FAIL  B\. every migration.*migrate_v0\.78_unschedule_swarm_alert_eval\.sql" <<<"$out"; then pass "control: removing the v0.78 allowlist entry fails the suite, naming that file"; else fail "control: removal failed, but not on v0.78"; echo "$out" | tail -5 >&2; fi; }
     /bin/rm -rf "$CTL"
 fi
 

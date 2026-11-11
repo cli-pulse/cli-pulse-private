@@ -622,8 +622,9 @@ jobs:
     # the transcription with frozen copies of the two webhook blocks
     # (tests/fixtures/webhook_baseline_b0/; no git history is read, so a squash
     # merge cannot break it), compares today's baseline against
-    # the migration-built objects (and fails if a migration that uses the queue
-    # is not in its list), checks the queue's behaviour and RLS on a fresh
+    # the migration-built objects (and fails if the raw text of any migration
+    # names a queue object unless that file is one the baseline is built from or
+    # is on the suite's reviewed allowlist: no SQL lexing, so nothing can hide), checks the queue's behaviour and RLS on a fresh
     # install, and runs itself against deliberately broken copies of the
     # baseline, which it must fail. It prints the catalog fingerprint that the
     # owner diffs against production (ops/check_webhook_catalog.sql).
