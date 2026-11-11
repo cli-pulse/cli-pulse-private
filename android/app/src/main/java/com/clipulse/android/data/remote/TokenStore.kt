@@ -127,8 +127,9 @@ class TokenStore internal constructor(
     /**
      * Starts a sign-in attempt: the generation moves on and is returned. Only an attempt
      * whose generation is still the current one may install its session ([installSession]),
-     * so a newer attempt, demo mode or an explicit [abandonAuthAttempts] overtakes every
-     * older one, whichever order the answers come back in.
+     * so a newer attempt or demo mode overtakes every older one, whichever order the answers
+     * come back in. (A sign-in whose screen went away is cancelled with it and installs
+     * nothing: the client checks for cancellation right before the install.)
      */
     @Synchronized
     fun beginAuthAttempt(): Long {
@@ -152,13 +153,6 @@ class TokenStore internal constructor(
             publishLocked()
             generation
         }
-    }
-
-    /** Every sign-in attempt started so far may no longer install a session. */
-    @Synchronized
-    fun abandonAuthAttempts() {
-        nextGenerationLocked(prefs.edit()).second.apply()
-        publishLocked()
     }
 
     private fun nextGenerationLocked(edit: SharedPreferences.Editor): Pair<Long, SharedPreferences.Editor> {

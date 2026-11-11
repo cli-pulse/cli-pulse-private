@@ -713,7 +713,7 @@ class SupabaseClient internal constructor(
      * [authGeneration] is the sign-in generation saved with the pending flow when the user
      * left for the browser (TokenStore.beginOAuthLogin), carried through the claim and the
      * delivery. A callback does not become the newest attempt by arriving late: if any
-     * sign-in, demo entry or abandonment happened since the flow started, it installs
+     * sign-in or demo entry happened since the flow started, it installs
      * nothing ([ApiError.SessionSuperseded]). A flow without a generation (saved by 1.62)
      * cannot prove it is still the latest and is dropped the same way.
      */
@@ -1277,7 +1277,7 @@ class SupabaseClient internal constructor(
         val userId = user.optString("id")
 
         // A caller cancelled while the sign-in request was out installs nothing; neither does an
-        // attempt that a newer sign-in, demo mode or an abandonment overtook (checked under the
+        // attempt that a newer sign-in or demo mode overtook (checked under the
         // store's lock together with the install).
         currentCoroutineContext().ensureActive()
         val sessionId = lifecycle.install(

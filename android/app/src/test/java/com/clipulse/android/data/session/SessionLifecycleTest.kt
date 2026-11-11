@@ -168,6 +168,25 @@ class SessionLifecycleTest {
     }
 
     @Test
+    fun `the first retry waits the base delay set on the coordinator`() = runTest {
+        val env = Env(this)
+        env.lifecycle.retryBaseMillis = 1_000
+        val a = env.installA()
+        env.dao.fill("A")
+        env.dao.failingClears += "providers"
+        env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut)
+        assertEquals(a, env.store.teardownPending)
+        env.dao.failingClears.clear()
+
+        advanceTimeBy(1_001)
+        runCurrent()
+
+        assertNull("retried after the base delay set here, not a built-in one", env.store.teardownPending)
+        assertTrue(env.allTablesEmpty())
+        env.scope.cancel()
+    }
+
+    @Test
     fun `a teardown that throws part-way is retried`() = runTest {
         val env = Env(this)
         val a = env.installA()

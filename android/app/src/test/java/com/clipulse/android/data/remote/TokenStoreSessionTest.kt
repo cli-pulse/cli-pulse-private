@@ -165,13 +165,6 @@ class TokenStoreSessionTest {
     }
 
     @Test
-    fun `abandoning sign-ins overtakes every attempt started before`() {
-        val attempt = store.beginAuthAttempt()
-        store.abandonAuthAttempts()
-        assertNull(store.installSession("access-X", "refresh-X", "user-X", attempt = attempt))
-    }
-
-    @Test
     fun `a browser sign-in carries the generation it started with, through the claim`() = runBlocking<Unit> {
         val generation = store.beginOAuthLogin(
             TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),

@@ -81,7 +81,9 @@ class SessionLifecycle internal constructor(
 
     private val retryLock = Any()
     private var retryJob: Job? = null
-    private var retryDelayMillis: Long = RETRY_BASE_MS
+
+    /** Retries since the last success; the next one waits retryBaseMillis * 2^n, capped. */
+    private var retryAttempts = 0
 
     init {
         tokenStore.onCommitFailed = { scheduleRetry() }
@@ -242,12 +244,12 @@ class SessionLifecycle internal constructor(
         return allDeleted && tokenStore.clearPendingIfEquals(marker)
     }
 
-    /** A coalesced retry of [runPendingTeardown], with doubling backoff. */
+    /** A coalesced retry of [runPendingTeardown], with doubling backoff from [retryBaseMillis]. */
     private fun scheduleRetry() {
         synchronized(retryLock) {
             if (retryJob?.isActive == true) return
-            val wait = retryDelayMillis
-            retryDelayMillis = minOf(retryDelayMillis * 2, retryMaxMillis)
+            val wait = minOf(retryBaseMillis shl minOf(retryAttempts, MAX_BACKOFF_SHIFT), retryMaxMillis)
+            retryAttempts++
             retryJob = appScope.launch {
                 delay(wait)
                 synchronized(retryLock) { retryJob = null }
@@ -257,7 +259,7 @@ class SessionLifecycle internal constructor(
     }
 
     private fun resetRetry() {
-        synchronized(retryLock) { retryDelayMillis = retryBaseMillis }
+        synchronized(retryLock) { retryAttempts = 0 }
     }
 
     private fun resetScopedStates() {
@@ -293,5 +295,6 @@ class SessionLifecycle internal constructor(
         const val WRITE_TIMEOUT_MS = 5_000L
         const val RETRY_BASE_MS = 5_000L
         const val RETRY_MAX_MS = 5 * 60_000L
+        const val MAX_BACKOFF_SHIFT = 16
     }
 }
