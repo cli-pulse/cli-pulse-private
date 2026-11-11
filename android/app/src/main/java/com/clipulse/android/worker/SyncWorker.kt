@@ -6,12 +6,14 @@ import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
 import com.clipulse.android.data.collector.CollectorManager
+import com.clipulse.android.data.remote.ApiError
 import com.clipulse.android.data.remote.SessionContext
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
 import com.clipulse.android.util.failureSummary
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -54,11 +56,12 @@ class SyncWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result {
-        // A real account only. `isLoggedIn` is also true in demo mode, which has no token:
-        // before 1.62 a demo install sent register_device + dashboard_summary every 15
-        // minutes and got 401s back.
-        if (!tokenStore.hasSession) return Result.success()
-        val session = tokenStore.snapshot() ?: return Result.success()
+        // A real account only: before 1.62 a demo install sent register_device +
+        // dashboard_summary every 15 minutes and got 401s back. One session for the whole run,
+        // read once: every request below runs for it, so an account change in the middle
+        // stops the run instead of finishing it as the next account.
+        val session = tokenStore.snapshot()
+        if (session == null || session.isDemo) return Result.success()
 
         return try {
             // 1. Ensure device is registered
@@ -102,13 +105,28 @@ class SyncWorker @AssistedInject constructor(
 
             // 4. Prefetch dashboard data to keep cache warm
             try {
-                supabase.dashboard()
+                supabase.dashboard(session)
                 Log.d(TAG, "Dashboard prefetch successful")
+            } catch (e: ApiError.TokenExpired) {
+                throw e
+            } catch (e: ApiError.SessionSuperseded) {
+                throw e
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Dashboard prefetch failed (non-fatal): ${failureSummary(e)}")
             }
 
             Result.success()
+        } catch (e: ApiError.TokenExpired) {
+            // The server refused the session: the client ended it and the lifecycle deletes its
+            // data. Retrying would only be refused again.
+            Result.success()
+        } catch (e: ApiError.SessionSuperseded) {
+            // Signed out, or another account signed in, during the run: nothing of it to finish.
+            Result.success()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Sync failed: ${failureSummary(e)}")
             if (runAttemptCount < 3) Result.retry() else Result.failure()
@@ -116,20 +134,29 @@ class SyncWorker @AssistedInject constructor(
     }
 
     private suspend fun ensureDeviceRegistered(session: SessionContext) {
-        if (tokenStore.deviceId != null) return
-        try {
-            val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
-            val system = "Android ${Build.VERSION.RELEASE}"
-            val deviceId = supabase.registerDevice(
+        if (tokenStore.deviceIdFor(session.sessionId) != null) return
+        val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
+        val system = "Android ${Build.VERSION.RELEASE}"
+        val deviceId = try {
+            supabase.registerDevice(
                 session,
                 name = deviceName,
                 type = "Android",
                 system = system,
             )
-            tokenStore.deviceId = deviceId
-            Log.d(TAG, "Registered Android device")
+        } catch (e: ApiError.TokenExpired) {
+            throw e
+        } catch (e: ApiError.SessionSuperseded) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "Device registration failed (non-fatal): ${failureSummary(e)}")
+            return
         }
+        // The row belongs to the account this run started with. Recorded for that session
+        // only: if the account changed meanwhile, stop here; the next run registers the new one.
+        if (!tokenStore.setDeviceIdIfCurrent(session.sessionId, deviceId)) throw ApiError.SessionSuperseded
+        Log.d(TAG, "Registered Android device")
     }
 }
