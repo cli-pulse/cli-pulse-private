@@ -113,7 +113,7 @@ pass through our servers.
 | **Your subscription**, if you buy one in the App Store or Google Play reports one for your Google account: the plan, that it is active, when the current period ends, which store, the App Store's product and transaction IDs or Google Play's order ID (or, if Google gives none, the start of the purchase token), and when it was last checked. To check it, the app sends our server the App Store's signed transaction and product ID, or Google Play's purchase token, product ID and the app's package name | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | Keeps your plan with your account, so every device shows it; deleted with your account |
 | **Crash reports** from the Mac, iPhone, Apple Watch and Android apps (see *Security practices* for what they contain) | Sentry (sentry.io), scrubbed before leaving the device | ✅ Yes, when a crash or error happens, whether or not you are signed in; the same SDK also reports each app session's start and whether it ended in a crash | So crashes are visible to us without waiting for an App Store or Google Play review |
 | **Anonymous install statistics** (Mac app only: random install id, install channel, app version, OS major.minor, display language, and a few once-ever yes/no milestones listed below) | Supabase, **not linked to any account** | ✅ Yes, unless you turn it off | Tells us whether the app actually works for people who never sign in |
-| **Network details of every request to our server**, from every app: your IP address, and the approximate location (city and country) that our hosting provider works out from it and records with the request; the label each request carries, which names the app, or the library or browser making the request, usually with version numbers (for the Mac, iPhone and Apple Watch apps, also the system's); and the address each request asks for, which can include your account's ID | Supabase's request and sign-in logs, kept for about 90 days; with each sign-in, Supabase Auth's record of that session, removed when you delete your account, and when you sign out only if the app's sign-out request reaches our server while that sign-in is still valid (the apps send it once, without renewing the sign-in first, so signing out while offline or after the sign-in has expired leaves the record; records of expired sessions are cleaned up later); for each attempt to pair a Mac, our own database, until the cleanup after it is an hour old (at most about a day) | ✅ Yes, with every request | Running and protecting the service (pairing attempts are counted to limit their rate). Deleting your account does not remove log entries already written |
+| **Network details of every request to our server**, from every app: your IP address, and the approximate location (city and country) that our hosting provider works out from it and records with the request; the label each request carries, which names the app, or the library or browser making the request, usually with version numbers (for the Mac, iPhone and Apple Watch apps, also the system's); and the address each request asks for, which can include your account's ID | Supabase's request and sign-in logs, kept for about 90 days; with each sign-in, Supabase Auth's record of that session, removed when you delete your account, and when you sign out only if our server accepts the app's sign-out request (the apps send it once, without renewing the sign-in first, so signing out while offline or after the sign-in has expired leaves the record; records of expired sessions are cleaned up later); for each attempt to pair a Mac, our own database, until the cleanup after it is an hour old (at most about a day) | ✅ Yes, with every request | Running and protecting the service (pairing attempts are counted to limit their rate). Deleting your account does not remove log entries already written |
 
 **The key point:** the two categories of data you'd be most worried about —
 provider API keys and raw session-log contents — never touch our servers, full
@@ -790,10 +790,10 @@ with CLI Pulse 1.55, and later releases follow them:
   renew it first); your account then stays signed in on our server and on
   your other devices. When the request goes through, it ends your account's
   sign-ins on every device, not only on this phone, as a sign-out request from
-  the Mac, iPhone or Apple Watch app also does: your other devices are signed
-  out as soon as they next check their sign-in with our server, and at the
-  latest when they next need to renew it (normally within an hour), and have to
-  sign in again.
+  the Mac, iPhone or Apple Watch app also does: your other devices can no longer
+  renew their sign-in, so they have to sign in again once their current one runs
+  out (normally within an hour), or sooner if they check it with our server
+  first (for example when an app starts).
   After that the app sends nothing linked to your account. The phone's record
   in your account (maker, model, Android version and any notification token)
   stays until you delete the account, and each later sign-in adds a new one.
@@ -830,7 +830,8 @@ phone).
 for a sign-in code for your address: email clipulse.support@gmail.com from the
 address your account uses, with the subject "Delete my CLI Pulse account". We
 may reply to that address to confirm the request is yours, and then delete the
-account as the app would. If you signed in with Apple and hid your email
+account as the app would; if the request cannot be confirmed as yours, the
+account is not deleted. If you signed in with Apple and hid your email
 address, write from any address, tell us the relay address, and we will agree
 with you how to confirm the request.
 
@@ -928,12 +929,11 @@ exchange for anything — the App Store and Google Play forbid it, and so do we.
   itself is gone, until you delete your account.
 - **Network details of requests** are kept in Supabase's request and sign-in
   logs for about 90 days (the request logs also hold the city and country worked
-  out from your IP address), and with each sign-in session until you delete
-  your account or sign out (a sign-out removes it only when the app's request
-  reaches our server while that sign-in is still valid; records of expired
-  sessions are cleaned up later); a Mac
-  pairing attempt's IP address is deleted at the cleanup after it is an hour
-  old. Deleting your account does not remove log entries already written.
+  out from your IP address), and with each sign-in session until you delete your
+  account or sign out (a sign-out removes it only when our server accepts the
+  app's sign-out request; records of expired sessions are cleaned up later); a
+  Mac pairing attempt's IP address is deleted at the cleanup after it is an
+  hour old. Deleting your account does not remove log entries already written.
 - **Crash reports** are kept by Sentry for the retention period of our Sentry
   plan and then deleted. They carry no account, so deleting your account does
   not remove them. Google keeps the Firebase registration of an Android install
