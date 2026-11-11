@@ -1777,36 +1777,18 @@ grant execute on function public.create_team(text), public.team_details(uuid),
   public.remove_member(uuid, uuid), public.update_member_role(uuid, uuid, text),
   public.team_usage_summary(uuid) to authenticated;
 
--- ── Webhook queue worker (B0: transcribed unchanged from production's history) ──
--- process_webhook_jobs() is migrate_v0.25_sessions_alerts_hardening.sql's body,
--- followed by migrate_v0.62's revoke. The queue table, its indexes, policy and
--- the enqueue trigger are in schema.sql. Not here by design: the pg_cron job
--- that calls it and the vault secrets it reads (environment, not schema).
--- Behaviour changes belong to later migrations; do not "improve" this copy.
--- Cron worker. Runs on a schedule; drains pending jobs in two passes:
---   1. Reconcile: for jobs already dispatched (pg_net_request_id set,
---      processed_at null), look up `net._http_response` and finalize.
---      2xx → mark processed_at; non-2xx → bump attempt_count + last_error.
---   2. Dispatch: for jobs not yet dispatched (pg_net_request_id null and
---      attempt_count < 3), call `net.http_post`, capture the request_id,
---      and stamp dispatched_at.
---
--- Iter2 follow-up (Codex): the prior implementation marked processed_at
--- right after `http_post` returned, but pg_net is itself async — that
--- recorded "queued for dispatch", not "delivered". Now we read
--- net._http_response and only finalize after the actual HTTP call
--- completes. Jobs older than 5 minutes with no response are
--- considered timed out and retried.
---
--- Iter2 follow-up (deploy-time): Supabase managed Postgres doesn't allow
--- non-superuser ALTER DATABASE for `app.*` GUCs, so the original plan to
--- store secrets via `current_setting` failed at deploy. Switched to the
--- supabase_vault path, which is the recommended secret store for pg_cron
--- workers per Supabase docs. Operators must populate two named secrets
--- before this function works (otherwise it logs a notice and returns):
---
---   select vault.create_secret('https://<ref>.supabase.co', 'app_supabase_url', 'desc');
---   select vault.create_secret('<service_role_jwt>',         'app_service_role_key', 'desc');
+-- ── Webhook queue worker (B0: production's history; body from migrate_v0.89) ──
+-- process_webhook_jobs() was migrate_v0.25_sessions_alerts_hardening.sql's
+-- body until migrate_v0.89_webhook_jobs_finalize_failures.sql replaced it; the
+-- statement below is v0.89's, byte for byte (its header explains what changed
+-- and why), followed by migrate_v0.62's revoke. The queue table, its indexes,
+-- policy, the enqueue trigger and the comment on processed_at are in
+-- schema.sql. Not here by design: the pg_cron job that calls it and the vault
+-- secrets it reads (environment, not schema). Behaviour changes belong to
+-- later migrations; do not "improve" this copy.
+-- One call at a time (advisory lock); two passes, reconcile then dispatch.
+-- A failed attempt finalizes the job when attempt_count reaches 3, so
+-- processed_at means FINALIZED, not delivered (see its column comment).
 create or replace function public.process_webhook_jobs()
 returns void as $$
 declare
@@ -1815,6 +1797,12 @@ declare
   v_key text;
   v_request_id bigint;
 begin
+  -- One call at a time: a duplicate schedule or a manual call that overlaps
+  -- a running one returns here and dispatches nothing.
+  if not pg_try_advisory_xact_lock(hashtextextended('process_webhook_jobs', 0)) then
+    return;
+  end if;
+
   -- Read URL + service-role key from supabase_vault. `decrypted_secret` is
   -- only readable by service_role / postgres; the cron worker runs as the
   -- function owner (postgres) so this resolves at runtime.
@@ -1827,37 +1815,51 @@ begin
     return;
   end if;
 
-  -- Pass 1: reconcile dispatched jobs against net._http_response.
-  -- net._http_response.status_code is null while pending, populated on
-  -- completion. Status 200..299 is success; anything else is recorded
-  -- and may be retried on the next pass.
+  -- Pass 1: reconcile dispatched jobs against net._http_response. A job's
+  -- age is coalesce(dispatched_at, enqueued_at), so one with a request id
+  -- and no dispatched_at is reconciled too.
   for v_job in
-    select id, pg_net_request_id, attempt_count
+    select id, pg_net_request_id, attempt_count, dispatched_at, enqueued_at
     from public.webhook_jobs
     where processed_at is null
       and pg_net_request_id is not null
-      and dispatched_at < now() - interval '2 seconds'
+      and coalesce(dispatched_at, enqueued_at) < now() - interval '2 seconds'
     order by id
     limit 200
   loop
     declare
       v_status int;
       v_body text;
+      v_timed_out boolean;
+      v_error text;
+      v_expired boolean;
     begin
-      select status_code, content
-      into v_status, v_body
+      select status_code, content, timed_out, error_msg
+      into v_status, v_body, v_timed_out, v_error
       from net._http_response
       where id = v_job.pg_net_request_id;
 
-      if v_status is null then
-        -- Still pending in pg_net. If it's been pending >5 min, give up
-        -- this attempt and let the next pass dispatch a fresh one.
+      if v_status is null and (coalesce(v_timed_out, false) or v_error is not null) then
+        -- pg_net finished the request without an HTTP answer (timed out,
+        -- could not connect): a failed attempt, like a non-2xx answer.
         update public.webhook_jobs
-          set last_error = 'pg_net response not yet available',
-              -- only retry-eligible after the timeout window
-              pg_net_request_id = case
-                when dispatched_at < now() - interval '5 minutes'
-                then null else pg_net_request_id end
+          set attempt_count = attempt_count + 1,
+              last_error = 'transport failure: ' || left(coalesce(v_error, 'timed out'), 200),
+              pg_net_request_id = null,
+              dispatched_at = null,
+              processed_at = case when attempt_count + 1 >= 3 then now() else processed_at end
+          where id = v_job.id;
+      elsif v_status is null then
+        -- No answer yet (no row, or nothing completed). After 5 minutes give
+        -- this attempt up; after the third, give the job up. Never sooner:
+        -- the request may still be live.
+        v_expired := coalesce(v_job.dispatched_at, v_job.enqueued_at) < now() - interval '5 minutes';
+        update public.webhook_jobs
+          set pg_net_request_id = case when v_expired then null else pg_net_request_id end,
+              processed_at = case when v_expired and attempt_count >= 3 then now() else processed_at end,
+              last_error = case when v_expired and attempt_count >= 3
+                                then 'gave up: no response from pg_net after 3 attempts'
+                                else 'pg_net response not yet available' end
           where id = v_job.id;
       elsif v_status between 200 and 299 then
         update public.webhook_jobs
@@ -1870,7 +1872,8 @@ begin
               last_error = 'HTTP ' || v_status::text || ': ' || coalesce(left(v_body, 200), ''),
               -- clear request_id so the next pass can re-dispatch
               pg_net_request_id = null,
-              dispatched_at = null
+              dispatched_at = null,
+              processed_at = case when attempt_count + 1 >= 3 then now() else processed_at end
           where id = v_job.id;
       end if;
     exception when others then
@@ -1919,7 +1922,8 @@ begin
     exception when others then
       update public.webhook_jobs
         set attempt_count = attempt_count + 1,
-            last_error = 'http_post failed: ' || sqlerrm
+            last_error = 'http_post failed: ' || sqlerrm,
+            processed_at = case when attempt_count + 1 >= 3 then now() else processed_at end
         where id = v_job.id;
     end;
   end loop;
