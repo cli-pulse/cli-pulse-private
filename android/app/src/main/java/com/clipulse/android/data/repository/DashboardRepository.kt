@@ -3,8 +3,12 @@ package com.clipulse.android.data.repository
 import com.clipulse.android.data.DemoDataProvider
 import com.clipulse.android.data.local.*
 import com.clipulse.android.data.model.*
+import com.clipulse.android.data.remote.ApiError
+import com.clipulse.android.data.remote.SessionContext
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
+import com.clipulse.android.data.session.SessionLifecycle
+import com.clipulse.android.data.session.SessionScopedState
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,12 +16,23 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * The signed-in session's rows, in memory (the flows) and in Room. Every write goes through
+ * [SessionLifecycle.write] for the session the fetch was made for: it waits for a previous
+ * session's teardown and is dropped if that session is no longer current, so a response that
+ * comes back after a sign-out, or after the next account signed in, is never shown or cached.
+ */
 class DashboardRepository(
     private val supabase: SupabaseClient,
     private val cache: CacheDao,
-    private val tokenStore: TokenStore? = null,
-) {
-    val isDemoMode: Boolean get() = tokenStore?.isDemoMode == true
+    private val tokenStore: TokenStore,
+    private val lifecycle: SessionLifecycle,
+) : SessionScopedState {
+    init {
+        lifecycle.register(this)
+    }
+
+    val isDemoMode: Boolean get() = tokenStore.isDemoMode
     private val _dashboard = MutableStateFlow<DashboardSummary?>(null)
     val dashboard: StateFlow<DashboardSummary?> = _dashboard
 
@@ -61,38 +76,46 @@ class DashboardRepository(
         runCatching { supabase.evaluateBudgetAlerts() }
     }
 
-    /** Load cached data into StateFlows (call on startup). */
+    /** The session a refresh runs for, read once; none means there is nothing to fetch. */
+    private fun currentSession(): SessionContext = tokenStore.snapshot() ?: throw ApiError.TokenExpired
+
+    /** Load cached data into StateFlows, for the current session only. */
     suspend fun loadFromCache() {
-        // Demo mode never shows an account's cached rows.
-        if (isDemoMode) {
-            loadDemoData()
-            return
+        val ctx = tokenStore.snapshot() ?: return
+        lifecycle.write(ctx) {
+            // Demo mode never shows an account's cached rows.
+            if (ctx.isDemo) {
+                loadDemoData()
+                return@write
+            }
+            cache.getDashboard()?.let { cached ->
+                parseDashboard(cached.json)?.let { _dashboard.value = it }
+            }
+            val cachedProviders = cache.getProviders().mapNotNull { parseProvider(it.json) }
+            if (cachedProviders.isNotEmpty()) _providers.value = cachedProviders
+
+            val cachedSessions = cache.getSessions().mapNotNull { parseSession(it.json) }
+            if (cachedSessions.isNotEmpty()) _sessions.value = cachedSessions
+
+            val cachedAlerts = cache.getAlerts().mapNotNull { parseAlert(it.json) }
+            if (cachedAlerts.isNotEmpty()) _alerts.value = cachedAlerts
+
+            val cachedDevices = cache.getDevices().mapNotNull { parseDevice(it.json) }
+            if (cachedDevices.isNotEmpty()) _devices.value = cachedDevices
+
+            val cachedDailyUsage = cache.getDailyUsage().mapNotNull { parseDailyUsage(it.json) }
+            if (cachedDailyUsage.isNotEmpty()) _dailyUsage.value = cachedDailyUsage
+            Unit
         }
-        cache.getDashboard()?.let { cached ->
-            parseDashboard(cached.json)?.let { _dashboard.value = it }
-        }
-        val cachedProviders = cache.getProviders().mapNotNull { parseProvider(it.json) }
-        if (cachedProviders.isNotEmpty()) _providers.value = cachedProviders
-
-        val cachedSessions = cache.getSessions().mapNotNull { parseSession(it.json) }
-        if (cachedSessions.isNotEmpty()) _sessions.value = cachedSessions
-
-        val cachedAlerts = cache.getAlerts().mapNotNull { parseAlert(it.json) }
-        if (cachedAlerts.isNotEmpty()) _alerts.value = cachedAlerts
-
-        val cachedDevices = cache.getDevices().mapNotNull { parseDevice(it.json) }
-        if (cachedDevices.isNotEmpty()) _devices.value = cachedDevices
-
-        val cachedDailyUsage = cache.getDailyUsage().mapNotNull { parseDailyUsage(it.json) }
-        if (cachedDailyUsage.isNotEmpty()) _dailyUsage.value = cachedDailyUsage
     }
 
     /**
-     * Load demo data into every StateFlow when in demo mode. Every refresh below does this
-     * instead of fetching, and never writes Room, so demo rows cannot outlive demo mode and
-     * Overview's export menu (which reads these flows) has the same data the tabs show.
+     * Demo data into every StateFlow, for demo mode. Every refresh below does this instead of
+     * fetching, and never writes Room, so demo rows cannot outlive demo mode and Overview's
+     * export menu (which reads these flows) has the same data the tabs show. Called inside
+     * [SessionLifecycle.write] only.
      */
-    fun loadDemoData(days: Int = 30) {
+    private fun loadDemoData(days: Int = 30) {
         _dashboard.value = DemoDataProvider.dashboard()
         _providers.value = DemoDataProvider.providers()
         _sessions.value = DemoDataProvider.sessions()
@@ -101,18 +124,13 @@ class DashboardRepository(
         _dailyUsage.value = DemoDataProvider.dailyUsage(days)
     }
 
-    /** Clear demo mode and all demo data. */
-    fun exitDemoMode() {
-        tokenStore?.isDemoMode = false
-        resetSession()
-    }
-
     /**
-     * Forget everything this singleton holds for the session that is ending (sign-out,
-     * account deletion, demo exit): Overview's export menu reads these flows, and the next
+     * Forget everything this singleton holds for the session that ended (sign-out, account
+     * deletion, demo exit, a refusal): Overview's export menu reads these flows, and the next
      * account must not export the last one's rows while its own first fetch is still out.
+     * Called by [SessionLifecycle] at the end and again by the teardown.
      */
-    fun resetSession() {
+    override fun reset() {
         lastBudgetEvalAtMs = 0L
         _dashboard.value = null
         _providers.value = emptyList()
@@ -123,8 +141,9 @@ class DashboardRepository(
     }
 
     suspend fun refreshAll() = coroutineScope {
-        if (isDemoMode) {
-            loadDemoData()
+        val ctx = currentSession()
+        if (ctx.isDemo) {
+            lifecycle.write(ctx) { loadDemoData() }
             return@coroutineScope
         }
         // Run all fetches in parallel (like iOS async let pattern)
@@ -137,47 +156,65 @@ class DashboardRepository(
     }
 
     suspend fun refreshDashboard() {
-        if (isDemoMode) return loadDemoData()
-        val data = supabase.dashboard()
-        _dashboard.value = data
-        cache.saveDashboard(CachedDashboard(json = serializeDashboard(data)))
+        val ctx = currentSession()
+        if (ctx.isDemo) return lifecycle.write(ctx) { loadDemoData() }
+        val data = supabase.dashboard(ctx)
+        lifecycle.write(ctx) {
+            _dashboard.value = data
+            cache.saveDashboard(CachedDashboard(json = serializeDashboard(data)))
+        }
     }
 
     suspend fun refreshProviders() {
-        if (isDemoMode) return loadDemoData()
-        val data = supabase.providers()
-        _providers.value = data
-        cache.replaceProviders(data.map { CachedProvider(provider = it.provider, json = serializeProvider(it)) })
+        val ctx = currentSession()
+        if (ctx.isDemo) return lifecycle.write(ctx) { loadDemoData() }
+        val data = supabase.providers(ctx)
+        lifecycle.write(ctx) {
+            _providers.value = data
+            cache.replaceProviders(data.map { CachedProvider(provider = it.provider, json = serializeProvider(it)) })
+        }
     }
 
     suspend fun refreshSessions() {
-        if (isDemoMode) return loadDemoData()
-        val data = supabase.sessions()
-        _sessions.value = data
-        cache.replaceSessions(data.map { CachedSession(id = it.id, json = serializeSession(it)) })
+        val ctx = currentSession()
+        if (ctx.isDemo) return lifecycle.write(ctx) { loadDemoData() }
+        val data = supabase.sessions(ctx)
+        lifecycle.write(ctx) {
+            _sessions.value = data
+            cache.replaceSessions(data.map { CachedSession(id = it.id, json = serializeSession(it)) })
+        }
     }
 
     suspend fun refreshDevices() {
-        if (isDemoMode) return loadDemoData()
-        val data = supabase.devices()
-        _devices.value = data
-        cache.replaceDevices(data.map { CachedDevice(id = it.id, json = serializeDevice(it)) })
+        val ctx = currentSession()
+        if (ctx.isDemo) return lifecycle.write(ctx) { loadDemoData() }
+        val data = supabase.devices(ctx)
+        lifecycle.write(ctx) {
+            _devices.value = data
+            cache.replaceDevices(data.map { CachedDevice(id = it.id, json = serializeDevice(it)) })
+        }
     }
 
     suspend fun refreshAlerts() {
-        if (isDemoMode) return loadDemoData()
-        val data = supabase.alerts()
-        _alerts.value = data
-        cache.replaceAlerts(data.map { CachedAlert(id = it.id, json = serializeAlert(it)) })
+        val ctx = currentSession()
+        if (ctx.isDemo) return lifecycle.write(ctx) { loadDemoData() }
+        val data = supabase.alerts(ctx)
+        lifecycle.write(ctx) {
+            _alerts.value = data
+            cache.replaceAlerts(data.map { CachedAlert(id = it.id, json = serializeAlert(it)) })
+        }
     }
 
     suspend fun refreshDailyUsage(days: Int = 30) {
-        if (isDemoMode) return loadDemoData(days)
-        val data = supabase.dailyUsage(days)
-        _dailyUsage.value = data
-        cache.replaceDailyUsage(data.map {
-            CachedDailyUsage(id = "${it.date}-${it.provider}-${it.model}", json = serializeDailyUsage(it))
-        })
+        val ctx = currentSession()
+        if (ctx.isDemo) return lifecycle.write(ctx) { loadDemoData(days) }
+        val data = supabase.dailyUsage(days, ctx)
+        lifecycle.write(ctx) {
+            _dailyUsage.value = data
+            cache.replaceDailyUsage(data.map {
+                CachedDailyUsage(id = "${it.date}-${it.provider}-${it.model}", json = serializeDailyUsage(it))
+            })
+        }
     }
 
     suspend fun acknowledgeAlert(id: String) {
@@ -193,16 +230,6 @@ class DashboardRepository(
     suspend fun snoozeAlert(id: String, minutes: Int) {
         supabase.snoozeAlert(id, minutes)
         refreshAlerts()
-    }
-
-    /** Clear all cached data (e.g., on sign-out). */
-    suspend fun clearCache() {
-        cache.clearDashboard()
-        cache.clearProviders()
-        cache.clearSessions()
-        cache.clearAlerts()
-        cache.clearDevices()
-        cache.clearDailyUsage()
     }
 
     // ── Serialization (lightweight JSON) ──

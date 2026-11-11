@@ -11,6 +11,7 @@ import com.clipulse.android.data.local.CacheDao
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
 import com.clipulse.android.data.repository.DashboardRepository
+import com.clipulse.android.data.session.SessionLifecycle
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -68,8 +69,9 @@ object AppModule {
         supabase: SupabaseClient,
         cacheDao: CacheDao,
         tokenStore: TokenStore,
+        sessionLifecycle: SessionLifecycle,
     ): DashboardRepository =
-        DashboardRepository(supabase, cacheDao, tokenStore)
+        DashboardRepository(supabase, cacheDao, tokenStore, sessionLifecycle)
 
     @Provides
     @Singleton

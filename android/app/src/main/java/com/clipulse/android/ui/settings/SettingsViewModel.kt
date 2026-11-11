@@ -4,11 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.clipulse.android.data.model.SettingsSnapshot
 import com.clipulse.android.data.model.UserIdentity
-import com.clipulse.android.data.local.CacheDao
 import com.clipulse.android.data.remote.ApiError
+import com.clipulse.android.data.remote.EndReason
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
-import com.clipulse.android.data.repository.DashboardRepository
+import com.clipulse.android.data.session.SessionLifecycle
 import com.clipulse.android.di.ApplicationScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -41,8 +41,7 @@ data class SettingsUiState(
 class SettingsViewModel @Inject constructor(
     private val supabase: SupabaseClient,
     private val tokenStore: TokenStore,
-    private val cache: CacheDao,
-    private val repository: DashboardRepository,
+    private val lifecycle: SessionLifecycle,
     @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
@@ -178,12 +177,13 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Ends demo mode through the same transition as any other end; the lifecycle empties the
+     * repository's demo rows. Navigation follows the session state, not this call.
+     */
     fun exitDemoMode() {
-        tokenStore.isDemoMode = false
-        tokenStore.clear()
-        // The repository is a singleton: without this, its demo rows are still in memory
-        // when the next account signs in.
-        repository.exitDemoMode()
+        val demo = tokenStore.snapshot()?.takeIf { it.isDemo }
+        if (demo != null) lifecycle.endIfCurrent(demo.sessionId, EndReason.DemoExit)
         supabase.clearDemoState()
     }
 
@@ -227,11 +227,12 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun signOut() {
-        // End the session before the caller switches to the sign-in screen: that screen
-        // checks the token store as it opens, and a token still there would sign the user
-        // straight back in.
-        val token = tokenStore.accessToken
-        endLocalSession()
+        // End the session before anything else: the credentials and the teardown marker go
+        // in one step, which also captures the token to revoke, so the revocation can never
+        // use a rotated or a later account's token. The sign-in screen follows from the
+        // session state.
+        val ended = lifecycle.endCurrent(EndReason.UserSignedOut) ?: return
+        val token = ended.accessToken
         // Revoking touches nothing on this device, so it cannot undo a sign-in that happens
         // while it is still running. The app's scope, not this view model's: the session's
         // view models are cleared as soon as the sign-in screen shows.
@@ -241,37 +242,20 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
-     * Everything on this device that belonged to the session: the tokens and the singleton
-     * repository's rows at once, the Room cache in the app's scope (it must not wait on the
-     * network, and must not be cancelled when this view model is cleared).
-     */
-    private fun endLocalSession() {
-        tokenStore.clear()
-        repository.resetSession()
-        appScope.launch {
-            runCatching {
-                cache.clearDashboard()
-                cache.clearProviders()
-                cache.clearSessions()
-                cache.clearAlerts()
-                cache.clearDevices()
-                cache.clearDailyUsage()
-            }
-        }
-    }
-
-    /**
-     * Deletes the account, then everything of it on this device. Success is reported through
-     * `deleteSuccess`, which SettingsScreen turns into the switch to the sign-in screen: a
-     * callback captured before a rotation would switch a screen that no longer exists.
+     * Deletes the account of the session this tap was made in, then ends exactly that session
+     * (the client already did; this is the backstop that also starts the on-device deletion).
+     * The sign-in screen follows from the session state, not from `deleteSuccess`.
      */
     fun deleteAccount() {
+        val session = tokenStore.snapshot() ?: return
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, deleteError = null)
             try {
-                supabase.deleteAccount()
-                endLocalSession()
+                supabase.deleteAccount(session)
+                lifecycle.endIfCurrent(session.sessionId, EndReason.AccountDeleted)
                 _state.value = _state.value.copy(isLoading = false, deleteSuccess = true)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
