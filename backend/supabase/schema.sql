@@ -265,7 +265,8 @@ create index idx_alerts_user_suppression_resolved on public.alerts(user_id, supp
 -- ── Webhook queue (B0: transcribed unchanged from production's history) ──
 -- Source: migrate_v0.25_sessions_alerts_hardening.sql (table, indexes, RLS,
 -- trigger function, trigger), with the policy in migrate_v0.55's initplan
--- form and the comment on processed_at from migrate_v0.89. The worker,
+-- form, the comment on processed_at from migrate_v0.89 and the table's
+-- comment (its retention) from migrate_v0.91. The worker,
 -- process_webhook_jobs(), is in app_rpc.sql (v0.89's body). Nothing here
 -- is changed from production; the comments are v0.25's, kept so the function
 -- body stays byte-identical to it (the claim below that an expression-based
@@ -308,6 +309,18 @@ comment on column public.webhook_jobs.processed_at is
     '(2 requests for non-2xx answers and transport failures, 3 for no answer '
     'or a failed http_post), or the v0.89 backfill finalized it, stuck from '
     'before v0.89.';
+
+-- The table's retention since migrate_v0.91 (the same comment it writes; the
+-- prune itself is in app_rpc.sql's _cleanup_expired_data_internal()).
+comment on table public.webhook_jobs is
+    'Webhook delivery queue (v0.25): one job per non-Test alert, enqueued by '
+    'alerts_enqueue_webhook() and delivered by process_webhook_jobs(). '
+    'Retention (v0.91): a finalized job (processed_at set) is eligible for '
+    'deletion 24 hours after it was finalized and is removed by the next '
+    'successful nightly cleanup (_cleanup_expired_data_internal(), pg_cron '
+    'job cleanup_expired_data_nightly, 03:07 UTC), whatever the account''s '
+    'data_retention_days. A pending job (processed_at NULL) is never deleted '
+    'by it. Deleting the account deletes all of its jobs.';
 
 -- Pending-job dedup: at most one un-processed job per (user, grouping_key).
 -- Rapid duplicates within the worker's 30s drain window collapse here.

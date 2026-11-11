@@ -7,7 +7,9 @@
 # process_webhook_jobs() with its revoke (app_rpc.sql). Production got them from
 # migrate_v0.25 (+ v0.55's policy form, + v0.62's revoke); since B1,
 # migrate_v0.89 replaces the worker's body and comments on processed_at, and
-# the baseline carries both (part A still pins B0's own blocks). Before B0 a fresh
+# since B2, migrate_v0.91 adds the webhook block to the nightly cleanup and
+# comments on the table; the baseline carries all of it (part A still pins
+# B0's own blocks). Before B0 a fresh
 # install had none of it, so alert fixtures did not enqueue and a later DELETE
 # on the queue would have failed there.
 #
@@ -47,7 +49,10 @@
 #
 # pg_net, pg_cron and vault are not in plain Postgres. Each database gets an
 # INACTIVE stand-in cron.job row named process_webhook_jobs so the catalog
-# file's cron section is exercised. The worker is run once, by service_role,
+# file's cron section is exercised (v0.89's guard also wants it paused), and
+# the ACTIVE nightly cleanup job as production has it, which v0.91's guard
+# requires (its command names no webhook object, so the catalog file's cron
+# section does not list it). The worker is run once, by service_role,
 # against an EMPTY vault stub, so it returns at its secrets check with no
 # network activity (pg_net is absent).
 #
@@ -78,15 +83,19 @@ V087="$SQL_DIR/migrate_v0.87_retention_cleanup_and_fresh_counts.sql"
 #   cleanup87  v0.87's _cleanup_expired_data_internal() (put it before a
 #              migration that replaces that function)
 #   whole      the file, as it is
-# A later webhook migration (v0.91) is added here by the PR that adds it.
 # v0.89 runs whole: its guards accept v0.25's body as cut25 leaves it, find the
 # stand-in cron job paused, and its backfill finds nothing to do; it replaces
 # the worker and adds the comment on processed_at, which the baseline carries.
+# v0.91 runs whole after v0.87's cleanup is put back (its guard accepts v0.87's
+# body and wants v0.89's worker, so it comes after both): it adds the webhook
+# block to the cleanup and comments on the table, which the baseline carries.
 WEBHOOK_MIGRATIONS=(
     "cut25:migrate_v0.25_sessions_alerts_hardening.sql"
     "policy55:migrate_v0.55_rls_initplan_and_fk_indexes.sql"
     "whole:migrate_v0.62_revoke_process_webhook_jobs.sql"
     "whole:migrate_v0.89_webhook_jobs_finalize_failures.sql"
+    "cleanup87:migrate_v0.87_retention_cleanup_and_fresh_counts.sql"
+    "whole:migrate_v0.91_prune_webhook_jobs.sql"
 )
 # The raw-text guard (part B) fails on any migration that mentions a queue
 # object name anywhere (comments included, any letter case: PostgreSQL folds
@@ -158,7 +167,8 @@ create table if not exists cron.job (
   database text, username text default 'postgres', active boolean not null default true, jobname text
 );
 insert into cron.job (jobname, schedule, command, active)
-values ('process_webhook_jobs', '30 seconds', 'select public.process_webhook_jobs()', false);
+values ('process_webhook_jobs', '30 seconds', 'select public.process_webhook_jobs()', false),
+       ('cleanup_expired_data_nightly', '7 3 * * *', 'SELECT public._cleanup_expired_data_internal();', true);
 SQL
 }
 

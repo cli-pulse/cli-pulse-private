@@ -1314,10 +1314,12 @@ $$ language plpgsql security definer set search_path = pg_catalog, public, exten
 -- _cleanup_expired_data_internal: the nightly retention cleanup that pg_cron
 -- job `cleanup_expired_data_nightly` runs (migrate_v0.21 schedules it at
 -- 03:07 UTC). Deletes, per account, sessions and alerts older than
--- user_settings.data_retention_days (capped at 36500 days), and pairing
--- attempts older than an hour;
--- one DELETE per table on its own savepoint (migrate_v0.87 header). No JWT
--- gate: only postgres (pg_cron) and service_role can execute it.
+-- user_settings.data_retention_days (capped at 36500 days), pairing
+-- attempts older than an hour, and (migrate_v0.91) webhook jobs finalized
+-- more than a day ago, never a pending one;
+-- one DELETE per table on its own savepoint (migrate_v0.87 header), the
+-- webhook block last (migrate_v0.91 header B). No JWT gate: only postgres
+-- (pg_cron) and service_role can execute it.
 create or replace function public._cleanup_expired_data_internal()
 returns jsonb as $$
 declare
@@ -1325,6 +1327,7 @@ declare
   v_running integer := 0;
   v_alerts integer := 0;
   v_pairing integer := 0;
+  v_webhook integer := 0;
   v_failed text[] := '{}';
 begin
   -- v0.87 one delete per table, each on its own savepoint (BEGIN ... EXCEPTION).
@@ -1373,8 +1376,30 @@ begin
     raise warning '_cleanup_expired_data_internal: pairing_attempt_log not cleaned: % (SQLSTATE %)', sqlerrm, sqlstate;
   end;
 
+  -- v0.91 webhook jobs finalized more than a day ago (processed_at set by
+  -- process_webhook_jobs, v0.89), whatever the account's retention. A
+  -- pending job (processed_at NULL) is never deleted: the worker may still
+  -- send or reconcile it, and it holds its dedup slot.
+  -- KEEP THIS BLOCK LAST: set_config(..., true) lasts until the end of the
+  -- calling transaction, not of this block, so a block after it would run
+  -- under its lock_timeout too. lock_timeout bounds a wait on a row lock
+  -- (an account deletion's cascade): past 5 s the DELETE fails into the
+  -- handler and the next night retries. No statement_timeout: set here it
+  -- would not stop the statement already running, and a statement timeout
+  -- is a cancel that WHEN OTHERS does not catch (migrate_v0.91 header B).
+  begin
+    perform set_config('lock_timeout', '5s', true);
+    delete from public.webhook_jobs
+     where processed_at is not null
+       and processed_at < now() - interval '1 day';
+    get diagnostics v_webhook = row_count;
+  exception when others then
+    v_failed := v_failed || 'webhook_jobs'::text;
+    raise warning '_cleanup_expired_data_internal: webhook_jobs not cleaned: % (SQLSTATE %)', sqlerrm, sqlstate;
+  end;
+
   if cardinality(v_failed) > 0 then
-    raise warning '_cleanup_expired_data_internal: % of 3 tables failed: %',
+    raise warning '_cleanup_expired_data_internal: % of 4 tables failed: %',
       cardinality(v_failed), array_to_string(v_failed, ', ');
   end if;
 
@@ -1383,6 +1408,7 @@ begin
     'running_sessions_deleted', v_running,
     'alerts_deleted', v_alerts,
     'pairing_attempt_log_deleted', v_pairing,
+    'webhook_jobs_deleted', v_webhook,
     'errors', cardinality(v_failed),
     'failed', to_jsonb(v_failed)
   );

@@ -962,6 +962,22 @@ no run started in the last 26 hours; or a row is older than 401 days. Until
 2027-09-10 the prune has nothing to delete, so a job that works and one that
 does not look the same from its run history alone.
 
+Once migrate_v0.91 is applied, each release's verification also runs
+`backend/supabase/ops/check_webhook_jobs_retention.sql` (one SELECT). It must
+return no rows (after the apply and before the next nightly cleanup, the one
+expected row is 'finalized jobs overdue': the backlog the old cleanup never
+deleted). A finished webhook job is eligible for deletion 24 h after
+finalization and is removed by the next successful nightly cleanup. Each row
+the check can return names one way that could quietly stop holding: the
+nightly cleanup job (`cleanup_expired_data_nightly`) is missing, inactive, or
+runs another command or schedule; the cleanup function is no longer v0.91's;
+the job has never run, its last run failed, or no run started in the last 26
+hours; a finalized job is more than 49 hours old; a job is pending more than a
+day; or a pending job has used its attempts with no request in flight
+(v0.89's bug back). The overdue row is the one that matters most: the
+webhook DELETE runs in its own savepoint, so when it fails the cleanup warns
+and cron still records the run as succeeded.
+
 ### Migration numbering — one number, one migration, forever
 
 **Before you name a new `backend/supabase/migrate_vX.YY_*.sql`, run:**
