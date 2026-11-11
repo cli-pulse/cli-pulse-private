@@ -241,7 +241,7 @@ class TokenStore internal constructor(
      * dropped instead of bringing the old session back or overwriting the new one. The
      * client serialises every token-producing request with its refresh mutex. If the commit
      * does not reach disk, the coordinator's retry writes it again ([onCommitFailed]); nothing
-     * else has to write first.
+     * else has to write first. [receivedAtMillis] is when the answer carrying the pair arrived.
      */
     @Synchronized
     fun rotateIfCurrent(

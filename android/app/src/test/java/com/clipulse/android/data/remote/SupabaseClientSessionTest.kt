@@ -878,6 +878,46 @@ class SupabaseClientSessionTest {
     }
 
     @Test
+    fun `a stored token's lifetime runs from when its answer arrived`() = runBlocking<Unit> {
+        // One fixed client clock, far from the wall clock: a receipt time taken anywhere else
+        // (by the store, once its lock is free) shows up as a different value.
+        val answeredAt = 1_000_000L
+        client.nowMillis = { answeredAt }
+        route { r ->
+            val path = r.path!!
+            when {
+                r.isRefresh() -> renewed("access-R", "refresh-R")
+                path.startsWith("/auth/v1/token?grant_type=password") ->
+                    json(200, """{"access_token":"access-P","refresh_token":"refresh-P","user":{"id":"user-P"}}""")
+                path.startsWith("/auth/v1/token?grant_type=pkce") ->
+                    json(200, """{"access_token":"access-O","refresh_token":"refresh-O","user":{"id":"user-O"}}""")
+                r.bearer() == "Bearer access-A" -> html(401)
+                else -> json(200, "[]")
+            }
+        }
+
+        val a = install()
+        client.sessions() // rejected, renewed, retried
+        assertEquals(1, refreshCount())
+        assertEquals("renewal", answeredAt, store.snapshotIfCurrent(a)!!.accessReceivedAt)
+
+        val p = client.signInWithPassword("p@example.test", "password-1").sessionId!!
+        assertEquals("sign-in", answeredAt, store.snapshotIfCurrent(p)!!.accessReceivedAt)
+
+        val generation = store.beginOAuthLogin(
+            TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
+        )
+        val o = client.exchangeOAuthCode("code-1", "verifier-1", generation)
+        assertEquals("browser sign-in", answeredAt, store.snapshotIfCurrent(o)!!.accessReceivedAt)
+
+        // A link exchange rotates the current session's pair.
+        route { json(200, """{"access_token":"access-L","refresh_token":"refresh-L"}""") }
+        client.exchangeOAuthCodeForLink("code-2", "verifier-2", o)
+        assertEquals("link", "access-L", store.snapshotIfCurrent(o)!!.accessToken)
+        assertEquals("link", answeredAt, store.snapshotIfCurrent(o)!!.accessReceivedAt)
+    }
+
+    @Test
     fun `a receipt check whose renewal fails is a network error, so the tier is kept`() = runBlocking<Unit> {
         install()
         route { r -> if (r.isRefresh()) MockResponse().setResponseCode(503) else json(401, """{"code":401,"message":"Invalid JWT"}""") }

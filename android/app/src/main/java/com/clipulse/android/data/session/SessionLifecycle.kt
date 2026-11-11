@@ -111,6 +111,8 @@ class SessionLifecycle internal constructor(
     /**
      * Installs a signed-in session if [attempt] is still the current sign-in generation
      * (null: no check). A session it replaces is torn down in the same step. Null: overtaken.
+     * [receivedAtMillis] is when the answer carrying the tokens arrived, not when this got
+     * the lock: the token's lifetime runs from then.
      */
     suspend fun install(
         accessToken: String?,
@@ -119,6 +121,7 @@ class SessionLifecycle internal constructor(
         userName: String? = null,
         userEmail: String? = null,
         attempt: Long? = null,
+        receivedAtMillis: Long = System.currentTimeMillis(),
     ): String? = locked {
         val id = tokenStore.installSession(
             accessToken = accessToken,
@@ -127,6 +130,7 @@ class SessionLifecycle internal constructor(
             userName = userName,
             userEmail = userEmail,
             attempt = attempt,
+            receivedAtMillis = receivedAtMillis,
         )
         if (id != null) settleLocked()
         id
