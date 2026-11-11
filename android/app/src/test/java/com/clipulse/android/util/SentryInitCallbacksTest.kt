@@ -2,9 +2,9 @@ package com.clipulse.android.util
 
 import io.sentry.Breadcrumb
 import io.sentry.Hint
-import io.sentry.Message
 import io.sentry.SentryEvent
 import io.sentry.SentryOptions
+import io.sentry.protocol.Message
 import io.sentry.protocol.SentryException
 import io.sentry.protocol.User
 import org.junit.Assert.assertEquals
