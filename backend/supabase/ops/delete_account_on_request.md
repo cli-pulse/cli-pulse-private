@@ -204,7 +204,9 @@ end $$;
 commit;
 ```
 
-If it raises, nothing changed: read the message, fix the cause, run it again.
+If it raises, nothing changed: read the message, run `rollback;` (the editor
+can keep the failed transaction open on its connection), fix the cause, and run
+the whole script again.
 
 **Do not use the dashboard's Authentication › Users › Delete user instead.** It
 deletes the `auth.users` row directly, and every table cascades from it,
@@ -250,15 +252,17 @@ example, `account-deletion`) and set a reminder for day 21 outside this
 repository. The thread holds the request date, the confirmation and the reply;
 nothing else is recorded anywhere.
 
-* **Confirmed:** delete the same day or the next; do not wait for the due date.
-* **Confirmation arrives late, even after the due date:** delete the day it
-  arrives, and say in the reply when the request came and when it was done.
+* **Confirmed before the due date:** delete by the due date, as soon as
+  possible; a confirmation that arrives on the due date is handled that day.
+* **Confirmation arrives after the due date:** delete the day it arrives. That
+  no longer keeps the 30-day promise; say in the reply when the request came
+  and when it was done.
 * **No confirmation by the due date:** send one last note to the account's
   address (step 2's thread) that the account was not deleted and how to ask
   again; close the thread.
 * **Step 3 fails** (it raised): nothing was deleted. Fix the cause and run it
-  again before the due date; if that cannot happen in time, tell the person
-  why and by when it will be done.
+  again before the due date. Telling the person about a delay does not keep
+  the promise; only the deletion does.
 
 ## Not covered here
 
