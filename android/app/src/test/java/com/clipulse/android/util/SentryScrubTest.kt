@@ -79,7 +79,7 @@ class SentryScrubTest {
     fun `the cap and a second pass agree`() {
         val long = "https://host/cb?code=" + "x".repeat(20000)
         val once = redact(long)
-        assertEquals("https://host/cb?[query]", once.removeSuffix("[truncated]").ifEmpty { once })
+        assertEquals("https://host/cb?[query] [truncated]", once)
         assertEquals(once, redact(once))
     }
 

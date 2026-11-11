@@ -55,7 +55,8 @@ internal object SentryScrub {
     }
 
     fun redact(input: String): String {
-        if (input.length > MAX_REDACT_CHARS) return redact(input.take(MAX_REDACT_CHARS)) + TRUNCATED
+        // The marker follows a space: a URL query runs to whitespace and would swallow it.
+        if (input.length > MAX_REDACT_CHARS) return redact(input.take(MAX_REDACT_CHARS)) + " " + TRUNCATED
         // URLs first, so a placeholder inserted by a later step can never end a query early.
         var out = URL_QUERY_PATTERN.replace(input) { m -> "${m.groupValues[1]}${m.groupValues[2]}[query]" }
         for (pattern in SECRET_PATTERNS) out = pattern.replace(out, SCRUBBED)
