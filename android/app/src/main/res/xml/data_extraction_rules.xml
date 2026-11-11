@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Opt out of BOTH cloud backup and device-to-device transfer, for every domain.
+  android:allowBackup="false" alone may not stop a direct transfer on Android 12+
+  (OEM dependent). A mode with no rules transfers everything, so both sections are
+  required. Whole domains, not just the Room and secure-prefs stores: Firebase's
+  install ID/token, WorkManager's database and Sentry's ID must not reach a second
+  phone while the first keeps using them. No <include>, no cross-platform-transfer
+  section (we never transfer to iOS).
+-->
+<data-extraction-rules>
+  <cloud-backup>
+    <exclude domain="root" path="."/>
+    <exclude domain="file" path="."/>
+    <exclude domain="database" path="."/>
+    <exclude domain="sharedpref" path="."/>
+    <exclude domain="external" path="."/>
+    <exclude domain="device_root" path="."/>
+    <exclude domain="device_file" path="."/>
+    <exclude domain="device_database" path="."/>
+    <exclude domain="device_sharedpref" path="."/>
+  </cloud-backup>
+  <device-transfer>
+    <exclude domain="root" path="."/>
+    <exclude domain="file" path="."/>
+    <exclude domain="database" path="."/>
+    <exclude domain="sharedpref" path="."/>
+    <exclude domain="external" path="."/>
+    <exclude domain="device_root" path="."/>
+    <exclude domain="device_file" path="."/>
+    <exclude domain="device_database" path="."/>
+    <exclude domain="device_sharedpref" path="."/>
+  </device-transfer>
+</data-extraction-rules>
