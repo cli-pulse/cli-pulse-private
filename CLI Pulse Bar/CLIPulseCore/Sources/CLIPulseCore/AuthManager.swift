@@ -187,17 +187,32 @@ public final class AuthManager {
         (error as? APIError) == .tokenExpired
     }
 
-    public func signOut(currentAccessToken: String) async {
+    /// Ends the session a sign-out leaves: on the server (this session only,
+    /// 1.63) and in the Keychain.
+    ///
+    /// `fence` (1.63, A1): what `APIClient.fenceCurrentSession()` returned for
+    /// this sign-out. `snapshot`: the session being left, its access and
+    /// refresh token read together at the sign-out, before anything was
+    /// deleted. (The Watch begins its revocation itself and finishes it here,
+    /// `finishSignOut`.)
+    public func signOut(fence: UInt64?, snapshot: RevocationSnapshot) async {
+        let revocation = await api.beginRevocation(fence: fence, snapshot: snapshot)
+        await finishSignOut(revocation)
+    }
+
+    /// 1.63 (A1): the rest of a sign-out whose revocation has begun
+    /// (`APIClient.beginRevocation`): the revoke on the server, then the
+    /// Keychain.
+    public func finishSignOut(_ revocation: RevocationHandle) async {
         // Attempt server-side token revocation
-        let removed = await api.signOutServer(
-            expectedAccessToken: currentAccessToken
-        )
+        await api.revoke(revocation)
         // Only clear tokens if they haven't been replaced by a new sign-in.
         // 1.61: the session the client removed is the one signed out of, even
         // when a refresh rotated it (and wrote the new pair) after the app
-        // read `currentAccessToken`.
+        // read the snapshot.
+        let removed = revocation.removedAccessToken
         let storedToken = AppState.loadStoredAccessToken()
-        if storedToken == nil || storedToken == currentAccessToken || storedToken?.isEmpty == true
+        if storedToken == nil || storedToken?.isEmpty == true || storedToken == revocation.snapshotAccessToken
             || (removed != nil && storedToken == removed) {
             storeAuthTokens(access: "", refresh: nil)
         }
@@ -581,7 +596,18 @@ extension AppState {
         // 1.61: before anything else, and before this reaches the API client:
         // a refresh already out (a session restore's, say) may land first, and
         // must neither keep nor write the tokens of the session being left.
-        api.fenceCurrentSession()
+        // 1.63 (A1): the fence value names this sign-out, and the session
+        // being left is read now, access and refresh token as one pair, for
+        // the revoke to use if the client no longer holds that session when
+        // the sign-out's work reaches it (a sign-in may have landed first).
+        let fence = api.fenceCurrentSession()
+        let snapshot = SessionTokenStore.shared.revocationSnapshot()
+        // 1.63 (A1): and the stored pair goes now, not when the revoke is
+        // done: until then a restore (the unlock's, or the one a Watch's
+        // question starts) could read it and sign back in. A refresh can no
+        // longer write after the fence (`APIClient` writes under its lock);
+        // `finishSignOut` still clears what the client held, as before.
+        Self.persistAuthTokens(access: "", refresh: nil)
         stopRefreshLoop()
         dataRefreshManager.cancelInFlightRefresh()
         // Best-effort: drop the user's APNs token from app_push_tokens so
@@ -593,10 +619,8 @@ extension AppState {
         // No-op when registeredPushToken is nil; never blocks logout
         // because the implementation just spawns a Task and swallows errors.
         unregisterPushTokenOnLogout()
-        // Capture current token so async logout only clears the right session
-        let currentToken = storedToken
         let currentUserID = userId
-        Task { await authManager.signOut(currentAccessToken: currentToken) }
+        Task { await authManager.signOut(fence: fence, snapshot: snapshot) }
         // Clear local state immediately — don't block on network
         // v1.58: Demo's Mac scan is Demo's (`DemoDataProvider.macScan`), not
         // this Mac's; the next local scan replaces it, but until one runs
@@ -652,6 +676,11 @@ extension AppState {
                 isLoading = false
                 signOut()
                 lastError = L10n.account.deleteSessionExpired
+                return false
+            case .cancelled:
+                // 1.63 (A1): a sign-out or a new sign-in overtook the
+                // up-front refresh. Nothing was deleted; nothing to show.
+                isLoading = false
                 return false
             case .other(let message):
                 // Server side did NOT confirm. Surface the error and keep
@@ -789,6 +818,9 @@ extension AppState {
 
     public func restoreSession() async {
         launchRestorePending = false
+        // 1.63 (A1): not while a sign-out is still revoking its session: the
+        // session it would find is the one being left.
+        guard !api.hasPendingSignOut else { return }
         sessionRestoresInFlight += 1
         defer { sessionRestoresInFlight -= 1 }
         #if os(iOS)
@@ -1073,12 +1105,22 @@ extension AppState {
     }
 
     /// What the API client does with each rotation of the signed-in session
-    /// (`setTokenRefreshHandler`): keeps it, and tells the paired Watch.
+    /// (`setTokenRefreshHandler`): keeps it.
+    ///
+    /// 1.63 (A1): runs under the API client's sign-out fence lock. Only the
+    /// write: through `SessionTokenStore` to the Keychain (lock order: fence
+    /// → `SessionTokenStore` → Keychain). Never the fence API, never the main
+    /// thread; telling the Watch is `announceRotatedAccessToken`, after.
     nonisolated static func persistRotatedTokens(access: String, refresh: String) {
         persistAuthTokens(access: access, refresh: refresh)
-        // 1.61 (B1): the iPhone sends the paired Watch each access token its
-        // refreshes produce; the Watch never refreshes a session it got from
-        // the iPhone itself.
+    }
+
+    /// 1.63 (A1): what the API client does after each rotation is written
+    /// (`setTokenRotationObserver`), outside the fence lock: tells the paired
+    /// Watch. 1.61 (B1): the iPhone sends the paired Watch each access token
+    /// its refreshes produce; the Watch never refreshes a session it got from
+    /// the iPhone itself.
+    nonisolated static func announceRotatedAccessToken(_ access: String) {
         NotificationCenter.default.post(
             name: .cliPulseDidRotateAccessToken,
             object: nil,
@@ -1162,7 +1204,7 @@ extension AppState {
     /// calls it when it is unlocked and when the Watch asks for a token it
     /// cannot give.
     public func restoreSessionIfIdle() {
-        guard !isAuthenticated, !isDemoMode, !isLocalMode,
+        guard !isAuthenticated, !isDemoMode, !isLocalMode, !api.hasPendingSignOut,
               sessionRestoresInFlight == 0, idleSessionRestoreTask == nil, !launchRestorePending else { return }
         if deferredSessionRestoreTask != nil || deferredSessionRestoreInFlight {
             retryDeferredSessionRestoreNow()

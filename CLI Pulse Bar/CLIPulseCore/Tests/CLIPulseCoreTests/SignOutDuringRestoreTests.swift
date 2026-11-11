@@ -96,6 +96,7 @@ final class SignOutDuringRestoreTests: XCTestCase {
         XCTAssertNil(refresh)
         XCTAssertNil(state.deferredSessionRestoreTask, "nothing scheduled")
         XCTAssertNotEqual(state.lastError, L10n.dashboard.serverOffline)
+        SessionRestoreStub.assertEveryLogoutIsLocal()
     }
 
     /// #730's case: a deferred restore try is out, the user taps Try Demo and
@@ -131,6 +132,8 @@ final class SignOutDuringRestoreTests: XCTestCase {
         let access = await api.getToken()
         XCTAssertNil(access)
         XCTAssertNil(state.deferredSessionRestoreTask)
+        XCTAssertEqual(SessionRestoreStub.authorizations(Self.logoutPath), ["access-old"])
+        SessionRestoreStub.assertEveryLogoutIsLocal()
     }
 
     // MARK: - Sign-in
@@ -273,6 +276,10 @@ final class SignOutDuringRestoreTests: XCTestCase {
         XCTAssertNil(state.storedRefreshToken)
         let access = await api.getToken()
         XCTAssertNil(access)
+        // 1.63 (A1): the refresh's rotation was parked for the sign-out, which
+        // revoked the session with it instead of spending refresh-1 again.
+        XCTAssertEqual(SessionRestoreStub.authorizations(Self.logoutPath), ["access-new"])
+        SessionRestoreStub.assertEveryLogoutIsLocal()
     }
 
     // MARK: - The fence, directly
@@ -289,8 +296,9 @@ final class SignOutDuringRestoreTests: XCTestCase {
         AppState.persistAuthTokens(access: "access-rotated", refresh: "refresh-rotated")
         let auth = AuthManager(api: api, persistTokens: AppState.persistAuthTokens)
 
-        api.fenceCurrentSession()
-        await auth.signOut(currentAccessToken: "access-read-before-the-rotation")
+        let fence = api.fenceCurrentSession()
+        await auth.signOut(fence: fence, snapshot: RevocationSnapshot(
+            accessToken: "access-read-before-the-rotation", refreshToken: "refresh-read-before-the-rotation"))
 
         let access = await api.getToken()
         let refresh = await api.getRefreshToken()
@@ -300,6 +308,8 @@ final class SignOutDuringRestoreTests: XCTestCase {
         XCTAssertNil(KeychainHelper.load(key: AuthManager.refreshTokenKeychainKey))
         XCTAssertEqual(SessionRestoreStub.authorizations(Self.logoutPath), ["access-rotated"],
                        "the newest token is the one revoked")
+        XCTAssertTrue(SessionRestoreStub.refreshTokensSent().isEmpty, "no refresh: the token was not expiring")
+        SessionRestoreStub.assertEveryLogoutIsLocal()
     }
 
     /// The guard against the opposite mistake, which would sign people out at

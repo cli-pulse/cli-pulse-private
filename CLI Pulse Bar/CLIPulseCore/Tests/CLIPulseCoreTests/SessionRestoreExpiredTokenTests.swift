@@ -625,6 +625,8 @@ final class SessionRestoreStub: URLProtocol {
         case status(Int, String = "{}")
         case fail(URLError)
         case held(Int, String)
+        /// 1.63: a failure delivered only when the test releases it.
+        case heldFail(URLError)
     }
     typealias Responder = (URLRequest) -> Answer
 
@@ -687,6 +689,24 @@ final class SessionRestoreStub: URLProtocol {
             .compactMap { $0.value(forHTTPHeaderField: "Authorization").map { String($0.dropFirst("Bearer ".count)) } }
     }
 
+    /// 1.63 (A1): the query items of each logout request, in order.
+    static func logoutQueries() -> [[URLQueryItem]?] {
+        requests()
+            .filter { $0.url?.path == "/auth/v1/logout" }
+            .map { request in request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems }
+    }
+
+    /// 1.63 (A1): every logout sent ends one session only (`scope=local`),
+    /// and at least one was sent.
+    static func assertEveryLogoutIsLocal(file: StaticString = #filePath, line: UInt = #line) {
+        let queries = logoutQueries()
+        XCTAssertFalse(queries.isEmpty, "control: a logout was sent", file: file, line: line)
+        for query in queries {
+            XCTAssertEqual(query, [URLQueryItem(name: "scope", value: "local")],
+                           "every logout is scope=local", file: file, line: line)
+        }
+    }
+
     static func refreshTokensSent() -> [String] {
         requests()
             .filter { $0.url?.path == "/auth/v1/token" }
@@ -733,11 +753,23 @@ final class SessionRestoreStub: URLProtocol {
             Self.lock.lock()
             Self.held.append((copy.url?.path ?? "", runLoop, { [weak self] in self?.deliver(status: status, body: body) }))
             Self.lock.unlock()
+        case .heldFail(let error):
+            let runLoop = CFRunLoopGetCurrent()!
+            Self.lock.lock()
+            Self.held.append((copy.url?.path ?? "", runLoop, { [weak self] in
+                guard let self, !self.stopped, let client = self.client else { return }
+                client.urlProtocol(self, didFailWithError: error)
+            }))
+            Self.lock.unlock()
         }
     }
 
+    /// 1.63: a request URLSession has stopped (its task was cancelled) gets
+    /// nothing more. Set and read on the run loop `startLoading` ran on.
+    private var stopped = false
+
     private func deliver(status: Int, body: String) {
-        guard let client else { return }
+        guard !stopped, let client else { return }
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil,
                                        headerFields: ["Content-Type": "application/json"])!
         client.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
@@ -745,5 +777,5 @@ final class SessionRestoreStub: URLProtocol {
         client.urlProtocolDidFinishLoading(self)
     }
 
-    override func stopLoading() {}
+    override func stopLoading() { stopped = true }
 }

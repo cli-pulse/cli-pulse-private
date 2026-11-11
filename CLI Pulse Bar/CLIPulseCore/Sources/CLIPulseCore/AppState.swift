@@ -1340,6 +1340,9 @@ public final class AppState: ObservableObject {
                 await api.setTokenRefreshHandler { newAccess, newRefresh in
                     Self.persistRotatedTokens(access: newAccess, refresh: newRefresh)
                 }
+                await api.setTokenRotationObserver { newAccess in
+                    Self.announceRotatedAccessToken(newAccess)
+                }
                 #if os(iOS)
                 observeProtectedData()
                 // 1.61: no refresh while its new tokens could not be written,

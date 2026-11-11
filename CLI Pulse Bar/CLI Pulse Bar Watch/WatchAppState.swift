@@ -341,23 +341,18 @@ public final class WatchAppState: ObservableObject {
         // already reset `sessionSource`. 1.61: resolved as a restore resolves
         // it, so a session stored before 1.61 that is the iPhone's is not
         // revoked from here either.
-        let token =
-            KeychainHelper.load(key: "cli_pulse_token") ?? ""
-        let revokesOnServer = (
-            WatchSessionRecord.resolve(
-                stored: KeychainHelper.load(key: WatchSessionRecord.keychainKey),
-                accessToken: token,
-                lastPhoneUserID: WatchSessionManager.shared.lastPhoneUserID,
-                hasRefreshToken: !(KeychainHelper.load(key: "cli_pulse_refresh_token") ?? "").isEmpty
-            )?.source ?? sessionSource
-        ).renewsItself
+        // 1.63 (A1): fenced first, as the app fences its sign-outs, so no
+        // refresh writes after this point and one still out keeps its new
+        // pair for the revoke; then the session is read with its refresh
+        // token, as one pair, and the Keychain items are deleted.
+        let revocation = WatchSignOut.captureAndClear(
+            .keychain,
+            lastPhoneUserID: WatchSessionManager.shared.lastPhoneUserID,
+            currentSource: sessionSource,
+            fence: { api.fenceCurrentSession() }
+        )
         stopRefreshLoop()
         refreshGate.authDidChange()
-        KeychainHelper.delete(key: "cli_pulse_token")
-        KeychainHelper.delete(
-            key: "cli_pulse_refresh_token"
-        )
-        KeychainHelper.delete(key: WatchSessionRecord.keychainKey)
         currentUserID = ""
         remoteSessionEpoch = nil
         sessionSource = .watch
@@ -373,15 +368,15 @@ public final class WatchAppState: ObservableObject {
 
         // The generation check inside APIClient makes this safe even if a new
         // phone auth or OTP transition starts before this Task is scheduled.
+        // 1.63 (A1): only the Watch's own session is revoked, and only that
+        // session (`scope=local`); a relayed one sends nothing.
         Task { @MainActor [api, authManager] in
-            _ = await api.beginExternalAuthorizationTransition(
-                generation: lease.generation
+            await WatchSignOut.finish(
+                revocation,
+                transitionGeneration: lease.generation,
+                api: api,
+                authManager: authManager
             )
-            if revokesOnServer {
-                await authManager.signOut(
-                    currentAccessToken: token
-                )
-            }
         }
     }
 

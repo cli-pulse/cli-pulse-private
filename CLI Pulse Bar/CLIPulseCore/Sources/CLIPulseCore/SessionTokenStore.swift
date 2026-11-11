@@ -152,6 +152,21 @@ final class SessionTokenStore: @unchecked Sendable {
         return unsaved
     }
 
+    /// 1.63 (A1): the stored session as one pair, for a sign-out to revoke:
+    /// the pair held unwritten if there is one, else the Keychain's two items,
+    /// both read under the lock every write here holds, so never the access
+    /// token of one write with the refresh token of another.
+    func revocationSnapshot() -> RevocationSnapshot {
+        lock.lock(); defer { lock.unlock() }
+        if let unsaved {
+            return RevocationSnapshot(accessToken: unsaved.access, refreshToken: unsaved.refresh)
+        }
+        return RevocationSnapshot(
+            accessToken: KeychainHelper.load(key: AppState.tokenKeychainKey),
+            refreshToken: KeychainHelper.load(key: AuthManager.refreshTokenKeychainKey)
+        )
+    }
+
     /// Tests only.
     func resetForTesting() {
         lock.lock(); unsaved = nil; lock.unlock()

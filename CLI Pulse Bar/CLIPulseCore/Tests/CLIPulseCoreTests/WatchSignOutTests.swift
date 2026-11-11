@@ -1,0 +1,446 @@
+// 1.63 (A1): the Watch's Sign Out, through the two steps `WatchAppState.signOut`
+// hands it to (`WatchSignOut.captureAndClear`, then `WatchSignOut.finish`).
+//
+// The Watch clears its Keychain, and its client lets go of the session, before
+// the revoke runs. So a session the Watch signed in to on its own must be read,
+// both tokens, before anything is deleted, and revoked with that pair; and a
+// session relayed from the iPhone must send nothing at all (the iPhone's Sign
+// Out ends it). The store here is a dictionary that records every read and
+// delete; the client is the real one over `SessionRestoreStub`.
+
+import Foundation
+import XCTest
+@testable import CLIPulseCore
+
+@MainActor
+final class WatchSignOutTests: XCTestCase {
+
+    private static let userID = "00000000-0000-0000-0000-0000000000a1"
+    private static let tokenPath = "/auth/v1/token"
+    private static let logoutPath = "/auth/v1/logout"
+
+    override func setUp() {
+        super.setUp()
+        SessionRestoreStub.reset()
+        KeychainHelper.inMemoryStoreForTesting = [:]
+        SessionTokenStore.shared.resetForTesting()
+    }
+
+    override func tearDown() {
+        SessionRestoreStub.reset()
+        KeychainHelper.inMemoryStoreForTesting = [:]
+        SessionTokenStore.shared.resetForTesting()
+        super.tearDown()
+    }
+
+    /// Signed in on the Watch with a code: its own session, revoked from here
+    /// with its own pair, read before the deletes.
+    func test_a_session_signed_in_on_the_Watch_is_revoked_with_its_own_pair() async {
+        SessionRestoreStub.respond { request in
+            request.url?.path == Self.logoutPath ? .status(204, "") : .status(500)
+        }
+        let store = Store([
+            WatchSignOut.accessTokenKey: "watch-access",
+            WatchSignOut.refreshTokenKey: "watch-refresh",
+            WatchSessionRecord.keychainKey: WatchSessionRecord(source: .watch, userID: Self.userID).encoded,
+        ])
+        let (api, auth) = await Self.watchClient(access: "watch-access", refresh: "watch-refresh")
+
+        let revocation = WatchSignOut.captureAndClear(store.credentials, lastPhoneUserID: nil, currentSource: .watch,
+                                                        fence: { api.fenceCurrentSession() })
+
+        XCTAssertEqual(revocation, .own(RevocationSnapshot(accessToken: "watch-access", refreshToken: "watch-refresh"),
+                                        fence: 1))
+        XCTAssertTrue(store.items.isEmpty, "the stored session is deleted")
+        XCTAssertTrue(store.readsComeBeforeDeletes, "everything is read before anything is deleted: \(store.events)")
+        XCTAssertTrue(SessionRestoreStub.requests().isEmpty, "nothing sent until the hand-off")
+
+        await WatchSignOut.finish(revocation, transitionGeneration: 2, api: api, authManager: auth)
+
+        XCTAssertEqual(SessionRestoreStub.paths(), [Self.logoutPath])
+        XCTAssertEqual(SessionRestoreStub.authorizations(Self.logoutPath), ["watch-access"])
+        SessionRestoreStub.assertEveryLogoutIsLocal()
+        let held = await api.getToken()
+        XCTAssertNil(held, "the client let go of the session")
+    }
+
+    /// The same session with an expired access token. Its revocation is bound
+    /// before the client lets go, with the client's pair (here the same as the
+    /// Keychain's): the refresh goes out with the Watch's own refresh token,
+    /// and nothing it brings back is installed or written.
+    func test_an_expired_Watch_session_is_refreshed_with_the_pair_read_before_the_deletes() async {
+        let expired = Self.jwt(expiresIn: -3_600)
+        SessionRestoreStub.respond { request in
+            switch request.url?.path {
+            case Self.tokenPath: return .status(200, #"{"access_token":"watch-access-2","refresh_token":"watch-refresh-2"}"#)
+            case Self.logoutPath: return .status(204, "")
+            default: return .status(500)
+            }
+        }
+        let store = Store([
+            WatchSignOut.accessTokenKey: expired,
+            WatchSignOut.refreshTokenKey: "watch-refresh",
+            WatchSessionRecord.keychainKey: WatchSessionRecord(source: .watch, userID: Self.userID).encoded,
+        ])
+        let (api, auth) = await Self.watchClient(access: expired, refresh: "watch-refresh")
+
+        let revocation = WatchSignOut.captureAndClear(store.credentials, lastPhoneUserID: nil, currentSource: .watch,
+                                                        fence: { api.fenceCurrentSession() })
+        await WatchSignOut.finish(revocation, transitionGeneration: 2, api: api, authManager: auth)
+
+        XCTAssertEqual(SessionRestoreStub.paths(), [Self.tokenPath, Self.logoutPath])
+        XCTAssertEqual(SessionRestoreStub.refreshTokensSent(), ["watch-refresh"])
+        XCTAssertEqual(SessionRestoreStub.authorizations(Self.logoutPath), ["watch-access-2"])
+        SessionRestoreStub.assertEveryLogoutIsLocal()
+        let held = await api.getToken()
+        XCTAssertNil(held, "the revoke's refresh installs nothing")
+        XCTAssertNil(KeychainHelper.load(key: WatchSignOut.accessTokenKey), "nor writes anything")
+    }
+
+    /// A session from the iPhone is the iPhone's: no request at all.
+    func test_a_session_relayed_from_the_iPhone_sends_nothing() async {
+        SessionRestoreStub.respond { _ in .status(204, "") }
+        let store = Store([
+            WatchSignOut.accessTokenKey: "phone-access",
+            WatchSessionRecord.keychainKey: WatchSessionRecord(source: .phone, userID: Self.userID).encoded,
+        ])
+        let (api, auth) = await Self.watchClient(access: "phone-access", refresh: nil, relayed: true)
+
+        let revocation = WatchSignOut.captureAndClear(store.credentials, lastPhoneUserID: Self.userID, currentSource: .phone,
+                                                        fence: { api.fenceCurrentSession() })
+        await WatchSignOut.finish(revocation, transitionGeneration: 2, api: api, authManager: auth)
+
+        XCTAssertEqual(revocation, .relayed(fence: 1))
+        XCTAssertFalse(api.hasPendingSignOut, "its fence is released at once: nothing is revoked")
+        XCTAssertTrue(store.items.isEmpty, "the stored session is deleted all the same")
+        XCTAssertTrue(SessionRestoreStub.requests().isEmpty, "a relayed session makes zero requests")
+        let held = await api.getToken()
+        XCTAssertNil(held)
+    }
+
+    /// A session stored before 1.61 has no record. As a restore reads it, one
+    /// whose token is the iPhone's account is the iPhone's, even with a
+    /// refresh token kept next to it, so it is not revoked from here.
+    func test_an_unrecorded_session_of_the_iPhones_account_is_not_revoked_from_the_Watch() async {
+        SessionRestoreStub.respond { _ in .status(204, "") }
+        let token = Self.jwt(expiresIn: 600)
+        let store = Store([
+            WatchSignOut.accessTokenKey: token,
+            WatchSignOut.refreshTokenKey: "kept-refresh",
+        ])
+        let (api, auth) = await Self.watchClient(access: token, refresh: "kept-refresh")
+
+        let revocation = WatchSignOut.captureAndClear(store.credentials, lastPhoneUserID: Self.userID, currentSource: .watch,
+                                                        fence: { api.fenceCurrentSession() })
+        await WatchSignOut.finish(revocation, transitionGeneration: 2, api: api, authManager: auth)
+
+        XCTAssertEqual(revocation, .relayed(fence: 1))
+        XCTAssertTrue(SessionRestoreStub.requests().isEmpty)
+    }
+
+    func test_nothing_stored_sends_nothing() async {
+        SessionRestoreStub.respond { _ in .status(204, "") }
+        let store = Store([:])
+        let (api, auth) = await Self.watchClient(access: nil, refresh: nil)
+
+        let revocation = WatchSignOut.captureAndClear(store.credentials, lastPhoneUserID: nil, currentSource: .watch,
+                                                        fence: { api.fenceCurrentSession() })
+        await WatchSignOut.finish(revocation, transitionGeneration: 2, api: api, authManager: auth)
+
+        XCTAssertEqual(revocation, .nothing(fence: 1))
+        XCTAssertFalse(api.hasPendingSignOut)
+        XCTAssertTrue(SessionRestoreStub.requests().isEmpty)
+    }
+
+    /// The Watch's own session has an expired access token and its ordinary
+    /// refresh is out when the user signs out. The server takes a refresh
+    /// token once. The sign-out waits for that refresh and revokes with the
+    /// pair it brings back; it never sends the refresh token a second time
+    /// (up to the first 1.63 draft it did, refused, and the session survived).
+    func test_a_Watch_sign_out_waits_for_its_refresh_and_never_spends_the_refresh_token_twice() async throws {
+        let expired = Self.jwt(expiresIn: -3_600)
+        let refreshOut = expectation(description: "the ordinary refresh is out")
+        let waiting = expectation(description: "the sign-out waits for it")
+        SessionRestoreStub.respond { request in
+            switch request.url?.path {
+            case Self.tokenPath:
+                let uses = SessionRestoreStub.refreshTokensSent().filter { $0 == "watch-refresh" }.count
+                guard uses == 1 else {
+                    return .status(400, #"{"code":400,"error_code":"refresh_token_already_used","msg":"Already Used"}"#)
+                }
+                refreshOut.fulfill()
+                return .held(200, #"{"access_token":"watch-access-2","refresh_token":"watch-refresh-2"}"#)
+            case Self.logoutPath:
+                return .status(204, "")
+            default:
+                return .status(500)
+            }
+        }
+        let store = Store([
+            WatchSignOut.accessTokenKey: expired,
+            WatchSignOut.refreshTokenKey: "watch-refresh",
+            WatchSessionRecord.keychainKey: WatchSessionRecord(source: .watch, userID: Self.userID).encoded,
+        ])
+        let (api, auth) = await Self.watchClient(access: expired, refresh: "watch-refresh")
+        await api.setSignOutWaitHookForTesting { waiting.fulfill() }
+
+        let ordinary = Task { try await api.refreshAccessToken() }
+        await fulfillment(of: [refreshOut], timeout: 5)
+        let revocation = WatchSignOut.captureAndClear(store.credentials, lastPhoneUserID: nil, currentSource: .watch,
+                                                      fence: { api.fenceCurrentSession() })
+        let finishing = Task { await WatchSignOut.finish(revocation, transitionGeneration: 2, api: api, authManager: auth) }
+        await fulfillment(of: [waiting], timeout: 5)
+        SessionRestoreStub.releaseHeld(path: Self.tokenPath)
+        await finishing.value
+
+        do {
+            _ = try await ordinary.value
+            XCTFail("the ordinary refresh's caller gets no pair of the session signed out of")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        XCTAssertEqual(SessionRestoreStub.refreshTokensSent(), ["watch-refresh"], "the refresh token is sent once")
+        XCTAssertEqual(SessionRestoreStub.authorizations(Self.logoutPath), ["watch-access-2"],
+                       "the Watch's sign-out revokes with its refresh's rotated pair")
+        SessionRestoreStub.assertEveryLogoutIsLocal()
+        let held = await api.getToken()
+        XCTAssertNil(held, "nothing installed")
+        let parked = await api.parkedRotationCountForTesting
+        XCTAssertEqual(parked, 0, "nothing left parked once the revocation is done")
+    }
+
+    /// The Watch's own refresh is out when the user signs out and comes back
+    /// after the fence, before the stored session is deleted. It writes
+    /// nothing back (in the first 1.63 draft the fence came after the
+    /// deletes, and a refresh landing before it was written), and its new
+    /// pair goes to the revocation.
+    func test_a_refresh_that_lands_between_the_fence_and_the_deletes_writes_nothing_back() async throws {
+        let refreshOut = expectation(description: "the ordinary refresh is out")
+        SessionRestoreStub.respond { request in
+            switch request.url?.path {
+            case Self.tokenPath:
+                refreshOut.fulfill()
+                return .held(200, #"{"access_token":"watch-access-2","refresh_token":"watch-refresh-2"}"#)
+            case Self.logoutPath:
+                return .status(204, "")
+            default:
+                return .status(500)
+            }
+        }
+        let (api, auth) = await Self.watchClient(access: "watch-access", refresh: "watch-refresh")
+        // A Watch that writes its rotations, as the iPhone does.
+        let written = Written()
+        await api.setTokenRefreshHandler { access, _ in written.record(access) }
+        let landed = Flag()
+        let ordinary = Task.detached { () -> Bool in
+            do {
+                _ = try await api.refreshAccessToken()
+                landed.set()
+                return true
+            } catch {
+                landed.set()
+                return false
+            }
+        }
+        await fulfillment(of: [refreshOut], timeout: 5)
+        let store = Store([
+            WatchSignOut.accessTokenKey: "watch-access",
+            WatchSignOut.refreshTokenKey: "watch-refresh",
+            WatchSessionRecord.keychainKey: WatchSessionRecord(source: .watch, userID: Self.userID).encoded,
+        ])
+        var landedBeforeTheDeletes = false
+        store.beforeFirstDelete = {
+            // After the fence, before the deletes: the refresh comes back now.
+            SessionRestoreStub.releaseHeld(path: Self.tokenPath)
+            landedBeforeTheDeletes = landed.wait(seconds: 5)
+        }
+
+        let revocation = WatchSignOut.captureAndClear(store.credentials, lastPhoneUserID: nil, currentSource: .watch,
+                                                      fence: { api.fenceCurrentSession() })
+        await WatchSignOut.finish(revocation, transitionGeneration: 2, api: api, authManager: auth)
+        let gotPair = await ordinary.value
+
+        XCTAssertTrue(landedBeforeTheDeletes, "control: the refresh came back between the fence and the deletes")
+        XCTAssertEqual(written.count, 0, "a refresh that lands after the fence writes nothing back")
+        XCTAssertFalse(gotPair, "its caller gets no pair of the session signed out of")
+        XCTAssertTrue(store.items.isEmpty)
+        XCTAssertEqual(SessionRestoreStub.refreshTokensSent(), ["watch-refresh"])
+        XCTAssertEqual(SessionRestoreStub.authorizations(Self.logoutPath), ["watch-access-2"],
+                       "the refresh's new pair goes to the revocation")
+        SessionRestoreStub.assertEveryLogoutIsLocal()
+    }
+
+    /// After a refresh in the session the client holds a2/r2 while the Watch's
+    /// Keychain still holds a1/r1 (the Watch writes no rotation of its own
+    /// session yet; a follow-up). The revocation uses the client's pair, and
+    /// r1, spent by that refresh, is never sent again.
+    func test_a_Watch_sign_out_revokes_with_the_clients_newer_pair_not_the_stored_one() async throws {
+        let expired = Self.jwt(expiresIn: -3_600)
+        SessionRestoreStub.respond { request in
+            switch request.url?.path {
+            case Self.tokenPath:
+                guard SessionRestoreStub.refreshTokensSent().filter({ $0 == "watch-r1" }).count == 1 else {
+                    return .status(400, #"{"code":400,"error_code":"refresh_token_already_used","msg":"Already Used"}"#)
+                }
+                return .status(200, #"{"access_token":"watch-a2","refresh_token":"watch-r2"}"#)
+            case Self.logoutPath:
+                return .status(204, "")
+            default:
+                return .status(500)
+            }
+        }
+        let (api, auth) = await Self.watchClient(access: expired, refresh: "watch-r1")
+        _ = try await api.refreshAccessToken()
+        let held = await api.getToken()
+        XCTAssertEqual(held, "watch-a2", "control: the client holds the newer pair")
+        let store = Store([
+            WatchSignOut.accessTokenKey: expired,
+            WatchSignOut.refreshTokenKey: "watch-r1",
+            WatchSessionRecord.keychainKey: WatchSessionRecord(source: .watch, userID: Self.userID).encoded,
+        ])
+
+        let revocation = WatchSignOut.captureAndClear(store.credentials, lastPhoneUserID: nil, currentSource: .watch,
+                                                      fence: { api.fenceCurrentSession() })
+        await WatchSignOut.finish(revocation, transitionGeneration: 2, api: api, authManager: auth)
+
+        XCTAssertEqual(SessionRestoreStub.authorizations(Self.logoutPath), ["watch-a2"],
+                       "the revocation uses the client's newer pair")
+        XCTAssertEqual(SessionRestoreStub.refreshTokensSent(), ["watch-r1"], "r1 is not sent again")
+        SessionRestoreStub.assertEveryLogoutIsLocal()
+    }
+
+    /// The stored session is the Watch's own, but the client holds a session
+    /// the iPhone relayed (a relay that landed late). The sign-out revokes the
+    /// stored own session; it never takes or revokes the relayed one, which
+    /// is the iPhone's (`beginRevocation` skips a held session renewed
+    /// elsewhere).
+    func test_a_Watch_own_sign_out_never_revokes_the_relayed_session_the_client_holds() async throws {
+        SessionRestoreStub.respond { request in
+            request.url?.path == Self.logoutPath ? .status(204, "") : .status(500)
+        }
+        let store = Store([
+            WatchSignOut.accessTokenKey: "own-access",
+            WatchSignOut.refreshTokenKey: "own-refresh",
+            WatchSessionRecord.keychainKey: WatchSessionRecord(source: .watch, userID: Self.userID).encoded,
+        ])
+        let (api, auth) = await Self.watchClient(access: "phone-access", refresh: nil, relayed: true)
+
+        let revocation = WatchSignOut.captureAndClear(store.credentials, lastPhoneUserID: nil, currentSource: .watch,
+                                                      fence: { api.fenceCurrentSession() })
+        XCTAssertEqual(revocation, .own(RevocationSnapshot(accessToken: "own-access", refreshToken: "own-refresh"),
+                                        fence: 1))
+        await WatchSignOut.finish(revocation, transitionGeneration: 2, api: api, authManager: auth)
+
+        XCTAssertEqual(SessionRestoreStub.authorizations(Self.logoutPath), ["own-access"],
+                       "the stored own session is revoked, never the relayed one the client holds")
+        XCTAssertFalse(SessionRestoreStub.requests().contains {
+            $0.value(forHTTPHeaderField: "Authorization") == "Bearer phone-access"
+        })
+    }
+
+    // MARK: - Helpers
+
+    /// The Watch's Keychain items, recording each read and delete in order.
+    final class Store {
+        private(set) var items: [String: String]
+        private(set) var events: [String] = []
+        /// Runs once, just before the first delete.
+        var beforeFirstDelete: (() -> Void)?
+
+        init(_ items: [String: String]) { self.items = items }
+
+        var credentials: WatchSignOut.CredentialStore {
+            WatchSignOut.CredentialStore(
+                load: { key in
+                    self.events.append("load \(key)")
+                    return self.items[key]
+                },
+                delete: { key in
+                    if let hook = self.beforeFirstDelete {
+                        self.beforeFirstDelete = nil
+                        hook()
+                    }
+                    self.events.append("delete \(key)")
+                    self.items[key] = nil
+                }
+            )
+        }
+
+        var readsComeBeforeDeletes: Bool {
+            guard
+                let lastRead = events.lastIndex(where: { $0.hasPrefix("load ") }),
+                let firstDelete = events.firstIndex(where: { $0.hasPrefix("delete ") })
+            else { return false }
+            return lastRead < firstDelete
+        }
+    }
+
+    /// Access tokens the client handed to `onTokenRefreshed`.
+    final class Written: @unchecked Sendable {
+        private let lock = NSLock()
+        private var tokens: [String] = []
+        func record(_ token: String) { lock.lock(); tokens.append(token); lock.unlock() }
+        var count: Int { lock.lock(); defer { lock.unlock() }; return tokens.count }
+    }
+
+    /// Set once from any thread; waited for without the main actor running.
+    final class Flag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var isSet = false
+        func set() { lock.lock(); isSet = true; lock.unlock() }
+        func wait(seconds: TimeInterval) -> Bool {
+            let deadline = Date().addingTimeInterval(seconds)
+            while Date() < deadline {
+                lock.lock()
+                let done = isSet
+                lock.unlock()
+                if done { return true }
+                usleep(1_000)
+            }
+            return false
+        }
+    }
+
+    /// The Watch's client and auth manager as `WatchAppState` builds them, with
+    /// the session installed by an earlier transition (generation 1). The
+    /// tokens the auth manager writes go to the in-memory Keychain.
+    private static func watchClient(
+        access: String?, refresh: String?, relayed: Bool = false
+    ) async -> (APIClient, AuthManager) {
+        let api = APIClient(supabaseURL: "https://stub.cli-pulse.test", supabaseAnonKey: "anon",
+                            session: SessionRestoreStub.session())
+        _ = await api.beginExternalAuthorizationTransition(generation: 1)
+        var renewer: APIClient.SessionRenewer?
+        if relayed { renewer = { "unused" } }
+        if let access {
+            _ = await api.installExternalAuthenticatedSession(
+                accessToken: access, refreshToken: refresh, userID: userID, transitionGeneration: 1,
+                renewer: renewer
+            )
+        }
+        let auth = AuthManager(api: api) { access, refresh in
+            if access.isEmpty {
+                KeychainHelper.delete(key: WatchSignOut.accessTokenKey)
+            } else {
+                KeychainHelper.save(key: WatchSignOut.accessTokenKey, value: access)
+            }
+            if let refresh, !refresh.isEmpty {
+                KeychainHelper.save(key: WatchSignOut.refreshTokenKey, value: refresh)
+            } else {
+                KeychainHelper.delete(key: WatchSignOut.refreshTokenKey)
+            }
+        }
+        return (api, auth)
+    }
+
+    /// An unsigned, made-up JWT for `userID` whose `exp` is `seconds` from now.
+    private static func jwt(expiresIn seconds: TimeInterval) -> String {
+        func b64(_ json: String) -> String {
+            Data(json.utf8).base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")
+        }
+        let exp = Int(Date().addingTimeInterval(seconds).timeIntervalSince1970)
+        return "\(b64(#"{"alg":"ES256","typ":"JWT"}"#)).\(b64("{\"sub\":\"\(userID)\",\"exp\":\(exp)}")).signature"
+    }
+}

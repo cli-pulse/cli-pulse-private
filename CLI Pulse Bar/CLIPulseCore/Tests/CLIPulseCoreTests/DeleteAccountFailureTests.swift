@@ -84,6 +84,12 @@ final class DeleteAccountFailureTests: XCTestCase {
         XCTAssertEqual(message, "custom failure")
     }
 
+    /// 1.63 (A1): a sign-out or a new sign-in overtook the up-front refresh.
+    /// Nothing was deleted, and it is not shown as an error.
+    func testCancellationIsSilent() {
+        XCTAssertEqual(DeleteAccountFailure.classify(CancellationError()), .cancelled)
+    }
+
     // MARK: - Equatable contract sanity
 
     /// Pin Equatable so callsites can compare `result == .sessionExpired`

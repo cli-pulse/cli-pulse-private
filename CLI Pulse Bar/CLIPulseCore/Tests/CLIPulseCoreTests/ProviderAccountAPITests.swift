@@ -88,6 +88,12 @@ final class ProviderAccountAPITests: XCTestCase {
     func testStaleSignOutRevokesOldTokenWithoutClearingNewSession() async {
         ProviderAccountAPIStubProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/auth/v1/logout")
+            // 1.63 (A1): this session only.
+            XCTAssertEqual(
+                request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems,
+                [URLQueryItem(name: "scope", value: "local")],
+                "every logout is scope=local"
+            )
             XCTAssertEqual(
                 request.value(
                     forHTTPHeaderField: "Authorization"
@@ -118,8 +124,11 @@ final class ProviderAccountAPITests: XCTestCase {
             transitionGeneration: 2
         )
 
+        // A call without a fence (as account deletion makes): the client holds
+        // B, which does not carry A's token, so only A's pair is revoked.
         await api.signOutServer(
-            expectedAccessToken: "token-a"
+            fence: nil,
+            snapshot: RevocationSnapshot(accessToken: "token-a", refreshToken: "refresh-a")
         )
 
         let currentToken = await api.getToken()

@@ -24,6 +24,9 @@ import Foundation
 /// API client.
 public enum DeleteAccountFailure: Equatable {
     case sessionExpired
+    /// 1.63 (A1): the up-front refresh was overtaken by a sign-out or a new
+    /// sign-in (`CancellationError`). Nothing was deleted, nothing is shown.
+    case cancelled
     case other(message: String)
 
     /// Classify any error thrown out of `AuthManager.deleteAccount` /
@@ -31,6 +34,9 @@ public enum DeleteAccountFailure: Equatable {
     public static func classify(_ error: Error) -> DeleteAccountFailure {
         if let apiError = error as? APIError, apiError == .tokenExpired {
             return .sessionExpired
+        }
+        if error is CancellationError {
+            return .cancelled
         }
         return .other(message: error.localizedDescription)
     }
