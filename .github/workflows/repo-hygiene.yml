@@ -111,6 +111,12 @@ jobs:
       # and the PR most likely to touch PRIVACY.md is a docs-only one.
       - run: bash scripts/check_privacy_version.sh
       - run: bash scripts/test_check_privacy_version.sh
+      # 1.63: the apps and CLIPulseCore's tests must resolve the same
+      # sentry-cocoa, or the crash-report scrubber's tests run against an SDK
+      # the apps do not ship (1.62: 9.12.1 vs 9.11.0). Here for the same reason
+      # as the line above: this workflow is not path-filtered.
+      - run: bash scripts/check_sentry_pins.sh
+      - run: bash scripts/test_check_sentry_pins.sh
       # Characters App Store Connect refuses: it refused the 1.57 iOS What's
       # New for one "✕" (409 INVALID_CHARACTERS, 2026-10-20), after the Mac's
       # had been written. Apple publishes no list, so the listing and What's
