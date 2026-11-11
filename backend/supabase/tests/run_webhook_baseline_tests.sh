@@ -83,7 +83,8 @@ WEBHOOK_MIGRATIONS=(
     "whole:migrate_v0.62_revoke_process_webhook_jobs.sql"
 )
 # The raw-text guard (part B) fails on any migration that mentions a queue
-# object name anywhere, comments included, unless it is in WEBHOOK_MIGRATIONS or
+# object name anywhere (comments included, any letter case: PostgreSQL folds
+# unquoted identifiers to lower case), unless it is in WEBHOOK_MIGRATIONS or
 # listed here. Each entry is "<exact file name>|<why it is not a queue change>".
 # Reviewed entries only; a new migration that merely mentions the queue (B1b's
 # comparison with the app-push queue, say) adds its own line.
@@ -217,14 +218,16 @@ rebuild_from_migrations() { # rebuild_from_migrations <dir>
 # ── the forgotten-migration guard ───────────────────────────────────────────
 # The forgotten-migration guard: raw text, no stripping, no lexing.
 guard_forgotten_migrations() { # guard_forgotten_migrations <dir> -> echoes offenders; returns 2 on a setup error
-    local f base entry e listed allowed rc
+    local f base entry e listed allowed rc reason
     for e in "${WEBHOOK_ALLOWLIST[@]}"; do
-        [[ "${e%%|*}" == migrate_v*.sql && "$e" == *"|"?* ]] || { echo "bad allowlist entry (file|reason): $e" >&2; return 2; }
+        reason="${e#*|}"
+        [[ "${e%%|*}" == migrate_v*.sql && "$e" == *"|"* && -n "${reason//[[:space:]]/}" ]] \
+            || { echo "bad allowlist entry (needs a file name and a non-blank reason): $e" >&2; return 2; }
         [[ -f "$1/${e%%|*}" ]] || { echo "allowlist names a missing file: ${e%%|*}" >&2; return 2; }
     done
     for f in "$1"/migrate_v*.sql; do
         base="$(basename "$f")"
-        rc=0; grep -q -E "$QUEUE_NAMES" "$f" || rc=$?
+        rc=0; grep -q -i -E "$QUEUE_NAMES" "$f" || rc=$?
         if (( rc == 1 )); then continue; fi
         (( rc == 0 )) || { echo "cannot read $base" >&2; return 2; }
         listed=0; allowed=0
@@ -402,13 +405,13 @@ if [[ -z "${B0_CONTROL:-}" ]]; then
     run_control "the policy in v0.25's non-initplan form" 'FAIL  B\. the current baseline'
     fresh_copy; sed -i.bak '/^revoke execute on function public\.process_webhook_jobs() from PUBLIC, anon, authenticated;/d' "$CTL/app_rpc.sql"
     run_control "the v0.62 revoke dropped" 'FAIL  B\. the current baseline|FAIL  C\. (anon|authenticated) cannot execute'
-    fresh_copy; printf '%s\n' '-- a later queue change someone forgot to mirror' 'create or replace function public.x() returns void language sql as $$ select 1 from public.webhook_jobs $$;' > "$CTL/migrate_v0.99_x.sql"
-X='FAIL  B\. every migration that mentions the queue'
+X='FAIL  B\. every migration that mentions the queue.*migrate_v0\.99_x\.sql'  # the diagnostic names the offending file
     mention() { # mention <label> <file content, printf args...>: a new migration; the suite must fail naming it
         local label="$1"; shift; fresh_copy; printf '%s\n' "$@" > "$CTL/migrate_v0.99_x.sql"
         run_control "$label" "$X"
     }
     mention "a new migration that uses webhook_jobs in code" '-- a later queue change someone forgot to mirror' 'create or replace function public.x() returns void language sql as $$ select 1 from public.webhook_jobs $$;'
+    mention "an upper-case-only reference (DELETE FROM public.WEBHOOK_JOBS)" 'DELETE FROM public.WEBHOOK_JOBS WHERE processed_at < now();'
     mention "a new migration that names webhook_jobs only in a comment" '-- webhook_jobs is only named here' 'select 1;'
     mention "a new migration that names it only in a block comment" '/* process_webhook_jobs */' 'select 1;'
     mention "E'it\\'s /*' hiding a later reference (a lexer would lose it)" "select E'it\\'s /*';" 'select 1 from public.webhook_jobs;' '/* actual comment */'
@@ -422,6 +425,13 @@ X='FAIL  B\. every migration that mentions the queue'
     fresh_copy; echo '-- webhook_jobs, once more, in an allowlisted file' >> "$CTL/migrate_v0.78_unschedule_swarm_alert_eval.sql"
     out="$(B0_CONTROL=1 B0_SQL_DIR="$CTL" bash "$HERE/run_webhook_baseline_tests.sh" 2>&1)" && pass "control: an allowlisted migration that mentions the queue passes" \
         || { fail "control: an allowlisted migration was flagged"; echo "$out" | tail -5 >&2; }
+    # an allowlist entry with a blank or whitespace-only reason is refused
+    for blank in '' '   '; do
+        fresh_copy; sed "s/^\\(    \"migrate_v0\\.88_schedule_prune_anonymous_installs\\.sql\\)|.*\"\$/\\1|$blank\"/" "$HERE/run_webhook_baseline_tests.sh" > "$CTL/tests/run_webhook_baseline_tests.sh"
+        if cmp -s "$HERE/run_webhook_baseline_tests.sh" "$CTL/tests/run_webhook_baseline_tests.sh"; then echo "control: the blank-reason edit did not apply" >&2; exit 2; fi
+        out="$(B0_CONTROL=1 bash "$CTL/tests/run_webhook_baseline_tests.sh" 2>&1)" && fail "control: the suite passed with a blank allowlist reason" \
+            || { if grep -q "bad allowlist entry.*migrate_v0\.88" <<<"$out"; then pass "control: an allowlist entry with a blank reason ('$blank') is refused"; else fail "control: blank reason failed, but not as refused"; echo "$out" | tail -5 >&2; fi; }
+    done
     # removing an allowlist entry makes the suite fail for that file
     fresh_copy; sed '/^    "migrate_v0\.78_unschedule_swarm_alert_eval\.sql|/d' "$HERE/run_webhook_baseline_tests.sh" > "$CTL/tests/run_webhook_baseline_tests.sh"
     if cmp -s "$HERE/run_webhook_baseline_tests.sh" "$CTL/tests/run_webhook_baseline_tests.sh"; then echo "control: the allowlist line was not found" >&2; exit 2; fi
