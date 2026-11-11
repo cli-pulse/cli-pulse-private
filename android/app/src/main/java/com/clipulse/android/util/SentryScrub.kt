@@ -100,7 +100,7 @@ internal object SentryScrub {
                     val base = redact(raw)
                     var name = base
                     var n = 2
-                    while (out.containsKey(name)) name = "$base#${n++}"
+                    while (out.containsKey(name)) name = base + "#" + n++
                     out[name] = scrubValue(raw, v, depth + 1, path)
                 }
                 out
