@@ -118,7 +118,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `one failing delete keeps the other five and the marker, and a retry on the same instance finishes`() = runTest {
+    fun `one failing delete does not stop the other five and keeps the marker`() = runTest {
         val env = Env(this)
         val a = env.installA()
         env.dao.fill("A")
@@ -129,10 +129,26 @@ class SessionLifecycleTest {
         for (t in FakeCacheDao.TABLES - "providers") assertEquals("table $t", 0, env.dao.rowCount(t))
         assertEquals(1, env.dao.rowCount("providers"))
         assertEquals("retained for a retry", a, env.store.teardownPending)
+        env.scope.cancel()
+    }
+
+    @Test
+    fun `a failed teardown is retried in the same process until it succeeds`() = runTest {
+        val env = Env(this)
+        val a = env.installA()
+        env.dao.fill("A")
+        env.dao.failingClears += FakeCacheDao.TABLES
+        env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut)
+        assertEquals(a, env.store.teardownPending)
+
+        // Still failing at the first retry: it backs off and tries again.
+        advanceTimeBy(env.lifecycle.retryBaseMillis + 1)
+        runCurrent()
+        assertEquals(a, env.store.teardownPending)
 
         // Room recovers; no restart: the coordinator's own retry finishes the job.
         env.dao.failingClears.clear()
-        advanceTimeBy(env.lifecycle.retryBaseMillis + 1)
+        advanceTimeBy(env.lifecycle.retryMaxMillis + 1)
         runCurrent()
         assertTrue(env.allTablesEmpty())
         assertNull(env.store.teardownPending)
@@ -283,7 +299,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `while a previous session's deletion is pending, writes are refused at once and the retry lets them through`() = runTest {
+    fun `while a previous session's deletion is pending, writes are refused at once`() = runTest {
         val env = Env(this)
         val a = env.installA()
         env.dao.fill("A")
@@ -304,11 +320,31 @@ class SessionLifecycleTest {
         assertFalse("B" in env.dao.allRows())
 
         env.dao.failingClears.clear()
-        advanceTimeBy(env.lifecycle.retryMaxMillis + 1)
-        runCurrent()
-        assertNull(env.store.teardownPending)
+        assertTrue(env.lifecycle.runPendingTeardown())
         env.lifecycle.write(ctxB) { env.dao.saveDashboard(CachedDashboard(json = "B")) }
         assertEquals(listOf("B"), env.dao.allRows())
+        env.scope.cancel()
+    }
+
+    @Test
+    fun `a write queued behind an end is refused once the end has run`() = runTest {
+        val env = Env(this)
+        val a = env.installA()
+        val ctxA = env.store.snapshot()!!
+        val hold = CompletableDeferred<Unit>()
+        env.scope.launch { env.lifecycle.write(ctxA) { hold.await() } } // holds the lock
+        runCurrent()
+        val end = env.scope.async { env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut) }
+        runCurrent() // the end is queued first
+        val late = env.scope.async { runCatching { env.lifecycle.write(ctxA) { env.dao.saveDashboard(CachedDashboard(json = "A")) } } }
+        runCurrent() // passed the check at entry (A was still current), queued behind the end
+
+        hold.complete(Unit)
+        runCurrent()
+
+        assertNotNull(end.await())
+        assertTrue(late.await().exceptionOrNull() is ApiError.SessionSuperseded)
+        assertTrue(env.dao.allRows().isEmpty())
         env.scope.cancel()
     }
 
