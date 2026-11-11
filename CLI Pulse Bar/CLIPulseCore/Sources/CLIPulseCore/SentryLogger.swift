@@ -73,41 +73,60 @@ public enum SentryLogger {
         let build = (info?["CFBundleVersion"] as? String) ?? "0"
 
         SentrySDK.start { options in
-            options.dsn = dsn
-            options.releaseName = "cli-pulse@\(version)+\(build)"
-            options.environment = Self.environment()
-            options.tracesSampleRate = 0.0
-            options.attachStacktrace = true
-            options.enableAutoSessionTracking = true
-            options.maxBreadcrumbs = 50
-            applyPrivacyOptions(options)
-            // macOS menu-bar app: when App-Napped in the background the main
-            // run loop is throttled, which the default 2s app-hang watchdog
-            // misreports as a hang with a benign idle stack (Sentry
-            // APPLE-MACOS-B, the most-frequent macOS "hang"). Raise the
-            // threshold on macOS to cut those false positives while still
-            // catching genuine multi-second main-thread blocks. (App-hang V2
-            // is iOS/tvOS/visionOS-only in sentry-cocoa, so it's a no-op
-            // here; the causal fix is the BackgroundActivityAssertion that
-            // keeps the app out of App Nap.)
-            if platform == .macOS {
-                options.appHangTimeoutInterval = 3.0
-            }
-            #if DEBUG
-            options.debug = false
-            #endif
-            options.beforeSend = { event in
-                Self.scrub(event: event)
-            }
-            options.beforeBreadcrumb = { crumb in
-                Self.scrub(breadcrumb: crumb)
-            }
+            configure(
+                options,
+                dsn: dsn,
+                releaseName: "cli-pulse@\(version)+\(build)",
+                environment: Self.environment(),
+                platform: platform
+            )
         }
 
         SentrySDK.configureScope { scope in
             scope.setTag(value: platform.rawValue, key: "platform_family")
         }
         runAfterStart()
+    }
+
+    /// Every option the app starts Sentry with, in one function the tests call
+    /// (1.63): the scrubbing hooks and the privacy options are checked on the
+    /// options the app really uses, not on a copy.
+    static func configure(
+        _ options: Options,
+        dsn: String,
+        releaseName: String,
+        environment: String,
+        platform: SentryPlatform
+    ) {
+        options.dsn = dsn
+        options.releaseName = releaseName
+        options.environment = environment
+        options.tracesSampleRate = 0.0
+        options.attachStacktrace = true
+        options.enableAutoSessionTracking = true
+        options.maxBreadcrumbs = 50
+        applyPrivacyOptions(options)
+        // macOS menu-bar app: when App-Napped in the background the main
+        // run loop is throttled, which the default 2s app-hang watchdog
+        // misreports as a hang with a benign idle stack (Sentry
+        // APPLE-MACOS-B, the most-frequent macOS "hang"). Raise the
+        // threshold on macOS to cut those false positives while still
+        // catching genuine multi-second main-thread blocks. (App-hang V2
+        // is iOS/tvOS/visionOS-only in sentry-cocoa, so it's a no-op
+        // here; the causal fix is the BackgroundActivityAssertion that
+        // keeps the app out of App Nap.)
+        if platform == .macOS {
+            options.appHangTimeoutInterval = 3.0
+        }
+        #if DEBUG
+        options.debug = false
+        #endif
+        options.beforeSend = { event in
+            Self.scrub(event: event)
+        }
+        options.beforeBreadcrumb = { crumb in
+            Self.scrub(breadcrumb: crumb)
+        }
     }
 
     /// The options that decide what leaves the device beyond crash reports,

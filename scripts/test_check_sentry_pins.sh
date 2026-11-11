@@ -99,5 +99,17 @@ expect "two sentry-cocoa pins" 1 "2 sentry-cocoa pins"
 fresh; write_v3 "$TMP/case/$APPS_REL" 9.12.1 ""; write_v2 "$TMP/case/$CORE_REL" 9.12.1 ""
 expect "a pin without a revision" 1 "lacks a version or a revision"
 
+fresh; write_v3 "$TMP/case/$APPS_REL" 9.12.1 "$REV_A"; mkdir -p "$(dirname "$TMP/case/$CORE_REL")"
+printf '[1, 2]\n' >"$TMP/case/$CORE_REL"
+expect "valid JSON that is not an object" 1 "has no pins list"
+
+fresh; write_v3 "$TMP/case/$APPS_REL" 9.12.1 "$REV_A"; mkdir -p "$(dirname "$TMP/case/$CORE_REL")"
+printf '{ "pins" : [ { "identity" : "sentry-cocoa", "state" : "9.12.1" } ], "version" : 2 }\n' >"$TMP/case/$CORE_REL"
+expect "a pin whose state is not an object" 1 "lacks a version or a revision"
+
+fresh; write_v3 "$TMP/case/$APPS_REL" 9.12.1 "$REV_A"; mkdir -p "$(dirname "$TMP/case/$CORE_REL")"
+printf '{ "pins" : [ { "identity" : "sentry-cocoa", "state" : { "version" : 9.12, "revision" : 5 } } ], "version" : 2 }\n' >"$TMP/case/$CORE_REL"
+expect "non-string version and revision" 1 "lacks a version or a revision"
+
 echo "check_sentry_pins controls: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

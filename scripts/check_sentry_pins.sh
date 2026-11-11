@@ -36,17 +36,19 @@ import json, sys
 def pin(path):
     try:
         with open(path) as f:
-            pins = json.load(f).get("pins")
+            root = json.load(f)
     except (OSError, ValueError) as e:
         sys.exit(f"::error::check_sentry_pins: cannot read {path}: {e}")
+    pins = root.get("pins") if isinstance(root, dict) else None
     if not isinstance(pins, list):
         sys.exit(f"::error::check_sentry_pins: {path} has no pins list")
     found = [p for p in pins if isinstance(p, dict) and p.get("identity") == "sentry-cocoa"]
     if len(found) != 1:
         sys.exit(f"::error::check_sentry_pins: {path} has {len(found)} sentry-cocoa pins, expected 1")
-    state = found[0].get("state") or {}
+    state = found[0].get("state")
+    state = state if isinstance(state, dict) else {}
     version, revision = state.get("version"), state.get("revision")
-    if not version or not revision:
+    if not (isinstance(version, str) and version and isinstance(revision, str) and revision):
         sys.exit(f"::error::check_sentry_pins: {path}: sentry-cocoa pin lacks a version or a revision")
     return version, revision
 

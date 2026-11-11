@@ -118,12 +118,43 @@ final class SentryDeviceLinkScrubTests: XCTestCase {
 
     // MARK: - options
 
-    func testMetricsAreOffAndThePrivacyOptionsHold() {
+    /// The options the app really starts the SDK with (`configure`, called by
+    /// `start`), so dropping a line from it, or the hooks, fails here.
+    private func appOptions(_ platform: SentryPlatform = .iOS) -> Options {
         let options = Options()
-        XCTAssertTrue(options.enableMetrics, "the SDK default this guards against")
-        SentryLogger.applyPrivacyOptions(options)
-        XCTAssertFalse(options.enableMetrics)
-        XCTAssertFalse(options.sendDefaultPii)
-        XCTAssertFalse(options.enableCaptureFailedRequests)
+        SentryLogger.configure(
+            options,
+            dsn: "https://public@o0.ingest.sentry.invalid/0",
+            releaseName: "cli-pulse@1.63.0+118",
+            environment: "production",
+            platform: platform
+        )
+        return options
+    }
+
+    func testMetricsAreOffAndThePrivacyOptionsHold() {
+        XCTAssertTrue(Options().enableMetrics, "the SDK default this guards against")
+        for platform in [SentryPlatform.iOS, .macOS, .watchOS] {
+            let options = appOptions(platform)
+            XCTAssertFalse(options.enableMetrics, platform.rawValue)
+            XCTAssertFalse(options.sendDefaultPii, platform.rawValue)
+            XCTAssertFalse(options.enableCaptureFailedRequests, platform.rawValue)
+        }
+    }
+
+    func testTheAppsHooksAreTheScrubbers() throws {
+        let options = appOptions()
+        let beforeSend = try XCTUnwrap(options.beforeSend, "the app must install beforeSend")
+        let beforeBreadcrumb = try XCTUnwrap(options.beforeBreadcrumb, "the app must install beforeBreadcrumb")
+
+        let event = crashEvent(app: ["device_app_hash": hash, "app_name": "CLI Pulse"])
+        let sent = try XCTUnwrap(beforeSend(event))
+        XCTAssertNil(sent.context?["app"]?["device_app_hash"])
+        XCTAssertEqual(sent.context?["app"]?["app_name"] as? String, "CLI Pulse")
+
+        let opened = crumb("ui.lifecycle", data: ["screen": "MachineDetailHostingController", "title": "Sample Studio Mac"])
+        let kept = try XCTUnwrap(beforeBreadcrumb(opened))
+        XCTAssertNil(kept.data?["title"])
+        XCTAssertEqual(kept.data?["screen"] as? String, "MachineDetailHostingController")
     }
 }
