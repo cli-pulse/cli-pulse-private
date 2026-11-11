@@ -37,11 +37,12 @@ internal object SentryScrub {
     private val EMAIL_PATTERN = Regex("""[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
 
     // scheme://authority/path, then a query or fragment that is dropped whole. The tail stops at
-    // whitespace, quotes or a closing bracket so enclosing punctuation survives, and NOT at ","
-    // or ";" (a query may contain them). The lookahead keeps the rule idempotent: "?[query]" is
-    // already redacted and must not become "?[query]]".
+    // whitespace, quotes or an unmatched closing bracket so enclosing punctuation survives, and NOT
+    // at "," or ";" (a query may contain them). Balanced [..] groups are part of the tail, which
+    // also makes the rule idempotent: "?[query]&code=x" collapses to "?[query]", so a placeholder
+    // followed by more query text is never exempt.
     private val URL_QUERY_PATTERN =
-        Regex("""([A-Za-z][A-Za-z0-9+.-]*://[^\s"'<>?#]*)([?#])(?!\[query\])[^\s"'<>)\]}]*""")
+        Regex("""([A-Za-z][A-Za-z0-9+.-]*://[^\s"'<>?#]*)([?#])(?:\[[^\]\s"'<>]*\]|[^\s"'<>)\]}])*""")
 
     fun shouldScrub(key: String): Boolean {
         val lower = key.lowercase()
@@ -49,11 +50,12 @@ internal object SentryScrub {
     }
 
     fun redact(input: String): String {
-        var out = input
+        // URLs first: the other steps insert "]" placeholders, which must not end a URL tail early
+        // and leave the rest of a query behind.
+        var out = URL_QUERY_PATTERN.replace(input) { m -> "${m.groupValues[1]}${m.groupValues[2]}[query]" }
         for (pattern in SECRET_PATTERNS) out = pattern.replace(out, SCRUBBED)
         out = UUID_PATTERN.replace(out, "[id]")
         out = EMAIL_PATTERN.replace(out, "[email]")
-        out = URL_QUERY_PATTERN.replace(out) { m -> "${m.groupValues[1]}${m.groupValues[2]}[query]" }
         return out
     }
 

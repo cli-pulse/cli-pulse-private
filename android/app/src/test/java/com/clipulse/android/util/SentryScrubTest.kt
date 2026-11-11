@@ -53,6 +53,39 @@ class SentryScrubTest {
     }
 
     @Test
+    fun `secret-like values followed by an opaque parameter leave nothing behind`() {
+        assertEquals("https://host/cb?[query]", redact("https://host/cb?email=a@b.com&code=opaque"))
+        assertEquals(
+            "https://host/cb?[query]",
+            redact("https://host/cb?id=1b4e28ba-2fa1-11d2-883f-0016d3cca427&code=opaque"),
+        )
+        assertEquals(
+            "https://host/cb?[query]",
+            redact("https://host/cb?k=sk-abcdefghijklmnopqrstuvwxyz&code=opaque"),
+        )
+        assertEquals("https://host/cb#[query]", redact("https://host/cb#email=a@b.com&code=opaque"))
+    }
+
+    @Test
+    fun `a placeholder followed by more query text is not exempt`() {
+        assertEquals("https://host/cb?[query]", redact("https://host/cb?[query]&code=opaque"))
+        assertEquals("https://host/cb?[query]", redact("https://host/cb?a=[x]&code=opaque"))
+    }
+
+    @Test
+    fun `second pass changes nothing`() {
+        for (s in listOf(
+            "https://host/cb?email=a@b.com&code=opaque",
+            "https://host/cb?id=1b4e28ba-2fa1-11d2-883f-0016d3cca427&code=opaque",
+            "see [https://host/cb?code=1] and a@b.com",
+        )) {
+            val once = redact(s)
+            assertEquals(once, redact(once))
+        }
+        assertEquals("see [https://host/cb?[query]] and [email]", redact("see [https://host/cb?code=1] and a@b.com"))
+    }
+
+    @Test
     fun `redaction is idempotent`() {
         val once = redact("clipulse://auth/callback?code=abc123 and a@b.com and 1b4e28ba-2fa1-11d2-883f-0016d3cca427")
         assertEquals(once, redact(once))

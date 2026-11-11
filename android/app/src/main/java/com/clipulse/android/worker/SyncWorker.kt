@@ -8,6 +8,7 @@ import androidx.work.*
 import com.clipulse.android.data.collector.CollectorManager
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
+import com.clipulse.android.util.failureSummary
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import org.json.JSONArray
@@ -102,12 +103,12 @@ class SyncWorker @AssistedInject constructor(
                 supabase.dashboard()
                 Log.d(TAG, "Dashboard prefetch successful")
             } catch (e: Exception) {
-                Log.w(TAG, "Dashboard prefetch failed (non-fatal)", e)
+                Log.w(TAG, "Dashboard prefetch failed (non-fatal): ${failureSummary(e)}")
             }
 
             Result.success()
         } catch (e: Exception) {
-            Log.e(TAG, "Sync failed", e)
+            Log.e(TAG, "Sync failed: ${failureSummary(e)}")
             if (runAttemptCount < 3) Result.retry() else Result.failure()
         }
     }
@@ -125,7 +126,7 @@ class SyncWorker @AssistedInject constructor(
             tokenStore.deviceId = deviceId
             Log.d(TAG, "Registered Android device")
         } catch (e: Exception) {
-            Log.w(TAG, "Device registration failed (non-fatal)", e)
+            Log.w(TAG, "Device registration failed (non-fatal): ${failureSummary(e)}")
         }
     }
 }

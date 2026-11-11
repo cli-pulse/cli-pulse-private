@@ -8,9 +8,16 @@ import org.junit.Test
 
 /**
  * Release builds keep every Log call (no ProGuard stripping), so a log line is a disclosure.
- * Parses each `Log.<level>(` call with a balanced-parenthesis scanner that understands Kotlin
- * strings and `${}` templates, so multi-line calls and renamed variables are covered, and
- * rejects import forms that would let a call dodge the scan (`import ... as`, member imports).
+ *
+ * In `fcm/`, `worker/` and `data/remote/` every `Log.<level>(` call must have one of a few
+ * permitted shapes (an allowlist, not a search for bad words): exactly two arguments, a tag and ONE
+ * string literal, whose interpolations are limited to a plain lower-case variable, `x.size`,
+ * `x.code`, `e.javaClass.simpleName` or `failureSummary(e)`. So a throwable argument
+ * (`Log.w(tag, msg, e)`), `${e.toString()}`, `$ex`, `.message` and string concatenation are all
+ * rejected whatever the exception variable is called. A plain variable could still hold an
+ * identifier under an unexpected name, so identifier names are also rejected. Calls are found with
+ * a balanced-parenthesis scanner that understands Kotlin strings and templates, and import forms
+ * that would let a call dodge the scan (`import ... as`, member imports) are rejected everywhere.
  */
 class NoIdentifierLoggingTest {
     private val sourceRoot = "src/main/java/com/clipulse/android"
@@ -24,10 +31,6 @@ class NoIdentifierLoggingTest {
         """\b(deviceId|device_id|userId|user_id|accessToken|refreshToken|pushToken|token)\b""",
         RegexOption.IGNORE_CASE,
     )
-    private val throwableText = Regex(
-        """\.message\b|\.localizedMessage\b|\$(e|ex|t|err|error|throwable)\b|\$\{\s*(e|ex|t|err|error|throwable)\s*\}""",
-    )
-
     // ---- scanner ---------------------------------------------------------------------------
 
     /** [start] is at an opening quote; returns the index just after the closing quote. */
@@ -112,6 +115,64 @@ class NoIdentifierLoggingTest {
         return out.toString()
     }
 
+    private val allowedInterpolation = Regex(
+        """[a-z][A-Za-z0-9]*(\.(size|code))?|e\.javaClass\.simpleName|failureSummary\(e\)""",
+    )
+    private val throwableNames = setOf("e", "ex", "t", "err", "error", "exception", "throwable", "cause")
+
+    /** Splits the text between a call's outer parentheses at top-level commas. */
+    private fun topLevelArgs(call: String): List<String> {
+        val inner = call.substring(1, call.length - 1)
+        val args = mutableListOf<String>()
+        var depth = 0
+        var start = 0
+        var i = 0
+        while (i < inner.length) {
+            when (inner[i]) {
+                '"' -> { i = skipString(inner, i); continue }
+                '(', '[', '{' -> depth++
+                ')', ']', '}' -> depth--
+                ',' -> if (depth == 0) { args += inner.substring(start, i); start = i + 1 }
+            }
+            i++
+        }
+        args += inner.substring(start)
+        return args.map { it.trim() }.filter { it.isNotEmpty() }
+    }
+
+    /** Null when the call has a permitted shape, otherwise the reason it does not. */
+    private fun violation(call: String): String? {
+        val args = topLevelArgs(call)
+        if (args.size != 2) return "must have exactly two arguments (tag, message); a throwable argument logs its stack: ${normalized(call)}"
+        val message = args[1]
+        if (!message.startsWith("\"") || skipString(message, 0) != message.length) {
+            return "message must be a single string literal: ${normalized(call)}"
+        }
+        var i = 1
+        while (i < message.length - 1) {
+            when {
+                message[i] == '\\' -> i += 2
+                message[i] == '$' && message.getOrNull(i + 1) == '{' -> {
+                    val end = skipBraces(message, i + 2)
+                    val expr = message.substring(i + 2, end - 1).trim()
+                    if (!allowedInterpolation.matches(expr) || expr in throwableNames) return "interpolation \${$expr} is not permitted: ${normalized(call)}"
+                    if (forbiddenIdentifier.containsMatchIn(expr)) return "interpolation \${$expr} names an identifier: ${normalized(call)}"
+                    i = end
+                }
+                message[i] == '$' && message.getOrNull(i + 1)?.let { it.isLetter() || it == '_' } == true -> {
+                    var j = i + 1
+                    while (j < message.length && (message[j].isLetterOrDigit() || message[j] == '_')) j++
+                    val name = message.substring(i + 1, j)
+                    if (name in throwableNames) return "\$$name interpolates a throwable: ${normalized(call)}"
+                    if (forbiddenIdentifier.containsMatchIn(name)) return "\$$name names an identifier: ${normalized(call)}"
+                    i = j
+                }
+                else -> i++
+            }
+        }
+        return null
+    }
+
     private fun calls(file: File): List<String> {
         val text = file.readText()
         return logCall.findAll(text).map { balancedCall(text, it.range.last) }.toList()
@@ -144,16 +205,31 @@ class NoIdentifierLoggingTest {
 
     private fun assertDirClean(dir: String) {
         for (f in kotlinFiles(dir)) for (call in calls(f)) {
-            val emitted = emittedExpressions(call)
-            assertTrue(
-                "$dir/${f.name}: log call emits an identifier: ${normalized(call)}",
-                !forbiddenIdentifier.containsMatchIn(emitted),
-            )
-            assertTrue(
-                "$dir/${f.name}: log call interpolates throwable text: ${normalized(call)}",
-                !throwableText.containsMatchIn(emitted),
-            )
+            val reason = violation(call)
+            assertTrue("$dir/${f.name}: $reason", reason == null)
         }
+    }
+
+    @Test
+    fun `the allowlist rejects throwable overloads and renamed variables`() {
+        val bad = listOf(
+            "(TAG, \"failed\", e)",
+            "(TAG, \"failed\", exception)",
+            "(TAG, \"failed \${e.toString()}\")",
+            "(TAG, \"failed \$err\")",
+            "(TAG, \"failed \${boom}\" + other)",
+            "(TAG, \"failed \${ex.message}\")",
+            "(TAG,\n  \"id \$deviceId\")",
+            "(TAG, \"x \${tokenStore.deviceId}\")",
+        )
+        for (c in bad) assertTrue("should be rejected: $c", violation(c) != null)
+        val good = listOf(
+            "(TAG, \"plain\")",
+            "(TAG, \"n=\${results.size} s=\$status\")",
+            "(TAG, \"x \${e.javaClass.simpleName}\")",
+            "(TAG, \"x \${failureSummary(e)}\")",
+        )
+        for (c in good) assertEquals("should be accepted: $c", null, violation(c))
     }
 
     @Test
