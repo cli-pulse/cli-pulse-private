@@ -938,7 +938,9 @@ psql "$DATABASE_URL" -qtAX -v ON_ERROR_STOP=1 \
     -c "alter role $CARRIER set statement_timeout = '45s'" \
     -c "alter role $CARRIER in database ${PFX}_q3c set statement_timeout = '30s'" \
     -c "alter database ${PFX}_q3c set lock_timeout = '3s'" >/dev/null
-q -c "update cron.job set username = '$CARRIER' where jobid = 1" >/dev/null
+# the job's database is the one it runs in (the stand-in's default named the
+# template database this one was copied from)
+q -c "update cron.job set username = '$CARRIER', database = current_database() where jobid = 1" >/dev/null
 same "$P a job user with its own setting, a role-in-database setting and a database setting: each in its column, and the server column says when this session's value is not the server's (source database)" \
      "$(q -c "$(hq Q3c)")" "$CARRIER|statement_timeout=30s|statement_timeout=45s|lock_timeout=3s|0 ms from default|3000 ms from database"
 psql "$DATABASE_URL" -qtAX -c "alter role $CARRIER reset all" >/dev/null
