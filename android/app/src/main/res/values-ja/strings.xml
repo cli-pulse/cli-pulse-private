@@ -14,6 +14,9 @@
     <string name="sign_in_password">パスワードでサインイン</string>
     <string name="verify">確認</string>
     <string name="sign_out">サインアウト</string>
+    <string name="privacy_policy">プライバシーポリシー</string>
+    <string name="settings_about">情報</string>
+    <string name="privacy_policy_unavailable">プライバシーポリシーを開けるブラウザが見つかりません</string>
     <string name="delete_account">アカウント削除</string>
     <string name="try_demo">デモを試す</string>
 

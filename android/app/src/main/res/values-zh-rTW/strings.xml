@@ -14,6 +14,9 @@
     <string name="sign_in_password">使用密碼登入</string>
     <string name="verify">驗證</string>
     <string name="sign_out">登出</string>
+    <string name="privacy_policy">隱私權政策</string>
+    <string name="settings_about">關於</string>
+    <string name="privacy_policy_unavailable">找不到可開啟隱私權政策的瀏覽器</string>
     <string name="delete_account">刪除帳號</string>
     <string name="try_demo">試用示範</string>
 

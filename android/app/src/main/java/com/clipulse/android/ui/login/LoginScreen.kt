@@ -4,6 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,6 +29,7 @@ import com.clipulse.android.data.remote.OAuthDeepLinkCallback
 import com.clipulse.android.data.remote.OAuthDeepLinkNotice
 import com.clipulse.android.data.remote.OAuthDeepLinkNoticeReason
 import kotlinx.coroutines.launch
+import com.clipulse.android.ui.common.PrivacyPolicyLink
 import com.clipulse.android.ui.common.text
 
 @Composable
@@ -80,6 +83,9 @@ fun LoginScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                // enableEdgeToEdge() is on and no parent Scaffold supplies insets for this screen.
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .verticalScroll(rememberScrollState())
                 .padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
@@ -99,6 +105,7 @@ fun LoginScreen(
 
             if (state.isLoading) {
                 CircularProgressIndicator()
+                PrivacyPolicyLink()
                 return@Column
             }
 
@@ -253,6 +260,7 @@ fun LoginScreen(
                     Text(stringResource(R.string.try_demo), color = MaterialTheme.colorScheme.tertiary)
                 }
             }
+            PrivacyPolicyLink()
         }
     }
 }
