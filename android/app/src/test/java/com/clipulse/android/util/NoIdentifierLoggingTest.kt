@@ -58,6 +58,7 @@ class NoIdentifierLoggingTest {
         while (i < s.length) {
             when (s[i]) {
                 '"' -> i = skipString(s, i)
+                '\'' -> i = skipChar(s, i)
                 '{' -> { depth++; i++ }
                 '}' -> { depth--; i++; if (depth == 0) return i }
                 else -> i++
@@ -73,6 +74,7 @@ class NoIdentifierLoggingTest {
         while (i < s.length) {
             when (s[i]) {
                 '"' -> { i = skipString(s, i); continue }
+                '\'' -> { i = skipChar(s, i); continue }
                 '(' -> depth++
                 ')' -> { depth--; if (depth == 0) return s.substring(open, i + 1) }
             }
@@ -115,10 +117,20 @@ class NoIdentifierLoggingTest {
         return out.toString()
     }
 
-    private val allowedInterpolation = Regex(
-        """[a-z][A-Za-z0-9]*(\.(size|code))?|e\.javaClass\.simpleName|failureSummary\(e\)""",
+    /** The only expressions a log message may interpolate. Anything else, whatever its name, fails. */
+    private val allowedInterpolations = setOf(
+        "signedIn", "status", "results.size", "payloads.size", "r.code",
+        "e.javaClass.simpleName", "failureSummary(e)",
     )
-    private val throwableNames = setOf("e", "ex", "t", "err", "error", "exception", "throwable", "cause")
+
+    /** [start] is at a single quote; returns the index just after the char literal. */
+    private fun skipChar(s: String, start: Int): Int {
+        if (s.getOrNull(start + 1) == '\\') {
+            val end = s.indexOf('\'', start + 3)
+            return if (end < 0) s.length else end + 1
+        }
+        return if (s.getOrNull(start + 2) == '\'') start + 3 else start + 1
+    }
 
     /** Splits the text between a call's outer parentheses at top-level commas. */
     private fun topLevelArgs(call: String): List<String> {
@@ -130,6 +142,7 @@ class NoIdentifierLoggingTest {
         while (i < inner.length) {
             when (inner[i]) {
                 '"' -> { i = skipString(inner, i); continue }
+                '\'' -> { i = skipChar(inner, i); continue }
                 '(', '[', '{' -> depth++
                 ')', ']', '}' -> depth--
                 ',' -> if (depth == 0) { args += inner.substring(start, i); start = i + 1 }
@@ -155,16 +168,14 @@ class NoIdentifierLoggingTest {
                 message[i] == '$' && message.getOrNull(i + 1) == '{' -> {
                     val end = skipBraces(message, i + 2)
                     val expr = message.substring(i + 2, end - 1).trim()
-                    if (!allowedInterpolation.matches(expr) || expr in throwableNames) return "interpolation \${$expr} is not permitted: ${normalized(call)}"
-                    if (forbiddenIdentifier.containsMatchIn(expr)) return "interpolation \${$expr} names an identifier: ${normalized(call)}"
+                    if (expr !in allowedInterpolations) return "interpolation \${$expr} is not on the allowlist: ${normalized(call)}"
                     i = end
                 }
                 message[i] == '$' && message.getOrNull(i + 1)?.let { it.isLetter() || it == '_' } == true -> {
                     var j = i + 1
                     while (j < message.length && (message[j].isLetterOrDigit() || message[j] == '_')) j++
                     val name = message.substring(i + 1, j)
-                    if (name in throwableNames) return "\$$name interpolates a throwable: ${normalized(call)}"
-                    if (forbiddenIdentifier.containsMatchIn(name)) return "\$$name names an identifier: ${normalized(call)}"
+                    if (name !in allowedInterpolations) return "\$$name is not on the allowlist: ${normalized(call)}"
                     i = j
                 }
                 else -> i++
@@ -221,6 +232,14 @@ class NoIdentifierLoggingTest {
             "(TAG, \"failed \${ex.message}\")",
             "(TAG,\n  \"id \$deviceId\")",
             "(TAG, \"x \${tokenStore.deviceId}\")",
+            "(TAG, \"failed \$failure\")",
+            "(TAG, \"failed \${failure}\")",
+            "(TAG, \"r \$body\")",
+            "(TAG, \"r \$message\")",
+            "(TAG, \"r \$msg\")",
+            "(TAG, \"r \$url\")",
+            "(TAG, \"r \$email\")",
+            "(TAG, \"r \$response\")",
         )
         for (c in bad) assertTrue("should be rejected: $c", violation(c) != null)
         val good = listOf(
@@ -230,6 +249,13 @@ class NoIdentifierLoggingTest {
             "(TAG, \"x \${failureSummary(e)}\")",
         )
         for (c in good) assertEquals("should be accepted: $c", null, violation(c))
+    }
+
+    @Test
+    fun `the scanner skips quote characters`() {
+        val src = "('\"', \"x\") + more(\")\")"
+        assertEquals("('\"', \"x\")", balancedCall(src, 0))
+        assertEquals(listOf("'\"'", "\"x\""), topLevelArgs("('\"', \"x\")"))
     }
 
     @Test

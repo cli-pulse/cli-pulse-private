@@ -60,6 +60,8 @@ object SentryInit {
         return crumb
     }
 
+    // event.transaction and event.request are not scrubbed: the app never sets them (tracing is off,
+    // no HTTP integration is installed). Scrub them here if that ever changes.
     internal fun scrub(event: SentryEvent): SentryEvent {
         event.user?.apply {
             email = null

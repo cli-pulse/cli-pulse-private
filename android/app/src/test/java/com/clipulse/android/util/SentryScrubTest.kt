@@ -47,9 +47,39 @@ class SentryScrubTest {
     }
 
     @Test
-    fun `opaque token in a query inside exception text is dropped and punctuation kept`() {
+    fun `opaque token in a query inside exception text is dropped to the next space`() {
         val out = redact("failed (https://host/cb?code=Zq9opaque,keep;me&x=1) while exchanging")
-        assertEquals("failed (https://host/cb?[query]) while exchanging", out)
+        // A ")" touching the URL is part of the query as far as the scanner can tell, so it goes too.
+        assertEquals("failed (https://host/cb?[query] while exchanging", out)
+    }
+
+    @Test
+    fun `brackets parentheses and braces inside a query do not end the redaction`() {
+        for (q in listOf("next=(ok)&code=opaque", "a=[x]&code=opaque", "a={x}&code=opaque", "a=)&b=]&c=}&code=opaque")) {
+            val out = redact("https://host/cb?$q")
+            assertEquals("https://host/cb?[query]", out)
+            assertEquals("second pass: $q", out, redact(out))
+        }
+        assertEquals("https://host/cb#[query]", redact("https://host/cb#a=(1)&code=opaque"))
+    }
+
+    @Test
+    fun `a left boundary keeps sk and Bearer matches to whole tokens`() {
+        assertEquals("disk-encryption-configuration", redact("disk-encryption-configuration"))
+        assertEquals("task-abcdefghijklmnopqrstuvwxyz", redact("task-abcdefghijklmnopqrstuvwxyz"))
+        assertEquals("[scrubbed]", redact("sk-abcdefghijklmnopqrstuvwxyz"))
+        assertEquals("a [scrubbed]", redact("a Bearer abc.def"))
+        assertEquals("NoBearer token", redact("NoBearer token"))
+    }
+
+    @Test(timeout = 10000)
+    fun `very long inputs are cut and stay fast`() {
+        val noise = "a.b-c+d".repeat(40000)
+        val out = redact("https://" + noise + " x@" + noise)
+        assertTrue(out.endsWith("[truncated]"))
+        assertTrue(out.length < SentryScrub.MAX_REDACT_CHARS + 64)
+        redact("a@".repeat(100000))
+        redact("http://".repeat(100000))
     }
 
     @Test
@@ -69,7 +99,7 @@ class SentryScrubTest {
     @Test
     fun `a placeholder followed by more query text is not exempt`() {
         assertEquals("https://host/cb?[query]", redact("https://host/cb?[query]&code=opaque"))
-        assertEquals("https://host/cb?[query]", redact("https://host/cb?a=[x]&code=opaque"))
+        assertEquals("https://host/cb?[query]", redact("https://host/cb?[query])&code=opaque"))
     }
 
     @Test
@@ -78,11 +108,12 @@ class SentryScrubTest {
             "https://host/cb?email=a@b.com&code=opaque",
             "https://host/cb?id=1b4e28ba-2fa1-11d2-883f-0016d3cca427&code=opaque",
             "see [https://host/cb?code=1] and a@b.com",
+            "https://host/cb?next=(ok)&code=opaque",
         )) {
             val once = redact(s)
             assertEquals(once, redact(once))
         }
-        assertEquals("see [https://host/cb?[query]] and [email]", redact("see [https://host/cb?code=1] and a@b.com"))
+        assertEquals("see [https://host/cb?[query] and [email]", redact("see [https://host/cb?code=1] and a@b.com"))
     }
 
     @Test

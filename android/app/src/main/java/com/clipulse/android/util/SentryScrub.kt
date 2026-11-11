@@ -26,23 +26,28 @@ internal object SentryScrub {
 
     private val SECRET_PATTERNS = listOf(
         Regex("""eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"""),
-        Regex("""sk-[A-Za-z0-9_-]{20,}"""),
-        Regex("""sk_(live|test)_[A-Za-z0-9]{16,}"""),
-        Regex("""Bearer\s+[A-Za-z0-9_\-.=]+""")
+        Regex("""(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}"""),
+        Regex("""(?<![A-Za-z0-9])sk_(live|test)_[A-Za-z0-9]{16,}"""),
+        Regex("""\bBearer\s+[A-Za-z0-9_\-.=]+""")
     )
 
     private val UUID_PATTERN =
         Regex("""[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}""")
 
-    private val EMAIL_PATTERN = Regex("""[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
+    private val EMAIL_PATTERN = Regex("""(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
 
-    // scheme://authority/path, then a query or fragment that is dropped whole. The tail stops at
-    // whitespace, quotes or an unmatched closing bracket so enclosing punctuation survives, and NOT
-    // at "," or ";" (a query may contain them). Balanced [..] groups are part of the tail, which
-    // also makes the rule idempotent: "?[query]&code=x" collapses to "?[query]", so a placeholder
-    // followed by more query text is never exempt.
+    // scheme://authority/path, then a query or fragment that is dropped whole: everything after the
+    // "?" or "#" up to whitespace, a quote or an angle bracket, or the end of the text. Brackets,
+    // parentheses, braces, commas and semicolons are all legal inside a query, so none of them
+    // may end the match; the price is that punctuation from surrounding prose that touches the
+    // URL ("(see https://h/cb?code=1)") is dropped with it. "?[query]" matches itself, so a second
+    // pass changes nothing. The left boundary keeps the scan linear: a match can only start at the
+    // beginning of a scheme token, not at every letter inside it.
     private val URL_QUERY_PATTERN =
-        Regex("""([A-Za-z][A-Za-z0-9+.-]*://[^\s"'<>?#]*)([?#])(?:\[[^\]\s"'<>]*\]|[^\s"'<>)\]}])*""")
+        Regex("""(?<![A-Za-z0-9+.-])([A-Za-z][A-Za-z0-9+.-]*://[^\s"'<>?#]*)([?#])[^\s"'<>]*""")
+
+    /** Inputs longer than this are cut (and marked) before any pattern runs, bounding the work. */
+    const val MAX_REDACT_CHARS = 8192
 
     fun shouldScrub(key: String): Boolean {
         val lower = key.lowercase()
@@ -50,8 +55,8 @@ internal object SentryScrub {
     }
 
     fun redact(input: String): String {
-        // URLs first: the other steps insert "]" placeholders, which must not end a URL tail early
-        // and leave the rest of a query behind.
+        if (input.length > MAX_REDACT_CHARS) return redact(input.take(MAX_REDACT_CHARS)) + TRUNCATED
+        // URLs first, so a placeholder inserted by a later step can never end a query early.
         var out = URL_QUERY_PATTERN.replace(input) { m -> "${m.groupValues[1]}${m.groupValues[2]}[query]" }
         for (pattern in SECRET_PATTERNS) out = pattern.replace(out, SCRUBBED)
         out = UUID_PATTERN.replace(out, "[id]")
