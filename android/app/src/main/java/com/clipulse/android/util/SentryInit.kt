@@ -74,10 +74,12 @@ object SentryInit {
             val scrubbed = SentryScrub.scrubValue(key, event.extras?.get(key)) ?: return@forEach
             event.setExtra(key, scrubbed)
         }
-        event.contexts.keys.toList().forEach { key ->
-            val old = event.contexts[key] ?: return@forEach
+        // Contexts is a ConcurrentHashMap, whose keys() (Enumeration) hides the Kotlin keys property.
+        val contexts: MutableMap<String, Any> = event.contexts
+        contexts.keys.toList().forEach { key ->
+            val old = contexts[key] ?: return@forEach
             val scrubbed = SentryScrub.scrubValue(key, old) ?: return@forEach
-            if (scrubbed !== old) event.contexts[key] = scrubbed
+            if (scrubbed !== old) contexts[key] = scrubbed
         }
         event.exceptions?.forEach { ex ->
             ex.value = ex.value?.let(SentryScrub::redact)
