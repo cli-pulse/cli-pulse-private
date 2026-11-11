@@ -142,21 +142,32 @@ class NoIdentifierLoggingTest {
         }
     }
 
-    @Test
-    fun `log calls in guarded packages carry no identifiers or throwable text`() {
-        var scanned = 0
-        for (dir in guardedDirs) for (f in kotlinFiles(dir)) for (call in calls(f)) {
-            scanned++
+    private fun assertDirClean(dir: String) {
+        for (f in kotlinFiles(dir)) for (call in calls(f)) {
             val emitted = emittedExpressions(call)
             assertTrue(
-                "${f.name}: log call emits an identifier: ${normalized(call)}",
+                "$dir/${f.name}: log call emits an identifier: ${normalized(call)}",
                 !forbiddenIdentifier.containsMatchIn(emitted),
             )
             assertTrue(
-                "${f.name}: log call interpolates throwable text: ${normalized(call)}",
+                "$dir/${f.name}: log call interpolates throwable text: ${normalized(call)}",
                 !throwableText.containsMatchIn(emitted),
             )
         }
+    }
+
+    @Test
+    fun `fcm log calls carry no identifiers or throwable text`() = assertDirClean("fcm")
+
+    @Test
+    fun `worker log calls carry no identifiers or throwable text`() = assertDirClean("worker")
+
+    @Test
+    fun `data remote log calls carry no identifiers or throwable text`() = assertDirClean("data/remote")
+
+    @Test
+    fun `the scan sees the existing log calls`() {
+        val scanned = guardedDirs.sumOf { dir -> kotlinFiles(dir).sumOf { calls(it).size } }
         assertTrue("expected to scan the existing log calls, found $scanned", scanned >= 10)
     }
 

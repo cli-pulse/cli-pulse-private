@@ -54,47 +54,79 @@ class SentryInitCallbacksTest {
         assertEquals(3, out.data["count"])
     }
 
+    private fun send(build: SentryEvent.() -> Unit): SentryEvent =
+        options().beforeSend!!.execute(SentryEvent().apply(build), Hint())!!
+
     @Test
-    fun `event fields are redacted and user fields wiped`() {
-        val event = SentryEvent().apply {
+    fun `event user fields are wiped`() {
+        val out = send {
             user = User().apply {
                 this.email = "me@example.com"
                 ipAddress = "203.0.113.9"
                 username = "someone"
             }
-            exceptions = listOf(SentryException().apply { value = "HTTP 400: $dirty" })
-            message = Message().apply {
-                formatted = dirty
-                message = dirty
-                params = listOf(dirty, "plain")
-            }
+        }
+        assertNull(out.user!!.email)
+        assertNull(out.user!!.ipAddress)
+        assertNull(out.user!!.username)
+    }
+
+    @Test
+    fun `event exception value is redacted`() {
+        val out = send { exceptions = listOf(SentryException().apply { value = "HTTP 400: $dirty" }) }
+        assertClean("exception", out.exceptions!![0].value)
+    }
+
+    @Test
+    fun `event message and formatted are redacted`() {
+        val out = send { message = Message().apply { formatted = dirty; message = dirty } }
+        assertClean("message.formatted", out.message!!.formatted)
+        assertClean("message.message", out.message!!.message)
+    }
+
+    @Test
+    fun `event message params are redacted`() {
+        val out = send { message = Message().apply { params = listOf(dirty, "plain") } }
+        assertClean("message.params", out.message!!.params)
+        assertEquals("plain", out.message!!.params!![1])
+    }
+
+    @Test
+    fun `event tag values are redacted and keyed tags scrubbed`() {
+        val out = send {
             setTag("who", dirty)
             setTag("platform_family", "android")
             setTag("api_token", "opaque-value")
+        }
+        assertClean("tag value", out.tags!!["who"])
+        assertEquals("android", out.tags!!["platform_family"])
+        assertEquals("[scrubbed]", out.tags!!["api_token"])
+    }
+
+    @Test
+    fun `event extra values are redacted and keyed extras scrubbed`() {
+        val out = send {
             setExtra("blob", mapOf("deep" to listOf(dirty)))
             setExtra("secret_thing", "opaque-value")
-            contexts["custom"] = mapOf("inner" to dirty)
+        }
+        assertClean("extra", out.extras!!["blob"])
+        assertEquals("[scrubbed]", out.extras!!["secret_thing"])
+    }
+
+    @Test
+    fun `event contexts values are redacted`() {
+        val out = send { contexts["custom"] = mapOf("inner" to dirty) }
+        assertClean("contexts", out.contexts["custom"])
+    }
+
+    @Test
+    fun `event breadcrumbs are redacted again in beforeSend`() {
+        val out = send {
             breadcrumbs = listOf(Breadcrumb().apply {
                 message = dirty
                 setData("d", dirty)
             })
         }
-        val out = options().beforeSend!!.execute(event, Hint())!!
-
-        assertNull(out.user!!.email)
-        assertNull(out.user!!.ipAddress)
-        assertNull(out.user!!.username)
-        assertClean("exception", out.exceptions!![0].value)
-        assertClean("message.formatted", out.message!!.formatted)
-        assertClean("message.message", out.message!!.message)
-        assertClean("message.params", out.message!!.params)
-        assertEquals("plain", out.message!!.params!![1])
-        assertClean("tag value", out.tags!!["who"])
-        assertEquals("android", out.tags!!["platform_family"])
-        assertEquals("[scrubbed]", out.tags!!["api_token"])
-        assertClean("extra", out.extras!!["blob"])
-        assertEquals("[scrubbed]", out.extras!!["secret_thing"])
-        assertClean("contexts", out.contexts["custom"])
         assertClean("event.breadcrumbs message", out.breadcrumbs!![0].message)
         assertClean("event.breadcrumbs data", out.breadcrumbs!![0].data["d"])
     }

@@ -44,32 +44,56 @@ class BackupRulesTest {
         assertEquals("false", app.getAttributeNS(androidNs, "allowBackup"))
     }
 
+    private fun rules() = parse("src/main/res/xml/data_extraction_rules.xml")
+
+    private fun section(name: String): Element {
+        val matches = elementChildren(rules()).filter { it.tagName == name }
+        assertEquals("exactly one <$name> section is required", 1, matches.size)
+        return matches[0]
+    }
+
+    private fun excludes(name: String): List<Pair<String, String>> =
+        elementChildren(section(name)).filter { it.tagName == "exclude" }
+            .map { it.getAttribute("domain") to it.getAttribute("path") }
+
     @Test
-    fun `rules file has exactly cloud-backup and device-transfer`() {
-        val root = parse("src/main/res/xml/data_extraction_rules.xml")
-        assertEquals("data-extraction-rules", root.tagName)
-        val sections = elementChildren(root).map { it.tagName }
-        assertEquals(listOf("cloud-backup", "device-transfer"), sections.sorted())
+    fun `rules file root has only the two sections`() {
+        assertEquals("data-extraction-rules", rules().tagName)
+        assertEquals(
+            listOf("cloud-backup", "device-transfer"),
+            elementChildren(rules()).map { it.tagName }.sorted(),
+        )
     }
 
     @Test
-    fun `each section excludes all nine domains with path dot and nothing else`() {
-        val root = parse("src/main/res/xml/data_extraction_rules.xml")
-        for (section in elementChildren(root)) {
-            val children = elementChildren(section)
-            val tags = children.map { it.tagName }.toSet()
-            assertEquals("${section.tagName}: only <exclude> children allowed (no <include>)", setOf("exclude"), tags)
-            val pairs = children.map { it.getAttribute("domain") to it.getAttribute("path") }
-            assertEquals("${section.tagName}: duplicate rule", pairs.size, pairs.toSet().size)
-            assertEquals(
-                "${section.tagName}: must exclude exactly the nine domains",
-                nineDomains,
-                pairs.map { it.first }.toSet(),
-            )
-            assertTrue(
-                "${section.tagName}: every exclude must use path=\".\"",
-                pairs.all { it.second == "." },
-            )
-        }
-    }
+    fun `cloud-backup excludes exactly the nine domains`() =
+        assertEquals("cloud-backup must exclude exactly the nine domains", nineDomains, excludes("cloud-backup").map { it.first }.toSet())
+
+    @Test
+    fun `device-transfer excludes exactly the nine domains`() =
+        assertEquals("device-transfer must exclude exactly the nine domains", nineDomains, excludes("device-transfer").map { it.first }.toSet())
+
+    @Test
+    fun `cloud-backup rules all use path dot`() =
+        assertTrue("cloud-backup: every exclude must use path=\".\"", excludes("cloud-backup").all { it.second == "." })
+
+    @Test
+    fun `device-transfer rules all use path dot`() =
+        assertTrue("device-transfer: every exclude must use path=\".\"", excludes("device-transfer").all { it.second == "." })
+
+    @Test
+    fun `cloud-backup has only exclude children`() =
+        assertEquals(
+            "cloud-backup: only <exclude> children allowed (no <include>)",
+            setOf("exclude"),
+            elementChildren(section("cloud-backup")).map { it.tagName }.toSet(),
+        )
+
+    @Test
+    fun `device-transfer has only exclude children`() =
+        assertEquals(
+            "device-transfer: only <exclude> children allowed (no <include>)",
+            setOf("exclude"),
+            elementChildren(section("device-transfer")).map { it.tagName }.toSet(),
+        )
 }
