@@ -53,6 +53,13 @@ class TokenStore internal constructor(
     @Volatile
     private var durable = true
 
+    /**
+     * Called, with the lock held, when a commit did not reach disk. SessionLifecycle sets it to
+     * its retry, so a failed write is written again without waiting for some later write.
+     */
+    @Volatile
+    internal var onCommitFailed: (() -> Unit)? = null
+
     /** What the lock-free reads return. Replaced as a whole, never changed. */
     private class View(
         val state: SessionState,
@@ -232,7 +239,9 @@ class TokenStore internal constructor(
      * Stores a renewed token pair, but only for [sessionId] and only while it is current:
      * a renewal that comes back after a sign-out, or after the next account signed in, is
      * dropped instead of bringing the old session back or overwriting the new one. The
-     * client serialises every token-producing request with its refresh mutex.
+     * client serialises every token-producing request with its refresh mutex. If the commit
+     * does not reach disk, the coordinator's retry writes it again ([onCommitFailed]); nothing
+     * else has to write first.
      */
     @Synchronized
     fun rotateIfCurrent(
@@ -465,7 +474,9 @@ class TokenStore internal constructor(
     // ── Internals (call with the monitor held) ────────────────────────────
 
     private fun commitLocked(edit: SharedPreferences.Editor) {
-        durable = edit.commit()
+        val ok = edit.commit()
+        durable = ok
+        if (!ok) onCommitFailed?.invoke()
     }
 
     /**

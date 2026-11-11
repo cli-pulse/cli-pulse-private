@@ -46,7 +46,8 @@ interface SessionScopedState {
  * deletion, and the cleared marker is committed before the lock is released to writers. If a
  * commit or a delete fails, the marker stays, writers are refused ([ApiError.TeardownPending]),
  * and a coalesced retry with backoff runs in this process; [start] also finishes whatever a
- * previous process left.
+ * previous process left. Any commit of the store that fails (a token rotation included) asks
+ * for that retry too, so it is written again without waiting for a later write.
  *
  * Once a transition has committed, its teardown runs to the end even if the caller is
  * cancelled (a screen that the end itself closes, for instance), and any way out of it short of
@@ -81,6 +82,10 @@ class SessionLifecycle internal constructor(
     private val retryLock = Any()
     private var retryJob: Job? = null
     private var retryDelayMillis: Long = RETRY_BASE_MS
+
+    init {
+        tokenStore.onCommitFailed = { scheduleRetry() }
+    }
 
     fun register(state: SessionScopedState) {
         scopedStates += state

@@ -486,6 +486,24 @@ class SessionLifecycleTest {
         env.scope.cancel()
     }
 
+    @Test
+    fun `a token rotation that did not reach disk is written again with no later write`() = runTest {
+        val env = Env(this)
+        val a = env.installA()
+        env.prefs.failCommits = true
+        assertTrue(env.store.rotateIfCurrent(a, "access-A2", "refresh-A2"))
+        assertFalse(env.store.isDurable)
+        env.prefs.failCommits = false
+
+        // Nothing else writes: no cache write, no transition. The coordinator's retry does it.
+        advanceTimeBy(env.lifecycle.retryBaseMillis + 1)
+        runCurrent()
+
+        assertTrue(env.store.isDurable)
+        assertEquals("refresh-A2", TokenStore(env.prefs.restart()).snapshot()!!.refreshToken)
+        env.scope.cancel()
+    }
+
     // ── the repository's writes ─────────────────────────
 
     private class RepoWrite(
