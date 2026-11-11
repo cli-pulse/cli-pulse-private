@@ -50,22 +50,76 @@ class PrivacyLinkWiringTest {
         )
     }
 
-    @Test
-    fun `login trailing link sits after the closing brace of the whole form chain`() {
-        val lines = login().lines()
+    /** Null when the trailing link sits after the form chain's closing brace, else the reason. */
+    private fun trailingLinkProblem(source: String): String? {
+        val lines = source.lines()
         val chain = lines.indexOfFirst { it.trim() == "if (state.showOtpInput) {" }
-        assertTrue("form chain not found in LoginScreen", chain >= 0)
+        if (chain < 0) return "form chain not found in LoginScreen"
         val chainIndent = lines[chain].takeWhile { it == ' ' }.length
         val call = lines.indexOfLast { it.trim() == "PrivacyPolicyLink()" }
-        assertTrue("trailing PrivacyPolicyLink() not found", call > chain)
-        assertTrue(
-            "the trailing link must be at the form chain's indentation, not nested in a branch",
-            lines[call].takeWhile { it == ' ' }.length == chainIndent,
-        )
+        if (call <= chain) return "trailing PrivacyPolicyLink() not found"
+        if (lines[call].takeWhile { it == ' ' }.length != chainIndent) {
+            return "the trailing link must be at the form chain's indentation, not nested in a branch"
+        }
         val previous = lines.subList(chain + 1, call).lastOrNull { it.isNotBlank() }
-        assertTrue(
-            "the line before the trailing link must close the whole if/else chain",
-            previous != null && previous.trim() == "}" && previous.takeWhile { it == ' ' }.length == chainIndent,
-        )
+        if (previous == null || previous.trim() != "}" || previous.takeWhile { it == ' ' }.length != chainIndent) {
+            return "the line before the trailing link must close the whole if/else chain"
+        }
+        // Block structure, not just indentation: the braces between the chain start and the link balance.
+        val between = lines.subList(chain, call).joinToString("\n")
+        val depth = between.count { it == '{' } - between.count { it == '}' }
+        if (depth != 0) return "braces between the form chain and the trailing link do not balance (depth $depth)"
+        return null
+    }
+
+    @Test
+    fun `login trailing link sits after the closing brace of the whole form chain`() {
+        val problem = trailingLinkProblem(login())
+        assertTrue(problem ?: "", problem == null)
+    }
+
+    @Test
+    fun `a link moved inside the demo branch is rejected`() {
+        val misplaced = """
+            |            if (state.showOtpInput) {
+            |                Text("otp")
+            |            } else {
+            |                TextButton(onClick = { viewModel.enterDemoMode() }) {
+            |                    Text("demo")
+            |                }
+            |            PrivacyPolicyLink()
+            |            }
+        """.trimMargin()
+        assertTrue("fixture should be rejected", trailingLinkProblem(misplaced) != null)
+        val misplacedDeeper = """
+            |            if (state.showOtpInput) {
+            |                Text("otp")
+            |            } else {
+            |                TextButton(onClick = { viewModel.enterDemoMode() }) {
+            |                    Text("demo")
+            |                }
+            |            }
+            |            }
+            |            PrivacyPolicyLink()
+        """.trimMargin()
+        assertTrue("unbalanced fixture should be rejected", trailingLinkProblem(misplacedDeeper) != null)
+        val good = """
+            |            if (state.showOtpInput) {
+            |                Text("otp")
+            |            } else {
+            |                Text("demo")
+            |            }
+            |            PrivacyPolicyLink()
+        """.trimMargin()
+        assertTrue("good fixture should pass", trailingLinkProblem(good) == null)
+    }
+
+    @Test
+    fun `login screen reserves window insets before scrolling`() {
+        val src = login()
+        val inset = src.indexOf("windowInsetsPadding(WindowInsets.safeDrawing)")
+        val scroll = src.indexOf("verticalScroll(")
+        assertTrue("LoginScreen must apply safeDrawing insets", inset >= 0)
+        assertTrue("insets must be applied before verticalScroll", inset < scroll)
     }
 }

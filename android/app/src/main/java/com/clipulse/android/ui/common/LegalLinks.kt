@@ -28,6 +28,8 @@ fun openPrivacyPolicy(context: Context) {
         context.startActivity(intent)
     } catch (_: ActivityNotFoundException) {
         Toast.makeText(context, R.string.privacy_policy_unavailable, Toast.LENGTH_SHORT).show()
+    } catch (_: SecurityException) {
+        Toast.makeText(context, R.string.privacy_policy_unavailable, Toast.LENGTH_SHORT).show()
     }
 }
 

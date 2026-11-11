@@ -83,6 +83,8 @@ fun LoginScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                // enableEdgeToEdge() is on and no parent Scaffold supplies insets for this screen.
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .verticalScroll(rememberScrollState())
                 .padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
