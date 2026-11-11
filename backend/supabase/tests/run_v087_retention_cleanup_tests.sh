@@ -48,6 +48,16 @@
 #     same bodies, production's service_role wrapper byte for byte, the same
 #     grants, and behaves the same.
 #
+# This is the HISTORICAL v0.87 test. Its upgrade path stops at v0.87 (it never
+# applies v0.89 or v0.91), so v0.87's own behaviour is still tested against
+# v0.87's body. Since migrate_v0.91 the fresh install's cleanup is v0.91's
+# (v0.87's body plus the webhook block, tested by
+# run_v091_prune_webhook_jobs_tests.sh), so the fresh path expects v0.91's
+# md5 for that one function (read from v0.91's header), checks that the
+# pending webhook jobs the fixture's alerts enqueue survive every run, then
+# applies v0.87 over the fresh install (v0.87's bodies, the cleanup checked
+# once more on a reloaded fixture) and v0.91 after it (the current bodies).
+#
 # pg_cron is not available on plain Postgres, so each database gets a stand-in
 # `cron.job` table holding production's job for the cleanup (its command as
 # migrate_v0.21 scheduled it); the ops check only reads that table.
@@ -69,6 +79,7 @@ V022="$SQL_DIR/migrate_v0.22_retention_cron.sql"
 V044="$SQL_DIR/migrate_v0.44_user_tz_today.sql"
 V086="$SQL_DIR/migrate_v0.86_summary_tokens_each_once.sql"
 V087="$SQL_DIR/migrate_v0.87_retention_cleanup_and_fresh_counts.sql"
+V091="$SQL_DIR/migrate_v0.91_prune_webhook_jobs.sql"
 OPS="$SQL_DIR/ops/check_cron_references.sql"
 
 for v in UPGRADE_DATABASE_URL FRESH_DATABASE_URL; do
@@ -81,7 +92,7 @@ if [[ "$UPGRADE_DATABASE_URL" == "$FRESH_DATABASE_URL" ]]; then
     echo "the upgrade and fresh paths need two different databases" >&2
     exit 2
 fi
-for f in "$SHIM" "$V021" "$V022" "$V044" "$V086" "$V087" "$OPS" \
+for f in "$SHIM" "$V021" "$V022" "$V044" "$V086" "$V087" "$V091" "$OPS" \
          "$SQL_DIR/schema.sql" "$SQL_DIR/app_rpc.sql" "$SQL_DIR/helper_rpc.sql"; do
     [[ -f "$f" ]] || { echo "missing $f" >&2; exit 2; }
 done
@@ -165,6 +176,13 @@ STEP2_MD5="$(md5_lines '^-- 2\. Post-apply' '^-- 3\. ')"
 header_bodies() { # "name=md5 ..." as $BODIES prints it
     echo "$1" | awk '{print $3 "=" $4}' | LC_ALL=C sort | paste -sd' ' -
 }
+# v0.91's cleanup body, as its header prints it; the fresh install has it.
+V091_CLEANUP_MD5="$(sed -n -E 's/^--   after   v0\.91, this file as written +([0-9a-f]{32})$/\1/p' "$V091")"
+V087_CLEANUP_MD5="$(echo "$STEP2_MD5" | awk '$3 == "_cleanup_expired_data_internal" { print $4 }')"
+[[ "$V091_CLEANUP_MD5" =~ ^[0-9a-f]{32}$ && "$V087_CLEANUP_MD5" =~ ^[0-9a-f]{32}$ ]] \
+    || { echo "could not read the cleanup's md5 from v0.91's header or v0.87's step 2" >&2; exit 2; }
+CURRENT_MD5="$(echo "$STEP2_MD5" | sed "s/$V087_CLEANUP_MD5/$V091_CLEANUP_MD5/")"
+[[ "$CURRENT_MD5" != "$STEP2_MD5" ]] || { echo "the v0.91 substitution changed nothing" >&2; exit 2; }
 # What step 0's query should print: proname|args|prosecdef|v087|md5|anon|authenticated.
 step0_expected() { # step0_expected <md5 lines> <v087 for the two replaced functions t|f>
     echo "$1" | awk -v v="$2" '{
@@ -254,6 +272,11 @@ values ('$UA', current_date, 'Codex', 'gpt-5-codex', 1000, 600, 100, 0.5),
        ('$UA', current_date, 'Claude', 'claude-sonnet-4-5', 300, 2000, 50, 0.25);
 SQL
 }
+
+# The webhook jobs the fixture's alerts enqueue (one per account: their
+# grouping_key is NULL, so the trigger enqueues the first and skips the rest
+# while it is pending). Pending, so no cleanup may delete them.
+PENDING_JOBS="select count(*) filter (where processed_at is null) || ' pending of ' || count(*) from public.webhook_jobs;"
 
 # What is left, by id, and what the cleanup should have left.
 LEFT="select (select string_agg(id, ',' order by id collate \"C\") from public.sessions) || ' | '
@@ -362,6 +385,7 @@ SQL
 check_cleanup() { # check_cleanup <label>: the dry run, then the real first run
     local label="$1" dry first out
     same "[$label] before the first run every fixture row is there" "$FULL_FIXTURE" "$(psql_q -c "$LEFT")"
+    same "[$label] the fixture's alerts enqueued one pending webhook job per account" "4 pending of 4" "$(psql_q -c "$PENDING_JOBS")"
     # The premise of account D: its retention, uncapped, cannot be taken from now().
     if out="$(psql_q -c "select now() - make_interval(days => data_retention_days)
                            from public.user_settings where user_id = '$UD';" 2>&1)"; then
@@ -385,6 +409,8 @@ check_cleanup() { # check_cleanup <label>: the dry run, then the real first run
          'errors=0 failed=[]' "$(summary_of "$first" | sed 's/^.* errors=/errors=/')"
     same "[$label] what is left: every keep- row, no del- row (7 days, 30 days, 0 = keep all, 2147483647 = 36500)" \
          "$EXPECTED_LEFT" "$(psql_q -c "$LEFT")"
+    same "[$label] the pending webhook jobs survive the cleanup (their alerts may go; a pending job never does)" \
+         "4 pending of 4" "$(psql_q -c "$PENDING_JOBS")"
     same "[$label] a second run deletes nothing and reports no error" \
          'sessions=0 running=0 alerts=0 pairing=0 errors=0 failed=[]' \
          "$(summary_of "$(psql_q -c "select public._cleanup_expired_data_internal()::text;")")"
@@ -534,17 +560,33 @@ apply "$SQL_DIR/schema.sql"
 apply "$SQL_DIR/app_rpc.sql"
 apply "$SQL_DIR/helper_rpc.sql"
 cron_stub
-same "[fresh] the fresh install has the upgraded bodies, byte for byte (the wrapper production's)" \
-     "$bodies_after" "$(psql_q -c "$BODIES")"
-same "[fresh] step 0's query gives what step 2 expects in production" \
-     "$(step0_expected "$STEP2_MD5" t)" "$(step0)"
+current_bodies="$(header_bodies "$CURRENT_MD5")"
+same "[fresh] the fresh install has the upgraded bodies, byte for byte (the wrapper production's), the cleanup v0.91's" \
+     "$current_bodies" "$(psql_q -c "$BODIES")"
+same "[fresh] which differ from v0.87's in the cleanup only" \
+     "$(echo "$bodies_after" | sed "s/$V087_CLEANUP_MD5/$V091_CLEANUP_MD5/")" "$current_bodies"
+same "[fresh] step 0's query gives what step 2 expects in production, with v0.91's cleanup" \
+     "$(step0_expected "$CURRENT_MD5" t)" "$(step0)"
 same "[fresh] the ops check reports nothing (pairing_attempt_log is in schema.sql)" "" "$(ops_check)"
 load_fixture
 check_fresh_counts "fresh"
 check_calls "fresh"
 check_cleanup "fresh"
+
+echo "v0.87, then v0.91, over the fresh install:"
 apply "$V087"
-same "[fresh] v0.87 on a fresh install changes nothing" "$bodies_after" "$(psql_q -c "$BODIES")"
+same "[fresh] v0.87 over a fresh install installs v0.87's bodies (its cleanup without the webhook block)" \
+     "$bodies_after" "$(psql_q -c "$BODIES")"
+same "[fresh] step 0's query then gives v0.87's step 2" "$(step0_expected "$STEP2_MD5" t)" "$(step0)"
+# a reloaded fixture: deleting the accounts deletes their rows (and their
+# jobs: ON DELETE CASCADE); the pairing log has no account
+psql_q -c "delete from auth.users where id in ('$UA', '$UB', '$UC', '$UD'); delete from public.pairing_attempt_log;" >/dev/null
+load_fixture
+check_cleanup "fresh, v0.87 re-applied"
+apply "$V091"
+same "[fresh] then v0.91 (the baseline already holds v0.89's worker) brings back the current bodies" \
+     "$current_bodies" "$(psql_q -c "$BODIES")"
+same "[fresh] and step 0's query gives v0.91's cleanup again" "$(step0_expected "$CURRENT_MD5" t)" "$(step0)"
 
 echo
 if (( fails > 0 )); then
