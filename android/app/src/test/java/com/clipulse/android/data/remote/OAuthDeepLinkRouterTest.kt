@@ -50,6 +50,14 @@ class OAuthDeepLinkRouterTest {
     }
 
     @Test
+    fun `a link flow's session id travels with its callback`() {
+        val parsed = OAuthCallbackResult.Success(code = longCode(), state = "expectedState")
+        val outcome = OAuthDeepLinkRouter.route(parsed = parsed, pending = pending("link").copy(sessionId = "session-A"))
+        val cb = (outcome as OAuthDeepLinkOutcome.DeliverCallback).callback
+        assertEquals("session-A", cb.sessionId)
+    }
+
+    @Test
     fun `access_denied becomes cancelled notice`() {
         val outcome = OAuthDeepLinkRouter.route(
             parsed = OAuthCallbackResult.Cancelled,

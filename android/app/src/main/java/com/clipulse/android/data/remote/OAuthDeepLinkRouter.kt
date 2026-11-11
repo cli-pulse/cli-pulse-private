@@ -8,6 +8,8 @@ data class OAuthDeepLinkCallback(
     val kind: String,           // "login" or "link"
     val code: String,
     val codeVerifier: String,
+    /** The session a link flow was started for (null for login, and for flows saved by 1.62). */
+    val sessionId: String? = null,
 )
 
 /**
@@ -56,8 +58,8 @@ sealed class OAuthDeepLinkOutcome {
  * Caller responsibilities (kept outside this object so the logic stays pure):
  *  - Build the [OAuthCallbackResult] via `OAuthCallbackParser.parse(uri)`.
  *  - On any [OAuthDeepLinkOutcome.DeliverNotice], clear the pending-flow record.
- *  - On [OAuthDeepLinkOutcome.DeliverCallback], leave the pending record in place;
- *    the ViewModel clears it after a successful exchange.
+ *  - Claim the pending record before routing ([TokenStore.claimPendingOAuthFlow]): it is
+ *    handed out once, so a replayed or second callback finds nothing and is dropped.
  */
 object OAuthDeepLinkRouter {
 
@@ -108,6 +110,7 @@ object OAuthDeepLinkRouter {
                                 kind = pending.kind,
                                 code = parsed.code,
                                 codeVerifier = pending.codeVerifier,
+                                sessionId = pending.sessionId,
                             )
                         )
                 }

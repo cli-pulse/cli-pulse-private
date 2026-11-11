@@ -39,12 +39,16 @@ class PushService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         Log.d(TAG, "FCM token refreshed")
-        val deviceId = tokenStore.deviceId
-        val signedIn = tokenStore.accessToken != null
-        if (deviceId != null && signedIn) {
+        // One snapshot: the device row and the credentials that patch it belong to the same
+        // session. Reading them separately could patch the last account's device row with
+        // the next account's credentials if the account changed in between.
+        val session = supabase.session()?.takeIf { !it.isDemo }
+        val deviceId = session?.let { tokenStore.deviceIdFor(it.sessionId) }
+        val signedIn = session != null
+        if (session != null && deviceId != null) {
             applicationScope.launch {
                 try {
-                    supabase.updatePushToken(deviceId, token)
+                    supabase.updatePushToken(session, deviceId, token)
                     Log.d(TAG, "Push token registered")
                 } catch (e: Exception) {
                     // Class name and HTTP status only: an ApiError.Http message carries the server body.

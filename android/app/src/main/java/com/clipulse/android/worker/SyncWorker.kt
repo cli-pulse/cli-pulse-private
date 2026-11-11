@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
 import com.clipulse.android.data.collector.CollectorManager
+import com.clipulse.android.data.remote.SessionContext
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
 import com.clipulse.android.util.failureSummary
@@ -57,10 +58,11 @@ class SyncWorker @AssistedInject constructor(
         // before 1.62 a demo install sent register_device + dashboard_summary every 15
         // minutes and got 401s back.
         if (!tokenStore.hasSession) return Result.success()
+        val session = tokenStore.snapshot() ?: return Result.success()
 
         return try {
             // 1. Ensure device is registered
-            ensureDeviceRegistered()
+            ensureDeviceRegistered(session)
 
             // 2. Run collectors if any provider keys are configured
             val available = collectorManager.availableCollectors()
@@ -92,7 +94,7 @@ class SyncWorker @AssistedInject constructor(
                         tiersJson = tiersJson,
                     )
                 }
-                supabase.syncProviderQuotas(payloads)
+                supabase.syncProviderQuotas(session, payloads)
                 Log.d(TAG, "Synced ${payloads.size} provider quotas to Supabase")
             } else {
                 Log.d(TAG, "No provider keys configured, skipping collection")
@@ -113,12 +115,13 @@ class SyncWorker @AssistedInject constructor(
         }
     }
 
-    private suspend fun ensureDeviceRegistered() {
+    private suspend fun ensureDeviceRegistered(session: SessionContext) {
         if (tokenStore.deviceId != null) return
         try {
             val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}"
             val system = "Android ${Build.VERSION.RELEASE}"
             val deviceId = supabase.registerDevice(
+                session,
                 name = deviceName,
                 type = "Android",
                 system = system,

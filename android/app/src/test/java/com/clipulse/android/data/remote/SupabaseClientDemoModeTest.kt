@@ -94,10 +94,9 @@ class SupabaseClientDemoModeTest {
     @Test
     fun `demo mode fails a call with no demo answer before sending it (helper path)`() = runTest {
         enterDemo()
-        tokenStore.userId = "user-1" // testWebhook returns early without a user id
         try {
-            client.testWebhook()
-            fail("testWebhook should not succeed in demo mode")
+            client.rpcPublic("team_details")
+            fail("an RPC should not succeed in demo mode")
         } catch (e: DemoModeRequestBlocked) {
             // expected
         }
@@ -128,13 +127,15 @@ class SupabaseClientDemoModeTest {
     }
 
     @Test
-    fun `a refresh token alone still lets the request through`() = runTest {
-        tokenStore.refreshToken = "refresh-1"
-        tokenStore.userId = "user-1"
+    fun `a refresh token alone renews first, then the request goes through`() = runTest {
+        tokenStore.installSession(null, "refresh-1", "user-1")
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"access_token":"access-2","refresh_token":"refresh-2"}"""))
         server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
 
         assertTrue(client.sessions().isEmpty())
-        assertEquals(1, server.requestCount)
+        assertEquals(2, server.requestCount)
+        assertTrue(server.takeRequest().path!!.startsWith("/auth/v1/token?grant_type=refresh_token"))
+        assertEquals("Bearer access-2", server.takeRequest().getHeader("Authorization"))
     }
 
     @Test
@@ -203,8 +204,8 @@ class SupabaseClientDemoModeTest {
         try {
             client.sessions()
             fail("the refreshed session must not be used")
-        } catch (e: ApiError.TokenExpired) {
-            // expected
+        } catch (e: ApiError.SessionSuperseded) {
+            // expected: the session this request belonged to ended while it was out
         }
         assertNull(tokenStore.accessToken)
         assertNull(tokenStore.refreshToken)

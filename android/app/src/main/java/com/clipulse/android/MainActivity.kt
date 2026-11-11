@@ -27,8 +27,8 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Successful OAuth callback awaiting exchange. Consumed by the screen
-     * matching [OAuthDeepLinkCallback.kind]; the ViewModel clears the durable
-     * pending-flow record after a successful token exchange.
+     * matching [OAuthDeepLinkCallback.kind]. The durable pending-flow record was
+     * claimed (removed) when the callback was routed, so it is delivered once.
      */
     var pendingCallback by mutableStateOf<OAuthDeepLinkCallback?>(null)
         private set
@@ -73,8 +73,8 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         // Persist the deep-link intent so a configuration change after onNewIntent
         // recreates with getIntent() == deep link and onCreate can replay it.
-        // Replay is idempotent: a successful exchange already cleared the pending
-        // flow record, so the router returns Drop on the second pass.
+        // Replay is idempotent: the first pass claimed the pending flow record, so
+        // the router returns Drop on the second pass.
         setIntent(intent)
         // Don't process deep links when config is missing — there's no client to
         // exchange against and the diagnostics screen is the only thing rendered.
@@ -101,19 +101,17 @@ class MainActivity : ComponentActivity() {
         if (!isHttps && !isCustom) return
 
         val parsed = OAuthCallbackParser.parse(data)
-        val pending = tokenStore.loadPendingOAuthFlow()
+        // Claimed, not just read: the record is removed here, once. A second callback for
+        // the same flow (a replayed intent, a second tap on the browser's return) finds
+        // nothing, and a sign-in or sign-out since the flow started has already dropped it.
+        val pending = tokenStore.claimPendingOAuthFlow()
 
         when (val outcome = OAuthDeepLinkRouter.route(parsed = parsed, pending = pending)) {
             is OAuthDeepLinkOutcome.DeliverCallback -> {
-                // Leave the durable pending record in place — the ViewModel clears
-                // it after a successful token exchange (or it expires via TTL).
                 pendingCallback = outcome.callback
             }
 
             is OAuthDeepLinkOutcome.DeliverNotice -> {
-                // Any non-success outcome drops the pending record so the next
-                // launch isn't replayed against a stale verifier/state.
-                tokenStore.clearPendingOAuthFlow()
                 pendingNotice = outcome.notice
             }
 

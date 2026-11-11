@@ -116,10 +116,8 @@ class LoginViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, error = null)
             try {
+                // MainActivity claimed the pending-flow record when it routed the callback.
                 supabase.exchangeOAuthCode(code, codeVerifier)
-                // Exchange succeeded — clear the durable pending-flow record so we don't
-                // re-fire stale callbacks. The TTL would eventually clean it up anyway.
-                tokenStore.clearPendingOAuthFlow()
                 _state.value = _state.value.copy(isLoading = false, isLoggedIn = true)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))

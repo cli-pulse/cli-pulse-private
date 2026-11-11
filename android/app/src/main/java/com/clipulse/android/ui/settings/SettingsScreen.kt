@@ -62,7 +62,7 @@ fun SettingsScreen(
     // pending-flow record, so we can exchange directly.
     LaunchedEffect(linkCallback) {
         val cb = linkCallback ?: return@LaunchedEffect
-        viewModel.completeLinkIdentity(cb.code, cb.codeVerifier)
+        viewModel.completeLinkIdentity(cb.code, cb.codeVerifier, cb.sessionId)
         (context as? MainActivity)?.consumePendingCallback()
     }
 

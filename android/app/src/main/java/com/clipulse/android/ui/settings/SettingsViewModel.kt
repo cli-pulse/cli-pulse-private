@@ -5,10 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.clipulse.android.data.model.SettingsSnapshot
 import com.clipulse.android.data.model.UserIdentity
 import com.clipulse.android.data.local.CacheDao
+import com.clipulse.android.data.remote.ApiError
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
 import com.clipulse.android.data.repository.DashboardRepository
 import com.clipulse.android.di.ApplicationScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -81,7 +83,8 @@ class SettingsViewModel @Inject constructor(
     suspend fun startLinkIdentity(provider: String): String? {
         _state.value = _state.value.copy(linkIdentityError = null)
         return try {
-            val (url, verifier, state) = supabase.linkIdentityAuthorizeUrl(provider)
+            val ctx = supabase.session() ?: throw ApiError.TokenExpired
+            val (url, verifier, state) = supabase.linkIdentityAuthorizeUrl(provider, ctx)
             tokenStore.savePendingOAuthFlow(
                 TokenStore.PendingOAuthFlow(
                     kind = "link",
@@ -89,22 +92,25 @@ class SettingsViewModel @Inject constructor(
                     codeVerifier = verifier,
                     state = state,
                     createdAt = System.currentTimeMillis(),
+                    // The callback completes the link for this session only.
+                    sessionId = ctx.sessionId,
                 )
             )
             url
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             _state.value = _state.value.copy(linkIdentityError = UiError.action(UiError.Action.StartLink, e))
             null
         }
     }
 
-    fun completeLinkIdentity(code: String, codeVerifier: String) {
+    fun completeLinkIdentity(code: String, codeVerifier: String, sessionId: String?) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLinkingIdentity = true, linkIdentityError = null)
             try {
-                supabase.exchangeOAuthCodeForLink(code, codeVerifier)
-                // Exchange succeeded — clear the durable pending-flow record.
-                tokenStore.clearPendingOAuthFlow()
+                // MainActivity already claimed the pending-flow record.
+                supabase.exchangeOAuthCodeForLink(code, codeVerifier, sessionId)
                 val list = supabase.userIdentities()
                 _state.value = _state.value.copy(isLinkingIdentity = false, linkedIdentities = list)
             } catch (e: Exception) {

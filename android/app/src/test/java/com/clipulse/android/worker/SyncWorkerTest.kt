@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
 import com.clipulse.android.data.collector.CollectorManager
+import com.clipulse.android.data.remote.SessionContext
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
 import io.mockk.coVerify
@@ -77,6 +78,7 @@ class SyncWorkerTest {
         every { tokenStore.isLoggedIn } returns true
         every { tokenStore.hasSession } returns true
         every { tokenStore.accessToken } returns "access-1"
+        every { tokenStore.snapshot() } returns SessionContext("session-1", "access-1", "refresh-1", "user-1", false)
         every { tokenStore.deviceId } returns "device-1"
         every { collectorManager.availableCollectors() } returns emptyList()
 
