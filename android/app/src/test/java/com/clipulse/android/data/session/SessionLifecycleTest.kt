@@ -15,6 +15,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
@@ -44,14 +45,24 @@ import kotlin.time.Duration.Companion.seconds
  * same process. Real TokenStore over a preferences double with separate memory and disk
  * layers, an in-memory DAO, everything on the test scheduler.
  */
+/** A scope on the test scheduler that runTest cancels at the end of the test, pass or fail. */
+@OptIn(ExperimentalCoroutinesApi::class)
+private fun TestScope.childScope(): CoroutineScope =
+    CoroutineScope(backgroundScope.coroutineContext + SupervisorJob(backgroundScope.coroutineContext[Job]))
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class SessionLifecycleTest {
 
-    /** A store, an in-memory cache, a coordinator and a repository over a mocked client. */
+    /**
+     * A store, an in-memory cache, a coordinator and a repository over a mocked client. The
+     * coordinator's scope is a child of runTest's background scope, so a retry it scheduled is
+     * cancelled when the test ends, even when an assertion failed first (otherwise virtual
+     * time would run a teardown that keeps failing forever).
+     */
     private class Env(testScope: TestScope, val prefs: InMemorySharedPreferences = InMemorySharedPreferences()) {
         val store = TokenStore(prefs)
         val dao = FakeCacheDao()
-        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScope.testScheduler))
+        val scope = testScope.childScope()
         val lifecycle = SessionLifecycle(store, dao, scope, StandardTestDispatcher(testScope.testScheduler))
         val supabase = mockk<SupabaseClient>(relaxed = true)
         val repo = DashboardRepository(supabase, dao, store, lifecycle)
@@ -81,7 +92,7 @@ class SessionLifecycleTest {
 
         val revived = TokenStore(before.prefs.restart())
         assertEquals("the marker reached disk with the end", a, revived.teardownPending)
-        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val scope = childScope()
         SessionLifecycle(revived, before.dao, scope, StandardTestDispatcher(testScheduler)).start()
         runCurrent()
 
