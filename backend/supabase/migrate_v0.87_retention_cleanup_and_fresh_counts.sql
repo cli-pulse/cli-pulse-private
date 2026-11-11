@@ -4,6 +4,8 @@
 -- Date: 2026-10-26
 -- Later: migrate_v0.91 adds a fourth block (finished webhook jobs) to this
 -- cleanup; step 2's md5 for it below is v0.87's body, not the current one.
+-- Do not replay this file after v0.91: it would put back the cleanup
+-- without that block.
 -- Written for 1.59 and NOT applied by the PR that adds it. Applying it to
 -- production is the owner's decision, after reading the dry-run counts
 -- (APPLY step 0). Its first nightly run deletes rows for good.

@@ -4,6 +4,8 @@
 -- against production (the Supabase MCP's execute_sql, or the SQL editor):
 --   * after applying migrate_v0.91 (APPLY step 5), and
 --   * in each release's verification.
+-- It needs pg_cron: where the cron schema does not exist (plain local
+-- Postgres) it fails with "relation cron.job does not exist".
 -- Each row it returns names one problem. Once v0.91 is applied and the
 -- nightly cleanup has run after it, it must return NO rows. Before that run
 -- the one expected row is 'finalized jobs overdue': the backlog that the
@@ -22,8 +24,9 @@
 --   * the cleanup is still v0.91's (body md5, as written or without its
 --     comment-only lines; SECURITY DEFINER; pinned search_path). A reviewed
 --     change to its body must update these md5s in the same PR;
---   * it has run; its last run did not fail; a run started in the last 26
---     hours;
+--   * it has run; its last run did not fail (a run cancelled by a statement
+--     timeout, which undoes all four tables' deletes, is recorded as failed);
+--     a run started in the last 26 hours;
 -- and the outcome:
 --   * no finalized job is more than 49 hours past its processed_at. A job is
 --     eligible 24 hours after it was finalized, and the next 03:07 run comes
@@ -37,6 +40,14 @@
 --   * no job is pending with its attempts used up and no request in flight
 --     (attempt_count >= 3, pg_net_request_id NULL): v0.89's bug, back.
 --
+-- What it prints: problem names, counts, the schedule, a start time, and for
+-- a changed command only the command's md5. Never the command itself, and
+-- never a run's return_message: either can hold anything (an error message
+-- quoting a value, a command someone edited by hand). A failed run is
+-- reported with a fixed text. For the raw values, run the PRIVATE
+-- INVESTIGATION query below and keep its answer out of logs, tickets and
+-- pull requests.
+--
 -- "Last run" is the highest runid, not the latest start_time: pg_cron leaves
 -- start_time NULL on a run that never got going, and NULLs sort first in a
 -- descending order. The 26-hour test uses the latest start_time of any run of
@@ -44,8 +55,15 @@
 --
 -- Counts are of rows, never their contents.
 --
+-- PRIVATE INVESTIGATION (raw diagnostics, owner only; the answer stays out of
+-- logs, tickets and pull requests): the job's command and its last three
+-- runs, with their messages:
+--   I1: select j.jobid, j.command, d.runid, d.status, d.start_time, d.return_message from cron.job j left join lateral (select runid, status, start_time, return_message from cron.job_run_details where jobid = j.jobid order by runid desc limit 3) d on true where j.jobname = 'cleanup_expired_data_nightly' order by d.runid desc;
+--
 -- Tested by backend/supabase/tests/run_v091_prune_webhook_jobs_tests.sh,
--- which makes each problem happen and requires this query to name it.
+-- which makes each problem happen and requires this query to name it, and
+-- feeds it a command and a run message holding synthetic secret text that
+-- must not appear in its output.
 
 with job as (
     select jobid, active, command, schedule
@@ -53,12 +71,12 @@ with job as (
      where jobname = 'cleanup_expired_data_nightly'
 ),
 runs as (
-    select d.runid, d.status, d.start_time, d.return_message
+    select d.runid, d.status, d.start_time
       from cron.job_run_details d
       join job j on j.jobid = d.jobid
 ),
 last_run as (
-    select status, start_time, return_message
+    select status, start_time
       from runs
      order by runid desc
      limit 1
@@ -80,7 +98,7 @@ select 'job inactive', null
   from job
  where not active
 union all
-select 'job command changed', command
+select 'job command changed', 'command md5 ' || md5(command)
   from job
  where command <> 'SELECT public._cleanup_expired_data_internal();'
 union all
@@ -99,7 +117,7 @@ select 'no run recorded', null
   from job
  where not exists (select 1 from runs)
 union all
-select 'last run failed', coalesce('at ' || start_time::text, return_message)
+select 'last run failed', 'status failed (its message: PRIVATE INVESTIGATION I1)'
   from last_run
  where status = 'failed'
 union all

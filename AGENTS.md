@@ -975,8 +975,12 @@ the job has never run, its last run failed, or no run started in the last 26
 hours; a finalized job is more than 49 hours old; a job is pending more than a
 day; or a pending job has used its attempts with no request in flight
 (v0.89's bug back). The overdue row is the one that matters most: the
-webhook DELETE runs in its own savepoint, so when it fails the cleanup warns
-and cron still records the run as succeeded.
+webhook DELETE runs in its own savepoint, so when it fails with an error the
+cleanup catches (a lock timeout, say) the cleanup warns and cron still records
+the run as succeeded. A statement timeout is not caught: it cancels the whole
+run, all four tables, and cron records it as failed. The check prints a
+changed command only as its md5 and never a run's message; its header has the
+private query for the raw values.
 
 ### Migration numbering — one number, one migration, forever
 

@@ -73,24 +73,51 @@
 --       where processed_at is not null
 --         and processed_at < now() - interval '1 day';
 --    in its own BEGIN ... EXCEPTION block (its own savepoint), like the other
---    three: when it fails it is counted in errors, named in failed, reported
---    with RAISE WARNING, and the other three tables are still cleaned. Inside
---    the block, lock_timeout = 5s (set_config, local): a DELETE that waits
---    on a row lock (an account deletion's cascade, say) for 5 s fails into
---    the handler, deletes nothing of this table that night, and the next
---    night retries.
+--    three. Isolation covers CAUGHT errors only: a lock timeout, a deadlock,
+--    a raising trigger, any error WHEN OTHERS catches. Such an error is
+--    counted in errors, named in failed, reported with RAISE WARNING, rolls
+--    back this block only, and the other three tables are still cleaned. A
+--    statement timeout or any other query cancel (SQLSTATE 57014) is NOT
+--    caught: it ends the call and undoes all four tables' deletes (the suite
+--    shows it). Inside the block, lock_timeout = 5s (set_config, local): a
+--    DELETE that waits on a row lock (an account deletion's cascade, say)
+--    for 5 s fails into the handler, deletes nothing of this table that
+--    night, and the next night retries. 5 s bounds each lock wait, not the
+--    block.
+--    The DELETE does not hold up alert uploads: it takes ROW EXCLUSIVE on
+--    webhook_jobs and locks finalized rows only, while the enqueue trigger
+--    reads and inserts pending ones (tested with the DELETE's transaction
+--    held open and an insert under a 500 ms limit).
 --    Why last: set_config(..., true) lasts until the end of the calling
 --    transaction, not of the block (when the block succeeds), so a block
 --    after it would run under its lock_timeout too. The function says so,
---    and the test suite checks the order.
---    No statement_timeout (the plan had one, 60 s): set inside the function
---    it would not apply to the statement already running (PostgreSQL arms a
---    statement timeout when a top-level statement starts), and a statement
---    timeout that does fire is a query cancel, which WHEN OTHERS does not
---    catch: it would abort the whole cleanup, the other three tables with
---    it. The suite shows both. How long the DELETE takes is kept short by
---    the size gate (APPLY step 0); above it, re-plan (a bounded nightly
---    delete or an index on processed_at), do not apply.
+--    and the test suite checks the order. For a caller that runs the
+--    cleanup inside a longer transaction of its own, the block also replaces
+--    that caller's lock_timeout (raises a lower one, lowers an unlimited one)
+--    with 5 s until that transaction ends; pg_cron's call is one statement,
+--    so nothing follows it. After the commit the session's own value is back
+--    (tested, with a mutant that sets it for the session).
+--    The webhook DELETE runs before the transaction commits, so the row locks
+--    the first three blocks took (the sessions, alerts and pairing attempts
+--    just deleted, all past retention) are held for the DELETE's time too.
+--    No statement_timeout in the block (the plan had one, 60 s): set inside
+--    the function it would not apply to the statement already running
+--    (PostgreSQL arms a statement timeout when a top-level statement starts),
+--    and a statement timeout that does fire is a query cancel, which WHEN
+--    OTHERS does not catch: it would abort the whole cleanup, the other three
+--    tables with it. The suite shows both.
+--    THE CALLER'S OWN TIMEOUT: the cron job runs as postgres, which has no
+--    role or database setting for statement_timeout or lock_timeout; the
+--    server's statement_timeout is 120000 ms (2 minutes, from the
+--    configuration file), so pg_cron's session runs the whole cleanup, all
+--    four tables, under a 2-minute statement timeout, and a run that reaches
+--    it is cancelled and undoes all four (read-only, 2026-11-12; APPLY Q3c
+--    reads it again). What keeps the whole cleanup far below that is the
+--    size gate (APPLY step 0: the scan under 2 s, and in any case under a
+--    twelfth of Q3c's effective statement_timeout); above it, re-plan (a
+--    bounded nightly delete, an index on processed_at, or a job of its own),
+--    do not apply. After the first run the table holds about a day of
+--    finished jobs, so later runs delete far less than the first.
 --    The answer gains webhook_jobs_deleted; errors runs 0 to 4; the warning
 --    says "% of 4 tables failed". Every other key is unchanged. Same name,
 --    no arguments, returns jsonb, SECURITY DEFINER, the same search_path;
@@ -132,8 +159,8 @@
 -- Every Q and G query is read-only and returns counts, hashes and booleans
 -- only: never a row's contents, a secret, a function body or a timestamp.
 -- The exceptions are labelled: G2 (the table's size and vacuum statistics),
--- G3 (a query plan with its timings) and R0 (the function definition, kept
--- privately). Run each in its own statement (Supabase MCP execute_sql), and
+-- G3 (a query plan with its timings), Q3c (timeout settings) and R0 (the
+-- function definition, kept privately). Run each in its own statement (Supabase MCP execute_sql), and
 -- keep every answer.
 -- PRECONDITION: v0.89 is applied in production and verified (its APPLY step
 -- 8 and 10: its Q5 = 0, and its Q9, pending over 1 day, has come down to 0).
@@ -162,16 +189,31 @@
 --    would delete):
 --    G3: explain (analyze, buffers) select count(*) from public.webhook_jobs where processed_at is not null and processed_at < now() - interval '1 day';
 --    GATE, all of: G1 total at most 200000; G2 bytes at most 104857600
---    (100 MB); G3's Execution Time under 2000 ms; G1 pending_over_1_day = 0
---    and stuck = 0 (otherwise v0.89 has not done its work: STOP); G2
---    n_dead_tup not above n_live_tup (autovacuum keeps up). Failing it means
---    re-plan (a bounded nightly delete, or an index on processed_at), not
---    apply.
+--    (100 MB); G3's Execution Time under 2000 ms, and in any case under a
+--    twelfth of Q3c's effective statement_timeout for the cron job (10 s
+--    at today's 2 minutes: the DELETE adds tuple writes and WAL to the
+--    scan, and the other three tables share the same limit); G1
+--    pending_over_1_day = 0 and stuck = 0 (otherwise v0.89 has not done its
+--    work: STOP); G2 n_dead_tup not above n_live_tup (autovacuum keeps up).
+--    Failing it means re-plan (a bounded nightly delete, an index on
+--    processed_at, or a job of its own), not apply.
 --    The nightly job, booleans and counts:
 --    Q3: select count(*) filter (where jobname = 'cleanup_expired_data_nightly') as by_name, count(*) filter (where strpos(lower(command), '_cleanup_expired_data_internal') > 0) as by_command, bool_and(active) filter (where jobname = 'cleanup_expired_data_nightly') as active, bool_and(command = 'SELECT public._cleanup_expired_data_internal();' and schedule = '7 3 * * *') filter (where jobname = 'cleanup_expired_data_nightly') as definition_ok, bool_and(has_function_privilege(username, 'public._cleanup_expired_data_internal()', 'EXECUTE')) filter (where jobname = 'cleanup_expired_data_nightly') as user_can_execute, coalesce(current_setting('cron.timezone', true), 'GMT') in ('GMT', 'UTC', 'Etc/UTC') as timezone_utc from cron.job;
 --    Expect 1|1|t|t|t|t. Anything else: STOP.
 --    Q3b: select d.status, count(*) from cron.job_run_details d join cron.job j on j.jobid = d.jobid where j.jobname = 'cleanup_expired_data_nightly' and d.start_time > now() - interval '7 days' group by d.status order by d.status;
 --    Expect only succeeded, about 7.
+--    The timeouts the nightly run is under (config values, not data): the
+--    cron job's user's own settings, the database's, and the server's value
+--    with where it comes from:
+--    Q3c: select j.username, coalesce((select string_agg(c, ',' order by c) from pg_db_role_setting s cross join unnest(s.setconfig) c where s.setdatabase = d.oid and s.setrole = r.oid and (c like 'statement_timeout=%' or c like 'lock_timeout=%')), '(none)') as role_in_database, coalesce((select string_agg(c, ',' order by c) from unnest(r.rolconfig) c where c like 'statement_timeout=%' or c like 'lock_timeout=%'), '(none)') as role_settings, coalesce((select string_agg(c, ',' order by c) from pg_db_role_setting s cross join unnest(s.setconfig) c where s.setdatabase = d.oid and s.setrole = 0 and (c like 'statement_timeout=%' or c like 'lock_timeout=%')), '(none)') as database_settings, (select reset_val || ' ' || unit || ' from ' || source from pg_settings where name = 'statement_timeout') as server_statement_timeout, (select reset_val || ' ' || unit || ' from ' || source from pg_settings where name = 'lock_timeout') as server_lock_timeout from cron.job j join pg_roles r on r.rolname = j.username left join pg_database d on d.datname = j.database where j.jobname = 'cleanup_expired_data_nightly';
+--    On 2026-11-12: postgres|(none)|(none)|(none)|120000 ms from
+--    configuration file|0 ms from default. The nightly run's effective value
+--    of each is the first one set of: role_in_database, role_settings,
+--    database_settings, the server's (PostgreSQL's order of precedence). The
+--    server's value is read from this session: its source must be
+--    'configuration file' or 'default' (a 'client' or 'user' source means
+--    the applier's own session hides it; ask the owner for the server
+--    value). Use the effective statement_timeout in the GATE above.
 --    The dry run, the DELETE's predicate as a count (the suite checks that
 --    the cleanup's webhook_jobs_deleted equals it, in one transaction):
 --    DRY: select count(*) as eligible from public.webhook_jobs where processed_at is not null and processed_at < now() - interval '1 day';
@@ -216,7 +258,9 @@
 --      (before that run it returns 'finalized jobs overdue': the backlog the
 --      v0.87 body never deleted);
 --    * DRY right after the run counts only jobs that crossed 24 h since;
---    * Q3b: the run succeeded;
+--    * Q3b: the run succeeded (a run the statement timeout cancelled is
+--      recorded as failed, and its other three tables were not cleaned
+--      either: STOP and re-plan);
 --    * no WARNING from _cleanup_expired_data_internal in the Postgres log.
 --    Do NOT expect G2's bytes to fall: DELETE and plain (auto)vacuum make
 --    the space reusable, they do not shrink the file. Check that n_dead_tup

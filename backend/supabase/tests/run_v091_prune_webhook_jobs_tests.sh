@@ -58,7 +58,11 @@
 #      run deletes it; (c) why there is no statement_timeout in the block: one
 #      set inside a function does not stop the statement already running it,
 #      and one that does fire is not caught by WHEN OTHERS: a slow webhook
-#      DELETE under it cancels the whole cleanup, the other tables with it.
+#      DELETE under it cancels the whole cleanup, the other tables with it;
+#      (d) an alert inserted (500 ms limit) while the nightly DELETE's
+#      transaction holds its locks goes on, its pending job enqueued; (e) the
+#      block's lock_timeout is 5 s inside the caller's transaction and the
+#      session's own value again after the commit.
 #   4. re-runs: accepted over v0.87's body, over v0.91 raw and over v0.91
 #      without its comment-only lines (a client that strips them), in every
 #      order.
@@ -78,17 +82,26 @@
 #      enqueued) and a cleanup call go on without waiting. An apply made to
 #      run past the 2 s budget is stopped with nothing changed
 #      (transaction_timeout on PostgreSQL 17; the pre-17 branch forced).
+#   5b. Q3c, as printed: settings only; each source of a timeout in its
+#      column (the job user's, in its database, the database's, the server's
+#      with its source).
 #   6. the ops check, run as it stands: no rows on a healthy database; each
 #      problem made in a rolled-back transaction is named (job missing,
 #      inactive, command or schedule changed, cleanup changed, no run, last
 #      run failed, no run in 26 h, a job finalized 50 h ago but not one 48 h
 #      ago, a pending job over a day old, a stuck pending job); a webhook
 #      DELETE that failed inside a run that "succeeded" shows up as overdue;
-#      APPLY step 5's sequence (overdue before the first run, nothing after).
+#      APPLY step 5's sequence (overdue before the first run, nothing after);
+#      a changed command and a failed run's message holding synthetic secret
+#      text are named by md5 and a fixed text, the text nowhere in the
+#      output; the private investigation query I1 runs as printed; without
+#      the cron schema the check fails, as its header says.
 #   7. negative controls: mutants of the cleanup cut from between the markers
 #      and applied directly to a throwaway database (bypassing the guards),
 #      and a copy of the migration without its v0.89 guard, must each fail
-#      the assertion named for them; the unmutated cut passes them all.
+#      the assertion named for them (including a DELETE that takes a lock
+#      blocking writers, set_config(..., false), and the ops check printing
+#      the raw command or message); the unmutated cut passes them all.
 #
 # Usage (creates and drops its own b2_<pid>_* databases and roles there):
 #   DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres \
@@ -387,6 +400,24 @@ cleanup_md5() { q -c "select md5(prosrc) from pg_proc where oid = 'public._clean
 worker_md5() { q -c "select md5(prosrc) from pg_proc where oid = to_regprocedure('public.process_webhook_jobs()')"; }
 notice() { grep -E 'NOTICE: +v0\.91: ' <<<"$1" | sed -E 's/.*NOTICE: +v0\.91: //' | paste -sd'|' -; }
 ops() { q -f "$OPS" | cut -d'|' -f1 | paste -sd',' -; }
+OPS_UNDER_TEST=""
+# ops_secret_case: a changed command and a failed run's message, both holding
+# synthetic secret text; the check names both problems without printing it
+ops_secret_case() {
+    local cmd="SELECT public._cleanup_expired_data_internal(); -- b2-SYNTHETIC-SECRET-cmd" out
+    out="$(q <<SQL
+begin;
+update cron.job set command = '$cmd' where jobid = 1;
+insert into cron.job_run_details (jobid, status, return_message, start_time)
+values (1, 'failed', 'ERROR: b2-SYNTHETIC-SECRET-msg, a value quoted from a row', null);
+\i '${OPS_UNDER_TEST:-$OPS}'
+rollback;
+SQL
+)" || true
+    same "$P a changed command and a failed run's message holding synthetic secret text: named by the command's md5 and a fixed text, no secret text in the output" \
+         "$(grep -c 'SYNTHETIC-SECRET' <<<"$out" || true) / $(paste -sd',' - <<<"$out")" \
+         "0 / job command changed|command md5 $(q -c "select md5('$cmd')"),last run failed|status failed (its message: PRIVATE INVESTIGATION I1)"
+}
 ops_with() { # ops_with <sql run first, in a transaction rolled back after>: the problems named
     q <<SQL | cut -d'|' -f1 | paste -sd',' -
 begin;
@@ -597,7 +628,51 @@ SQL
          "$(q -c "select $ANSWER from (select public._cleanup_expired_data_internal() as r) s") / $(q -c "select count(*) from public.webhook_jobs where alert_id in ('wj-locked', 'wj-free')")" \
          "2|0|0|0|0|[] / 0"
 }
-run_cases() { case_prune; case_fail_trigger; case_locked_row; }
+# the nightly DELETE holds its locks (its transaction kept open after the
+# call) while an alert is inserted, with the same grouping_key as a job being
+# deleted, under a 500 ms limit
+case_insert_during_prune() {
+    local m rc out pending open_now
+    q >/dev/null <<SQL
+insert into public.webhook_jobs (user_id, alert_id, alert_payload, enqueued_at, processed_at, attempt_count) values
+  ('$UA', 'wj-old-1', '{"grouping_key":"g-during"}', now() - interval '2 days 1 minute', now() - interval '2 days', 1),
+  ('$UA', 'wj-old-2', '{"grouping_key":"kd2"}',      now() - interval '2 days 1 minute', now() - interval '2 days', 1);
+SQL
+    run_bg_to "$WORK/prune.out" psql "$DB" -v ON_ERROR_STOP=1 --no-psqlrc -qtAX -c "begin" \
+        -c "select 'answer=' || $ANSWER from (select public._cleanup_expired_data_internal() as r) s" \
+        -c "select pg_sleep(3)" -c "commit"; m=$BGPID
+    wait_for "$(sleeping 'select pg_sleep(3)')"
+    same "$P (setup) the cleanup's open transaction holds ROW EXCLUSIVE on webhook_jobs and the row locks of the two jobs it deleted" \
+         "$(q -c "select exists (select 1 from pg_locks l join pg_stat_activity a on a.pid = l.pid
+                                  where a.datname = current_database() and a.query = 'select pg_sleep(3)' and l.granted
+                                    and l.relation = 'public.webhook_jobs'::regclass and l.mode = 'RowExclusiveLock')") / $(q -c "select count(*) from (select 1 from public.webhook_jobs where alert_id in ('wj-old-1', 'wj-old-2') for update skip locked) x")" \
+         "t / 0"
+    rc=0; out="$(psql "$DB" -v ON_ERROR_STOP=1 --no-psqlrc -qtAX -c "set statement_timeout = '500ms'" \
+        -c "insert into public.alerts (id, user_id, type, title, grouping_key) values ('al-during-prune', '$UA', 'Usage Spike', 't', 'g-during')" 2>&1)" || rc=$?
+    pending="$(q -c "select count(*) from public.webhook_jobs where alert_id = 'al-during-prune' and processed_at is null")"
+    open_now="$(q -c "select count(*) from pg_stat_activity where datname = current_database() and state = 'active' and query = 'select pg_sleep(3)'")"
+    same "$P an alert inserted while the nightly DELETE holds its locks goes on at once (500 ms limit) and its pending job is enqueued, though a job being deleted has its grouping_key" \
+         "$rc / $pending / $open_now" "0 / 1 / 1"
+    rc=0; wait "$m" || rc=$?
+    same "$P then the cleanup commits: the two old jobs deleted, the new pending job kept" \
+         "$rc / $(sed -n 's/^answer=//p' "$WORK/prune.out" | cut -d'|' -f1) / $(q -c "select count(*) from public.webhook_jobs where alert_id in ('wj-old-1', 'wj-old-2')") / $(q -c "select count(*) from public.webhook_jobs where alert_id = 'al-during-prune' and processed_at is null")" \
+         "0 / 2 / 0 / 1"
+}
+# the block's lock_timeout is local: in the caller's transaction it is 5 s,
+# after the commit the session's own value is back
+case_session_lock_timeout() {
+    local out
+    out="$(psql "$DB" -v ON_ERROR_STOP=1 --no-psqlrc -qtAX \
+             -c "select current_setting('lock_timeout')" \
+             -c "select public._cleanup_expired_data_internal() ->> 'errors'" \
+             -c "select current_setting('lock_timeout')" \
+             -c "begin" -c "select public._cleanup_expired_data_internal() ->> 'errors'" \
+             -c "select current_setting('lock_timeout')" -c "commit" \
+             -c "select current_setting('lock_timeout')" 2>&1 | paste -sd' ' -)"
+    same "$P after the cleanup's transaction commits, the next statement in the same session has its own lock_timeout again (5 s only inside the transaction)" \
+         "$out" "0 0 0 0 5s 0"
+}
+run_cases() { case_prune; case_fail_trigger; case_locked_row; case_insert_during_prune; case_session_lock_timeout; }
 
 # =============================================================================
 echo "== 1. control: v0.87's cleanup, with v0.89 applied (production between v0.89 and v0.91)"
@@ -852,6 +927,23 @@ same "$P its NOTICE names that applier and the owner; the owner is unchanged" \
      "applier $MEMBER, cleanup owner $SU / $SU"
 dropdb_now "${PFX}_g$G"
 
+echo "== 6c. Q3c: the timeouts the nightly run is under"
+newdb "${PFX}_q3c" "${PFX}_up"
+P="[Q3c]"
+same "$P returns settings only (no row of any table)" \
+     "$(psql "$DB" --no-psqlrc -X -A -c "$(hq Q3c)" | head -1)" \
+     "username|role_in_database|role_settings|database_settings|server_statement_timeout|server_lock_timeout"
+same "$P as printed, nothing set (this server's defaults)" "$(q -c "$(hq Q3c)")" "$SU|(none)|(none)|(none)|0 ms from default|0 ms from default"
+psql "$DATABASE_URL" -qtAX -v ON_ERROR_STOP=1 \
+    -c "alter role $CARRIER set statement_timeout = '45s'" \
+    -c "alter role $CARRIER in database ${PFX}_q3c set statement_timeout = '30s'" \
+    -c "alter database ${PFX}_q3c set lock_timeout = '3s'" >/dev/null
+q -c "update cron.job set username = '$CARRIER' where jobid = 1" >/dev/null
+same "$P a job user with its own setting, a role-in-database setting and a database setting: each in its column, and the server column says when this session's value is not the server's (source database)" \
+     "$(q -c "$(hq Q3c)")" "$CARRIER|statement_timeout=30s|statement_timeout=45s|lock_timeout=3s|0 ms from default|3000 ms from database"
+psql "$DATABASE_URL" -qtAX -c "alter role $CARRIER reset all" >/dev/null
+dropdb_now "${PFX}_q3c"
+
 echo "== 6b. what waits on the apply (nothing that writes) and the time budget (A0)"
 # held_copy <src> <dst> <statement>: the migration with <statement> run just before its commit
 held_copy() {
@@ -933,7 +1025,18 @@ create function b2t.refuse_delete() returns trigger language plpgsql as \$\$ beg
 create trigger b2t_refuse before delete on public.webhook_jobs for each statement execute function b2t.refuse_delete();
 select public._cleanup_expired_data_internal() ->> 'errors' \\g /dev/null")" \
      "finalized jobs overdue (finalized more than 49 hours ago)"
+ops_secret_case
+n="$(grep -c -E '^-- +I1: ' "$OPS" || true)"; [[ "$n" == 1 ]] || { echo "ops check: want one 'I1:' line, found $n" >&2; exit 2; }
+same "$P the PRIVATE INVESTIGATION query I1, as printed, gives the raw command and the last runs (owner only)" \
+     "$(q -c "$(sed -n -E 's/^-- +I1: //p' "$OPS")" | cut -d'|' -f1,2,4)" "1|SELECT public._cleanup_expired_data_internal();|succeeded"
 dropdb_now "${PFX}_ops"
+newdb "${PFX}_ops0" "${PFX}_up"
+q -c "drop schema cron cascade" >/dev/null
+out="$(q -f "$OPS" 2>&1)" || true
+grep -q 'relation "cron.job" does not exist' <<<"$out" \
+    && pass "$P where the cron schema does not exist (plain local Postgres) it fails, as its header says" \
+    || fail "$P without the cron schema: $out"
+dropdb_now "${PFX}_ops0"
 # APPLY step 5's sequence: a backlog the old body never deleted
 newdb "${PFX}_ops5" "${PFX}_up89"
 q -c "insert into public.webhook_jobs (user_id, alert_id, alert_payload, enqueued_at, processed_at, attempt_count) values ('$UA', 'backlog', '{\"grouping_key\":\"b1\"}', now() - interval '20 days', now() - interval '20 days', 1)" >/dev/null
@@ -985,6 +1088,24 @@ out="$( (P="[mutant]"; MIG="$MUT.7.sql"; fails=0; guard_without_b1) 2>&1 )" || t
 hit="$(grep -m1 -E -- '^  FAIL  \[mutant\] without v0\.89' <<<"$out" || true)"
 if [[ -n "$hit" ]]; then pass "control: 7. the migration without its v0.89 guard"; echo "          fails: ${hit#  FAIL  [mutant] }" | cut -c1-220
 else fail "control: 7. the migration without its v0.89 guard — did not fail the refusal"; grep -E 'FAIL|ERROR' <<<"$out" | head -5 >&2 || true; fi
+mutate "$C" "$MUT.9.sql" 1 "    perform set_config\\('lock_timeout', '5s', true\\);\\n\\K" $'    lock table public.webhook_jobs in share row exclusive mode;\n'
+control "9. the DELETE takes a lock that blocks writers (SHARE ROW EXCLUSIVE)" "$MUT.9.sql" case_insert_during_prune 'an alert inserted while the nightly DELETE holds its locks'
+mutate "$C" "$MUT.10.sql" 1 "set_config\\('lock_timeout', '5s', true\\)" "set_config('lock_timeout', '5s', false)"
+control "10. set_config(..., false): the block's lock_timeout set for the session" "$MUT.10.sql" case_session_lock_timeout 'after the cleanup.s transaction commits'
+# 11. the ops check printing raw values again
+ocontrol() { # ocontrol <name> <mutant ops file>
+    local out hit
+    M=$((M + 1)); newdb "${PFX}_m$M" "${PFX}_up"
+    out="$( (P="[mutant]"; OPS_UNDER_TEST="$2"; fails=0; ops_secret_case) 2>&1 )" || true
+    hit="$(grep -m1 -E -- '^  FAIL  \[mutant\] a changed command and a failed run' <<<"$out" || true)"
+    if [[ -n "$hit" ]]; then pass "control: $1"; echo "          fails: ${hit#  FAIL  [mutant] }" | cut -c1-220
+    else fail "control: $1 — did not fail the secret-text case"; grep -E 'FAIL|ERROR' <<<"$out" | head -5 >&2 || true; fi
+    dropdb_now "${PFX}_m$M"
+}
+mutate "$OPS" "$MUT.o1.sql" 1 "'command md5 ' \\|\\| md5\\(command\\)" "command"
+ocontrol "11a. the ops check printing the changed command" "$MUT.o1.sql"
+mutate "$OPS" "$MUT.o2.sql" 1 "'status failed \\(its message: PRIVATE INVESTIGATION I1\\)'" "(select d.return_message from cron.job_run_details d order by d.runid desc limit 1)"
+ocontrol "11b. the ops check printing the failed run's message" "$MUT.o2.sql"
 # 8. the block moved before the pairing block: the static position check fails
 perl -0777 -pe 's/(  -- Pairing attempts older[^\n]*\n.*?\n  end;\n\n)(  -- v0\.91 webhook jobs.*?\n  end;\n\n)/$2$1/s or die "swap failed\n"' "$C" > "$MUT.8.sql" \
     || { echo "control setup failed (swap)" >&2; exit 2; }
@@ -994,7 +1115,7 @@ if [[ "$pc" != ok ]]; then pass "control: 8. the block moved before the pairing 
 else fail "control: 8. the static position check passed a moved block"; fi
 # and the unmutated cut passes the same checks (the controls fail for the mutation, not the harness)
 newdb "${PFX}_m0" "${PFX}_up"; apply "$C"
-out="$( (P="[cut]"; fails=0; case_prune; case_fail_trigger; case_locked_row; exit $fails) 2>&1 )" \
+out="$( (P="[cut]"; fails=0; case_prune; case_fail_trigger; case_locked_row; case_insert_during_prune; case_session_lock_timeout; ops_secret_case; exit $fails) 2>&1 )" \
     && pass "control harness: the unmutated cut passes every check the mutants fail" \
     || { fail "control harness: the unmutated cut fails"; grep FAIL <<<"$out" | head -5 >&2; }
 dropdb_now "${PFX}_m0"
