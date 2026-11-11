@@ -10,7 +10,7 @@ import XCTest
 /// action as a `touch` crumb, both with a `title`. The fixtures below are built
 /// the way the SDK builds them; the titles are invented.
 final class SentryDeviceLinkScrubTests: XCTestCase {
-    private let hash = "3f786850e387550fdab836ed7e6dc881de23001b"
+    private let deviceHash = "3f786850e387550fdab836ed7e6dc881de23001b"
 
     private func crashEvent(app: [String: Any]?, other: [String: [String: Any]] = [:]) -> Event {
         let event = Event(level: .fatal)
@@ -30,7 +30,7 @@ final class SentryDeviceLinkScrubTests: XCTestCase {
 
     func testTheDeviceHashLeavesTheAppContextAndTheRestStays() throws {
         let event = crashEvent(
-            app: ["device_app_hash": hash, "app_name": "CLI Pulse", "app_version": "1.63.0", "app_build": "118"],
+            app: ["device_app_hash": deviceHash, "app_name": "CLI Pulse", "app_version": "1.63.0", "app_build": "118"],
             other: ["os": ["name": "iOS", "version": "27.0"], "device": ["model": "iPhone17,1"]]
         )
         let sent = try XCTUnwrap(SentryLogger.scrub(event: event))
@@ -100,7 +100,7 @@ final class SentryDeviceLinkScrubTests: XCTestCase {
     func testACrashSentOnTheNextLaunchLosesBothKindsOfTitle() throws {
         // A crash is sent on the next launch, with breadcrumbs an older build
         // recorded without this rule.
-        let event = crashEvent(app: ["device_app_hash": hash])
+        let event = crashEvent(app: ["device_app_hash": deviceHash])
         event.breadcrumbs = [
             crumb("ui.lifecycle", data: ["screen": "SessionDetailHostingController", "title": "refactor the parser"]),
             crumb("touch", data: ["view": "<UIButton: 0x2>", "title": "Sample Studio Mac"]),
@@ -147,7 +147,7 @@ final class SentryDeviceLinkScrubTests: XCTestCase {
         let beforeSend = try XCTUnwrap(options.beforeSend, "the app must install beforeSend")
         let beforeBreadcrumb = try XCTUnwrap(options.beforeBreadcrumb, "the app must install beforeBreadcrumb")
 
-        let event = crashEvent(app: ["device_app_hash": hash, "app_name": "CLI Pulse"])
+        let event = crashEvent(app: ["device_app_hash": deviceHash, "app_name": "CLI Pulse"])
         let sent = try XCTUnwrap(beforeSend(event))
         XCTAssertNil(sent.context?["app"]?["device_app_hash"])
         XCTAssertEqual(sent.context?["app"]?["app_name"] as? String, "CLI Pulse")
