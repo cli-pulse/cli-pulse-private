@@ -2,9 +2,18 @@ package com.clipulse.android.data.remote
 
 import android.content.SharedPreferences
 
-/** A plain in-memory [SharedPreferences] for JVM tests of [TokenStore]. Edits commit on apply(). */
+/**
+ * A plain in-memory [SharedPreferences] for JVM tests of [TokenStore]. Edits commit on apply().
+ * [commits] counts transactions (one per apply()/commit()), so a test can tell one atomic
+ * write from two.
+ */
 internal class InMemorySharedPreferences : SharedPreferences {
-    private val values = HashMap<String, Any?>()
+    // Concurrent: the client under test reads and writes from OkHttp/IO threads.
+    private val values = java.util.concurrent.ConcurrentHashMap<String, Any>()
+
+    @Volatile
+    var commits: Int = 0
+        private set
 
     override fun getAll(): MutableMap<String, *> = HashMap(values)
     override fun getString(key: String, defValue: String?): String? =
@@ -34,6 +43,7 @@ internal class InMemorySharedPreferences : SharedPreferences {
         override fun remove(key: String) = apply { removed += key }
         override fun clear() = apply { clearAll = true }
         override fun commit(): Boolean {
+            commits++
             if (clearAll) values.clear()
             removed.forEach { values.remove(it) }
             pending.forEach { (k, v) -> if (v == null) values.remove(k) else values[k] = v }
