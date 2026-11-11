@@ -10,23 +10,31 @@
 # on the queue would have failed there.
 #
 # What this proves, on a real Postgres:
-#   A. HISTORICAL PIN. The three baseline files as they were at B0_SHA, built
-#      into a database, have the same catalog fingerprint
-#      (ops/check_webhook_catalog.sql, run as it stands) as a database that has
-#      the webhook objects removed and rebuilt by cutting v0.25, v0.55's ALTER
-#      POLICY and v0.62 out of the migrations. This proves B0's transcription
-#      for good, whatever later migrations do to the live files.
+#   A. HISTORICAL PIN. B0's webhook blocks are frozen as files
+#      (tests/fixtures/webhook_baseline_b0/, never edited). Applied to a
+#      baseline with the webhook objects removed, they give the same catalog
+#      fingerprint (ops/check_webhook_catalog.sql, run as it stands) as the
+#      objects rebuilt by cutting v0.25, v0.55's ALTER POLICY and v0.62 out of
+#      the migrations. This proves B0's transcription for good, whatever later
+#      migrations do to the live files. (A frozen copy, not a git SHA: a branch
+#      commit is not in main's history after a squash merge, so `git show` of
+#      it would break; a committed file cannot.)
 #   B. CURRENT FILES. The same comparison with today's baseline files against
 #      the objects rebuilt through WEBHOOK_MIGRATIONS (below), so a later
 #      webhook migration that is not mirrored in the baseline fails here. A
 #      guard fails if any migration uses the queue's names in CODE (comments
-#      stripped) and is neither in WEBHOOK_MIGRATIONS nor in the exclusion list.
+#      stripped by a SQL-aware pass that leaves quoted strings and
+#      dollar-quoted bodies alone) and is neither in WEBHOOK_MIGRATIONS nor in
+#      the exclusion list (exact file names).
 #   C. BEHAVIOUR on the fresh baseline: a non-Test alert enqueues one pending
 #      job, a Test alert none, the same grouping_key again still one; as
 #      `authenticated` the queue is not readable (0 rows: filtering), not
 #      writable (denied by RLS) and the worker cannot be executed (42501), nor
-#      by anon; service_role can read and write the queue; deleting an account
-#      deletes its jobs.
+#      by anon; with production's default privileges modelled (service_role may
+#      execute the worker, every role holds the table grants, RLS is the gate)
+#      anon and authenticated stay denied, and service_role's one worker call,
+#      against an empty vault stub, returns without touching a job; deleting an
+#      account deletes its jobs.
 #   D. NEGATIVE CONTROLS: the suite is run against deliberately broken copies
 #      of the baseline files and must fail, naming the check that caught it.
 #
@@ -36,11 +44,14 @@
 #
 # pg_net, pg_cron and vault are not in plain Postgres. Each database gets an
 # INACTIVE stand-in cron.job row named process_webhook_jobs so the catalog
-# file's cron section is exercised; the worker is never executed.
+# file's cron section is exercised. The worker is run once, by service_role,
+# against an EMPTY vault stub, so it returns at its secrets check with no
+# network activity (pg_net is absent).
 #
 # Usage (creates and drops its own b0_* databases on that server):
 #   DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres \
 #     ./backend/supabase/tests/run_webhook_baseline_tests.sh
+# Database names are b0_<pid>_*, so concurrent runs do not collide.
 # Optional: B0_SQL_DIR (use another copy of backend/supabase for the CURRENT
 # files; the negative controls use it), B0_PRINT_CATALOG=<path>.
 
@@ -49,18 +60,13 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REAL_SQL_DIR="$(cd "$HERE/.." && pwd)"
 SQL_DIR="${B0_SQL_DIR:-$REAL_SQL_DIR}"
-REPO="$(cd "$REAL_SQL_DIR/../.." && pwd)"
+FROZEN="$HERE/fixtures/webhook_baseline_b0"
 SHIM="$HERE/rls/00_supabase_shim.sql"
 OPS="$SQL_DIR/ops/check_webhook_catalog.sql"
 V025="$SQL_DIR/migrate_v0.25_sessions_alerts_hardening.sql"
 V055="$SQL_DIR/migrate_v0.55_rls_initplan_and_fk_indexes.sql"
 V062="$SQL_DIR/migrate_v0.62_revoke_process_webhook_jobs.sql"
 V087="$SQL_DIR/migrate_v0.87_retention_cleanup_and_fresh_counts.sql"
-
-# The commit whose baseline files part A pins. It is B0's merge commit, set by
-# the one-line follow-up that freezes the pin. PENDING (before that follow-up)
-# pins the files in SQL_DIR itself, which makes A and B the same comparison.
-B0_SHA="PENDING"
 
 # The migrations that (re)build the webhook objects, in order. Kinds:
 #   cut25      v0.25 from its queue-table comment to the end of the worker
@@ -75,31 +81,35 @@ WEBHOOK_MIGRATIONS=(
     "policy55:migrate_v0.55_rls_initplan_and_fk_indexes.sql"
     "whole:migrate_v0.62_revoke_process_webhook_jobs.sql"
 )
-# Migrations that name the queue in code and are deliberately NOT in the list.
+# Migrations that name the queue in code and are deliberately NOT in the list:
+# exact, reviewed file names only (a new migration, including B1b's, adds its own).
 WEBHOOK_EXCLUDED=(
     "migrate_v0.78_unschedule_swarm_alert_eval.sql"  # lists 'process_webhook_jobs' as a cron job name to leave alone; changes no queue object
     "migrate_v0.88_schedule_prune_anonymous_installs.sql"  # checks that the process_webhook_jobs cron job is untouched; changes no queue object
-    "migrate_v0.90_*"                                # the app-push queue (B1b); its own queue, mentions the webhook queue only to contrast
 )
 
 if [[ -z "${DATABASE_URL:-}" ]]; then
     echo "DATABASE_URL must point to a database on a disposable server" >&2
     exit 2
 fi
-for f in "$SHIM" "$OPS" "$V025" "$V055" "$V062" "$V087" \
+for f in "$FROZEN/schema_block.sql" "$FROZEN/app_rpc_block.sql" "$SHIM" "$OPS" "$V025" "$V055" "$V062" "$V087" \
          "$SQL_DIR/schema.sql" "$SQL_DIR/app_rpc.sql" "$SQL_DIR/helper_rpc.sql"; do
     [[ -f "$f" ]] || { echo "missing $f" >&2; exit 2; }
 done
 
 BASE="${DATABASE_URL%/*}"
+PFX="b0_$$"
 WORK="$(mktemp -d)"
 CREATED=()
-cleanup() {
+cleanup() { # best-effort: every step runs, failures only warn, the exit status is the script's own
+    set +e
+    local d
     for d in "${CREATED[@]:-}"; do
-        [[ -n "$d" ]] && PGOPTIONS='-c client_min_messages=warning' \
-            psql "$DATABASE_URL" -qtAX -c "drop database if exists $d" >/dev/null 2>&1
+        [[ -n "$d" ]] || continue
+        PGOPTIONS='-c client_min_messages=warning' psql "$DATABASE_URL" -qtAX -c "drop database if exists $d" >/dev/null 2>&1 \
+            || echo "warning: could not drop database $d (drop it by hand)" >&2
     done
-    /bin/rm -rf "$WORK"
+    /bin/rm -rf "$WORK" || echo "warning: could not remove $WORK" >&2
 }
 trap cleanup EXIT
 
@@ -155,6 +165,8 @@ cut_between() {
     fi
     sed -n -E "/$start/,/$end/p" "$file" > "$out"
     if (( $(wc -l < "$out") < min )); then echo "cut: $file: fewer than $min lines" >&2; exit 2; fi
+    [[ "$(tail -n 1 "$out")" =~ $end ]] \
+        || { echo "cut: $file: the cut does not close on its end marker ($end)" >&2; exit 2; }
     for s in "$@"; do
         grep -q -F -- "$s" "$out" || { echo "cut: $file: missing expected text: $s" >&2; exit 2; }
     done
@@ -195,33 +207,52 @@ rebuild_from_migrations() { # rebuild_from_migrations <dir>
 }
 
 # ── the forgotten-migration guard ───────────────────────────────────────────
-strip_sql_comments() { # strip -- and /* */ comments (not string-aware; good enough to read names)
-    perl -0777 -pe 's{/\*.*?\*/}{}gs; s{--[^\n]*}{}g' "$1"
+# SQL-aware comment stripping: removes `--` and (nested) `/* */` comments but
+# leaves single-quoted strings, "identifiers" and dollar-quoted bodies alone, so
+# a string such as '/*' cannot swallow code after it. Output goes to a file that
+# is grepped afterwards: no pipe, so no SIGPIPE under pipefail.
+cat > "$WORK/strip.pl" <<'PERL'
+undef $/; my $s = <STDIN>; my ($o, $i, $n) = ('', 0, length $s);
+while ($i < $n) {
+  my $c = substr($s, $i, 1); my $d = substr($s, $i, 2);
+  if ($d eq '--') { my $j = index($s, "\n", $i); $i = $j < 0 ? $n : $j; }
+  elsif ($d eq '/*') {
+    my $depth = 1; $i += 2;
+    while ($i < $n && $depth) { my $e = substr($s, $i, 2);
+      if ($e eq '/*') { $depth++; $i += 2 } elsif ($e eq '*/') { $depth--; $i += 2 } else { $i++ } }
+    $o .= ' ';
+  }
+  elsif ($c eq "'" || $c eq '"') {
+    my $j = $i + 1;
+    while ($j < $n) { if (substr($s, $j, 1) eq $c) { if (substr($s, $j + 1, 1) eq $c) { $j += 2; next } last } $j++ }
+    $o .= substr($s, $i, $j + 1 - $i); $i = $j + 1;
+  }
+  elsif ($c eq '$' && substr($s, $i) =~ /^(\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$)/) {
+    my $tag = $1; my $j = index($s, $tag, $i + length $tag);
+    $j = $j < 0 ? $n : $j + length $tag;
+    $o .= substr($s, $i, $j - $i); $i = $j;
+  }
+  else { $o .= $c; $i++ }
 }
-guard_forgotten_migrations() { # guard_forgotten_migrations <dir> -> echoes offenders
-    local f base entry listed excluded pat
+print $o;
+PERL
+guard_forgotten_migrations() { # guard_forgotten_migrations <dir> -> echoes offenders; returns 2 if stripping fails
+    local f base entry listed excluded pat out="$WORK/stripped.sql"
     for f in "$1"/migrate_v*.sql; do
         base="$(basename "$f")"
-        strip_sql_comments "$f" | grep -q -E 'webhook_jobs|process_webhook_jobs|alerts_enqueue_webhook' || continue
+        perl "$WORK/strip.pl" < "$f" > "$out" || { echo "cannot strip comments from $base" >&2; return 2; }
+        [[ -s "$out" || ! -s "$f" ]] || { echo "stripping $base left nothing" >&2; return 2; }
+        grep -q -E 'webhook_jobs|process_webhook_jobs|alerts_enqueue_webhook' "$out" || continue
         listed=0; excluded=0
         for entry in "${WEBHOOK_MIGRATIONS[@]}"; do [[ "${entry#*:}" == "$base" ]] && listed=1; done
-        for pat in "${WEBHOOK_EXCLUDED[@]}"; do [[ "$base" == $pat ]] && excluded=1; done
+        for pat in "${WEBHOOK_EXCLUDED[@]}"; do [[ "$base" == "${pat%%[[:space:]]*}" ]] && excluded=1; done
         (( listed || excluded )) || echo "$base"
     done
 }
 
 # =============================================================================
-if [[ -z "${B0_CONTROL:-}" ]]; then echo "== A. historical pin (B0_SHA=$B0_SHA)"; fi
+if [[ -z "${B0_CONTROL:-}" ]]; then echo "== A. historical pin (frozen B0 blocks)"; fi
 
-PIN="$WORK/pin"; mkdir -p "$PIN"
-for f in schema.sql app_rpc.sql helper_rpc.sql; do
-    if [[ "$B0_SHA" == "PENDING" ]]; then
-        cp "$SQL_DIR/$f" "$PIN/$f"
-    else
-        git -C "$REPO" show "$B0_SHA:backend/supabase/$f" > "$PIN/$f" \
-            || { echo "cannot read $f at $B0_SHA (checkout needs fetch-depth: 0)" >&2; exit 2; }
-    fi
-done
 # part A rebuilds from the migrations as they are NOW but only the three that
 # existed at B0 (a pin must not move when WEBHOOK_MIGRATIONS grows).
 SAVED_LIST=("${WEBHOOK_MIGRATIONS[@]}")
@@ -230,13 +261,22 @@ WEBHOOK_MIGRATIONS=(
     "policy55:migrate_v0.55_rls_initplan_and_fk_indexes.sql"
     "whole:migrate_v0.62_revoke_process_webhook_jobs.sql"
 )
-
-newdb b0_a; build_baseline "$PIN"; FP_A="$(fingerprint)"
-newdb b0_b; build_baseline "$PIN"; remove_webhook_objects; rebuild_from_migrations "$SQL_DIR"; FP_B="$(fingerprint)"
+newdb "${PFX}_a"; build_baseline "$SQL_DIR"; remove_webhook_objects
+apply "$FROZEN/schema_block.sql"; apply "$FROZEN/app_rpc_block.sql"; FP_A="$(fingerprint)"
+newdb "${PFX}_b"; build_baseline "$SQL_DIR"; remove_webhook_objects; rebuild_from_migrations "$SQL_DIR"; FP_B="$(fingerprint)"
 WEBHOOK_MIGRATIONS=("${SAVED_LIST[@]}")
 
 if [[ -n "${B0_PRINT_CATALOG:-}" ]]; then printf '%s\n' "$FP_A" > "$B0_PRINT_CATALOG"; fi
 
+same "A. the frozen B0 blocks' fingerprint equals the one rebuilt from migrate_v0.25 + v0.55 + v0.62" "$FP_A" "$FP_B"
+if [[ "$FP_A" != "$FP_B" ]]; then diff <(echo "$FP_A") <(echo "$FP_B") >&2 || true; fi
+check "A. the worker's execute is revoked from PUBLIC, anon and authenticated (acl = owner only)" \
+      "(select proacl::text from pg_proc where proname='process_webhook_jobs') = '{' || current_user || '=X/' || current_user || '}'"
+
+# =============================================================================
+if [[ -z "${B0_CONTROL:-}" ]]; then echo "== B. current baseline vs fully migrated"; fi
+newdb "${PFX}_c"; build_baseline "$SQL_DIR"; FP_C="$(fingerprint)"
+newdb "${PFX}_d"; build_baseline "$SQL_DIR"; remove_webhook_objects; rebuild_from_migrations "$SQL_DIR"; FP_D="$(fingerprint)"
 # the fingerprint must really contain the objects (equal-but-empty must not pass)
 for want in '^1a\|count\|process_webhook_jobs\|1$' '^1a\|count\|alerts_enqueue_webhook\|1$' \
             '^1b\|process_webhook_jobs\|.*\|secdef=true\|' '^1b\|alerts_enqueue_webhook\|' \
@@ -244,25 +284,16 @@ for want in '^1a\|count\|process_webhook_jobs\|1$' '^1a\|count\|alerts_enqueue_w
             '^4\|idx\|idx_webhook_jobs_pending_dedup\|' '^4\|idx\|idx_webhook_jobs_pending_enqueued\|' \
             '^5a\|rls\|rowsecurity=true\|' '^5b\|policy\|Service role only\|' \
             '^6\|trigger\|alerts_webhook_enqueue\|' '^8c\|cron\.job\|' ; do
-    if grep -q -E -- "$want" <<<"$FP_A"; then :; else fail "fingerprint of the baseline lacks a line matching $want"; fi
+    if grep -q -E -- "$want" <<<"$FP_C"; then :; else fail "fingerprint of the baseline lacks a line matching $want"; fi
 done
-same "A. the pinned baseline's fingerprint equals the one rebuilt from migrate_v0.25 + v0.55 + v0.62" "$FP_A" "$FP_B"
-if [[ "$FP_A" != "$FP_B" ]]; then diff <(echo "$FP_A") <(echo "$FP_B") >&2 || true; fi
-check "A. the worker's execute is revoked from PUBLIC, anon and authenticated (acl = owner only)" \
-      "(select proacl::text from pg_proc where proname='process_webhook_jobs') = '{' || current_user || '=X/' || current_user || '}'"
-
-# =============================================================================
-if [[ -z "${B0_CONTROL:-}" ]]; then echo "== B. current baseline vs fully migrated"; fi
-newdb b0_c; build_baseline "$SQL_DIR"; FP_C="$(fingerprint)"
-newdb b0_d; build_baseline "$SQL_DIR"; remove_webhook_objects; rebuild_from_migrations "$SQL_DIR"; FP_D="$(fingerprint)"
 same "B. the current baseline's fingerprint equals the migration-built one" "$FP_C" "$FP_D"
 if [[ "$FP_C" != "$FP_D" ]]; then diff <(echo "$FP_C") <(echo "$FP_D") >&2 || true; fi
-offenders="$(guard_forgotten_migrations "$SQL_DIR")"
+offenders="$(guard_forgotten_migrations "$SQL_DIR")" || exit 2
 same "B. every migration that uses the queue in code is in WEBHOOK_MIGRATIONS or the exclusion list" "$offenders" ""
 
 # =============================================================================
 if [[ -z "${B0_CONTROL:-}" ]]; then echo "== C. behaviour on the fresh baseline"; fi
-DB="$BASE/b0_c"
+DB="$BASE/${PFX}_c"
 UA='b0000000-b000-4b00-8b00-00000000000a'
 UB='b0000000-b000-4b00-8b00-00000000000b'
 q >/dev/null <<SQL
@@ -273,7 +304,7 @@ SQL
 as_role() { # prints the statement's output; errors go to stdout as "ERROR: <sqlstate>: ..."
     local role="$1" sub="$2" sql="$3" claims
     claims="{\"sub\":\"$sub\",\"role\":\"$role\"}"
-    psql "$DB" --no-psqlrc -tAX 2>&1 <<SQL | grep -v -E '^(BEGIN|SET|ROLLBACK)$' | sed -e 's/^psql:[^ ]* //' -e 's/^[A-Z]*:  *\([0-9A-Z]\{5\}\):/ERROR: \1:/'
+    psql "$DB" --no-psqlrc -tAX 2>&1 <<SQL | grep -v -E '^(BEGIN|SET|RESET|ROLLBACK)$' | sed -e 's/^psql:[^ ]* //' -e 's/^[A-Z]*:  *\([0-9A-Z]\{5\}\):/ERROR: \1:/'
 \set VERBOSITY verbose
 begin;
 select set_config('request.jwt.claims', '$claims', true) \g /dev/null
@@ -285,8 +316,9 @@ SQL
 jobs_of() { q -c "select count(*) from public.webhook_jobs where user_id = '$1'"; }
 
 # a non-Test alert, as its owner (the trigger is SECURITY DEFINER)
-same "C. authenticated inserts its own alert; the definer trigger writes the queue past RLS, no warning" \
-     "$(as_role authenticated "$UA" "insert into public.alerts (id, user_id, type, title, grouping_key) values ('z1', '$UA', 'Usage Spike', 't', 'gz');")" "INSERT 0 1"
+# the job must be observed: reset to the superuser inside the same transaction, read it, roll back
+same "C. authenticated inserts its own alert; the definer trigger queues exactly one job for it (observed, no warning)" \
+     "$(as_role authenticated "$UA" "insert into public.alerts (id, user_id, type, title, grouping_key) values ('z1', '$UA', 'Usage Spike', 't', 'gz'); reset role; select count(*) from public.webhook_jobs where alert_id = 'z1' and user_id = '$UA' and processed_at is null;" | paste -sd' ' -)" "INSERT 0 1 1"
 q -c "insert into public.alerts (id, user_id, type, title, grouping_key) values ('a1', '$UA', 'Usage Spike', 't', 'g1');" >/dev/null
 same "C. a non-Test alert enqueues one pending job" "$(jobs_of "$UA")" "1"
 q -c "insert into public.alerts (id, user_id, type, title, grouping_key) values ('a2', '$UA', 'Test', 't', 'g2');" >/dev/null
@@ -311,12 +343,42 @@ for r in authenticated anon; do
     if grep -q 'ERROR: 42501:.*permission denied for function process_webhook_jobs' <<<"$out"; then
         pass "C. $r cannot execute the worker (42501)"; else fail "C. $r executing the worker: $out"; fi
 done
-# service_role (BYPASSRLS): the queue works for it. (Its EXECUTE on the worker
-# depends on Supabase's default privileges, which plain Postgres lacks; the
-# catalog file prints it for production.)
-# Supabase's default privileges give service_role all of public; plain Postgres
-# (the shim) does not, so grant the queue to it the way Supabase does.
-q -c "grant all on public.webhook_jobs to service_role; grant usage, select on all sequences in schema public to service_role;" >/dev/null
+# Model production's relevant default privileges (measured there, not assumed):
+# every role holds all table and sequence privileges on the queue, so RLS is the
+# gate; service_role may execute the worker and the cleanup; the trigger function
+# keeps PUBLIC's default EXECUTE. Plain Postgres (the shim) has none of that.
+# vault is an empty stand-in, so the worker returns at its secrets check.
+q >/dev/null <<'SQL'
+grant all on public.webhook_jobs to anon, authenticated, service_role;
+grant all on sequence public.webhook_jobs_id_seq to anon, authenticated, service_role;
+grant execute on function public.process_webhook_jobs() to service_role;
+grant execute on function public._cleanup_expired_data_internal() to service_role;
+create schema vault;
+create view vault.decrypted_secrets as select null::text as name, null::text as decrypted_secret where false;
+SQL
+check "C. effective EXECUTE: service_role may run the worker and the cleanup; anon and authenticated may not" \
+      "has_function_privilege('service_role', 'public.process_webhook_jobs()', 'EXECUTE')
+       and has_function_privilege('service_role', 'public._cleanup_expired_data_internal()', 'EXECUTE')
+       and not has_function_privilege('anon', 'public.process_webhook_jobs()', 'EXECUTE')
+       and not has_function_privilege('authenticated', 'public.process_webhook_jobs()', 'EXECUTE')
+       and not has_function_privilege('anon', 'public._cleanup_expired_data_internal()', 'EXECUTE')
+       and not has_function_privilege('authenticated', 'public._cleanup_expired_data_internal()', 'EXECUTE')"
+check "C. the trigger function keeps PUBLIC's EXECUTE (informational: it returns trigger)" \
+      "has_function_privilege('anon', 'public.alerts_enqueue_webhook()', 'EXECUTE')"
+same "C. anon (holding every table grant) reads 0 queue rows: RLS filters" \
+     "$(as_role anon "$UA" 'select count(*) from public.webhook_jobs;')" "0"
+out="$(as_role anon "$UA" "insert into public.webhook_jobs (user_id, alert_id, alert_payload) values ('$UA', 'x', '{}');")"
+if grep -q 'ERROR: 42501:.*row-level security' <<<"$out"; then pass "C. anon cannot insert into the queue (RLS violation)"; else fail "C. anon insert: $out"; fi
+same "C. authenticated (all grants) still reads 0 rows" "$(as_role authenticated "$UA" 'select count(*) from public.webhook_jobs;')" "0"
+for r in authenticated anon; do
+    out="$(as_role "$r" "$UA" 'select public.process_webhook_jobs();')"
+    if grep -q 'ERROR: 42501:.*permission denied for function process_webhook_jobs' <<<"$out"; then
+        pass "C. $r still cannot execute the worker with production's grants (42501)"; else fail "C. $r executing the worker: $out"; fi
+done
+same "C. service_role runs the worker once against an empty vault: it returns, no error" \
+     "$(as_role service_role "$UA" 'select public.process_webhook_jobs();')" ""
+check "C. and it touched no job (nothing dispatched, processed or counted)" \
+      "(select count(*) from public.webhook_jobs where attempt_count <> 0 or processed_at is not null or pg_net_request_id is not null or dispatched_at is not null or last_error is not null) = 0"
 same "C. service_role reads the queue" "$(as_role service_role "$UA" 'select count(*) from public.webhook_jobs;')" "2"
 same "C. service_role inserts, updates and deletes queue rows" \
      "$(as_role service_role "$UA" "insert into public.webhook_jobs (user_id, alert_id, alert_payload) values ('$UA', 'svc', '{\"grouping_key\":\"svc\"}'); update public.webhook_jobs set attempt_count = 1 where alert_id = 'svc'; delete from public.webhook_jobs where alert_id = 'svc';" | paste -sd' ' -)" \
@@ -358,6 +420,17 @@ if [[ -z "${B0_CONTROL:-}" ]]; then
     run_control "the v0.62 revoke dropped" 'FAIL  B\. the current baseline|FAIL  C\. (anon|authenticated) cannot execute'
     fresh_copy; printf '%s\n' '-- a later queue change someone forgot to mirror' 'create or replace function public.x() returns void language sql as $$ select 1 from public.webhook_jobs $$;' > "$CTL/migrate_v0.99_x.sql"
     run_control "a migrate_v0.99 using webhook_jobs, not in the list" 'FAIL  B\. every migration that uses the queue'
+    # the guard must survive a match followed by a lot of SQL (a pipe into `grep -q` could lose it to SIGPIPE)
+    fresh_copy; { echo 'create or replace function public.x() returns void language sql as $$ select 1 from public.webhook_jobs $$;'
+                  awk 'BEGIN { for (i = 0; i < 400000; i++) print "select 1; -- trailing statements" }'; } > "$CTL/migrate_v0.99_x.sql"
+    run_control "an early webhook_jobs reference followed by 400000 lines of SQL" 'FAIL  B\. every migration that uses the queue'
+    # a quoted '/*' must not swallow the code after it
+    fresh_copy; printf '%s\n' "select '/*';" 'select 1 from public.webhook_jobs;' '/* a real comment */' > "$CTL/migrate_v0.99_x.sql"
+    run_control "a quoted '/*' hiding a later webhook_jobs reference from the scan" 'FAIL  B\. every migration that uses the queue'
+    # a comment that only names the queue is NOT a use
+    fresh_copy; printf '%s\n' '-- webhook_jobs, process_webhook_jobs and alerts_enqueue_webhook, in prose only' '/* webhook_jobs */' 'select 1;' > "$CTL/migrate_v0.99_x.sql"
+    out="$(B0_CONTROL=1 B0_SQL_DIR="$CTL" bash "$HERE/run_webhook_baseline_tests.sh" 2>&1)" && pass "control: a migration that names the queue only in comments is not flagged" \
+        || { fail "control: a comment-only mention was flagged"; echo "$out" | tail -5 >&2; }
     /bin/rm -rf "$CTL"
 fi
 
