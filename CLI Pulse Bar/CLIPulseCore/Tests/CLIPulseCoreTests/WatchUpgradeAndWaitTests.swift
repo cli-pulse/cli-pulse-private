@@ -195,7 +195,7 @@ final class WatchUpgradeAndWaitTests: XCTestCase {
         let offline = try Self.section(watch, from: "private func commitPhoneSessionOffline(", to: "// MARK: - WCSession Fallback")
         XCTAssertTrue(offline.contains("refusedTokenHold.refused(accessToken)"),
                       "a restore that could not renew does not send the token again at once")
-        let signOut = try Self.section(watch, from: "func signOut() {", to: "let revokesOnServer")
+        let signOut = try Self.section(watch, from: "func signOut() {", to: "WatchSignOut.captureAndClear(")
         XCTAssertTrue(signOut.contains("refusedTokenHold.clear()"))
         let transition = try Self.section(watch, from: "private func beginAuthTransition(", to: "let began = await api")
         XCTAssertTrue(transition.contains("refusedTokenHold.clear()"))
@@ -309,13 +309,21 @@ final class WatchUpgradeAndWaitTests: XCTestCase {
         XCTAssertFalse(plist.contains("WKRunsIndependentlyOfCompanionApp"))
     }
 
+    /// 1.63 (A1): the decision moved into Core (`WatchSignOut.captureAndClear`),
+    /// where `WatchSignOutTests` drives it; the Watch's call is pinned here.
     func test_signing_out_revokes_only_a_session_the_Watch_renews_itself_as_a_restore_reads_it() throws {
+        let core = try Self.code("CLIPulseCore/Sources/CLIPulseCore/WatchSignOut.swift")
+        let decision = try Self.section(core, from: "let revokesOnServer = (", to: ").renewsItself")
+        XCTAssertTrue(decision.contains("WatchSessionRecord.resolve("))
+        XCTAssertTrue(decision.contains("lastPhoneUserID: lastPhoneUserID,"))
+        XCTAssertTrue(decision.contains("hasRefreshToken: !refreshToken.isEmpty"))
+        XCTAssertTrue(decision.contains(")?.source ?? currentSource"))
+
         let watch = try Self.code("CLI Pulse Bar Watch/WatchAppState.swift")
-        let signOut = try Self.section(watch, from: "let revokesOnServer = (", to: ").renewsItself")
-        XCTAssertTrue(signOut.contains("WatchSessionRecord.resolve("))
+        let signOut = try Self.section(watch, from: "let revocation = WatchSignOut.captureAndClear(", to: "stopRefreshLoop()")
+        XCTAssertTrue(signOut.contains(".keychain,"))
         XCTAssertTrue(signOut.contains("lastPhoneUserID: WatchSessionManager.shared.lastPhoneUserID,"))
-        XCTAssertTrue(signOut.contains("hasRefreshToken: !(KeychainHelper.load(key: \"cli_pulse_refresh_token\") ?? \"\").isEmpty"))
-        XCTAssertTrue(signOut.contains(")?.source ?? sessionSource"))
+        XCTAssertTrue(signOut.contains("currentSource: sessionSource"))
     }
 
     func test_the_restore_tells_resolve_whether_it_holds_a_refresh_token() throws {

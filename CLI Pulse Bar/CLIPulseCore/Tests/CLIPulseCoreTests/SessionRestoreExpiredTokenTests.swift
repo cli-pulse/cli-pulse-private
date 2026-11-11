@@ -687,6 +687,24 @@ final class SessionRestoreStub: URLProtocol {
             .compactMap { $0.value(forHTTPHeaderField: "Authorization").map { String($0.dropFirst("Bearer ".count)) } }
     }
 
+    /// 1.63 (A1): the query items of each logout request, in order.
+    static func logoutQueries() -> [[URLQueryItem]?] {
+        requests()
+            .filter { $0.url?.path == "/auth/v1/logout" }
+            .map { request in request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems }
+    }
+
+    /// 1.63 (A1): every logout sent ends one session only (`scope=local`),
+    /// and at least one was sent.
+    static func assertEveryLogoutIsLocal(file: StaticString = #filePath, line: UInt = #line) {
+        let queries = logoutQueries()
+        XCTAssertFalse(queries.isEmpty, "control: a logout was sent", file: file, line: line)
+        for query in queries {
+            XCTAssertEqual(query, [URLQueryItem(name: "scope", value: "local")],
+                           "every logout is scope=local", file: file, line: line)
+        }
+    }
+
     static func refreshTokensSent() -> [String] {
         requests()
             .filter { $0.url?.path == "/auth/v1/token" }

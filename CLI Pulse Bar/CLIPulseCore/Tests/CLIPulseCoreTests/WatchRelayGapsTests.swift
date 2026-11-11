@@ -129,13 +129,13 @@ final class WatchRelayGapsTests: XCTestCase {
                       "no question queued for a session that ended while it waited")
         XCTAssertLessThan(usable.lowerBound, ask.lowerBound, "a kept token is tried before asking")
 
-        let signOut = try Self.section(watch, from: "func signOut() {", to: "let revokesOnServer")
+        let signOut = try Self.section(watch, from: "func signOut() {", to: "WatchSignOut.captureAndClear(")
         XCTAssertTrue(signOut.contains("deliveredPhoneToken.clear()"))
     }
 
     func test_queued_questions_are_cancelled_on_every_auth_transition() throws {
         let watch = try Self.code("CLI Pulse Bar Watch/WatchAppState.swift")
-        let signOut = try Self.section(watch, from: "func signOut() {", to: "let revokesOnServer")
+        let signOut = try Self.section(watch, from: "func signOut() {", to: "WatchSignOut.captureAndClear(")
         XCTAssertTrue(signOut.contains("WatchSessionManager.shared.cancelQueuedCredentialRequests()"))
         let transition = try Self.section(watch, from: "private func beginAuthTransition(", to: "let began = await api")
         XCTAssertTrue(transition.contains("WatchSessionManager.shared.cancelQueuedCredentialRequests()"))

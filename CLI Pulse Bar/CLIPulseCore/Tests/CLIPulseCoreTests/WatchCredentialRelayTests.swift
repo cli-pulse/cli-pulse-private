@@ -467,8 +467,11 @@ final class WatchCredentialRelayWiringTests: XCTestCase {
         XCTAssertTrue(commit.contains("makePhoneRenewer(userID:"))
         XCTAssertTrue(commit.contains("WatchSessionRecord.keychainKey"), "the source is kept with the Keychain items")
 
+        // 1.63 (A1): the decision is `WatchSignOut`'s, driven in `WatchSignOutTests`
+        // (a relayed session sends nothing); the Watch hands its sign-out to it.
         let signOut = try Self.section(source, from: "func signOut() {", to: "private func beginAuthTransition(")
-        XCTAssertTrue(signOut.contains("if revokesOnServer {"), "the iPhone's session is not revoked from the Watch")
+        XCTAssertTrue(signOut.contains("WatchSignOut.captureAndClear("), "the iPhone's session is not revoked from the Watch")
+        XCTAssertTrue(signOut.contains("await WatchSignOut.finish("))
 
         let renew = try Self.section(source, from: "private func renewFromPhone(", to: "private func adoptPhoneAccessToken(")
         XCTAssertTrue(renew.contains("authTransitionGate.canCommit(lease)"),

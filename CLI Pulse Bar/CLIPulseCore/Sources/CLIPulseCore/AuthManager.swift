@@ -187,17 +187,22 @@ public final class AuthManager {
         (error as? APIError) == .tokenExpired
     }
 
-    public func signOut(currentAccessToken: String) async {
+    /// Ends the session a sign-out leaves: on the server (this session only,
+    /// 1.63) and in the Keychain.
+    ///
+    /// `fence` (1.63, A1): what `APIClient.fenceCurrentSession()` returned for
+    /// this sign-out; nil for a caller that does not fence (the Watch).
+    /// `snapshot`: the session being left, its access and refresh token read
+    /// together at the sign-out, before anything was deleted.
+    public func signOut(fence: UInt64?, snapshot: RevocationSnapshot) async {
         // Attempt server-side token revocation
-        let removed = await api.signOutServer(
-            expectedAccessToken: currentAccessToken
-        )
+        let removed = await api.signOutServer(fence: fence, snapshot: snapshot)
         // Only clear tokens if they haven't been replaced by a new sign-in.
         // 1.61: the session the client removed is the one signed out of, even
         // when a refresh rotated it (and wrote the new pair) after the app
-        // read `currentAccessToken`.
+        // read the snapshot.
         let storedToken = AppState.loadStoredAccessToken()
-        if storedToken == nil || storedToken == currentAccessToken || storedToken?.isEmpty == true
+        if storedToken == nil || storedToken?.isEmpty == true || storedToken == snapshot.accessToken
             || (removed != nil && storedToken == removed) {
             storeAuthTokens(access: "", refresh: nil)
         }
@@ -581,7 +586,12 @@ extension AppState {
         // 1.61: before anything else, and before this reaches the API client:
         // a refresh already out (a session restore's, say) may land first, and
         // must neither keep nor write the tokens of the session being left.
-        api.fenceCurrentSession()
+        // 1.63 (A1): the fence value names this sign-out, and the session
+        // being left is read now, access and refresh token as one pair, for
+        // the revoke to use if the client no longer holds that session when
+        // the sign-out's work reaches it (a sign-in may have landed first).
+        let fence = api.fenceCurrentSession()
+        let snapshot = SessionTokenStore.shared.revocationSnapshot()
         stopRefreshLoop()
         dataRefreshManager.cancelInFlightRefresh()
         // Best-effort: drop the user's APNs token from app_push_tokens so
@@ -593,10 +603,8 @@ extension AppState {
         // No-op when registeredPushToken is nil; never blocks logout
         // because the implementation just spawns a Task and swallows errors.
         unregisterPushTokenOnLogout()
-        // Capture current token so async logout only clears the right session
-        let currentToken = storedToken
         let currentUserID = userId
-        Task { await authManager.signOut(currentAccessToken: currentToken) }
+        Task { await authManager.signOut(fence: fence, snapshot: snapshot) }
         // Clear local state immediately — don't block on network
         // v1.58: Demo's Mac scan is Demo's (`DemoDataProvider.macScan`), not
         // this Mac's; the next local scan replaces it, but until one runs
