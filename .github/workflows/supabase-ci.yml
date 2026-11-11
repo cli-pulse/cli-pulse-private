@@ -662,6 +662,55 @@ jobs:
         if: always()
         run: cat "${{ runner.temp }}/webhook_catalog_baseline.txt" || true
 
+  webhook-jobs-v089:
+    # v0.89: process_webhook_jobs() finalizes a job once its attempts are used
+    # up (two failed answers or transport failures, three requests with no
+    # answer, three raising http_posts) instead of leaving it pending forever,
+    # where it holds its (user, grouping_key) slot so that alert's later
+    # webhooks are never enqueued; and it backfills the jobs already stuck.
+    # pg_net, vault and pg_cron get stand-ins that record every http_post. The
+    # suite reproduces the bug first on production's body (v0.25 without its
+    # comment-only lines, as B0's catalog check measured it), drives whole
+    # worker calls on both install paths, runs the header's APPLY statements
+    # as printed (pause, quiesce, recount, apply, verify, restore, rollback),
+    # fires every guard, proves exclusive access with concurrent sessions
+    # (idle and open transactions, a late worker call) and the recovery
+    # branches (an error after the backfill, a client lost mid-apply), and
+    # runs mutants of the worker, the backfill and the exclusive-access
+    # guards, each of which must fail the assertion named for it. It also
+    # checks the apply's time budget and what alert uploads see while it
+    # holds the queue lock. PostgreSQL 17, as production runs: the budget is
+    # transaction_timeout there (the suite also forces the pre-17 branch, and
+    # the B0 job above applies v0.89 on 16).
+    name: Webhook jobs finalize failures (v0.89)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Ensure psql client
+        run: psql --version || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+
+      - name: Verify the worker, the backfill, the APPLY steps, and that every guard and control fires
+        env:
+          # The suite creates and drops its own b1_* databases and roles on this server.
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+        run: bash backend/supabase/tests/run_v089_webhook_jobs_finalize_tests.sh
+
   # v1.21 F9 (still DEFERRED): a FULL `schema.sql → migrate_v0.X.sql` replay
   # against a fresh `supabase start` Postgres double-applies anything already in
   # the schema.sql snapshot (first surfaced at migrate_v0.9.sql CREATE POLICY →

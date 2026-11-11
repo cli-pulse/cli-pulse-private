@@ -265,7 +265,8 @@ create index idx_alerts_user_suppression_resolved on public.alerts(user_id, supp
 -- ── Webhook queue (B0: transcribed unchanged from production's history) ──
 -- Source: migrate_v0.25_sessions_alerts_hardening.sql (table, indexes, RLS,
 -- trigger function, trigger), with the policy in migrate_v0.55's initplan
--- form. The worker, process_webhook_jobs(), is in app_rpc.sql. Nothing here
+-- form and the comment on processed_at from migrate_v0.89. The worker,
+-- process_webhook_jobs(), is in app_rpc.sql (v0.89's body). Nothing here
 -- is changed from production; the comments are v0.25's, kept so the function
 -- body stays byte-identical to it (the claim below that an expression-based
 -- ON CONFLICT is impossible is v0.25's historical commentary, not endorsed:
@@ -294,6 +295,19 @@ create table if not exists public.webhook_jobs (
   attempt_count   int not null default 0,
   last_error      text
 );
+
+-- What processed_at means since migrate_v0.89 (the same comment it writes).
+comment on column public.webhook_jobs.processed_at is
+    'FINALIZED, not delivered (v0.89). NULL while the job is pending: '
+    'process_webhook_jobs() may still dispatch or reconcile it, and only a '
+    'pending job holds its (user_id, grouping_key) dedup slot. Set once, when '
+    'the worker is done with the job. With last_error NULL it was finalized '
+    'successfully: send-webhook answered 2xx, which includes its 200 '
+    '"skipped" replies (no webhook configured, filtered, deduped). With '
+    'last_error set it was finalized with failure: its attempts were used up '
+    '(2 requests for non-2xx answers and transport failures, 3 for no answer '
+    'or a failed http_post), or the v0.89 backfill finalized it, stuck from '
+    'before v0.89.';
 
 -- Pending-job dedup: at most one un-processed job per (user, grouping_key).
 -- Rapid duplicates within the worker's 30s drain window collapse here.

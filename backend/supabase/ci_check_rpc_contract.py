@@ -286,6 +286,8 @@ MIRRORED_FUNCTIONS = {
     "provider_summary": "app_rpc.sql",
     # v0.87: the nightly retention cleanup pg_cron runs.
     "_cleanup_expired_data_internal": "app_rpc.sql",
+    # v0.89: the webhook queue worker pg_cron runs every 30 seconds.
+    "process_webhook_jobs": "app_rpc.sql",
 }
 
 

@@ -5,7 +5,9 @@
 # webhook_jobs table, its two partial indexes, RLS and policy, the
 # alerts_enqueue_webhook() trigger function and trigger (all schema.sql), and
 # process_webhook_jobs() with its revoke (app_rpc.sql). Production got them from
-# migrate_v0.25 (+ v0.55's policy form, + v0.62's revoke). Before B0 a fresh
+# migrate_v0.25 (+ v0.55's policy form, + v0.62's revoke); since B1,
+# migrate_v0.89 replaces the worker's body and comments on processed_at, and
+# the baseline carries both (part A still pins B0's own blocks). Before B0 a fresh
 # install had none of it, so alert fixtures did not enqueue and a later DELETE
 # on the queue would have failed there.
 #
@@ -76,11 +78,15 @@ V087="$SQL_DIR/migrate_v0.87_retention_cleanup_and_fresh_counts.sql"
 #   cleanup87  v0.87's _cleanup_expired_data_internal() (put it before a
 #              migration that replaces that function)
 #   whole      the file, as it is
-# A later webhook migration (v0.89, v0.91) is added here by the PR that adds it.
+# A later webhook migration (v0.91) is added here by the PR that adds it.
+# v0.89 runs whole: its guards accept v0.25's body as cut25 leaves it, find the
+# stand-in cron job paused, and its backfill finds nothing to do; it replaces
+# the worker and adds the comment on processed_at, which the baseline carries.
 WEBHOOK_MIGRATIONS=(
     "cut25:migrate_v0.25_sessions_alerts_hardening.sql"
     "policy55:migrate_v0.55_rls_initplan_and_fk_indexes.sql"
     "whole:migrate_v0.62_revoke_process_webhook_jobs.sql"
+    "whole:migrate_v0.89_webhook_jobs_finalize_failures.sql"
 )
 # The raw-text guard (part B) fails on any migration that mentions a queue
 # object name anywhere (comments included, any letter case: PostgreSQL folds
