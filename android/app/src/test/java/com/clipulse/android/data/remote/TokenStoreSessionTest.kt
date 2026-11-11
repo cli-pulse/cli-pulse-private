@@ -4,8 +4,6 @@ import com.clipulse.android.data.remote.BlockedCommit.Companion.returnsWithoutWa
 import kotlinx.coroutines.async
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -13,7 +11,9 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /** The session identity and the one atomic end transition, against a real TokenStore. */
 class TokenStoreSessionTest {
@@ -428,7 +428,8 @@ class TokenStoreSessionTest {
     @Test
     fun `the flow writers a screen calls wait for the lock off the calling thread`() = runBlocking<Unit> {
         val a = installA()
-        val main = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val mainThread = Executors.newSingleThreadExecutor()
+        val main = mainThread.asCoroutineDispatcher()
         try {
             BlockedCommit(prefs) { store.rotateIfCurrent(a, "access-A2", "refresh-A2") }.use {
                 val flow = TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis())
@@ -437,8 +438,11 @@ class TokenStoreSessionTest {
                 val claim = async(main) { store.claimPendingOAuthFlow() }
 
                 // All three are waiting for the lock now. The thread that called them is free.
-                val free = withTimeoutOrNull(2_000) { withContext(main) { true } }
-                assertEquals("the calling thread waited for a commit in progress", true, free)
+                // A plain task and latch, not a coroutine: if that thread is stuck, a cancelled
+                // coroutine probe would wait for it too, and the test would hang instead of failing.
+                val probe = CountDownLatch(1)
+                mainThread.execute { probe.countDown() }
+                assertTrue("the calling thread waited for a commit in progress", probe.await(2, TimeUnit.SECONDS))
                 assertFalse(begin.isCompleted || save.isCompleted || claim.isCompleted)
                 it.close()
                 begin.await()
