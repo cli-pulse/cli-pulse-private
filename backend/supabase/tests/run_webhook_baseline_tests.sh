@@ -338,8 +338,8 @@ if [[ -z "${B0_CONTROL:-}" ]]; then
         if [[ $rc == 0 ]]; then fail "control: $1 — the suite PASSED on a broken baseline"
         elif grep -q -E "$2" <<<"$out"; then
             pass "control: $1 — fails as it must"
-            grep -E '^  FAIL  ' <<<"$out" | cut -c1-96 | sed 's/^/          /'
-            grep -E '^[<>] ' <<<"$out" | grep -v -E '^[<>] (1a|8)' | sort -u | head -4 | cut -c1-110 | sed 's/^/          diff /'
+            grep -E '^  FAIL  ' <<<"$out" | cut -c1-96 | sed 's/^/          /' || true
+            grep -E '^[<>] ' <<<"$out" | grep -v -E '^[<>] (1a|8)' | sort -u | head -4 | cut -c1-110 | sed 's/^/          diff /' || true
         else fail "control: $1 — failed, but not on /$2/"; echo "$out" | tail -8 >&2; fi
     }
     # block bounds
