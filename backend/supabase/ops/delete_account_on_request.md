@@ -47,9 +47,9 @@ person names in it (an Apple relay address, or a different sign-in address).
 select u.id, u.email, u.created_at, u.last_sign_in_at,
        array(select i.provider from auth.identities i where i.user_id = u.id) as sign_in_methods
   from auth.users u
- where lower(u.email) = lower('<ADDRESS>')
+ where lower(u.email) = lower(trim('<ADDRESS>'))
     or u.id in (select i.user_id from auth.identities i
-                 where lower(i.identity_data ->> 'email') = lower('<ADDRESS>'));
+                 where lower(i.identity_data ->> 'email') = lower(trim('<ADDRESS>')));
 ```
 
 * **One row:** continue with step 2. Note `u.email`: it is the address you
@@ -101,7 +101,9 @@ account's own mailbox.
 ## 3. Delete
 
 Run as **one script** in the Supabase SQL editor (production project, `postgres`
-role). Fill in the user ID and the account address from step 1. It refuses to
+role). Fill in the user ID and the account's own address, `u.email` from step 1
+(for a hidden Apple address that is the relay address, not the address the
+request came from). It refuses to
 run unless both name the same account and every link to the account is one it
 can check; deletes through `delete_user_account()` exactly as the app does;
 then checks that nothing linked to the account is left. If any check fails it
@@ -131,7 +133,7 @@ begin
   if not exists (
        select 1 from auth.users
         where id = v_uid
-          and lower(email) = lower(current_setting('cli_pulse.delete_email'))) then
+          and lower(email) = lower(trim(current_setting('cli_pulse.delete_email')))) then
     raise exception 'user id and address do not name the same account; nothing deleted';
   end if;
   for r in
@@ -217,10 +219,10 @@ other member's membership, instead of passing to another member as
 ## 4. Check afterwards (read-only)
 
 ```sql
-select (select count(*) from auth.users      where id = '<USER-ID>') as users,
-       (select count(*) from auth.identities where user_id = '<USER-ID>') as identities,
-       (select count(*) from auth.sessions   where user_id = '<USER-ID>') as sessions,
-       (select count(*) from public.profiles where id = '<USER-ID>') as profiles;
+select (select count(*) from auth.users      where id = '<USER-ID>'::uuid) as users,
+       (select count(*) from auth.identities where user_id = '<USER-ID>'::uuid) as identities,
+       (select count(*) from auth.sessions   where user_id = '<USER-ID>'::uuid) as sessions,
+       (select count(*) from public.profiles where id = '<USER-ID>'::uuid) as profiles;
 ```
 
 All four must be 0.
