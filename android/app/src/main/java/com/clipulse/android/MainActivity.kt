@@ -41,9 +41,10 @@ class MainActivity : ComponentActivity() {
             return
         }
         // Only on a first creation. A recreated Activity (a rotation, or a restore after a
-        // process death: savedInstanceState != null) still carries the intent it was created
-        // with, which can be an OLD OAuth deep link. That link's flow was claimed when it
-        // first arrived, and whatever it routed is still held by [oauthCallbacks], which
+        // process death: savedInstanceState != null) still carries its last intent: the one
+        // it was created with, or the last onNewIntent's, which setIntent keeps across a
+        // configuration change. That can be an OLD OAuth deep link. Its flow was claimed when
+        // it first arrived, and whatever it routed is still held by [oauthCallbacks], which
         // outlives the recreation, so replaying it has nothing to add. Worse, if a newer
         // sign-in or link has started since, the replay would claim THAT flow's pending
         // record against the old link's state: a spurious state mismatch, and the real

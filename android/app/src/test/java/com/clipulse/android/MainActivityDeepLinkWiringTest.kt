@@ -8,7 +8,7 @@ import org.junit.Test
  * WIRING check, reading MainActivity's source as text (an Activity cannot be created in a JVM
  * unit test here): onCreate hands the Activity's intent to the OAuth callback owner only on a
  * first creation, and onNewIntent hands over every deep link that arrives. A recreated
- * Activity still carries the intent it was created with; replaying that OLD link would claim
+ * Activity still carries its last intent; replaying that OLD link would claim
  * a newer flow's pending record against the old state (OAuthCallbackViewModelTest shows the
  * cost), while what the old link routed is already held across the recreation.
  */
