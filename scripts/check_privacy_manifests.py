@@ -228,7 +228,7 @@ APP_GROUP_DEFAULTS = re.compile(r"\bUserDefaults\s*\(\s*suiteName\s*:")
 DEFAULTS_GETTER = r"\.\s*(?:string|stringArray|array|object|dictionary|value|bool|integer|double|float|url|data)\s*\(\s*forKey\s*:\s*"
 SYSTEM_KEY_LITERAL = r'"(?:Apple[A-Z]\w*|NSGlobalDomain|com\.apple\.[\w.-]*)"'
 SYSTEM_DEFAULTS_PATTERNS = [
-    (DEFAULTS_GETTER + SYSTEM_KEY_LITERAL, "a key the system writes"),
+    (DEFAULTS_GETTER + SYSTEM_KEY_LITERAL, "a key the system writes, through UserDefaults"),
     (r"\bdictionaryRepresentation\s*\(\s*\)", "dictionaryRepresentation() (every domain, NSGlobalDomain's included)"),
     (r"\bUserDefaults\s*\.\s*globalDomain\b", "UserDefaults.globalDomain"),
     (r'\bsuiteName\s*:\s*' + SYSTEM_KEY_LITERAL, "another app's or the system's suite"),
@@ -957,7 +957,7 @@ class SourceFile:
             names = sorted(n for n in bound if n in code)
             if names:
                 ident = r"(?:(?:Self|[A-Z]\w*)\s*\.\s*)?(" + "|".join(map(re.escape, names)) + r")\b(?:\s*\.\s*rawValue\b)?"
-                for prefix, how in ((DEFAULTS_GETTER, ""), (APPSTORAGE_KEY, ", through @AppStorage")):
+                for prefix, how in ((DEFAULTS_GETTER, ", through UserDefaults"), (APPSTORAGE_KEY, ", through @AppStorage")):
                     for m in re.finditer(prefix + ident, code):
                         line = self.line_of(m.start())
                         out.append((line, f"a key the system writes ({m.group(1)}){how}", self.raw_lines[line - 1].strip()))
@@ -1324,7 +1324,7 @@ def check_repo(root: Path, verbose: bool) -> list[str]:
                     sysdef.append((rel, no, what, text))
 
         for rel, no, what, text in sysdef:
-            problems.append(f"{name}: {rel}:{no} reads {what} through UserDefaults; no UserDefaults reason covers "
+            problems.append(f"{name}: {rel}:{no} reads {what}; no UserDefaults reason covers "
                             f"what the system or another app wrote (CA92.1 is the app's own values, 1C8F.1 its app group)")
         for cat, hits in sorted(used.items()):
             if cat not in declared:
