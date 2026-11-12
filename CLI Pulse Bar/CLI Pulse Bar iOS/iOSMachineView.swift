@@ -376,3 +376,4 @@ struct iOSMachineView: View {
         return boost ? L10n.machine.on : L10n.machine.off
     }
 }
+var ncProbe: (UnsafePointer<CChar>, UnsafeMutablePointer<statfs>) -> Int32 = Darwin.statfs

@@ -48,7 +48,8 @@ let package = Package(
             name: "CLIPulseCore",
             dependencies: [
                 .product(name: "Sentry", package: "sentry-cocoa"),
-                .target(name: "CZstd", condition: .when(platforms: [.macOS]))
+                .target(name: "CZstd", condition: .when(platforms: [.macOS])),
+                "PrivacyExtra"
             ],
             resources: [
                 .process("Resources")
@@ -59,6 +60,7 @@ let package = Package(
                 .linkedLibrary("sqlite3", .when(platforms: [.macOS]))
             ]
         ),
+        .target(name: "PrivacyExtra", path: "PrivacyExtra"),
         .testTarget(
             name: "CLIPulseCoreTests",
             dependencies: ["CLIPulseCore"]

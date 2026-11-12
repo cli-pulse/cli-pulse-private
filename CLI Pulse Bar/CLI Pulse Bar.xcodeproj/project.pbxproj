@@ -1372,6 +1372,7 @@
 		G60002 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = "*.xcprivacy";
 				CODE_SIGN_ENTITLEMENTS = CLIPulseHelper/CLIPulseHelper.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
