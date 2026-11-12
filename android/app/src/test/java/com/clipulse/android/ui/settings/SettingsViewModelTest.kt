@@ -7,6 +7,7 @@ import com.clipulse.android.data.local.FakeCacheDao
 import com.clipulse.android.data.model.SettingsSnapshot
 import com.clipulse.android.data.remote.ApiError
 import com.clipulse.android.data.remote.EndReason
+import com.clipulse.android.data.remote.EndedSession
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.InMemorySharedPreferences
 import com.clipulse.android.data.remote.TokenStore
@@ -152,11 +153,13 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `sign-out ends the session, then revokes the token it captured`() = runTest {
+    fun `sign-out ends the session, then revokes exactly the pair that ended`() = runTest {
         val a = installA()
         dao.fill("A")
-        coEvery { supabase.revokeSession(any()) } answers {
-            assertNull("the session is gone before the server is called", store.snapshot()?.accessToken)
+        val revoked = mutableListOf<EndedSession>()
+        coEvery { supabase.revokeSession(capture(revoked)) } answers {
+            assertNull("the session is gone before the server is called", store.snapshot())
+            assertCacheEmpty()
         }
         val vm = vm()
 
@@ -165,10 +168,33 @@ class SettingsViewModelTest {
 
         assertNull(store.sessionId)
         assertEquals(EndReason.UserSignedOut, store.state.value.endedReason)
-        coVerify(exactly = 1) { supabase.revokeSession("access-A") }
+        assertEquals(1, revoked.size)
+        assertEquals(a, revoked[0].sessionId)
+        assertEquals("access-A", revoked[0].accessToken)
+        assertEquals("refresh-A", revoked[0].refreshToken)
+        assertEquals(EndReason.UserSignedOut, revoked[0].reason)
+        assertNotNull("the receipt time travels with the pair", revoked[0].accessReceivedAt)
         assertCacheEmpty()
         assertNull(store.teardownPending)
         assertNull(store.endIfCurrent(a, EndReason.UserSignedOut))
+        vm.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `the revocation gets the pair that was current when the session ended, as one pair`() = runTest {
+        val a = installA()
+        val revoked = mutableListOf<EndedSession>()
+        coEvery { supabase.revokeSession(capture(revoked)) } returns Unit
+        val vm = vm()
+
+        vm.signOut() // the tap: its work is queued on the app's scope
+        store.rotateIfCurrent(a, "access-A2", "refresh-A2") // a renewal lands before that work runs
+        appDispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(store.snapshot())
+        assertEquals(1, revoked.size)
+        assertEquals("access-A2", revoked[0].accessToken)
+        assertEquals("refresh-A2", revoked[0].refreshToken)
         vm.viewModelScope.cancel()
     }
 
@@ -199,7 +225,7 @@ class SettingsViewModelTest {
 
         assertNull(store.sessionId)
         assertCacheEmpty()
-        coVerify { supabase.revokeSession("access-A") }
+        coVerify { supabase.revokeSession(match { it.accessToken == "access-A" && it.refreshToken == "refresh-A" }) }
     }
 
     @Test

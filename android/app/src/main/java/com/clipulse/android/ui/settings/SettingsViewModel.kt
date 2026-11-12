@@ -265,17 +265,19 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
-     * Ends THIS screen's session (never one that signed in since), then revokes it with the
-     * token captured in the same step, so the revocation can never use a rotated or a later
-     * account's token. Both run in the app's scope: the session's view models are cleared as
-     * soon as the sign-in screen shows. Revoking touches nothing on this device, so it cannot
-     * undo a sign-in that happens while it is still running.
+     * Ends THIS screen's session (never one that signed in since), then ends that session, and
+     * only that one, on the server (`scope=local`: the account's other devices stay signed in)
+     * with exactly what the end removed: the pair captured in the same commit, so the
+     * revocation can never use a rotated pair, half of two pairs, or a later account's. Both
+     * run in the app's scope: the session's view models are cleared as soon as the sign-in
+     * screen shows. Revoking touches nothing on this device, so it cannot undo a sign-in that
+     * happens while it is still running.
      */
     fun signOut() {
         val session = owner?.takeIf { !it.isDemo } ?: return
         appScope.launch {
             val ended = lifecycle.endIfCurrent(session.sessionId, EndReason.UserSignedOut) ?: return@launch
-            runCatching { supabase.revokeSession(ended.accessToken) }
+            runCatching { supabase.revokeSession(ended) }
         }
     }
 

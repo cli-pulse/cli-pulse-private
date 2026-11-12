@@ -266,6 +266,7 @@ class TokenStore internal constructor(
             accessToken = prefs.getString(KEY_ACCESS_TOKEN, null),
             refreshToken = prefs.getString(KEY_REFRESH_TOKEN, null),
             reason = reason,
+            accessReceivedAt = current.accessReceivedAt,
         )
         val generation = prefs.getLong(KEY_AUTH_GENERATION, 0L)
         val cacheChecked = prefs.getBoolean(KEY_LEGACY_CACHE_CHECKED, false)

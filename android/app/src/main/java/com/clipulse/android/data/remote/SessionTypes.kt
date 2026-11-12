@@ -40,14 +40,16 @@ data class SessionContext(
 
 /**
  * What [TokenStore.endIfCurrent] removed, captured in the same synchronized commit that
- * removed it, so a server-side revocation can use exactly the credentials that ended and
- * never a rotated or a later account's pair.
+ * removed it, so the server-side revocation ([SupabaseClient.revokeSession]) can use exactly
+ * the credentials that ended and never a rotated or a later account's pair.
  */
 data class EndedSession(
     val sessionId: String,
     val accessToken: String?,
     val refreshToken: String?,
     val reason: EndReason,
+    /** When this device received [accessToken] (its own clock); null for a 1.62 session or demo. */
+    val accessReceivedAt: Long? = null,
 ) {
     override fun toString(): String = "EndedSession(reason=$reason)"
 }

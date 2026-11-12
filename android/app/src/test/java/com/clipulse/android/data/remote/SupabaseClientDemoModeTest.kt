@@ -178,11 +178,12 @@ class SupabaseClientDemoModeTest {
         tokenStore.installSession("access-B", "refresh-B", "user-B")
         server.enqueue(MockResponse().setResponseCode(204))
 
-        client.revokeSession("access-A")
+        client.revokeSession(EndedSession("session-A", "access-A", "refresh-A", EndReason.UserSignedOut))
 
         val request = server.takeRequest()
-        assertEquals("/auth/v1/logout", request.path)
+        assertEquals("/auth/v1/logout?scope=local", request.path)
         assertEquals("Bearer access-A", request.getHeader("Authorization"))
+        assertEquals(1, server.requestCount)
         assertEquals("access-B", tokenStore.snapshot()?.accessToken)
         assertEquals("refresh-B", tokenStore.snapshot()?.refreshToken)
     }
