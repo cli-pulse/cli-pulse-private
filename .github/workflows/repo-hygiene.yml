@@ -122,10 +122,12 @@ jobs:
       # they declared only UserDefaults CA92.1 (the Mac two had none) while
       # every one of those binaries links systemUptime and stat/lstat: Apple
       # checks those categories at upload (ITMS-91053). This checks Apple's
-      # vocabulary and types (plistlib: the runner has no plutil), that each
-      # manifest is in its target's Resources phase, the sources each target
-      # compiles against what its manifest declares (drift either way), and
-      # each collected-data entry against the published App Store label.
+      # vocabulary and types (plistlib: the runner has no plutil), that every
+      # bundle target has one and copies it, each manifest against its target's
+      # reviewed record in scripts/privacy_manifests.json (categories, reasons
+      # and collected-data rows, exactly), the sources each target compiles
+      # against both (a new call, or a reason whose call site is gone), reads of
+      # defaults the system writes, and the published App Store label.
       # Path-blind: the PR that adds an `lstat` is a Swift PR in CLIPulseCore.
       - run: python3 scripts/check_privacy_manifests.py
       - run: python3 scripts/test_check_privacy_manifests.py

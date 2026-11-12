@@ -29,7 +29,10 @@ public final class LocaleOverrideStore: ObservableObject {
     /// `.standard` in the app. Under XCTest the choice is kept away from the
     /// `xctest` tool's domain, which every test run on the Mac shares, so a run
     /// starts in System Default whatever an earlier one left behind.
-    public static let shared = LocaleOverrideStore(defaults: DisplayPreferences.defaults)
+    public static let shared = LocaleOverrideStore(
+        defaults: DisplayPreferences.defaults,
+        ownDomain: DisplayPreferences.domainName
+    )
 
     /// Posted whenever the active override changes, for non-SwiftUI code.
     /// Nothing in the app subscribes today: views observe the store itself.
@@ -58,6 +61,14 @@ public final class LocaleOverrideStore: ObservableObject {
     /// in `DisplayPreferences.defaults` without writing a language there.
     let defaults: UserDefaults
 
+    /// The persistent domain `defaults` writes to: the app's bundle identifier
+    /// for `.standard`, a suite's name otherwise. `AppleLanguages` is read back
+    /// from this domain alone (`ownAppleLanguages`), never through the search
+    /// list, which would also return the system's own value from NSGlobalDomain:
+    /// the app's privacy manifest declares UserDefaults reason CA92.1, which
+    /// covers only what the app itself wrote (1.63 A3).
+    private let ownDomain: String?
+
     /// The override in effect when this process started. With mirroring on, it
     /// is also what `AppleLanguages` pinned the resource bundle to at launch —
     /// see `liveSystemLocalization`.
@@ -68,24 +79,29 @@ public final class LocaleOverrideStore: ObservableObject {
     private var mirrorsAppleLanguages = false
 
     /// The user's language list with the app-domain pin removed. Injected in
-    /// tests; in the app, removing our key lets the lookup fall through to the
-    /// system-wide list.
+    /// tests; in the app it is `Locale.preferredLanguages`, which follows the
+    /// pin while it is set and the system-wide list once `removeMirror` has
+    /// removed it (measured 2026-11-13: the same process reads ["ja"], then the
+    /// system list again). It asks Locale, not UserDefaults, for the system's list.
     private let systemPreferredLanguages: () -> [String]
 
     /// `defaults` falls back to `DisplayPreferences.defaults`, `.standard` in the
     /// app, so a store built without one never reads or writes the `xctest`
-    /// tool's domain, which every test run on the Mac shares.
+    /// tool's domain, which every test run on the Mac shares. `ownDomain` names
+    /// the persistent domain `defaults` writes to; without it (a store on another
+    /// suite that did not say which) the mirror is never removed, only forgotten.
     init(
         defaults: UserDefaults = DisplayPreferences.defaults,
+        ownDomain: String? = nil,
         systemPreferredLanguages: (() -> [String])? = nil
     ) {
         self.defaults = defaults
+        self.ownDomain = ownDomain
+            ?? (defaults === DisplayPreferences.defaults ? DisplayPreferences.domainName : nil)
         let stored = defaults.string(forKey: Self.defaultsKey)
         self.override = stored
         self.launchOverride = stored
-        self.systemPreferredLanguages = systemPreferredLanguages ?? {
-            defaults.stringArray(forKey: Self.appleLanguagesKey) ?? Locale.preferredLanguages
-        }
+        self.systemPreferredLanguages = systemPreferredLanguages ?? { Locale.preferredLanguages }
     }
 
     public func set(_ newValue: String?) {
@@ -158,10 +174,18 @@ public final class LocaleOverrideStore: ObservableObject {
     /// it is not ours to remove.
     private func removeMirror() {
         guard let mirrored = defaults.stringArray(forKey: Self.mirroredLanguagesKey) else { return }
-        if defaults.stringArray(forKey: Self.appleLanguagesKey) == mirrored {
+        if ownAppleLanguages() == mirrored {
             defaults.removeObject(forKey: Self.appleLanguagesKey)
         }
         defaults.removeObject(forKey: Self.mirroredLanguagesKey)
+    }
+
+    /// `AppleLanguages` as the app's own domain holds it: what this store wrote,
+    /// or a per-app language System Settings put there. Not the search list,
+    /// which falls through to the system-wide value when the app has none.
+    private func ownAppleLanguages() -> [String]? {
+        guard let ownDomain else { return nil }
+        return defaults.persistentDomain(forName: ownDomain)?[Self.appleLanguagesKey] as? [String]
     }
 
     /// The `.lproj` that "System Default" means right now, when the resource
