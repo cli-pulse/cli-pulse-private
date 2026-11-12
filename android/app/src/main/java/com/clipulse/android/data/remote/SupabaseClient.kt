@@ -999,14 +999,16 @@ class SupabaseClient internal constructor(
     // ── Account Deletion ─────────────────────────────────
 
     /**
-     * Deletes the account of [ctx]'s session, then ends exactly that session on this device
-     * (never one that signed in while the request was out) and revokes it.
+     * Asks the server to delete the account of [ctx]'s session: ONE request
+     * (`delete_user_account`, which deletes the account's sign-ins on our server with it), sent
+     * and checked for that session only. Nothing on this device changes here, and no sign-out
+     * request follows (there is no session left to end on the server): the caller, which knows
+     * which session the tap belonged to, ends exactly that one once this returns
+     * (SettingsViewModel.deleteAccount). The only way this ends a session is [sendAuthed]'s own:
+     * the server definitively refusing the session while the request was out.
      */
-    suspend fun deleteAccount(ctx: SessionContext? = null): Unit = withContext(Dispatchers.IO) {
-        val session = sessionOrThrow(ctx)
-        rpc(session, "delete_user_account")
-        val ended = lifecycle.endIfCurrent(session.sessionId, EndReason.AccountDeleted)
-        if (ended != null) revoke(ended.accessToken)
+    suspend fun deleteAccount(ctx: SessionContext) {
+        withContext(Dispatchers.IO) { rpc(ctx, "delete_user_account") }
     }
 
     /** Forget demo mode's alert changes, so the next demo session starts from the sample data. */

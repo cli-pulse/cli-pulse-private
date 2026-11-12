@@ -280,10 +280,18 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
-     * Deletes the account of THIS screen's session. The client ends exactly that session
-     * after the server confirms the deletion (and deletes its on-device data); the
-     * `endIfCurrent` here is an idempotent backstop for the same session. The sign-in screen
-     * follows from the session state, not from `deleteSuccess`.
+     * Deletes the account of THIS screen's session. The client only asks the server; once it
+     * confirms, this ends exactly that session, which deletes what the phone keeps for it. The
+     * sign-in screen follows from the session state, not from `deleteSuccess`.
+     *
+     * Bound to the session of the tap: `deleteSuccess` only when that session ended here or
+     * was already gone. If another account signed in while the request was out, the answer
+     * does nothing to it and shows nothing (an answer that arrives after the switch is refused
+     * by the client the same way, as a superseded operation, which shows no error).
+     *
+     * A failure deletes nothing and is reported. The one session end that can still happen is
+     * the client's own: the server definitively refused the session while the request was out.
+     * That session is then over, and it is reported as such, not as a failed deletion.
      */
     fun deleteAccount() {
         val session = owner?.takeIf { !it.isDemo } ?: return
@@ -291,14 +299,19 @@ class SettingsViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoading = true, deleteError = null)
             try {
                 supabase.deleteAccount(session)
-                lifecycle.endIfCurrent(session.sessionId, EndReason.AccountDeleted)
-                _state.value = _state.value.copy(isLoading = false, deleteSuccess = true)
+                val ended = lifecycle.endIfCurrent(session.sessionId, EndReason.AccountDeleted)
+                val thisSessionIsGone = ended != null || tokenStore.sessionId == null
+                _state.value = _state.value.copy(isLoading = false, deleteSuccess = thisSessionIsGone)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    deleteError = UiError.action(UiError.Action.DeleteAccount, e),
+                    deleteError = if (e is ApiError.TokenExpired) {
+                        UiError.from(e)
+                    } else {
+                        UiError.action(UiError.Action.DeleteAccount, e)
+                    },
                 )
             }
         }

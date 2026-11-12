@@ -5,6 +5,7 @@ import com.clipulse.android.MainDispatcherRule
 import com.clipulse.android.data.local.CachedDashboard
 import com.clipulse.android.data.local.FakeCacheDao
 import com.clipulse.android.data.model.SettingsSnapshot
+import com.clipulse.android.data.remote.ApiError
 import com.clipulse.android.data.remote.EndReason
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.InMemorySharedPreferences
@@ -12,10 +13,12 @@ import com.clipulse.android.data.remote.TokenStore
 import com.clipulse.android.data.remote.BlockedCommit
 import com.clipulse.android.data.remote.BlockedCommit.Companion.returnsWithoutWaiting
 import com.clipulse.android.data.session.SessionLifecycle
+import com.clipulse.android.data.session.SessionScopedState
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,6 +31,8 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Real TokenStore and SessionLifecycle over an in-memory cache; the client is mocked. The
@@ -225,10 +230,11 @@ class SettingsViewModelTest {
         vm.deleteAccount()
         appDispatcher.scheduler.advanceUntilIdle()
 
-        coVerify(exactly = 0) { supabase.deleteAccount(match { it?.sessionId == b }) }
-        coVerify(exactly = 1) { supabase.deleteAccount(match { it?.sessionId == a }) }
+        coVerify(exactly = 0) { supabase.deleteAccount(match { it.sessionId == b }) }
+        coVerify(exactly = 1) { supabase.deleteAccount(match { it.sessionId == a }) }
         assertEquals(b, store.sessionId)
         assertEquals(listOf("B"), dao.allRows())
+        assertFalse(vm.state.value.deleteSuccess)
         vm.viewModelScope.cancel()
     }
 
@@ -250,19 +256,131 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `deleting the account removes it from the device too`() = runTest {
+    fun `deleting the account removes every trace of it from the phone`() = runTest {
         val a = installA()
+        store.setDeviceIdIfCurrent(a, "device-A")
+        store.saveProviderKey("example", "provider-key-A")
+        store.savePendingOAuthFlow(
+            TokenStore.PendingOAuthFlow("link", "github", "verifier-A", "state-A", System.currentTimeMillis(), sessionId = a),
+        )
         dao.fill("A")
+        val memoryResets = AtomicInteger()
+        lifecycle.register(object : SessionScopedState {
+            override fun reset() {
+                memoryResets.incrementAndGet()
+            }
+        })
         val vm = vm()
 
         vm.deleteAccount()
         appDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(vm.state.value.deleteSuccess)
-        coVerify(exactly = 1) { supabase.deleteAccount(match { it?.sessionId == a }) }
-        assertNull(store.sessionId)
+        assertNull(vm.state.value.deleteError)
+        coVerify(exactly = 1) { supabase.deleteAccount(match { it.sessionId == a }) }
+        coVerify(exactly = 0) { supabase.revokeSession(any()) }
+        assertNull(store.snapshot())
         assertEquals(EndReason.AccountDeleted, store.state.value.endedReason)
+        assertNull(store.userName)
+        assertNull(store.userEmail)
+        assertNull(store.deviceIdFor(a))
+        assertNull(store.loadPendingOAuthFlow())
+        assertNull(store.loadProviderKey("example"))
+        // An end keeps only the sign-in generation and the one-time cache check, neither of
+        // them about any account; the same on disk.
+        val kept = setOf("auth_generation", "legacy_cache_checked")
+        assertEquals(kept, prefs.all.keys)
+        assertEquals(kept, prefs.durableSnapshot().keys)
         assertCacheEmpty()
+        assertEquals("the repository's in-memory rows were emptied", 1, memoryResets.get())
+        assertNull(store.teardownPending)
+        vm.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `a deletion that succeeds after the next account signed in leaves it alone and shows nothing`() = runTest {
+        installA()
+        dao.fill("A")
+        val answer = CompletableDeferred<Unit>()
+        coEvery { supabase.deleteAccount(any()) } coAnswers { answer.await() }
+        val vm = vm()
+
+        vm.deleteAccount() // A's request is out
+        val b = lifecycle.install("access-B", "refresh-B", "user-B")!! // B signs in meanwhile
+        lifecycle.write(store.snapshot()!!) { dao.saveDashboard(CachedDashboard(json = "B")) }
+        answer.complete(Unit) // and A's deletion answers with success now
+        appDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(b, store.sessionId)
+        assertEquals("access-B", store.snapshot()?.accessToken)
+        assertEquals("refresh-B", store.snapshot()?.refreshToken)
+        assertEquals(listOf("B"), dao.allRows())
+        assertNull(store.teardownPending)
+        assertNull(store.state.value.endedReason)
+        assertFalse(vm.state.value.deleteSuccess)
+        assertNull(vm.state.value.deleteError)
+        assertFalse(vm.state.value.isLoading)
+        vm.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `a deletion that fails on the way deletes nothing and reports the failure`() = runTest {
+        val a = installA()
+        dao.fill("A")
+        for (failure in listOf(IOException("offline"), ApiError.Http(503, "unavailable"))) {
+            coEvery { supabase.deleteAccount(any()) } throws failure
+            val vm = vm()
+
+            vm.deleteAccount()
+            appDispatcher.scheduler.advanceUntilIdle()
+
+            val error = vm.state.value.deleteError
+            assertTrue("$failure: $error", error is UiError.ActionFailed && error.action == UiError.Action.DeleteAccount)
+            assertFalse(vm.state.value.deleteSuccess)
+            assertFalse(vm.state.value.isLoading)
+            assertEquals(a, store.sessionId)
+            assertEquals("access-A", store.snapshot()?.accessToken)
+            assertEquals("refresh-A", store.snapshot()?.refreshToken)
+            assertEquals(6, FakeCacheDao.TABLES.sumOf { dao.rowCount(it) })
+            assertNull(store.teardownPending)
+            vm.viewModelScope.cancel()
+        }
+    }
+
+    @Test
+    fun `a refusal while the deletion was out ends the session and says so, not that the deletion failed`() = runTest {
+        val a = installA()
+        dao.fill("A")
+        coEvery { supabase.deleteAccount(any()) } coAnswers {
+            // What the client does when the server says the session is gone (D1's allowlist).
+            lifecycle.endIfCurrent(a, EndReason.SessionGone)
+            throw ApiError.TokenExpired
+        }
+        val vm = vm()
+
+        vm.deleteAccount()
+        appDispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(store.sessionId)
+        assertEquals(EndReason.SessionGone, store.state.value.endedReason)
+        assertCacheEmpty()
+        assertFalse(vm.state.value.deleteSuccess)
+        assertEquals(UiError.SessionExpired, vm.state.value.deleteError)
+        vm.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `a deletion overtaken by a session change shows nothing`() = runTest {
+        installA()
+        coEvery { supabase.deleteAccount(any()) } throws ApiError.SessionSuperseded
+        val vm = vm()
+
+        vm.deleteAccount()
+        appDispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(vm.state.value.deleteError)
+        assertFalse(vm.state.value.deleteSuccess)
+        assertFalse(vm.state.value.isLoading)
         vm.viewModelScope.cancel()
     }
 
