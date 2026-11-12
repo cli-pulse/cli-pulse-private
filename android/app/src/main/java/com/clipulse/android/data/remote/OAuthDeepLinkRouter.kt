@@ -59,9 +59,11 @@ sealed class OAuthDeepLinkOutcome {
  *
  * Caller responsibilities (kept outside this object so the logic stays pure):
  *  - Build the [OAuthCallbackResult] via `OAuthCallbackParser.parse(uri)`.
- *  - On any [OAuthDeepLinkOutcome.DeliverNotice], clear the pending-flow record.
- *  - Claim the pending record before routing ([TokenStore.claimPendingOAuthFlow]): it is
- *    handed out once, so a replayed or second callback finds nothing and is dropped.
+ *  - A success claims the pending record before routing, and only if its state matches
+ *    ([TokenStore.claimPendingOAuthFlow]): it is handed out once, and another flow's
+ *    callback gets nothing (so it is dropped here) and leaves the record for the real one.
+ *    The state check below stays as a second line. A cancel or an error carries no state:
+ *    it is routed against the record left in place ([TokenStore.peekPendingOAuthFlow]).
  */
 object OAuthDeepLinkRouter {
 
