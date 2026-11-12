@@ -260,7 +260,6 @@ class SettingsViewModelTest {
         coVerify(exactly = 1) { supabase.deleteAccount(match { it.sessionId == a }) }
         assertEquals(b, store.sessionId)
         assertEquals(listOf("B"), dao.allRows())
-        assertFalse(vm.state.value.deleteSuccess)
         vm.viewModelScope.cancel()
     }
 
@@ -301,7 +300,7 @@ class SettingsViewModelTest {
         vm.deleteAccount()
         appDispatcher.scheduler.advanceUntilIdle()
 
-        assertTrue(vm.state.value.deleteSuccess)
+        assertFalse(vm.state.value.isLoading)
         assertNull(vm.state.value.deleteError)
         coVerify(exactly = 1) { supabase.deleteAccount(match { it.sessionId == a }) }
         coVerify(exactly = 0) { supabase.revokeSession(any()) }
@@ -331,7 +330,9 @@ class SettingsViewModelTest {
         coEvery { supabase.deleteAccount(any()) } coAnswers { answer.await() }
         val vm = vm()
 
-        vm.deleteAccount() // A's request is out
+        vm.deleteAccount()
+        appDispatcher.scheduler.advanceUntilIdle() // A's request is out
+        coVerify(exactly = 1) { supabase.deleteAccount(any()) }
         val b = lifecycle.install("access-B", "refresh-B", "user-B")!! // B signs in meanwhile
         lifecycle.write(store.snapshot()!!) { dao.saveDashboard(CachedDashboard(json = "B")) }
         answer.complete(Unit) // and A's deletion answers with success now
@@ -343,10 +344,29 @@ class SettingsViewModelTest {
         assertEquals(listOf("B"), dao.allRows())
         assertNull(store.teardownPending)
         assertNull(store.state.value.endedReason)
-        assertFalse(vm.state.value.deleteSuccess)
         assertNull(vm.state.value.deleteError)
         assertFalse(vm.state.value.isLoading)
         vm.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `a deletion keeps going when its screen goes away, and ends the session once the server confirms`() = runTest {
+        val a = installA()
+        dao.fill("A")
+        val answer = CompletableDeferred<Unit>()
+        coEvery { supabase.deleteAccount(any()) } coAnswers { answer.await() }
+        val vm = vm()
+
+        vm.deleteAccount()
+        appDispatcher.scheduler.advanceUntilIdle() // the request is out
+        vm.viewModelScope.cancel() // Back: the Settings screen is gone
+        answer.complete(Unit) // the server deleted the account
+        appDispatcher.scheduler.advanceUntilIdle()
+
+        assertNull("signed out of the deleted account", store.snapshot())
+        assertEquals(EndReason.AccountDeleted, store.state.value.endedReason)
+        assertCacheEmpty()
+        assertNull(store.endIfCurrent(a, EndReason.AccountDeleted))
     }
 
     @Test
@@ -362,7 +382,6 @@ class SettingsViewModelTest {
 
             val error = vm.state.value.deleteError
             assertTrue("$failure: $error", error is UiError.ActionFailed && error.action == UiError.Action.DeleteAccount)
-            assertFalse(vm.state.value.deleteSuccess)
             assertFalse(vm.state.value.isLoading)
             assertEquals(a, store.sessionId)
             assertEquals("access-A", store.snapshot()?.accessToken)
@@ -390,7 +409,6 @@ class SettingsViewModelTest {
         assertNull(store.sessionId)
         assertEquals(EndReason.SessionGone, store.state.value.endedReason)
         assertCacheEmpty()
-        assertFalse(vm.state.value.deleteSuccess)
         assertEquals(UiError.SessionExpired, vm.state.value.deleteError)
         vm.viewModelScope.cancel()
     }
@@ -405,7 +423,6 @@ class SettingsViewModelTest {
         appDispatcher.scheduler.advanceUntilIdle()
 
         assertNull(vm.state.value.deleteError)
-        assertFalse(vm.state.value.deleteSuccess)
         assertFalse(vm.state.value.isLoading)
         vm.viewModelScope.cancel()
     }
@@ -420,7 +437,6 @@ class SettingsViewModelTest {
         vm.deleteAccount()
         appDispatcher.scheduler.advanceUntilIdle()
 
-        assertFalse(vm.state.value.deleteSuccess)
         assertEquals(
             UiError.ActionFailed(UiError.Action.DeleteAccount, UiError.Unknown("server error")),
             vm.state.value.deleteError,

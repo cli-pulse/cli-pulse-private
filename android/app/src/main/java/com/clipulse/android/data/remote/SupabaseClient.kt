@@ -7,10 +7,13 @@ import com.clipulse.android.data.session.SessionLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -20,6 +23,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.net.URLEncoder
 import java.time.Instant
 import java.time.LocalDate
@@ -90,7 +94,14 @@ class SupabaseClient internal constructor(
     @Volatile
     internal var revokeWaitMillis: Long = REVOKE_WAIT_MS
 
-    /** The renewal holding [refreshMutex] right now, and its session; null when there is none. */
+    /** One revocation's whole network budget, across all its requests ([revokeSession]). Tests shorten it. */
+    @Volatile
+    internal var revokeBudgetMillis: Long = REVOKE_BUDGET_MS
+
+    /**
+     * The token request holding [refreshMutex] right now (a renewal or a link exchange), and
+     * the session it is for; null when there is none.
+     */
     @Volatile
     private var renewalInFlight: RenewalInFlight? = null
 
@@ -196,13 +207,19 @@ class SupabaseClient internal constructor(
      * the session (SettingsViewModel.signOut), so this never sees a rotated pair or another
      * account's. It reads and writes nothing on this device (not the store, not
      * [refreshMutex], which guards the store's token writes), so it can still be running when
-     * the next account signs in. Best effort and bounded: the session is already over here,
-     * and nothing on this device depends on the answer.
+     * the next account signs in. Best effort: the session is already over here, and nothing on
+     * this device depends on the answer.
      *
-     *  - A renewal of the same session still out when the sign-out came (a request or the
-     *    background sync renewing it) is waited for, at most [revokeWaitMillis]. Its new pair
-     *    is dropped (the store refuses a rotation of an ended session), so this cannot use it;
-     *    waiting puts the refresh below after it instead of beside it.
+     * Bounded: a wait of at most [revokeWaitMillis] (10 s), then at most three requests (one
+     * renewal, two logouts) that share one [revokeBudgetMillis] (20 s) budget for everything
+     * they do on the network, connecting and reading included; what the budget has not
+     * covered is not sent. The requests go through a client of their own with no transparent
+     * retries and no redirects ([revokeCall]), so three requests are three wire attempts.
+     *
+     *  - A renewal or link exchange of the same session still out when the sign-out came (a
+     *    request or the background sync renewing it) is waited for. Its new pair is dropped
+     *    (the store refuses a rotation of an ended session), so this cannot use it; waiting
+     *    puts the refresh below after it instead of beside it.
      *  - An access token that has expired (the rule every request uses: its lifetime from when
      *    this device received it) is renewed first with the session's own refresh token,
      *    through [performRefreshRequest], the request alone. The new access token is used for
@@ -229,39 +246,90 @@ class SupabaseClient internal constructor(
      * nothing but cancellation.
      */
     suspend fun revokeSession(ended: EndedSession) {
-        withContext(Dispatchers.IO) { revokeOnServer(ended) }
+        withContext(Dispatchers.IO) {
+            revokeOnServer(ended.sessionId, ended.accessToken, ended.refreshToken, ended.accessReceivedAt, waitForRenewal = true)
+        }
     }
 
-    private suspend fun revokeOnServer(ended: EndedSession) {
-        val access = ended.accessToken?.takeIf { it.isNotBlank() }
-        val refresh = ended.refreshToken?.takeIf { it.isNotBlank() }
+    /**
+     * The revocation itself, for one server session's pair ([revokeSession]; a link exchange's
+     * leftover, [exchangeOAuthCodeForLink]). [sessionId] is this device's id for it, used only
+     * to wait for its renewal.
+     */
+    private suspend fun revokeOnServer(
+        sessionId: String,
+        accessToken: String?,
+        refreshToken: String?,
+        accessReceivedAt: Long?,
+        waitForRenewal: Boolean,
+    ) {
+        val access = accessToken?.takeIf { it.isNotBlank() }
+        val refresh = refreshToken?.takeIf { it.isNotBlank() }
         if (access == null && refresh == null) return
-        awaitRenewalOf(ended.sessionId)
+        if (waitForRenewal) awaitRenewalOf(sessionId)
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(revokeBudgetMillis)
         var bearer = access
         var renewalSpent = false
-        if (refresh != null && (access == null || isAccessTokenExpired(access, nowMillis(), ended.accessReceivedAt))) {
+        if (refresh != null && (access == null || isAccessTokenExpired(access, nowMillis(), accessReceivedAt))) {
             renewalSpent = true
-            val renewed = renewForRevoke(refresh)
+            val renewed = renewForRevoke(refresh, deadline)
             if (renewed != null) bearer = renewed
         }
         val first = bearer ?: return
-        if (sendLogout(first) != LogoutAnswer.TokenRejected || renewalSpent || refresh == null) return
-        val retry = renewForRevoke(refresh) ?: return
-        sendLogout(retry)
+        if (sendLogout(first, deadline) != LogoutAnswer.TokenRejected || renewalSpent || refresh == null) return
+        val retry = renewForRevoke(refresh, deadline) ?: return
+        sendLogout(retry, deadline)
     }
 
-    /** Waits, at most [revokeWaitMillis], for a renewal of [sessionId] that holds [refreshMutex] now. */
+    /** Waits, at most [revokeWaitMillis], for a token request of [sessionId] that holds [refreshMutex] now. */
     private suspend fun awaitRenewalOf(sessionId: String) {
         val flight = renewalInFlight?.takeIf { it.sessionId == sessionId } ?: return
         withTimeoutOrNull(revokeWaitMillis) { flight.done.await() }
     }
 
     /**
-     * One renewal for [revokeSession] alone: the new access token, or null if the refresh was
-     * refused or failed. Never stored: the session it belongs to has ended on this device.
+     * Runs [block], which holds [refreshMutex] and may send a token request for [sessionId],
+     * as that session's request in flight: a revocation of it waits for it ([awaitRenewalOf]).
+     * Marked before [block] runs, so before its session check: a revocation never misses a
+     * request about to go out, and one that starts after the session ended sends nothing.
      */
-    private suspend fun renewForRevoke(refreshToken: String): String? {
-        val (outcome, _) = performRefreshRequest(refreshToken)
+    private inline fun <T> asRenewalOf(sessionId: String, block: () -> T): T {
+        val flight = RenewalInFlight(sessionId)
+        renewalInFlight = flight
+        try {
+            return block()
+        } finally {
+            renewalInFlight = null
+            flight.done.complete(Unit)
+        }
+    }
+
+    /**
+     * The revocation's own client: the app's (its interceptors, the demo-mode guard included)
+     * without transparent retries or redirects. Each call's timeout is what is left of the
+     * revocation's one budget ([revokeCall]).
+     */
+    private val revokeClient: OkHttpClient by lazy {
+        client.newBuilder()
+            .retryOnConnectionFailure(false)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+    }
+
+    /** A call on [revokeClient] that may take what is left until [deadlineNanos]; none when nothing is. */
+    private fun revokeCall(request: Request, deadlineNanos: Long): Call {
+        val left = deadlineNanos - System.nanoTime()
+        if (left <= 0) throw InterruptedIOException("sign-out revocation: budget spent")
+        return revokeClient.newCall(request).also { it.timeout().timeout(left, TimeUnit.NANOSECONDS) }
+    }
+
+    /**
+     * One renewal for a revocation alone: the new access token, or null if the refresh was
+     * refused or failed. Never stored: the session it belongs to is not this device's any more.
+     */
+    private suspend fun renewForRevoke(refreshToken: String, deadlineNanos: Long): String? {
+        val (outcome, _) = performRefreshRequest(refreshToken) { revokeCall(it, deadlineNanos) }
         return when (outcome) {
             is RefreshOutcome.Renewed -> outcome.accessToken
             is RefreshOutcome.Refused -> {
@@ -278,7 +346,7 @@ class SupabaseClient internal constructor(
     private enum class LogoutAnswer { Revoked, TokenRejected, Other }
 
     /** One logout for the session [bearer] belongs to, and only that one. */
-    private suspend fun sendLogout(bearer: String): LogoutAnswer {
+    private suspend fun sendLogout(bearer: String, deadlineNanos: Long): LogoutAnswer {
         val request = Request.Builder()
             // This session only: with no scope Supabase Auth ends every session of the account
             // (`global`), and a value it does not know is answered with 400.
@@ -288,7 +356,7 @@ class SupabaseClient internal constructor(
             .header("Authorization", "Bearer $bearer")
             .build()
         val answer = try {
-            client.newCall(request).execute().use { r ->
+            revokeCall(request, deadlineNanos).execute().use { r ->
                 if (r.isSuccessful) {
                     LogoutAnswer.Revoked
                 } else {
@@ -948,41 +1016,86 @@ class SupabaseClient internal constructor(
      * only while it is current: a callback that arrives after a sign-out, or after the next
      * account signed in, changes nothing.
      *
-     * The whole exchange, request and commit, holds the refresh mutex: it produces tokens
-     * like a renewal does, and a renewal must not land between this request and its commit
-     * (or the reverse), so neither can overwrite the other's newer pair.
+     * The exchange, request and commit, holds the refresh mutex: it produces tokens like a
+     * renewal does, and a renewal must not land between this request and its commit (or the
+     * reverse), so neither can overwrite the other's newer pair. It is also this session's
+     * token request in flight ([asRenewalOf]), so a sign-out of the session waits for it
+     * before revoking.
+     *
+     * The exchange creates a server session of its own: GoTrue's PKCE grant issues a new
+     * session for the user (supabase/auth `internal/api/token.go` PKCE ->
+     * `tokens.Service.IssueRefreshToken`, which creates a new `auth.sessions` row in both of
+     * its refresh-token schemes). So one of the two is left on the server with nothing on
+     * this phone to use it, and `scope=local` sign-outs would never reach it (a global one
+     * used to). After the exchange, best effort and bounded like [revokeSession]:
+     *  - stored: the session it replaced on this phone is revoked, but only when both access
+     *    tokens name their sessions (`session_id`) and the two differ, so the session now in
+     *    use is never the one revoked;
+     *  - not stored (the session ended or was replaced meanwhile, or the caller went away):
+     *    the new session is revoked, then the caller gets [ApiError.SessionSuperseded] (or
+     *    its cancellation). This runs even when the caller was cancelled.
      */
-    suspend fun exchangeOAuthCodeForLink(code: String, codeVerifier: String, sessionId: String): Unit =
+    suspend fun exchangeOAuthCodeForLink(code: String, codeVerifier: String, sessionId: String) {
         withContext(Dispatchers.IO) {
-            refreshMutex.withLock {
-                val session = tokenStore.snapshotIfCurrent(sessionId) ?: throw ApiError.SessionSuperseded
-                if (session.isDemo) throw DemoModeRequestBlocked("$supabaseUrl/auth/v1/token")
-                val body = JSONObject().apply {
-                    put("auth_code", code)
-                    put("code_verifier", codeVerifier)
+            val leftover = refreshMutex.withLock {
+                asRenewalOf(sessionId) { exchangeLinkCodeLocked(code, codeVerifier, sessionId) }
+            }
+            if (leftover != null) {
+                withContext(NonCancellable) {
+                    revokeOnServer(sessionId, leftover.accessToken, leftover.refreshToken, leftover.receivedAt, waitForRenewal = false)
                 }
-                val req = Request.Builder()
-                    .url("$supabaseUrl/auth/v1/token?grant_type=pkce")
-                    .post(body.toString().toRequestBody(jsonMedia))
-                    .addHeader("Content-Type", "application/json")
-                    .addHeader("apikey", supabaseAnonKey)
-                    .build()
-                val (at, rt, receivedAt) = client.newCall(req).execute().use { r ->
-                    val arrivedAt = nowMillis()
-                    val responseBody = r.body?.string() ?: ""
-                    if (!r.isSuccessful) throw ApiError.Http(r.code, responseBody)
-                    val json = JSONObject(responseBody)
-                    Triple(json.optString("access_token", ""), json.optString("refresh_token", ""), arrivedAt)
-                }
-                currentCoroutineContext().ensureActive()
-                if (at.isBlank() || rt.isBlank()) {
-                    if (tokenStore.snapshotIfCurrent(sessionId) == null) throw ApiError.SessionSuperseded
-                } else if (!tokenStore.rotateIfCurrent(sessionId, at, rt, receivedAt)) {
+                if (leftover.dropped) {
+                    currentCoroutineContext().ensureActive()
                     throw ApiError.SessionSuperseded
                 }
-                Unit
             }
         }
+    }
+
+    /** A server session a link exchange left without anything on this phone to use it. */
+    private class LinkLeftover(
+        val accessToken: String?,
+        val refreshToken: String?,
+        val receivedAt: Long?,
+        /** True: the exchange's own new session, which was never stored. */
+        val dropped: Boolean,
+    )
+
+    /** The exchange itself, with [refreshMutex] held; returns what is left to revoke, if anything. */
+    private suspend fun exchangeLinkCodeLocked(code: String, codeVerifier: String, sessionId: String): LinkLeftover? {
+        val session = tokenStore.snapshotIfCurrent(sessionId) ?: throw ApiError.SessionSuperseded
+        if (session.isDemo) throw DemoModeRequestBlocked("$supabaseUrl/auth/v1/token")
+        val body = JSONObject().apply {
+            put("auth_code", code)
+            put("code_verifier", codeVerifier)
+        }
+        val req = Request.Builder()
+            .url("$supabaseUrl/auth/v1/token?grant_type=pkce")
+            .post(body.toString().toRequestBody(jsonMedia))
+            .addHeader("Content-Type", "application/json")
+            .addHeader("apikey", supabaseAnonKey)
+            .build()
+        val (at, rt, receivedAt) = client.newCall(req).execute().use { r ->
+            val arrivedAt = nowMillis()
+            val responseBody = r.body?.string() ?: ""
+            if (!r.isSuccessful) throw ApiError.Http(r.code, responseBody)
+            val json = JSONObject(responseBody)
+            Triple(json.optString("access_token", ""), json.optString("refresh_token", ""), arrivedAt)
+        }
+        if (at.isBlank() || rt.isBlank()) {
+            currentCoroutineContext().ensureActive()
+            if (tokenStore.snapshotIfCurrent(sessionId) == null) throw ApiError.SessionSuperseded
+            return null
+        }
+        // A caller cancelled while the request was out stores nothing, as with any token answer.
+        if (!currentCoroutineContext().isActive || !tokenStore.rotateIfCurrent(sessionId, at, rt, receivedAt)) {
+            return LinkLeftover(at, rt, receivedAt, dropped = true)
+        }
+        val replaced = jwtSessionId(session.accessToken)
+        val issued = jwtSessionId(at)
+        if (replaced == null || issued == null || replaced == issued) return null
+        return LinkLeftover(session.accessToken, session.refreshToken, session.accessReceivedAt, dropped = false)
+    }
 
     /** Unlink a given identity from the current user. */
     suspend fun unlinkIdentity(identityId: String, ctx: SessionContext? = null): Unit = withContext(Dispatchers.IO) {
@@ -1243,11 +1356,7 @@ class SupabaseClient internal constructor(
      * Internal for tests only.
      */
     internal suspend fun renew(ctx: SessionContext, staleAccess: String?): String = refreshMutex.withLock {
-        // Marked before the session check, so a sign-out of this session can wait for the
-        // request below (revokeSession) and never misses one that is about to go out.
-        val flight = RenewalInFlight(ctx.sessionId)
-        renewalInFlight = flight
-        try {
+        asRenewalOf(ctx.sessionId) {
             val current = tokenStore.snapshotIfCurrent(ctx.sessionId) ?: throw ApiError.SessionSuperseded
             val currentAccess = current.accessToken
             if (!currentAccess.isNullOrBlank() && currentAccess != staleAccess &&
@@ -1274,9 +1383,6 @@ class SupabaseClient internal constructor(
                 }
                 is RefreshOutcome.Failed -> throw outcome.error
             }
-        } finally {
-            renewalInFlight = null
-            flight.done.complete(Unit)
         }
     }
 
@@ -1286,7 +1392,10 @@ class SupabaseClient internal constructor(
      * from whenever the store's lock was free). Reads and writes nothing on this device; the
      * caller decides what to store.
      */
-    internal suspend fun performRefreshRequest(refreshToken: String): Pair<RefreshOutcome, Long> = withContext(Dispatchers.IO) {
+    internal suspend fun performRefreshRequest(
+        refreshToken: String,
+        newCall: (Request) -> Call = { client.newCall(it) },
+    ): Pair<RefreshOutcome, Long> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("$supabaseUrl/auth/v1/token?grant_type=refresh_token")
             .post(JSONObject().put("refresh_token", refreshToken).toString().toRequestBody(jsonMedia))
@@ -1294,7 +1403,7 @@ class SupabaseClient internal constructor(
             .header("apikey", supabaseAnonKey)
             .build()
         val answer = try {
-            client.newCall(request).execute().use { r ->
+            newCall(request).execute().use { r ->
                 val receivedAt = nowMillis()
                 classifyRefreshResponse(r.code, r.body?.string() ?: "") to receivedAt
             }
@@ -1485,6 +1594,9 @@ class SupabaseClient internal constructor(
 
         /** The longest a revocation waits for a renewal of its session that is still out. */
         const val REVOKE_WAIT_MS = 10_000L
+
+        /** A revocation's whole network budget, as the Apple apps' revocation has. */
+        const val REVOKE_BUDGET_MS = 20_000L
     }
 }
 

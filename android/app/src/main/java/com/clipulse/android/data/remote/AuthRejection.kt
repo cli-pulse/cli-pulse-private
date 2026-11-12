@@ -133,6 +133,22 @@ internal fun isAccessTokenExpired(token: String, nowMillis: Long, receivedAtMill
     return expiresAt <= nowMillis + EXPIRY_MARGIN_MS
 }
 
+/**
+ * The server session an access token belongs to (GoTrue's `session_id` claim), or null when
+ * the token is not a JWT or names none. Read without verifying the signature: only to tell
+ * two of this device's own tokens apart.
+ */
+internal fun jwtSessionId(token: String?): String? {
+    val parts = token?.split('.') ?: return null
+    if (parts.size != 3) return null
+    val payload = try {
+        String(java.util.Base64.getUrlDecoder().decode(parts[1]), Charsets.UTF_8)
+    } catch (e: IllegalArgumentException) {
+        return null
+    }
+    return parseJsonObject(payload)?.stringOrNull("session_id")
+}
+
 /** Renew a little before the exact second, so a request does not leave with a token that dies on the way. */
 private const val EXPIRY_MARGIN_MS = 30_000L
 

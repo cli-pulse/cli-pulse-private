@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.MediaType
@@ -140,6 +141,7 @@ class SupabaseClientSignOutTest {
 
     private fun RecordedRequest.isRefresh() = path!!.startsWith("/auth/v1/token?grant_type=refresh_token")
     private fun RecordedRequest.isLogout() = requestUrl!!.encodedPath == "/auth/v1/logout"
+    private fun RecordedRequest.isPkce() = path!!.startsWith("/auth/v1/token?grant_type=pkce")
     private fun RecordedRequest.bearer() = getHeader("Authorization")
     private fun RecordedRequest.bodyText() = body.clone().readUtf8()
 
@@ -148,6 +150,7 @@ class SupabaseClientSignOutTest {
             when {
                 it.isRefresh() -> "refresh"
                 it.isLogout() -> "logout"
+                it.isPkce() -> "pkce"
                 else -> it.path!!
             }
         }
@@ -421,6 +424,8 @@ class SupabaseClientSignOutTest {
      */
     private fun revokeBesideAWorkerRenewal(revokeRenewalAnswer: () -> MockResponse, expectedLogoutBearer: (accessA: String) -> String) =
         runBlocking<Unit> {
+            // Long enough that only the held renewal finishing can release the revocation in time.
+            client.revokeWaitMillis = 60_000
             val accessA = TestJwt.expired()
             val a = lifecycle.install(accessA, "refresh-A", "user-A")!!
             val workerRenewalArrived = CountDownLatch(1)
@@ -452,11 +457,23 @@ class SupabaseClientSignOutTest {
             val endedA = lifecycle.endIfCurrent(a, EndReason.UserSignedOut)!! // Sign Out
             val writesAfterEnd = prefs.commits
             val revoke = async(Dispatchers.IO) { client.revokeSession(endedA) }
-            // Bounded negative wait: the revocation's renewal must not go out beside the held one.
-            val sentBeside = revokeRenewalArrived.await(1, TimeUnit.SECONDS)
-            releaseWorkerRenewal.countDown()
-            revoke.await() // and it does not throw
-            val workerResult = worker.await()
+            var sentBeside = true
+            var workerResult: Result<*>? = null
+            try {
+                // Bounded negative wait: the revocation's renewal must not go out beside the held one.
+                sentBeside = revokeRenewalArrived.await(1, TimeUnit.SECONDS)
+                releaseWorkerRenewal.countDown()
+                // ... and must go out as soon as the held one has finished, whatever its outcome.
+                assertTrue(
+                    "the revocation was not released when the renewal it waited for finished",
+                    revokeRenewalArrived.await(2, TimeUnit.SECONDS),
+                )
+                revoke.await() // and it does not throw
+                workerResult = worker.await()
+            } finally {
+                releaseWorkerRenewal.countDown()
+                revoke.cancel()
+            }
 
             assertFalse("the revocation renewed while the Worker's renewal was out", sentBeside)
             assertEquals(listOf("refresh", "refresh", "logout"), kinds())
@@ -464,7 +481,7 @@ class SupabaseClientSignOutTest {
             assertEquals(expectedLogoutBearer(accessA), revokedWith.get())
             assertTrue(
                 "the Worker's renewal is discarded: A has ended",
-                workerResult.exceptionOrNull() is ApiError.SessionSuperseded,
+                workerResult?.exceptionOrNull() is ApiError.SessionSuperseded,
             )
             assertNull("nothing came back to the phone", store.snapshot())
             assertEquals("no store writes after the end", writesAfterEnd, prefs.commits)
@@ -555,5 +572,164 @@ class SupabaseClientSignOutTest {
 
         assertEquals("access-B2", store.snapshot()?.accessToken)
         assertEquals("refresh-B2", store.snapshot()?.refreshToken)
+    }
+
+    // ── one budget ──────────────────────────────────────
+
+    @Test
+    fun `the revocation's requests share one time budget, and what it does not cover is not sent`() = runBlocking<Unit> {
+        client.revokeBudgetMillis = 500
+        val releaseRenewal = CountDownLatch(1)
+        route { r ->
+            if (r.isRefresh()) {
+                releaseRenewal.await(10, TimeUnit.SECONDS) // a renewal that does not answer in time
+                renewed("access-A2", "refresh-A2")
+            } else {
+                noContent()
+            }
+        }
+        try {
+            val started = System.nanoTime()
+            client.revokeSession(ended(access = TestJwt.expired())) // and it does not throw
+            val elapsedMillis = (System.nanoTime() - started) / 1_000_000
+
+            assertTrue("took $elapsedMillis ms with a 500 ms budget", elapsedMillis < 3_000)
+            assertEquals("the logout is not sent once the budget is spent", listOf("refresh"), kinds())
+            assertEquals(1, wire.attempts.get())
+        } finally {
+            releaseRenewal.countDown()
+        }
+    }
+
+    // ── link exchanges ──────────────────────────────────
+
+    /** An access token naming its server session, as GoTrue's do (`session_id`). */
+    private fun sessionJwt(serverSession: String) =
+        TestJwt.of("""{"sub":"user-a","session_id":"$serverSession","exp":${System.currentTimeMillis() / 1000 + 3600}}""")
+
+    private fun pkceAnswer(access: String) = json(200, """{"access_token":"$access","refresh_token":"refresh-2"}""")
+
+    @Test
+    fun `a link exchange revokes the session it replaced on the phone, and only that one`() = runBlocking<Unit> {
+        val s1 = sessionJwt("server-1")
+        val s2 = sessionJwt("server-2")
+        val a = lifecycle.install(s1, "refresh-1", "user-A")!!
+        route { r -> if (r.isPkce()) pkceAnswer(s2) else noContent() }
+        val writes = prefs.commits
+
+        client.exchangeOAuthCodeForLink("code-1", "verifier-1", a)
+
+        assertEquals(listOf("pkce", "logout"), kinds())
+        assertEquals("/auth/v1/logout?scope=local", recorded[1].path)
+        assertEquals("Bearer $s1", recorded[1].bearer())
+        assertEquals(a, store.sessionId)
+        assertEquals(s2, store.snapshot()?.accessToken)
+        assertEquals("refresh-2", store.snapshot()?.refreshToken)
+        assertEquals("the rotation is the only write", writes + 1, prefs.commits)
+    }
+
+    @Test
+    fun `a link exchange revokes nothing unless both tokens name two different sessions`() = runBlocking<Unit> {
+        for ((before, after) in listOf(
+            sessionJwt("server-1") to sessionJwt("server-1"), // the same session kept
+            "access-1" to sessionJwt("server-2"), // the old token names none
+            sessionJwt("server-1") to "access-2", // the new token names none
+        )) {
+            resetWire()
+            val a = lifecycle.install(before, "refresh-1", "user-A")!!
+            route { r -> if (r.isPkce()) pkceAnswer(after) else noContent() }
+
+            client.exchangeOAuthCodeForLink("code-1", "verifier-1", a)
+
+            assertEquals("$before -> $after", listOf("pkce"), kinds())
+            assertEquals(after, store.snapshot()?.accessToken)
+        }
+    }
+
+    @Test
+    fun `a sign-out during a link exchange waits for it, and both server sessions are revoked`() = runBlocking<Unit> {
+        val s1 = sessionJwt("server-1")
+        val s2 = sessionJwt("server-2")
+        val a = lifecycle.install(s1, "refresh-1", "user-A")!!
+        val exchangeArrived = CountDownLatch(1)
+        val releaseExchange = CountDownLatch(1)
+        val s1Revoked = CountDownLatch(1)
+        val logouts = Collections.synchronizedList(mutableListOf<String?>())
+        route { r ->
+            when {
+                r.isPkce() -> {
+                    exchangeArrived.countDown()
+                    releaseExchange.await(10, TimeUnit.SECONDS)
+                    pkceAnswer(s2)
+                }
+                r.isLogout() -> {
+                    logouts += r.bearer()
+                    if (r.bearer() == "Bearer $s1") s1Revoked.countDown()
+                    noContent()
+                }
+                else -> json(500, "{}")
+            }
+        }
+
+        val link = async(Dispatchers.IO) { runCatching { client.exchangeOAuthCodeForLink("code-1", "verifier-1", a) } }
+        assertTrue(exchangeArrived.await(5, TimeUnit.SECONDS))
+        val endedA = lifecycle.endIfCurrent(a, EndReason.UserSignedOut)!! // Sign Out
+        val writesAfterEnd = prefs.commits
+        val revoke = async(Dispatchers.IO) { client.revokeSession(endedA) }
+        var revokedBeside = true
+        var linkResult: Result<Unit>? = null
+        try {
+            // Bounded negative wait: the sign-out's logout waits for the exchange still out.
+            revokedBeside = s1Revoked.await(1, TimeUnit.SECONDS)
+            releaseExchange.countDown()
+            revoke.await()
+            linkResult = link.await()
+        } finally {
+            releaseExchange.countDown()
+            revoke.cancel()
+        }
+
+        assertFalse("the sign-out revoked while the link exchange was out", revokedBeside)
+        assertTrue(linkResult?.exceptionOrNull() is ApiError.SessionSuperseded)
+        // The sign-out ended S1; the exchange's own S2, never stored, is revoked too.
+        assertEquals(setOf("Bearer $s1", "Bearer $s2"), logouts.toSet())
+        assertEquals(2, logouts.size)
+        assertTrue(recorded.filter { it.isLogout() }.all { it.path == "/auth/v1/logout?scope=local" })
+        assertNull(store.snapshot())
+        assertEquals("nothing written after the end", writesAfterEnd, prefs.commits)
+    }
+
+    @Test
+    fun `a link exchange abandoned by its screen stores nothing and revokes the session it made`() = runBlocking<Unit> {
+        val s1 = sessionJwt("server-1")
+        val s2 = sessionJwt("server-2")
+        val a = lifecycle.install(s1, "refresh-1", "user-A")!!
+        val exchangeArrived = CountDownLatch(1)
+        val releaseExchange = CountDownLatch(1)
+        route { r ->
+            when {
+                r.isPkce() -> {
+                    exchangeArrived.countDown()
+                    releaseExchange.await(10, TimeUnit.SECONDS)
+                    pkceAnswer(s2)
+                }
+                else -> noContent()
+            }
+        }
+
+        val link = launch(Dispatchers.IO) { client.exchangeOAuthCodeForLink("code-1", "verifier-1", a) }
+        try {
+            assertTrue(exchangeArrived.await(5, TimeUnit.SECONDS))
+            link.cancel() // the Settings screen went away
+        } finally {
+            releaseExchange.countDown()
+        }
+        link.join()
+
+        assertTrue(link.isCancelled)
+        assertEquals(listOf("pkce", "logout"), kinds())
+        assertEquals("Bearer $s2", recorded[1].bearer())
+        assertEquals("nothing stored", s1, store.snapshot()?.accessToken)
+        assertEquals("refresh-1", store.snapshot()?.refreshToken)
     }
 }
