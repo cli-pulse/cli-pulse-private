@@ -183,8 +183,8 @@ class SupabaseClientDemoModeTest {
         val request = server.takeRequest()
         assertEquals("/auth/v1/logout", request.path)
         assertEquals("Bearer access-A", request.getHeader("Authorization"))
-        assertEquals("access-B", tokenStore.accessToken)
-        assertEquals("refresh-B", tokenStore.refreshToken)
+        assertEquals("access-B", tokenStore.snapshot()?.accessToken)
+        assertEquals("refresh-B", tokenStore.snapshot()?.refreshToken)
     }
 
     @Test
@@ -194,7 +194,7 @@ class SupabaseClientDemoModeTest {
 
         client.signOut()
 
-        assertNull(tokenStore.accessToken)
+        assertNull(tokenStore.snapshot()?.accessToken)
         assertEquals("Bearer access-1", server.takeRequest().getHeader("Authorization"))
     }
 
@@ -218,7 +218,7 @@ class SupabaseClientDemoModeTest {
         } catch (e: ApiError.SessionSuperseded) {
             // expected: the session this request belonged to ended while it was out
         }
-        assertNull(tokenStore.accessToken)
-        assertNull(tokenStore.refreshToken)
+        assertNull(tokenStore.snapshot()?.accessToken)
+        assertNull(tokenStore.snapshot()?.refreshToken)
     }
 }

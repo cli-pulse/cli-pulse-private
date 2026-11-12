@@ -71,9 +71,9 @@ class TokenStoreSessionTest {
         assertEquals("refresh-A", ended.refreshToken)
         assertEquals(EndReason.UserSignedOut, ended.reason)
         assertNull(store.snapshot())
-        assertNull(store.accessToken)
-        assertNull(store.refreshToken)
-        assertNull(store.userId)
+        assertNull(store.snapshot()?.accessToken)
+        assertNull(store.snapshot()?.refreshToken)
+        assertNull(store.snapshot()?.userId)
         assertEquals(id, store.teardownPending)
         val state = store.state.value
         assertNull(state.sessionId)
@@ -102,8 +102,8 @@ class TokenStoreSessionTest {
 
         assertEquals(before, prefs.commits)
         assertEquals(b, store.sessionId)
-        assertEquals("access-B", store.accessToken)
-        assertEquals("refresh-B", store.refreshToken)
+        assertEquals("access-B", store.snapshot()?.accessToken)
+        assertEquals("refresh-B", store.snapshot()?.refreshToken)
     }
 
     @Test
@@ -111,12 +111,12 @@ class TokenStoreSessionTest {
         val a = installA()
         store.endIfCurrent(a, EndReason.UserSignedOut)
         assertFalse(store.rotateIfCurrent(a, "late-access", "late-refresh"))
-        assertNull(store.accessToken)
+        assertNull(store.snapshot()?.accessToken)
 
         val b = store.installSession("access-B", "refresh-B", "user-B")!!
         assertFalse(store.rotateIfCurrent(a, "late-access", "late-refresh"))
-        assertEquals("access-B", store.accessToken)
-        assertEquals("refresh-B", store.refreshToken)
+        assertEquals("access-B", store.snapshot()?.accessToken)
+        assertEquals("refresh-B", store.snapshot()?.refreshToken)
         assertEquals(b, store.sessionId)
     }
 
@@ -128,7 +128,7 @@ class TokenStoreSessionTest {
 
         assertFalse(store.setProfileIfCurrent(a, "user-A", "Name A", "a@example.test"))
         assertFalse(store.setDeviceIdIfCurrent(a, "device-A"))
-        assertEquals("user-B", store.userId)
+        assertEquals("user-B", store.snapshot()?.userId)
         assertEquals("B", store.userName)
         assertNull(store.deviceIdFor(b))
         assertNull(store.deviceIdFor(a))
@@ -137,7 +137,7 @@ class TokenStoreSessionTest {
         assertEquals("device-B", store.deviceIdFor(b))
         assertTrue(store.setProfileIfCurrent(b, null, "Name B", ""))
         assertEquals("Name B", store.userName)
-        assertEquals("user-B", store.userId)
+        assertEquals("user-B", store.snapshot()?.userId)
     }
 
     @Test
@@ -151,7 +151,7 @@ class TokenStoreSessionTest {
         assertNull(store.snapshot())
 
         assertNotNull(store.installSession("access-Y", "refresh-Y", "user-Y", attempt = newer))
-        assertEquals("access-Y", store.accessToken)
+        assertEquals("access-Y", store.snapshot()?.accessToken)
     }
 
     @Test
@@ -224,7 +224,7 @@ class TokenStoreSessionTest {
         assertEquals("install", a, TokenStore(prefs.restart()).sessionId)
 
         store.rotateIfCurrent(a, "access-A2", "refresh-A2")
-        assertEquals("rotation", "refresh-A2", TokenStore(prefs.restart()).refreshToken)
+        assertEquals("rotation", "refresh-A2", TokenStore(prefs.restart()).snapshot()?.refreshToken)
 
         store.endIfCurrent(a, EndReason.UserSignedOut)
         val afterEnd = TokenStore(prefs.restart())
@@ -423,6 +423,34 @@ class TokenStoreSessionTest {
             assertEquals("the rotation is not published before its commit returns", "access-A", store.snapshot()!!.accessToken)
         }
         assertEquals("access-A2", store.snapshot()!!.accessToken)
+    }
+
+    @Test
+    fun `the names agree with the snapshot while an end is still writing`() {
+        val a = store.installSession("access-A", "refresh-A", "user-A", userName = "Name A", userEmail = "a@example.test")!!
+
+        BlockedCommit(prefs) { store.endIfCurrent(a, EndReason.UserSignedOut) }.use {
+            // Memory already holds the wiped store; the end is published when its commit returns.
+            assertEquals(a, store.snapshot()?.sessionId)
+            assertEquals("Name A", store.userName)
+            assertEquals("a@example.test", store.userEmail)
+        }
+        assertNull(store.snapshot())
+        assertNull(store.userName)
+        assertNull(store.userEmail)
+    }
+
+    @Test
+    fun `the demo flag agrees with the snapshot while an end is still writing`() {
+        val demo = store.enterDemoMode()
+
+        BlockedCommit(prefs) { store.endIfCurrent(demo, EndReason.DemoExit) }.use {
+            assertEquals(demo, store.snapshot()?.sessionId)
+            assertTrue(store.snapshot()!!.isDemo)
+            assertTrue(store.isDemoMode)
+        }
+        assertNull(store.snapshot())
+        assertFalse(store.isDemoMode)
     }
 
     @Test

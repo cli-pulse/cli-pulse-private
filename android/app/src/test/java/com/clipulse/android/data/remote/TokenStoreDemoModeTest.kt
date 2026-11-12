@@ -1,6 +1,8 @@
 package com.clipulse.android.data.remote
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -9,16 +11,21 @@ class TokenStoreDemoModeTest {
     private val store = TokenStore(InMemorySharedPreferences())
 
     @Test
-    fun `demo mode is logged in but has no session`() {
+    fun `demo mode is a session without tokens`() {
         store.enterDemoMode()
-        assertTrue(store.isLoggedIn)
-        assertFalse(store.hasSession)
+        val s = store.snapshot()
+        assertNotNull(s)
+        assertTrue(s!!.isDemo)
+        assertTrue(store.isDemoMode)
+        assertNull(s.accessToken)
+        assertNull(s.refreshToken)
     }
 
     @Test
     fun `an access token is a session`() {
         store.installSession("access-1", "refresh-1", "user-1")
-        assertTrue(store.hasSession)
+        assertFalse(store.snapshot()!!.isDemo)
+        assertNotNull(store.snapshot()!!.accessToken)
     }
 
     @Test
@@ -26,7 +33,7 @@ class TokenStoreDemoModeTest {
         store.enterDemoMode()
         store.installSession("access-1", "refresh-1", "user-1")
         assertFalse(store.isDemoMode)
-        assertTrue(store.hasSession)
+        assertNotNull(store.snapshot()!!.accessToken)
     }
 
     @Test
@@ -34,7 +41,6 @@ class TokenStoreDemoModeTest {
         val id = store.installSession("access-1", "refresh-1", "user-1")!!
         store.endIfCurrent(id, EndReason.UserSignedOut)
         assertFalse(store.isDemoMode)
-        assertFalse(store.hasSession)
-        assertFalse(store.isLoggedIn)
+        assertNull(store.snapshot())
     }
 }

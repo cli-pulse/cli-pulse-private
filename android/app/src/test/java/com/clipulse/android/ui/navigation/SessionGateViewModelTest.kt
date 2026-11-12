@@ -424,7 +424,7 @@ class SessionGateViewModelTest {
 
             assertEquals(GateState(GateScreen.Tabs, id, 0), landed)
             assertEquals("exactly one renewal", 1, refreshes.get())
-            assertEquals("refresh-new", legacyStore.refreshToken)
+            assertEquals("refresh-new", legacyStore.snapshot()?.refreshToken)
             g.viewModelScope.cancel()
         } finally {
             server.shutdown()

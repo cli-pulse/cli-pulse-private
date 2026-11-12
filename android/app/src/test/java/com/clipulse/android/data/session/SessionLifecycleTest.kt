@@ -491,7 +491,7 @@ class SessionLifecycleTest {
         val revived = TokenStore(env.prefs.restart())
 
         assertEquals("B's sign-in is on disk before B's rows are", b, revived.sessionId)
-        assertEquals("refresh-B", revived.refreshToken)
+        assertEquals("refresh-B", revived.snapshot()?.refreshToken)
         assertNull("A's teardown is recorded as done", revived.teardownPending)
         assertEquals(listOf("B"), env.dao.allRows())
         env.scope.cancel()

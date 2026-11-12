@@ -26,9 +26,11 @@ import java.util.UUID
  * durable; [isDurable] reports whether the last commit reached disk.
  *
  * Reading never takes the lock. A mutator holds the lock through its `commit()`, which can wait
- * for the disk, so the session reads ([snapshot], [snapshotIfCurrent], [sessionId],
- * [teardownPending], [isDurable], [authGeneration], [deviceIdFor], [state]) all come from one
- * immutable view, published after every change: the main thread can call them at any time. The
+ * for the disk, so every session read ([snapshot], [snapshotIfCurrent], [sessionId],
+ * [teardownPending], [isDurable], [authGeneration], [deviceIdFor], [isDemoMode], [userName],
+ * [userEmail], [state]) comes from one immutable view, published after every change: the main
+ * thread can call them at any time, and they always agree with each other. Tokens are read
+ * only through a [SessionContext]. The
  * writers a screen calls ([beginOAuthLogin], [savePendingOAuthFlow], [claimPendingOAuthFlow])
  * suspend and take the lock on an IO thread. Every other writer runs on an IO thread already.
  */
@@ -65,6 +67,8 @@ class TokenStore internal constructor(
         val state: SessionState,
         val session: SessionContext?,
         val deviceId: String?,
+        val userName: String?,
+        val userEmail: String?,
         val authGeneration: Long,
     )
 
@@ -76,26 +80,16 @@ class TokenStore internal constructor(
     /** The current session id and teardown marker, re-published after every change. */
     val state: StateFlow<SessionState> get() = _state
 
-    // ── Reads ─────────────────────────────────────────────────────────────
+    // ── Reads (all from the published view; tokens only through a SessionContext) ──
 
-    val accessToken: String? get() = prefs.getString(KEY_ACCESS_TOKEN, null)
+    /** The current session is demo mode. */
+    val isDemoMode: Boolean get() = view.state.isDemo
 
-    val refreshToken: String? get() = prefs.getString(KEY_REFRESH_TOKEN, null)
+    /** The current session's display name, if it has one. */
+    val userName: String? get() = view.userName
 
-    val userId: String? get() = prefs.getString(KEY_USER_ID, null)
-
-    val userName: String? get() = prefs.getString(KEY_USER_NAME, null)
-
-    val userEmail: String? get() = prefs.getString(KEY_USER_EMAIL, null)
-
-    val deviceId: String? get() = prefs.getString(KEY_DEVICE_ID, null)
-
-    val isDemoMode: Boolean get() = prefs.getBoolean(KEY_DEMO_MODE, false)
-
-    val isLoggedIn: Boolean get() = isDemoMode || !accessToken.isNullOrBlank()
-
-    /** A signed-in account, as opposed to demo mode or signed out. */
-    val hasSession: Boolean get() = !isDemoMode && !accessToken.isNullOrBlank()
+    /** The current session's email, if it has one. */
+    val userEmail: String? get() = view.userEmail
 
     /** The current session's id, or null when signed out. */
     val sessionId: String? get() = view.session?.sessionId
@@ -518,6 +512,8 @@ class TokenStore internal constructor(
             ),
             session = session,
             deviceId = if (session != null) prefs.getString(KEY_DEVICE_ID, null) else null,
+            userName = if (session != null && !session.isDemo) prefs.getString(KEY_USER_NAME, null) else null,
+            userEmail = if (session != null && !session.isDemo) prefs.getString(KEY_USER_EMAIL, null) else null,
             authGeneration = prefs.getLong(KEY_AUTH_GENERATION, 0L),
         )
     }

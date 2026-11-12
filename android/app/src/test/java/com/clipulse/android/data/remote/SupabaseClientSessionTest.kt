@@ -376,7 +376,7 @@ class SupabaseClientSessionTest {
 
         assertEquals("the profiles request was never sent", 1, recorded.size)
         assertFalse(recorded.any { it.bearer() == "Bearer access-B" })
-        assertEquals("user-B", store.userId)
+        assertEquals("user-B", store.snapshot()?.userId)
         assertEquals("Name B", store.userName)
     }
 
@@ -389,7 +389,7 @@ class SupabaseClientSessionTest {
         expect<ApiError.SessionSuperseded> { client.me() }
 
         assertEquals(1, recorded.size)
-        assertNull(store.userId)
+        assertNull(store.snapshot()?.userId)
         assertNull(store.userName)
     }
 
@@ -402,7 +402,7 @@ class SupabaseClientSessionTest {
 
         assertEquals(a, me.sessionId)
         assertEquals("Profile A", store.userName)
-        assertEquals("user-A", store.userId)
+        assertEquals("user-A", store.snapshot()?.userId)
         assertTrue(me.paired)
     }
 
@@ -427,8 +427,8 @@ class SupabaseClientSessionTest {
         assertEquals(1, recorded.size)
         assertEquals(0, refreshCount())
         assertFalse(recorded.any { it.bearer() == "Bearer access-B" || it.body.readUtf8().contains("refresh-B") })
-        assertEquals("access-B", store.accessToken)
-        assertEquals("refresh-B", store.refreshToken)
+        assertEquals("access-B", store.snapshot()?.accessToken)
+        assertEquals("refresh-B", store.snapshot()?.refreshToken)
     }
 
     @Test
@@ -442,7 +442,7 @@ class SupabaseClientSessionTest {
         expect<ApiError.SessionSuperseded> { client.renew(ctxA, "access-A") }
 
         assertEquals("no renewal request at all", 0, recorded.size)
-        assertEquals("access-B", store.accessToken)
+        assertEquals("access-B", store.snapshot()?.accessToken)
     }
 
     @Test
@@ -497,9 +497,9 @@ class SupabaseClientSessionTest {
 
         assertTrue(olderResult.exceptionOrNull() is ApiError.SessionSuperseded)
         assertEquals(newer.sessionId, store.sessionId)
-        assertEquals("access-new", store.accessToken)
-        assertEquals("refresh-new", store.refreshToken)
-        assertEquals("user-new", store.userId)
+        assertEquals("access-new", store.snapshot()?.accessToken)
+        assertEquals("refresh-new", store.snapshot()?.refreshToken)
+        assertEquals("user-new", store.snapshot()?.userId)
     }
 
     @Test
@@ -526,8 +526,8 @@ class SupabaseClientSessionTest {
 
         expect<ApiError.SessionSuperseded> { client.exchangeOAuthCodeForLink("code-1", "verifier-1", a) }
 
-        assertEquals("access-C", store.accessToken)
-        assertEquals("refresh-C", store.refreshToken)
+        assertEquals("access-C", store.snapshot()?.accessToken)
+        assertEquals("refresh-C", store.snapshot()?.refreshToken)
     }
 
     @Test
@@ -578,7 +578,7 @@ class SupabaseClientSessionTest {
 
         expect<ApiError.SessionSuperseded> { client.deleteAccount() }
 
-        assertEquals("access-B", store.accessToken)
+        assertEquals("access-B", store.snapshot()?.accessToken)
         assertEquals(1, recorded.size)
     }
 
@@ -716,7 +716,7 @@ class SupabaseClientSessionTest {
         releaseNewer.countDown()
 
         assertEquals(newer.await().sessionId, store.sessionId)
-        assertEquals("access-new", store.accessToken)
+        assertEquals("access-new", store.snapshot()?.accessToken)
     }
 
     @Test
@@ -797,7 +797,7 @@ class SupabaseClientSessionTest {
         val id = client.exchangeOAuthCode("code-1", "verifier-1", claimed.authGeneration)
 
         assertEquals(id, store.sessionId)
-        assertEquals("access-new", store.accessToken)
+        assertEquals("access-new", store.snapshot()?.accessToken)
     }
 
     // ── link flows ──────────────────────────────────────

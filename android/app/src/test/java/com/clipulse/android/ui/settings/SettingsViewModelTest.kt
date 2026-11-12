@@ -151,7 +151,7 @@ class SettingsViewModelTest {
         val a = installA()
         dao.fill("A")
         coEvery { supabase.revokeSession(any()) } answers {
-            assertNull("the session is gone before the server is called", store.accessToken)
+            assertNull("the session is gone before the server is called", store.snapshot()?.accessToken)
         }
         val vm = vm()
 
