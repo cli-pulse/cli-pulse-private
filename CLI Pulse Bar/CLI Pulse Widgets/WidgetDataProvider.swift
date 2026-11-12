@@ -237,3 +237,6 @@ struct SingleProviderEntry: TimelineEntry {
     /// See WidgetData.isPro. Fail-open: nil/true → content, false → locked.
     var isPro: Bool? = nil
 }
+func ncAvailable(_ values: URLResourceValues) -> Int? {
+    values.volumeAvailableCapacity
+}
