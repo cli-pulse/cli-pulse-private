@@ -1043,6 +1043,19 @@ def _string(keep: str, span) -> str | None:
     return m.group(1) if m else None
 
 
+def _literal(keep: str, span, out: dict, what: str) -> str | None:
+    """`_string`, but an argument that is present and not a plain string literal
+    (a constant, an expression, an interpolation) is recorded as unparsed: read
+    as "absent" it would let `path: somePath` build from a folder the check
+    never scans while comparing equal to a record that has no path."""
+    if span is None:
+        return None
+    value = _string(keep, span)
+    if value is None:
+        out["unparsed"].append(f"{what} is not a string literal: {keep[span[0]:span[1]].strip()[:60]}")
+    return value
+
+
 def parse_package(text: str) -> dict:
     """The declarations of a Package.swift that decide what is compiled:
     {"targets": {name: {"kind", "path", "dependencies"}}, "urls": [...],
@@ -1054,9 +1067,9 @@ def parse_package(text: str) -> dict:
     for m in re.finditer(r"\.package\s*\(", code):
         args = _labelled_args(keep, code, m.end() - 1)
         if "url" in args:
-            out["urls"].append(_string(keep, args["url"]))
+            out["urls"].append(_literal(keep, args["url"], out, ".package url:"))
         elif "path" in args:
-            out["paths"].append(_string(keep, args["path"]))
+            out["paths"].append(_literal(keep, args["path"], out, ".package path:"))
         else:
             out["unparsed"].append(keep[m.start():_closing(code, m.end() - 1) + 1].strip()[:80])
     pm = re.search(r"\bPackage\s*\(", code)
@@ -1074,7 +1087,7 @@ def parse_package(text: str) -> dict:
             out["unparsed"].append(keep[a:b].strip()[:80])
             continue
         args = _labelled_args(keep, code, a + km.end() - 1)
-        name = _string(keep, args.get("name"))
+        name = _literal(keep, args.get("name"), out, f".{km.group(1)} name:")
         deps = []
         if "dependencies" in args:
             da, db = args["dependencies"]
@@ -1094,7 +1107,8 @@ def parse_package(text: str) -> dict:
                 else:
                     deps.append(f"unparsed:{dep[:40]}")
         out["targets"][name or f"?{len(out['targets'])}"] = {
-            "kind": km.group(1), "path": _string(keep, args.get("path")), "dependencies": sorted(deps)}
+            "kind": km.group(1), "path": _literal(keep, args.get("path"), out, f".{km.group(1)} path:"),
+            "dependencies": sorted(deps)}
     return out
 
 

@@ -343,6 +343,9 @@ CASES = [
                          "    var value = statfs()\n    return statfs(p, &value)\n}\n"))),
      1, r"Package\.swift: declares target 'PrivacyExtra' \(path PrivacyExtra\), which the reviewed record .* does not "
         r"list, so its sources are not scanned"),
+    ("R3-2: a package target whose path is not a string literal", [PACKAGE],
+     edit_text(PACKAGE, "        .testTarget(", '        .target(name: "PrivacyExtra", path: extraPath),\n        .testTarget('),
+     1, r"Package\.swift: cannot read '\.target path: is not a string literal: extraPath'"),
     ("R3-2: a local package dependency", [PACKAGE],
      edit_text(PACKAGE, '.package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.10.0")',
                '.package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.10.0"),\n        .package(path: "../Extra")'),
