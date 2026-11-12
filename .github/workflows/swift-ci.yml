@@ -31,6 +31,11 @@ on:
       - 'scripts/test_ci_check_qa_scheme.py'
       - 'scripts/check_helper_method_parity.sh'
       - '.github/workflows/swift-ci.yml'
+      # CLIPulseCore tests assert sentences of PRIVACY.md (KeychainReportPrivacyTests,
+      # MainThreadStallProbeWiringTests, PrivacyCopyTruthTests, ...). Without this path a
+      # policy-only PR never runs them: #752 reworded two checked sentences and main
+      # carried the failure unseen until the next Swift change.
+      - 'PRIVACY.md'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
@@ -52,6 +57,11 @@ on:
       - 'scripts/test_ci_check_qa_scheme.py'
       - 'scripts/check_helper_method_parity.sh'
       - '.github/workflows/swift-ci.yml'
+      # CLIPulseCore tests assert sentences of PRIVACY.md (KeychainReportPrivacyTests,
+      # MainThreadStallProbeWiringTests, PrivacyCopyTruthTests, ...). Without this path a
+      # policy-only PR never runs them: #752 reworded two checked sentences and main
+      # carried the failure unseen until the next Swift change.
+      - 'PRIVACY.md'
   workflow_dispatch:
 
 concurrency:

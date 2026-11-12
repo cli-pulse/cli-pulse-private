@@ -167,7 +167,7 @@ final class KeychainReportPrivacyTests: XCTestCase {
             "a browser's \"Safe Storage\" item",
             "the Keychain did not accept the new sign-in tokens",
             "Each of these outcomes is sent at most once a UTC day",
-            "(the stack trace, the app and OS version, the device details and the SDK's random installation identifier)",
+            "(the stack trace, the app and OS version, the device details, the device hash described above and the SDK's random installation identifier)",
             "whether the screen was locked (when the system says)",
             "the browser's name from a fixed list, the install channel and whether the screen was locked (when the system says)",
             "It has no breadcrumbs, no tokens, no error text from the system",
