@@ -128,13 +128,30 @@ public enum FirstRunPresentation {
     ///
     /// Returns the decision. The sentinel is written whether or not the window
     /// is shown, because its job is to describe launches, not presentations.
+    ///
+    /// The keys come from the app's own persistent domain and its launch
+    /// arguments. Not `dictionaryRepresentation()`, which also returns
+    /// NSGlobalDomain's keys: the privacy manifest's UserDefaults reason (CA92.1)
+    /// covers only what the app wrote (1.63 A3). `hasPriorUse` only matches
+    /// app-owned prefixes, which NSGlobalDomain does not hold; the other domains
+    /// `dictionaryRepresentation()` adds, registered defaults and added suites,
+    /// are empty in the shipped app (nothing calls `register(defaults:)` or
+    /// `addSuite(named:)`), so the decision is the one it made before.
+    ///
+    /// Contract: `ownDomain` must name the persistent domain `defaults` writes
+    /// to: the bundle identifier for `.standard` (the default), the suite's name
+    /// for `UserDefaults(suiteName:)`. A caller passing other defaults passes
+    /// the matching domain too, or prior use is looked for in the wrong domain.
     @discardableResult
     public static func evaluateAndRecordLaunch(
         defaults: UserDefaults = .standard,
+        ownDomain: String? = Bundle.main.bundleIdentifier,
         appVersion: String
     ) -> Bool {
+        let ownKeys = ownDomain.flatMap { defaults.persistentDomain(forName: $0) }.map { Array($0.keys) } ?? []
+        let launchArgumentKeys = Array(defaults.volatileDomain(forName: UserDefaults.argumentDomain).keys)
         let decision = shouldPresent(
-            existingKeys: defaults.dictionaryRepresentation().keys,
+            existingKeys: ownKeys + launchArgumentKeys,
             alreadyShown: defaults.bool(forKey: shownKey),
             hasSentinel: defaults.string(forKey: lastSeenAppVersionKey) != nil
         )

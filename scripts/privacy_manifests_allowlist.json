@@ -1,0 +1,22 @@
+{
+  "_about": [
+    "Reviewed exceptions for scripts/check_privacy_manifests.py's source scan.",
+    "An entry hides one match from one target's check:",
+    "  {\"target\": <Xcode target>, \"category\": <NSPrivacyAccessedAPICategory... or SystemWrittenDefaults>,",
+    "   \"file\": <repo-relative path>, \"pattern\": <regex over that line>, \"reason\": <why it needs no declaration>}",
+    "Only for a match that is not a use in any build that ships: code compiled solely under a flag no",
+    "shipping configuration defines (say which), or text the scanner cannot tell from a call. It already",
+    "skips comments, string contents and code another platform's #if excludes. A call a shipped binary",
+    "makes is declared in the manifest, never listed here.",
+    "An entry that no longer matches anything fails the check, so this list can only shrink."
+  ],
+  "entries": [
+    {
+      "target": "CLI Pulse Bar",
+      "category": "SystemWrittenDefaults",
+      "file": "CLI Pulse Bar/CLI Pulse Bar/QASnapshotRenderer.swift",
+      "pattern": "appleLanguages: UserDefaults\\.standard\\.stringArray\\(forKey: \"AppleLanguages\"\\)",
+      "reason": "QA render manifest only: the whole file is inside #if CLIPULSE_QA_RENDER, which only the Debug QA configuration defines (scripts/ci_check_qa_scheme.py pins that); no shipped build compiles it. It records which AppleLanguages the QA render ran with."
+    }
+  ]
+}

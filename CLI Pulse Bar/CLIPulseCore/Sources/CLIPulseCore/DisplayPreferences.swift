@@ -49,6 +49,13 @@ enum DisplayPreferences {
         runningUnderXCTest: NSClassFromString("XCTestCase") != nil
     )
 
+    /// The persistent domain `defaults` writes to, for code that must read back
+    /// only what the app itself wrote (`persistentDomain(forName:)`) rather than
+    /// the search list, which also returns the system's values.
+    static let domainName: String? = NSClassFromString("XCTestCase") != nil
+        ? xctestSuiteName
+        : Bundle.main.bundleIdentifier
+
     /// The tests' domain. Not an app key, so it needs no `cli_pulse_` prefix:
     /// `UnsandboxedDataMigration` never sees it, because the app never uses it.
     static let xctestSuiteName = "clipulse.xctest.display-preferences"

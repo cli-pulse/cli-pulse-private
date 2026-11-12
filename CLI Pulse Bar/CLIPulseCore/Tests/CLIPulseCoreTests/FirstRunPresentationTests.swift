@@ -128,20 +128,20 @@ final class FirstRunPresentationTests: XCTestCase {
 
     /// A private suite, never `.standard`. A test that wrote the real domain
     /// would suppress the window on this machine and poison later tests.
-    private func makeIsolatedDefaults() throws -> UserDefaults {
+    private func makeIsolatedDefaults() throws -> (defaults: UserDefaults, name: String) {
         let name = "com.clipulse.tests.firstrun.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
         addTeardownBlock { defaults.removePersistentDomain(forName: name) }
-        return defaults
+        return (defaults, name)
     }
 
     func testEvaluateRecordsSentinelAndIsIdempotentAcrossLaunches() throws {
-        let defaults = try makeIsolatedDefaults()
+        let (defaults, name) = try makeIsolatedDefaults()
 
         // Launch 1: nothing known -> present, and the sentinel lands.
         XCTAssertTrue(
             FirstRunPresentation.evaluateAndRecordLaunch(
-                defaults: defaults, appVersion: "1.49.0"
+                defaults: defaults, ownDomain: name, appVersion: "1.49.0"
             )
         )
         XCTAssertEqual(
@@ -153,7 +153,7 @@ final class FirstRunPresentationTests: XCTestCase {
         // nothing marked it shown.
         XCTAssertFalse(
             FirstRunPresentation.evaluateAndRecordLaunch(
-                defaults: defaults, appVersion: "1.49.0"
+                defaults: defaults, ownDomain: name, appVersion: "1.49.0"
             )
         )
 
@@ -161,7 +161,7 @@ final class FirstRunPresentationTests: XCTestCase {
         // future work can tell what someone upgraded FROM.
         XCTAssertFalse(
             FirstRunPresentation.evaluateAndRecordLaunch(
-                defaults: defaults, appVersion: "1.50.0"
+                defaults: defaults, ownDomain: name, appVersion: "1.50.0"
             )
         )
         XCTAssertEqual(
@@ -171,12 +171,12 @@ final class FirstRunPresentationTests: XCTestCase {
     }
 
     func testMarkShownPersistsAndSuppresses() throws {
-        let defaults = try makeIsolatedDefaults()
+        let (defaults, name) = try makeIsolatedDefaults()
         FirstRunPresentation.markShown(defaults: defaults)
         XCTAssertTrue(defaults.bool(forKey: FirstRunPresentation.shownKey))
         XCTAssertFalse(
             FirstRunPresentation.evaluateAndRecordLaunch(
-                defaults: defaults, appVersion: "1.49.0"
+                defaults: defaults, ownDomain: name, appVersion: "1.49.0"
             )
         )
     }
@@ -186,18 +186,37 @@ final class FirstRunPresentationTests: XCTestCase {
         // when the window appeared, an upgrader would never acquire one and
         // every later release would have to re-derive "is this an upgrade" from
         // scratch — the exact gap that made this class necessary.
-        let defaults = try makeIsolatedDefaults()
+        let (defaults, name) = try makeIsolatedDefaults()
         defaults.set(true, forKey: "privacy.anonymousTelemetryDisclosed")
 
         XCTAssertFalse(
             FirstRunPresentation.evaluateAndRecordLaunch(
-                defaults: defaults, appVersion: "1.49.0"
+                defaults: defaults, ownDomain: name, appVersion: "1.49.0"
             )
         )
         XCTAssertEqual(
             defaults.string(forKey: FirstRunPresentation.lastSeenAppVersionKey),
             "1.49.0"
         )
+    }
+
+    /// 1.63 (A3): the decision reads the app's own domain, not every domain
+    /// `dictionaryRepresentation()` returns (NSGlobalDomain included, which the
+    /// privacy manifest's CA92.1 does not cover). A key only another domain
+    /// holds must not count as this app's prior use.
+    func testOnlyTheAppsOwnDomainCounts() throws {
+        let (own, ownName) = try makeIsolatedDefaults()
+        let (other, otherName) = try makeIsolatedDefaults()
+        other.set(true, forKey: "privacy.anonymousTelemetryDisclosed")
+        XCTAssertNotNil(other.persistentDomain(forName: otherName)?["privacy.anonymousTelemetryDisclosed"])
+
+        XCTAssertTrue(
+            FirstRunPresentation.evaluateAndRecordLaunch(
+                defaults: other, ownDomain: ownName, appVersion: "1.63.0"
+            ),
+            "a key in a domain that is not the app's own was taken for prior use"
+        )
+        XCTAssertNil(own.string(forKey: FirstRunPresentation.lastSeenAppVersionKey))
     }
 
     // MARK: - Localisation

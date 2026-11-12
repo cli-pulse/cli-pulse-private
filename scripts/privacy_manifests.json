@@ -1,0 +1,1021 @@
+{
+  "_about": [
+    "Read by scripts/check_privacy_manifests.py: the reviewed record of every Apple target that ships a bundle.",
+    "Per target: manifest (in the target's Resources phase), entitlements, where the manifest and executable sit",
+    "in an .xcarchive (bundle), binary_categories (what the archived executable links, measured with --archive",
+    "on unsigned Release archives, sentry-cocoa included), reasons (category -> reason code -> why it holds and the",
+    "call sites or SDK it rests on; the manifest must declare exactly these, and every cited call site must still be",
+    "compiled into the target), and collected (the target's NSPrivacyCollectedDataTypes rows, each a row of the label).",
+    "Sentry is merged into all five executables. Its own manifest ships in the iPhone app, the Watch app, the Mac app",
+    "and the LoginItem (Frameworks/Sentry.framework); the widget extension carries none. No target relies on it:",
+    "each target's own manifest declares what its executable links. A Sentry bump needs a fresh --archive measurement",
+    "(the check fails while Package.resolved's pin differs from sdks.sentry-cocoa.version).",
+    "label: the App Store App Privacy label as published (2026-11-10). Change a row only together with the label.",
+    "package.targets: every target CLIPulseCore's Package.swift declares (kind, path, dependencies), compared exactly;",
+    "reviewed_build_settings: (EXCLUDED|INCLUDED)_SOURCE_FILE_NAMES[...] settings and .xcconfig bases, project or target, any configuration (none today)."
+  ],
+  "scope": [
+    "Required-reason rules govern App Store uploads. The reasons recorded here are reviewed for the App Store builds:",
+    "the iPhone/iPad app with its widgets and Watch app, and the sandboxed Mac App Store app and LoginItem, where",
+    "outside their containers the Mac app reads only folders the user grants (3B52.1). The Developer ID Mac build is",
+    "built from the same targets and ships the same manifest, but it is not sandboxed and reads those CLI folders",
+    "(~/.claude, ~/.codex, ~/.gemini, the JetBrains configuration) without a grant; its copy of the manifest is not a",
+    "claim Apple reviews, and 3B52.1's text does not describe that build. No product behaviour depends on this."
+  ],
+  "project": "CLI Pulse Bar/CLI Pulse Bar.xcodeproj/project.pbxproj",
+  "package": {
+    "path": "CLI Pulse Bar/CLIPulseCore",
+    "product": "CLIPulseCore",
+    "targets": {
+      "CLIPulseCore": {
+        "kind": "target",
+        "path": null,
+        "sources": "Sources/CLIPulseCore",
+        "platforms": [
+          "macos",
+          "ios",
+          "watchos"
+        ],
+        "dependencies": [
+          "product:Sentry@sentry-cocoa",
+          "target:CZstd"
+        ]
+      },
+      "CZstd": {
+        "kind": "target",
+        "path": "Sources/CZstd",
+        "sources": "Sources/CZstd",
+        "platforms": [
+          "macos"
+        ],
+        "dependencies": []
+      },
+      "CLIPulseCoreTests": {
+        "kind": "testTarget",
+        "path": null,
+        "sources": "Tests/CLIPulseCoreTests",
+        "platforms": [],
+        "dependencies": [
+          "target:CLIPulseCore"
+        ],
+        "note": "tests: built by swift test, never linked into an app"
+      }
+    },
+    "dependencies": [
+      "https://github.com/getsentry/sentry-cocoa"
+    ]
+  },
+  "package_resolved": "CLI Pulse Bar/CLI Pulse Bar.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+  "reviewed_products": [
+    "CLIPulseCore"
+  ],
+  "reviewed_build_settings": [],
+  "sdks": {
+    "sentry-cocoa": {
+      "version": "9.12.1",
+      "categories": [
+        "NSPrivacyAccessedAPICategoryFileTimestamp",
+        "NSPrivacyAccessedAPICategorySystemBootTime",
+        "NSPrivacyAccessedAPICategoryUserDefaults"
+      ],
+      "measured": "nm -u on Sentry.xcframework 9.12.1 (iOS, watchOS, macOS slices): _stat _fstat _NSFileCreationDate, attributesOfItemAtPath:error:, systemUptime, kern.boottime, NSUserDefaults (macOS)"
+    }
+  },
+  "exempt_targets": {},
+  "targets": [
+    {
+      "name": "CLI Pulse iOS",
+      "platform": "ios",
+      "manifest": "CLI Pulse Bar/CLI Pulse Bar iOS/PrivacyInfo.xcprivacy",
+      "entitlements": "CLI Pulse Bar/CLI Pulse Bar iOS/CLI_Pulse_iOS.entitlements",
+      "bundle": {
+        "archive": "ios",
+        "path": "Products/Applications/CLI Pulse.app",
+        "manifest": "PrivacyInfo.xcprivacy",
+        "executable": "CLI Pulse"
+      },
+      "binary_categories": [
+        "NSPrivacyAccessedAPICategoryFileTimestamp",
+        "NSPrivacyAccessedAPICategorySystemBootTime",
+        "NSPrivacyAccessedAPICategoryUserDefaults"
+      ],
+      "reasons": {
+        "NSPrivacyAccessedAPICategoryUserDefaults": {
+          "CA92.1": {
+            "why": "the app's own settings and state (UserDefaults.standard, @AppStorage), and Sentry's own (its manifest: CA92.1)",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSOverviewTab.swift",
+                "match": "@AppStorage"
+              },
+              {
+                "sdk": "sentry-cocoa"
+              }
+            ]
+          },
+          "1C8F.1": {
+            "why": "defaults shared with the other members of group.yyh.CLI-Pulse (the target is entitled to it); only those apps can read them",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/CLIPulseIntentCache.swift",
+                "match": "UserDefaults\\(suiteName: suiteName\\)"
+              }
+            ]
+          }
+        },
+        "NSPrivacyAccessedAPICategorySystemBootTime": {
+          "35F9.1": {
+            "why": "elapsed time between events in the app and timers (restore retry, refresh in flight, hold TTLs, stall duration); only elapsed seconds leave the device (in_flight_s, a stall's duration). Sentry 9.12.1 reads kern.boottime and systemUptime to classify app starts and watchdog terminations and stores system_boot_timestamp in its local app-state file; no event context field carries it (SentryDefaultCrashReporter maps systemInfo without bootTime)",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift",
+                "match": "deferredSessionRestoreClock[^\\n]*systemUptime"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DataRefreshManager.swift",
+                "match": "static func systemUptime\\(\\)"
+              },
+              {
+                "sdk": "sentry-cocoa"
+              }
+            ]
+          }
+        },
+        "NSPrivacyAccessedAPICategoryFileTimestamp": {
+          "C617.1": {
+            "why": "metadata of the app's own container (CFFIXED_USER_HOME; st_mode/st_uid only) and Sentry's own cache files (its manifest: C617.1)",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CLIPulseRuntimeEnvironment.swift",
+                "match": "Darwin\\.lstat"
+              },
+              {
+                "sdk": "sentry-cocoa"
+              }
+            ]
+          }
+        }
+      },
+      "collected": [
+        {
+          "type": "NSPrivacyCollectedDataTypeName",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "Sign in with Apple full name (iOSLoginView.swift), Google/GitHub OAuth, Linked Accounts"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeEmailAddress",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "sign-in code / password / Apple sign-in"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeCoarseLocation",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "city/country the host derives from the IP of every request"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeOtherUserContent",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "webhook address, sessions' project folder names, alerts"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeUserID",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "the account ID every signed-in request carries"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeDeviceID",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "APNs token / paired Mac device ID / Sentry device_app_hash"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypePurchaseHistory",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "the App Store transaction sent for checking"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeProductInteraction",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "alert acknowledge/resolve/snooze, requests to a Mac, Sentry sessions"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeCrashData",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "Sentry crash reports"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypePerformanceData",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "Sentry sessions and app hangs"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeOtherDiagnosticData",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "Sentry reports, app/helper versions, collector status, heartbeat load"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeOtherDataTypes",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "settings kept with the account, daily usage, device name/type/OS at pairing, plan tiers"
+        }
+      ]
+    },
+    {
+      "name": "CLI Pulse Watch",
+      "platform": "watchos",
+      "manifest": "CLI Pulse Bar/CLI Pulse Bar Watch/PrivacyInfo.xcprivacy",
+      "entitlements": "CLI Pulse Bar/CLI Pulse Bar Watch/CLI_Pulse_Watch.entitlements",
+      "bundle": {
+        "archive": "ios",
+        "path": "Products/Applications/CLI Pulse.app/Watch/CLI Pulse Watch.app",
+        "manifest": "PrivacyInfo.xcprivacy",
+        "executable": "CLI Pulse Watch"
+      },
+      "binary_categories": [
+        "NSPrivacyAccessedAPICategoryFileTimestamp",
+        "NSPrivacyAccessedAPICategorySystemBootTime",
+        "NSPrivacyAccessedAPICategoryUserDefaults"
+      ],
+      "reasons": {
+        "NSPrivacyAccessedAPICategoryUserDefaults": {
+          "CA92.1": {
+            "why": "the app's own settings (@AppStorage) and Sentry's; DataRefreshManager's UserDefaults(suiteName: \"group.yyh.CLI-Pulse\") is the app's own too: the Watch app has no application-groups entitlement, so no group container is shared and the named suite is stored in the Watch app's own container, readable by nothing else (not observed on a device in this PR)",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLI Pulse Bar Watch/WatchSessionsView.swift",
+                "match": "@AppStorage"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DataRefreshManager.swift",
+                "match": "UserDefaults\\(suiteName:"
+              },
+              {
+                "sdk": "sentry-cocoa"
+              }
+            ]
+          }
+        },
+        "NSPrivacyAccessedAPICategorySystemBootTime": {
+          "35F9.1": {
+            "why": "elapsed time between events in the app and timers (restore retry, refresh in flight, hold TTLs, stall duration); only elapsed seconds leave the device (in_flight_s, a stall's duration). Sentry 9.12.1 reads kern.boottime and systemUptime to classify app starts and watchdog terminations and stores system_boot_timestamp in its local app-state file; no event context field carries it (SentryDefaultCrashReporter maps systemInfo without bootTime)",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift",
+                "match": "deferredSessionRestoreClock[^\\n]*systemUptime"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DataRefreshManager.swift",
+                "match": "static func systemUptime\\(\\)"
+              },
+              {
+                "sdk": "sentry-cocoa"
+              }
+            ]
+          }
+        },
+        "NSPrivacyAccessedAPICategoryFileTimestamp": {
+          "C617.1": {
+            "why": "metadata of the app's own container (CFFIXED_USER_HOME; st_mode/st_uid only) and Sentry's own cache files (its manifest: C617.1)",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CLIPulseRuntimeEnvironment.swift",
+                "match": "Darwin\\.lstat"
+              },
+              {
+                "sdk": "sentry-cocoa"
+              }
+            ]
+          }
+        }
+      },
+      "collected": [
+        {
+          "type": "NSPrivacyCollectedDataTypeEmailAddress",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "sign-in code / password / Apple sign-in"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeCoarseLocation",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "city/country the host derives from the IP of every request"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeUserID",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "the account ID every signed-in request carries"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeDeviceID",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "APNs token / paired Mac device ID / Sentry device_app_hash"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeProductInteraction",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "alert acknowledge/resolve/snooze, requests to a Mac, Sentry sessions"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeCrashData",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "Sentry crash reports"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypePerformanceData",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "Sentry sessions and app hangs"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeOtherDiagnosticData",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "Sentry reports, app/helper versions, collector status, heartbeat load"
+        }
+      ]
+    },
+    {
+      "name": "CLI Pulse Widgets",
+      "platform": "ios",
+      "manifest": "CLI Pulse Bar/CLI Pulse Widgets/PrivacyInfo.xcprivacy",
+      "entitlements": "CLI Pulse Bar/CLI Pulse Widgets/CLI_Pulse_Widgets.entitlements",
+      "bundle": {
+        "archive": "ios",
+        "path": "Products/Applications/CLI Pulse.app/PlugIns/CLI Pulse Widgets.appex",
+        "manifest": "PrivacyInfo.xcprivacy",
+        "executable": "CLI Pulse Widgets"
+      },
+      "binary_categories": [
+        "NSPrivacyAccessedAPICategoryFileTimestamp",
+        "NSPrivacyAccessedAPICategorySystemBootTime",
+        "NSPrivacyAccessedAPICategoryUserDefaults"
+      ],
+      "reasons": {
+        "NSPrivacyAccessedAPICategoryUserDefaults": {
+          "CA92.1": {
+            "why": "the app's own settings and state (UserDefaults.standard, @AppStorage), and Sentry's own (its manifest: CA92.1)",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift",
+                "match": "UserDefaults\\.standard"
+              },
+              {
+                "sdk": "sentry-cocoa"
+              }
+            ]
+          },
+          "1C8F.1": {
+            "why": "defaults shared with the other members of group.yyh.CLI-Pulse (the target is entitled to it); only those apps can read them",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLI Pulse Widgets/WidgetDataProvider.swift",
+                "match": "UserDefaults\\(suiteName: suiteName\\)"
+              }
+            ]
+          }
+        },
+        "NSPrivacyAccessedAPICategorySystemBootTime": {
+          "35F9.1": {
+            "why": "elapsed time between events in the app and timers (restore retry, refresh in flight, hold TTLs, stall duration); only elapsed seconds leave the device (in_flight_s, a stall's duration). Sentry 9.12.1 reads kern.boottime and systemUptime to classify app starts and watchdog terminations and stores system_boot_timestamp in its local app-state file; no event context field carries it (SentryDefaultCrashReporter maps systemInfo without bootTime)",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift",
+                "match": "deferredSessionRestoreClock[^\\n]*systemUptime"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DataRefreshManager.swift",
+                "match": "static func systemUptime\\(\\)"
+              },
+              {
+                "sdk": "sentry-cocoa"
+              }
+            ]
+          }
+        },
+        "NSPrivacyAccessedAPICategoryFileTimestamp": {
+          "C617.1": {
+            "why": "metadata of the app's own container (CFFIXED_USER_HOME; st_mode/st_uid only) and Sentry's own cache files (its manifest: C617.1)",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CLIPulseRuntimeEnvironment.swift",
+                "match": "Darwin\\.lstat"
+              },
+              {
+                "sdk": "sentry-cocoa"
+              }
+            ]
+          }
+        }
+      },
+      "collected": []
+    },
+    {
+      "name": "CLI Pulse Bar",
+      "platform": "macos",
+      "manifest": "CLI Pulse Bar/CLI Pulse Bar/PrivacyInfo.xcprivacy",
+      "entitlements": "CLI Pulse Bar/CLI Pulse Bar/CLI_Pulse_Bar.entitlements",
+      "bundle": {
+        "archive": "macos",
+        "path": "Products/Applications/CLI Pulse Bar.app",
+        "manifest": "Contents/Resources/PrivacyInfo.xcprivacy",
+        "executable": "Contents/MacOS/CLI Pulse Bar"
+      },
+      "binary_categories": [
+        "NSPrivacyAccessedAPICategoryFileTimestamp",
+        "NSPrivacyAccessedAPICategorySystemBootTime",
+        "NSPrivacyAccessedAPICategoryUserDefaults"
+      ],
+      "reasons": {
+        "NSPrivacyAccessedAPICategoryUserDefaults": {
+          "CA92.1": {
+            "why": "the app's own settings and state (UserDefaults.standard, @AppStorage), and Sentry's own (its manifest: CA92.1)",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLI Pulse Bar/ProviderSettingsSection.swift",
+                "match": "@AppStorage"
+              },
+              {
+                "sdk": "sentry-cocoa"
+              }
+            ]
+          },
+          "1C8F.1": {
+            "why": "defaults shared with the other members of group.yyh.CLI-Pulse (the target is entitled to it); only those apps can read them",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperIPC.swift",
+                "match": "UserDefaults\\(suiteName: suiteName\\)"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/BookmarkManager.swift",
+                "match": "UserDefaults\\(suiteName: suiteName\\)"
+              }
+            ]
+          }
+        },
+        "NSPrivacyAccessedAPICategorySystemBootTime": {
+          "35F9.1": {
+            "why": "elapsed time between events in the app and timers (restore retry, refresh in flight, hold TTLs, stall duration); only elapsed seconds leave the device (in_flight_s, a stall's duration). Sentry 9.12.1 reads kern.boottime and systemUptime to classify app starts and watchdog terminations and stores system_boot_timestamp in its local app-state file; no event context field carries it (SentryDefaultCrashReporter maps systemInfo without bootTime)",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift",
+                "match": "deferredSessionRestoreClock[^\\n]*systemUptime"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DataRefreshManager.swift",
+                "match": "static func systemUptime\\(\\)"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/KeepAwakeController.swift",
+                "match": "now: @escaping @Sendable \\(\\) -> Double = \\{ ProcessInfo\\.processInfo\\.systemUptime"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteMachineExecutor.swift",
+                "match": "ProcessInfo\\.processInfo\\.systemUptime"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/MainThreadStallProbe.swift",
+                "match": "DispatchTime\\.now\\(\\)\\.uptimeNanoseconds"
+              },
+              {
+                "sdk": "sentry-cocoa"
+              }
+            ]
+          }
+        },
+        "NSPrivacyAccessedAPICategoryFileTimestamp": {
+          "C617.1": {
+            "why": "metadata of files in the app's own container or its app group container: CFFIXED_USER_HOME (the container under the sandbox), the app-group Claude snapshot, JetBrains files under the sandboxed NSHomeDirectory(), and Sentry's own cache files (its manifest: C617.1)",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CLIPulseRuntimeEnvironment.swift",
+                "match": "Darwin\\.lstat"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudeHelperContract.swift",
+                "match": "attributesOfItem\\(atPath: path\\)\\)\\?\\[\\.modificationDate\\]"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/JetBrainsAICollector.swift",
+                "match": "attrs\\[\\.modificationDate\\]"
+              },
+              {
+                "sdk": "sentry-cocoa"
+              }
+            ]
+          },
+          "3B52.1": {
+            "why": "metadata of the AI CLI folders the user grants in Settings > Advanced > CLI Tool Access (NSOpenPanel, security-scoped bookmarks): session logs (CostUsageScanner) and ~/.gemini (GeminiOAuthManager). App Store build only: see scope",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CostUsageScanner.swift",
+                "match": "\\.contentModificationDateKey"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/GeminiOAuthManager.swift",
+                "match": "Darwin\\.fstat\\("
+              }
+            ]
+          }
+        }
+      },
+      "collected": [
+        {
+          "type": "NSPrivacyCollectedDataTypeEmailAddress",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "sign-in code / password / Apple sign-in"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeOtherFinancialInfo",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "vendor credit balances in the provider quota upload"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeCoarseLocation",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "city/country the host derives from the IP of every request"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeOtherUserContent",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "webhook address, sessions' project folder names, alerts"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeUserID",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "the account ID every signed-in request carries"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeDeviceID",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "APNs token / paired Mac device ID / Sentry device_app_hash"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypePurchaseHistory",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "the App Store transaction sent for checking"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeProductInteraction",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "alert acknowledge/resolve/snooze, requests to a Mac, Sentry sessions"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeProductInteraction",
+          "linked": false,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "anonymous install milestones (Mac only)"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeCrashData",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "Sentry crash reports"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypePerformanceData",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "Sentry sessions and app hangs"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeOtherDiagnosticData",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "Sentry reports, app/helper versions, collector status, heartbeat load"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeOtherDataTypes",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "settings kept with the account, daily usage, device name/type/OS at pairing, plan tiers"
+        }
+      ]
+    },
+    {
+      "name": "CLIPulseHelper",
+      "platform": "macos",
+      "manifest": "CLI Pulse Bar/CLIPulseHelper/PrivacyInfo.xcprivacy",
+      "entitlements": "CLI Pulse Bar/CLIPulseHelper/CLIPulseHelper.entitlements",
+      "bundle": {
+        "archive": "macos",
+        "path": "Products/Applications/CLI Pulse Bar.app/Contents/Library/LoginItems/CLIPulseHelper.app",
+        "manifest": "Contents/Resources/PrivacyInfo.xcprivacy",
+        "executable": "Contents/MacOS/CLIPulseHelper"
+      },
+      "binary_categories": [
+        "NSPrivacyAccessedAPICategoryFileTimestamp",
+        "NSPrivacyAccessedAPICategorySystemBootTime",
+        "NSPrivacyAccessedAPICategoryUserDefaults"
+      ],
+      "reasons": {
+        "NSPrivacyAccessedAPICategoryUserDefaults": {
+          "CA92.1": {
+            "why": "the app's own settings and state (UserDefaults.standard, @AppStorage), and Sentry's own (its manifest: CA92.1)",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift",
+                "match": "UserDefaults\\.standard"
+              },
+              {
+                "sdk": "sentry-cocoa"
+              }
+            ]
+          },
+          "1C8F.1": {
+            "why": "defaults shared with the other members of group.yyh.CLI-Pulse (the target is entitled to it); only those apps can read them",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseHelper/HelperDaemon.swift",
+                "match": "UserDefaults\\(suiteName: HelperIPC\\.suiteName\\)"
+              }
+            ]
+          }
+        },
+        "NSPrivacyAccessedAPICategorySystemBootTime": {
+          "35F9.1": {
+            "why": "elapsed time between events in the app and timers (restore retry, refresh in flight, hold TTLs, stall duration); only elapsed seconds leave the device (in_flight_s, a stall's duration). Sentry 9.12.1 reads kern.boottime and systemUptime to classify app starts and watchdog terminations and stores system_boot_timestamp in its local app-state file; no event context field carries it (SentryDefaultCrashReporter maps systemInfo without bootTime)",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift",
+                "match": "deferredSessionRestoreClock[^\\n]*systemUptime"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DataRefreshManager.swift",
+                "match": "static func systemUptime\\(\\)"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/KeepAwakeController.swift",
+                "match": "now: @escaping @Sendable \\(\\) -> Double = \\{ ProcessInfo\\.processInfo\\.systemUptime"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteMachineExecutor.swift",
+                "match": "ProcessInfo\\.processInfo\\.systemUptime"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/MainThreadStallProbe.swift",
+                "match": "DispatchTime\\.now\\(\\)\\.uptimeNanoseconds"
+              },
+              {
+                "sdk": "sentry-cocoa"
+              }
+            ]
+          }
+        },
+        "NSPrivacyAccessedAPICategoryFileTimestamp": {
+          "C617.1": {
+            "why": "metadata of files in the app's own container or its app group container: CFFIXED_USER_HOME (the container under the sandbox), the app-group Claude snapshot, JetBrains files under the sandboxed NSHomeDirectory(), and Sentry's own cache files (its manifest: C617.1)",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CLIPulseRuntimeEnvironment.swift",
+                "match": "Darwin\\.lstat"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudeHelperContract.swift",
+                "match": "attributesOfItem\\(atPath: path\\)\\)\\?\\[\\.modificationDate\\]"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/JetBrainsAICollector.swift",
+                "match": "attrs\\[\\.modificationDate\\]"
+              },
+              {
+                "sdk": "sentry-cocoa"
+              }
+            ]
+          },
+          "3B52.1": {
+            "why": "metadata of the AI CLI folders the user grants in Settings > Advanced > CLI Tool Access (NSOpenPanel, security-scoped bookmarks): session logs (CostUsageScanner) and ~/.gemini (GeminiOAuthManager). App Store build only: see scope",
+            "evidence": [
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CostUsageScanner.swift",
+                "match": "\\.contentModificationDateKey"
+              },
+              {
+                "file": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/GeminiOAuthManager.swift",
+                "match": "Darwin\\.fstat\\("
+              }
+            ]
+          }
+        }
+      },
+      "collected": [
+        {
+          "type": "NSPrivacyCollectedDataTypeOtherFinancialInfo",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "vendor credit balances in the provider quota upload"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeCoarseLocation",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "city/country the host derives from the IP of every request"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeOtherUserContent",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+          ],
+          "evidence": "webhook address, sessions' project folder names, alerts"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeDeviceID",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "APNs token / paired Mac device ID / Sentry device_app_hash"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeOtherDiagnosticData",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "Sentry reports, app/helper versions, collector status, heartbeat load"
+        },
+        {
+          "type": "NSPrivacyCollectedDataTypeOtherDataTypes",
+          "linked": true,
+          "tracking": false,
+          "purposes": [
+            "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+            "NSPrivacyCollectedDataTypePurposeAnalytics"
+          ],
+          "evidence": "settings kept with the account, daily usage, device name/type/OS at pairing, plan tiers"
+        }
+      ]
+    }
+  ],
+  "label": {
+    "_source": "App Store Connect > App Privacy, published 2026-11-10: 13 types, none used for tracking, all linked except Product Interaction's Analytics row.",
+    "rows": [
+      {
+        "type": "NSPrivacyCollectedDataTypeName",
+        "linked": true,
+        "tracking": false,
+        "purposes": [
+          "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+        ]
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeEmailAddress",
+        "linked": true,
+        "tracking": false,
+        "purposes": [
+          "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+          "NSPrivacyCollectedDataTypePurposeAnalytics"
+        ]
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeOtherFinancialInfo",
+        "linked": true,
+        "tracking": false,
+        "purposes": [
+          "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+        ]
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeCoarseLocation",
+        "linked": true,
+        "tracking": false,
+        "purposes": [
+          "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+        ]
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeOtherUserContent",
+        "linked": true,
+        "tracking": false,
+        "purposes": [
+          "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+        ]
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeUserID",
+        "linked": true,
+        "tracking": false,
+        "purposes": [
+          "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+          "NSPrivacyCollectedDataTypePurposeAnalytics"
+        ]
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeDeviceID",
+        "linked": true,
+        "tracking": false,
+        "purposes": [
+          "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+          "NSPrivacyCollectedDataTypePurposeAnalytics"
+        ]
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypePurchaseHistory",
+        "linked": true,
+        "tracking": false,
+        "purposes": [
+          "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+        ]
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeProductInteraction",
+        "linked": true,
+        "tracking": false,
+        "purposes": [
+          "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+        ]
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeProductInteraction",
+        "linked": false,
+        "tracking": false,
+        "purposes": [
+          "NSPrivacyCollectedDataTypePurposeAnalytics"
+        ]
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeCrashData",
+        "linked": true,
+        "tracking": false,
+        "purposes": [
+          "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+        ]
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypePerformanceData",
+        "linked": true,
+        "tracking": false,
+        "purposes": [
+          "NSPrivacyCollectedDataTypePurposeAppFunctionality"
+        ]
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeOtherDiagnosticData",
+        "linked": true,
+        "tracking": false,
+        "purposes": [
+          "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+          "NSPrivacyCollectedDataTypePurposeAnalytics"
+        ]
+      },
+      {
+        "type": "NSPrivacyCollectedDataTypeOtherDataTypes",
+        "linked": true,
+        "tracking": false,
+        "purposes": [
+          "NSPrivacyCollectedDataTypePurposeAppFunctionality",
+          "NSPrivacyCollectedDataTypePurposeAnalytics"
+        ]
+      }
+    ]
+  }
+}
