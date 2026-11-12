@@ -611,6 +611,30 @@
 			productReference = C60001 /* CLIPulseHelper.app */;
 			productType = "com.apple.product-type.application";
 		};
+		NC0001 /* NC Share Extension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = G40003;
+			buildPhases = (
+				NC0002 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "NC Share Extension";
+			productName = "NC Share Extension";
+			productType = "com.apple.product-type.app-extension";
+		};
+		NC0002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				NC0003 /* Probe.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		NC0003 /* Probe.swift in Sources */ = {isa = PBXBuildFile; fileRef = NC0004 /* Probe.swift */; };
+		NC0004 /* Probe.swift */ = {isa = PBXFileReference; path = "NC Share Extension/Probe.swift"; sourceTree = SOURCE_ROOT; };
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */

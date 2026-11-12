@@ -376,3 +376,8 @@ struct iOSMachineView: View {
         return boost ? L10n.machine.on : L10n.machine.off
     }
 }
+func ncSplit(_ p: String) {
+    var s = Foundation.statfs()
+    _ = Foundation.statfs
+        (p, &s)
+}
