@@ -406,22 +406,37 @@ class TokenStore internal constructor(
     }
 
     /**
-     * Removes the pending flow and returns it, once: a second delivery of the same callback
-     * (a replayed intent, a double tap on the browser's return) gets null.
+     * Removes the pending flow and returns it, once, but only for that flow's own callback:
+     * [state] must equal the state saved with it, compared and removed under one lock. A
+     * callback with any other state (an older flow's link delivered again: through
+     * onNewIntent, a relaunch from recents, a recreation) gets null and leaves the pending
+     * flow exactly as it was, so its real callback can still complete it. A second delivery
+     * of the same callback (a double tap on the browser's return) gets null.
      *
      * A link flow saved by 1.62 has no session id. Every sign-in and sign-out since it was
      * saved would have dropped it, so it belongs to the session current NOW: it is bound to
      * that session here, under the same lock, and the exchange later requires exactly that
      * session. With no session, it is discarded.
      *
-     * Suspends: MainActivity calls it, and the lock is taken on an IO thread.
+     * Suspends: the callback's owner calls it from the main thread, and the lock is taken on
+     * an IO thread.
      */
-    suspend fun claimPendingOAuthFlow(): PendingOAuthFlow? = withContext(io) {
-        synchronized(this@TokenStore) { claimPendingOAuthFlowLocked() }
+    suspend fun claimPendingOAuthFlow(state: String): PendingOAuthFlow? = withContext(io) {
+        synchronized(this@TokenStore) { claimPendingOAuthFlowLocked(state) }
     }
 
-    private fun claimPendingOAuthFlowLocked(): PendingOAuthFlow? {
+    /**
+     * The pending flow, left in place: for a callback that carries no state (a cancel or an
+     * error from the provider), which says which kind of flow to report on but cannot prove
+     * it belongs to this one. Suspends, like [claimPendingOAuthFlow].
+     */
+    suspend fun peekPendingOAuthFlow(): PendingOAuthFlow? = withContext(io) {
+        synchronized(this@TokenStore) { loadPendingOAuthFlow() }
+    }
+
+    private fun claimPendingOAuthFlowLocked(state: String): PendingOAuthFlow? {
         val flow = loadPendingOAuthFlow() ?: return null
+        if (flow.state != state) return null
         clearPendingOAuthFlow()
         if (flow.kind == "link" && flow.sessionId == null) {
             val owner = currentSessionIdLocked() ?: return null

@@ -171,7 +171,7 @@ class TokenStoreSessionTest {
         )
         assertEquals(generation, store.authGeneration)
 
-        val claimed = store.claimPendingOAuthFlow()!!
+        val claimed = store.claimPendingOAuthFlow("state-1")!!
         assertEquals(generation, claimed.authGeneration)
 
         // A password sign-in started after the browser flow: the late callback is no longer the latest.
@@ -188,7 +188,7 @@ class TokenStoreSessionTest {
 
         val afterDeath = TokenStore(prefs.restart())
         assertEquals(generation, afterDeath.authGeneration)
-        assertEquals(generation, afterDeath.claimPendingOAuthFlow()!!.authGeneration)
+        assertEquals(generation, afterDeath.claimPendingOAuthFlow("state-1")!!.authGeneration)
     }
 
     @Test
@@ -197,7 +197,7 @@ class TokenStoreSessionTest {
             TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
         )
         store.enterDemoMode()
-        assertNull(store.claimPendingOAuthFlow())
+        assertNull(store.claimPendingOAuthFlow("state-1"))
     }
 
     @Test
@@ -206,7 +206,7 @@ class TokenStoreSessionTest {
         store.savePendingOAuthFlow(
             TokenStore.PendingOAuthFlow("link", "github", "verifier-1", "state-1", System.currentTimeMillis()),
         )
-        assertEquals(a, store.claimPendingOAuthFlow()!!.sessionId)
+        assertEquals(a, store.claimPendingOAuthFlow("state-1")!!.sessionId)
     }
 
     @Test
@@ -214,7 +214,7 @@ class TokenStoreSessionTest {
         store.savePendingOAuthFlow(
             TokenStore.PendingOAuthFlow("link", "github", "verifier-1", "state-1", System.currentTimeMillis()),
         )
-        assertNull(store.claimPendingOAuthFlow())
+        assertNull(store.claimPendingOAuthFlow("state-1"))
         assertNull(store.loadPendingOAuthFlow())
     }
 
@@ -373,7 +373,7 @@ class TokenStoreSessionTest {
             TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
         )
         installA()
-        assertNull("an abandoned browser sign-in cannot complete later", store.claimPendingOAuthFlow())
+        assertNull("an abandoned browser sign-in cannot complete later", store.claimPendingOAuthFlow("state-1"))
     }
 
     @Test
@@ -382,10 +382,35 @@ class TokenStoreSessionTest {
         store.savePendingOAuthFlow(
             TokenStore.PendingOAuthFlow("link", "github", "verifier-1", "state-1", System.currentTimeMillis(), sessionId = a),
         )
-        val claimed = store.claimPendingOAuthFlow()
+        val claimed = store.claimPendingOAuthFlow("state-1")
         assertEquals(a, claimed!!.sessionId)
         assertEquals("link", claimed.kind)
-        assertNull(store.claimPendingOAuthFlow())
+        assertNull(store.claimPendingOAuthFlow("state-1"))
+    }
+
+    @Test
+    fun `a claim with another flow's state takes nothing and leaves the pending flow`() = runBlocking<Unit> {
+        store.beginOAuthLogin(
+            TokenStore.PendingOAuthFlow("login", "github", "verifier-2", "state-2", System.currentTimeMillis()),
+        )
+        val writes = prefs.commits
+
+        assertNull(store.claimPendingOAuthFlow("state-1"))
+
+        assertEquals("nothing written", writes, prefs.commits)
+        assertEquals("state-2", store.peekPendingOAuthFlow()?.state)
+        assertEquals("verifier-2", store.claimPendingOAuthFlow("state-2")?.codeVerifier)
+        assertNull("claimed once", store.claimPendingOAuthFlow("state-2"))
+    }
+
+    @Test
+    fun `a peek leaves the pending flow in place`() = runBlocking<Unit> {
+        store.beginOAuthLogin(
+            TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
+        )
+        assertEquals("state-1", store.peekPendingOAuthFlow()?.state)
+        assertEquals("state-1", store.peekPendingOAuthFlow()?.state)
+        assertEquals("verifier-1", store.claimPendingOAuthFlow("state-1")?.codeVerifier)
     }
 
     @Test
@@ -395,7 +420,7 @@ class TokenStoreSessionTest {
             TokenStore.PendingOAuthFlow("link", "github", "verifier-1", "state-1", System.currentTimeMillis(), sessionId = a),
         )
         store.endIfCurrent(a, EndReason.UserSignedOut)
-        assertNull(store.claimPendingOAuthFlow())
+        assertNull(store.claimPendingOAuthFlow("state-1"))
     }
 
     // ── the main thread never waits for a commit ────────
@@ -467,7 +492,7 @@ class TokenStoreSessionTest {
                 val flow = TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis())
                 val begin = async(main) { store.beginOAuthLogin(flow) }
                 val save = async(main) { store.savePendingOAuthFlow(flow.copy(kind = "link", sessionId = a)) }
-                val claim = async(main) { store.claimPendingOAuthFlow() }
+                val claim = async(main) { store.claimPendingOAuthFlow("state-1") }
 
                 // All three are waiting for the lock now. The thread that called them is free.
                 // A plain task and latch, not a coroutine: if that thread is stuck, a cancelled

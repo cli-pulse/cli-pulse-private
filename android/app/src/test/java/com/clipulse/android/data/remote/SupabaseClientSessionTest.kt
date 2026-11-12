@@ -772,7 +772,7 @@ class SupabaseClientSessionTest {
         val generation = store.beginOAuthLogin(
             TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
         )
-        val claimed = store.claimPendingOAuthFlow()!!
+        val claimed = store.claimPendingOAuthFlow("state-1")!!
         // A password sign-in starts while the claimed callback waits to be delivered.
         route { json(400, """{"code":400,"error_code":"invalid_credentials","msg":"x"}""") }
         expect<ApiError.Http> { client.signInWithPassword("a@example.test", "wrong") }
@@ -791,7 +791,7 @@ class SupabaseClientSessionTest {
         store.beginOAuthLogin(
             TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
         )
-        val claimed = store.claimPendingOAuthFlow()!!
+        val claimed = store.claimPendingOAuthFlow("state-1")!!
         route { json(200, signInAnswer) }
 
         val id = client.exchangeOAuthCode("code-1", "verifier-1", claimed.authGeneration)
@@ -808,7 +808,7 @@ class SupabaseClientSessionTest {
         store.savePendingOAuthFlow(
             TokenStore.PendingOAuthFlow("link", "github", "verifier-1", "state-1", System.currentTimeMillis()),
         )
-        val claimed = store.claimPendingOAuthFlow()!!
+        val claimed = store.claimPendingOAuthFlow("state-1")!!
         store.endIfCurrent(a, EndReason.UserSignedOut)
         val b = install(access = "access-B", refresh = "refresh-B", user = "user-B")
         route { json(200, """{"access_token":"access-link","refresh_token":"refresh-link"}""") }

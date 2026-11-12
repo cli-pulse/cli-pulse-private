@@ -16,18 +16,22 @@ import javax.inject.Inject
 
 /**
  * Owns a browser round-trip's answer from the moment the pending flow is claimed until a
- * screen consumes the callback (or notice). Activity-scoped, so it outlives a recreation:
+ * screen consumes the callback (or notice). Activity-scoped, so it outlives a configuration
+ * change (a rotation), but not a process death:
  *
  *  - the claim runs in [viewModelScope], not in the Activity's lifecycle scope. The claim
  *    removes the pending record (on an IO thread); if it ran in the Activity's scope, a
  *    rotation while it was out would cancel it after the record was gone and before the
  *    callback was routed: the sign-in or link would be lost without a word;
- *  - the routed callback is held here until a screen consumes it, so a recreation between
- *    routing and consumption delivers it to the new screen. That is why a recreated
- *    Activity does not hand its old deep link over again (MainActivity.onCreate): a replay
- *    has nothing to add, and would claim a newer flow's record against the old link's state;
- *  - the record is handed out once ([TokenStore.claimPendingOAuthFlow]), so a second
- *    delivery of the same link claims nothing and the callback is delivered exactly once.
+ *  - the routed callback is held here until a screen consumes it, so a configuration change
+ *    between routing and consumption delivers it to the new screen. A recreated Activity
+ *    does not hand its old deep link over again (MainActivity.onCreate): there is nothing
+ *    to add;
+ *  - the record is handed out once, and only to the callback whose state it holds
+ *    ([TokenStore.claimPendingOAuthFlow]): a second delivery of the same link claims
+ *    nothing, so the callback is delivered exactly once, and an older flow's link, however
+ *    it arrives, cannot take a newer flow's record (it used to: a spurious state mismatch,
+ *    and the real callback then found nothing).
  *
  * Nothing here is saved for a process death: the PKCE verifier stays out of any
  * SavedStateHandle. A process death between the claim and the exchange needs a new sign-in,
@@ -53,12 +57,21 @@ class OAuthCallbackViewModel @Inject constructor(
         viewModelScope.launch { route(parsed) }
     }
 
+    /**
+     * A successful callback claims the pending flow only if it is that flow's own (its state
+     * matches); any other one is dropped and the pending flow stays for its real callback. A
+     * cancel or an error carries no state: it is reported for the pending flow's kind, and
+     * the flow is left in place (a new attempt replaces it; it expires on its own).
+     */
     private suspend fun route(parsed: OAuthCallbackResult) {
-        val pending = tokenStore.claimPendingOAuthFlow()
+        val pending = when (parsed) {
+            is OAuthCallbackResult.Success -> tokenStore.claimPendingOAuthFlow(parsed.state)
+            else -> tokenStore.peekPendingOAuthFlow()
+        }
         when (val outcome = OAuthDeepLinkRouter.route(parsed = parsed, pending = pending)) {
             is OAuthDeepLinkOutcome.DeliverCallback -> _callback.value = outcome.callback
             is OAuthDeepLinkOutcome.DeliverNotice -> _notice.value = outcome.notice
-            // Unsolicited, or a replay of a callback already claimed: nothing to deliver.
+            // Unsolicited, another flow's (stale) callback, or one already claimed: nothing to deliver.
             OAuthDeepLinkOutcome.Drop -> Unit
         }
     }

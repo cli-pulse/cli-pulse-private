@@ -27,9 +27,9 @@ import java.util.concurrent.TimeUnit
 /**
  * The owner of a browser round-trip's answer, against a real TokenStore. An "Activity" is a
  * scope of its own that dies with it (its lifecycle scope); the view model outlives it.
- * A recreated Activity hands nothing over (MainActivity.onCreate, pinned by
- * MainActivityDeepLinkWiringTest); a second `receive` of the same link here stands for a
- * second delivery of it, which must not deliver the callback twice either.
+ * A recreated Activity hands nothing over (MainActivity.onCreate: shouldHandleLaunchIntent,
+ * LaunchIntentPolicyTest); a second `receive` of a link here stands for any second delivery
+ * of it, which must neither deliver the callback twice nor take another flow's record.
  */
 class OAuthCallbackViewModelTest {
 
@@ -121,11 +121,12 @@ class OAuthCallbackViewModelTest {
     }
 
     /**
-     * Why a recreated Activity must not hand its old deep link over again: by then the user
-     * may have started another sign-in, and the old link would claim THAT flow's record.
+     * An older flow's link delivered again (through onNewIntent, a relaunch from Recents, a
+     * recreation) after the user started another sign-in: it must not take the newer flow's
+     * record. It is dropped, and the newer flow's own callback still completes.
      */
     @Test
-    fun `an old link handed over after a newer flow started costs that flow, and without it the newer callback arrives`() = runBlocking<Unit> {
+    fun `an older flow's link delivered again is dropped and the newer flow still completes`() = runBlocking<Unit> {
         withTimeout(10_000) {
             val vm = OAuthCallbackViewModel(store)
             val activity = activityScope()
@@ -139,29 +140,53 @@ class OAuthCallbackViewModelTest {
             vm.consumeCallback()
 
             // Flow 2 starts; the browser is open.
+            val generation2 = store.beginOAuthLogin(
+                TokenStore.PendingOAuthFlow("login", "github", "verifier-2", "state-2", System.currentTimeMillis()),
+            )
+
+            // Flow 1's link arrives again: nothing is delivered, nothing is shown, and flow 2's
+            // record is still there.
+            activity.launch { vm.receive(success("state-1")) }
+            settle(vm, activity)
+            assertNull(vm.pendingCallback.value)
+            assertNull("no state mismatch notice for another flow's link", vm.pendingNotice.value)
+            assertEquals("state-2", store.peekPendingOAuthFlow()?.state)
+
+            // Flow 2's real callback completes it.
+            activity.launch { vm.receive(success("state-2")) }
+            settle(vm, activity)
+            val delivered = vm.pendingCallback.value
+            assertEquals("verifier-2", delivered?.codeVerifier)
+            assertEquals(generation2, delivered?.authGeneration)
+            assertNull(vm.pendingNotice.value)
+            assertNull("claimed once", store.peekPendingOAuthFlow())
+
+            activity.cancel()
+            vm.viewModelScope.cancel()
+        }
+    }
+
+    /** A cancel carries no state: it is reported for the pending flow's kind, which stays in place. */
+    @Test
+    fun `a cancel is reported without taking the pending flow`() = runBlocking<Unit> {
+        withTimeout(10_000) {
+            val vm = OAuthCallbackViewModel(store)
+            val activity = activityScope()
             store.beginOAuthLogin(
                 TokenStore.PendingOAuthFlow("login", "github", "verifier-2", "state-2", System.currentTimeMillis()),
             )
 
-            // The hazard: flow 1's link handed over again (what onCreate did on a recreation).
-            activity.launch { vm.receive(success("state-1")) }
+            activity.launch { vm.receive(OAuthCallbackResult.Cancelled) }
             settle(vm, activity)
-            assertEquals(OAuthDeepLinkNoticeReason.STATE_MISMATCH, vm.pendingNotice.value?.reason)
+            assertEquals(OAuthDeepLinkNoticeReason.CANCELLED, vm.pendingNotice.value?.reason)
+            assertEquals("login", vm.pendingNotice.value?.kind)
+            assertEquals("state-2", store.peekPendingOAuthFlow()?.state)
             vm.consumeNotice()
-            // ... and flow 2's real callback then finds nothing.
+
+            // Had that cancel been a stale one, the flow's real callback still completes it.
             activity.launch { vm.receive(success("state-2")) }
             settle(vm, activity)
-            assertNull(vm.pendingCallback.value)
-
-            // Start over without the replay: a newer flow is still pending when its own
-            // callback comes (through onNewIntent), and that callback is delivered.
-            store.beginOAuthLogin(
-                TokenStore.PendingOAuthFlow("login", "github", "verifier-3", "state-3", System.currentTimeMillis()),
-            )
-            activity.launch { vm.receive(success("state-3")) }
-            settle(vm, activity)
-            assertEquals("verifier-3", vm.pendingCallback.value?.codeVerifier)
-            assertNull(vm.pendingNotice.value)
+            assertEquals("verifier-2", vm.pendingCallback.value?.codeVerifier)
 
             activity.cancel()
             vm.viewModelScope.cancel()

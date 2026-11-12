@@ -20,8 +20,9 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     /**
      * Claims and holds an OAuth callback (or notice) until the screen of its kind consumes
-     * it. Retained across a recreation: a rotation while the browser was open, or while the
-     * claim was out, neither loses the callback nor delivers it twice.
+     * it. Retained across a configuration change: a rotation while the browser was open, or
+     * while the claim was out, neither loses the callback nor delivers it twice. Not across a
+     * process death (see its class comment).
      */
     private val oauthCallbacks: OAuthCallbackViewModel by viewModels()
 
@@ -40,18 +41,22 @@ class MainActivity : ComponentActivity() {
             }
             return
         }
-        // Only on a first creation. A recreated Activity (a rotation, or a restore after a
-        // process death: savedInstanceState != null) still carries its last intent: the one
-        // it was created with, or the last onNewIntent's, which setIntent keeps across a
-        // configuration change. That can be an OLD OAuth deep link. Its flow was claimed when
-        // it first arrived, and whatever it routed is still held by [oauthCallbacks], which
-        // outlives the recreation, so replaying it has nothing to add. Worse, if a newer
-        // sign-in or link has started since, the replay would claim THAT flow's pending
-        // record against the old link's state: a spurious state mismatch, and the real
-        // callback would then find nothing to complete. A deep link that arrives while the
-        // Activity exists, including one that brings a recreated Activity back, comes
-        // through onNewIntent.
-        if (savedInstanceState == null) handleOAuthDeepLink(intent)
+        // Only an intent this Activity was started with just now (shouldHandleLaunchIntent): not
+        // the one a recreated Activity carries (a rotation, or a restore after a process
+        // death: savedInstanceState != null), which is its last intent, kept by setIntent;
+        // and not the original intent Android hands back when the app is relaunched from
+        // Recents (FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY, as Android 8 to 11 can do).
+        // Either can be an OLD OAuth deep link. After a rotation, what it routed is still
+        // held by [oauthCallbacks]; after a process death it is gone, and replaying the link
+        // cannot bring it back (its flow was claimed). The claim itself only takes a pending
+        // flow whose state matches, so a stale link no longer costs a newer flow its record;
+        // not replaying it is the second line. A deep link that arrives while the Activity
+        // exists, including one that brings a recreated Activity back, comes through
+        // onNewIntent.
+        val fromHistory = ((intent?.flags ?: 0) and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+        if (shouldHandleLaunchIntent(isRecreation = savedInstanceState != null, fromHistory = fromHistory)) {
+            handleOAuthDeepLink(intent)
+        }
         enableEdgeToEdge()
         setContent {
             val pendingCallback by oauthCallbacks.pendingCallback.collectAsState()
@@ -95,9 +100,10 @@ class MainActivity : ComponentActivity() {
         if (!isHttps && !isCustom) return
 
         // Claimed, not just read: the record is removed once, by the retained owner (on an
-        // IO thread, in its own scope, so a recreation cannot cancel it half-way). A second
-        // callback for the same flow (a second tap on the browser's return) finds nothing,
-        // and a sign-in or sign-out since the flow started has already dropped it.
+        // IO thread, in its own scope, so a rotation cannot cancel it half-way), and only by
+        // the callback whose state it holds. A second callback for the same flow (a second
+        // tap on the browser's return) finds nothing; an older flow's callback leaves the
+        // record alone; and a sign-in or sign-out since the flow started has dropped it.
         oauthCallbacks.receive(OAuthCallbackParser.parse(data))
     }
 }
