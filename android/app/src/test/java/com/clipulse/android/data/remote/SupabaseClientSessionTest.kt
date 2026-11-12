@@ -556,27 +556,35 @@ class SupabaseClientSessionTest {
     }
 
     @Test
-    fun `deleting the account ends exactly the session it ran for`() = runBlocking<Unit> {
+    fun `deleting the account is one request and changes nothing on the device`() = runBlocking<Unit> {
         val a = install()
-        route { r -> if (r.path == "/auth/v1/logout") json(204, "") else json(200, "{}") }
+        route { r -> if (r.path!!.startsWith("/auth/v1/logout")) json(204, "") else json(200, "{}") }
+        val writesBefore = prefs.commits
 
-        client.deleteAccount()
+        client.deleteAccount(store.snapshot()!!)
 
-        assertEnded(a, EndReason.AccountDeleted)
+        assertEquals("exactly one request: " + recorded.map { it.path }, 1, recorded.size)
+        assertEquals("POST", recorded[0].method)
         assertEquals("/rest/v1/rpc/delete_user_account", recorded[0].path)
-        assertEquals("Bearer access-A", recorded.last().bearer())
+        assertEquals("Bearer access-A", recorded[0].bearer())
+        assertTrue("no sign-out request after a deletion", recorded.none { it.path!!.startsWith("/auth/v1/logout") })
+        // The caller ends the session; the client leaves the store alone.
+        assertSessionIntact(a, "access-A", "refresh-A")
+        assertEquals("no store writes", writesBefore, prefs.commits)
+        assertTrue("no cache deletes", dao.calls.none { it.startsWith("clear:") })
     }
 
     @Test
     fun `a delete that answers after the next account signed in leaves that account alone`() = runBlocking<Unit> {
         val a = install()
+        val ctxA = store.snapshot()!!
         route {
             store.endIfCurrent(a, EndReason.UserSignedOut)
             store.installSession("access-B", "refresh-B", "user-B")
             json(200, "{}")
         }
 
-        expect<ApiError.SessionSuperseded> { client.deleteAccount() }
+        expect<ApiError.SessionSuperseded> { client.deleteAccount(ctxA) }
 
         assertEquals("access-B", store.snapshot()?.accessToken)
         assertEquals(1, recorded.size)

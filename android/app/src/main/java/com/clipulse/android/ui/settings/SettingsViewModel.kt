@@ -13,6 +13,7 @@ import com.clipulse.android.data.session.SessionLifecycle
 import com.clipulse.android.di.ApplicationScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +28,6 @@ data class SettingsUiState(
     val settings: SettingsSnapshot? = null,
     val isLoading: Boolean = true,
     val deleteError: UiError? = null,
-    val deleteSuccess: Boolean = false,
     val webhookEnabled: Boolean = false,
     val webhookUrl: String? = null,
     val webhookFilterSeverities: List<String> = emptyList(),
@@ -265,40 +265,71 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
-     * Ends THIS screen's session (never one that signed in since), then revokes it with the
-     * token captured in the same step, so the revocation can never use a rotated or a later
-     * account's token. Both run in the app's scope: the session's view models are cleared as
-     * soon as the sign-in screen shows. Revoking touches nothing on this device, so it cannot
-     * undo a sign-in that happens while it is still running.
+     * Ends THIS screen's session (never one that signed in since), then ends that session, and
+     * only that one, on the server (`scope=local`: the account's other devices stay signed in)
+     * with exactly what the end removed: the pair captured in the same commit, so the
+     * revocation can never use a rotated pair, half of two pairs, or a later account's. Both
+     * run in the app's scope: the session's view models are cleared as soon as the sign-in
+     * screen shows. Revoking touches nothing on this device, so it cannot undo a sign-in that
+     * happens while it is still running.
      */
     fun signOut() {
         val session = owner?.takeIf { !it.isDemo } ?: return
         appScope.launch {
             val ended = lifecycle.endIfCurrent(session.sessionId, EndReason.UserSignedOut) ?: return@launch
-            runCatching { supabase.revokeSession(ended.accessToken) }
+            try {
+                supabase.revokeSession(ended)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Best effort: the session has already ended on this phone.
+            }
         }
     }
 
     /**
-     * Deletes the account of THIS screen's session. The client ends exactly that session
-     * after the server confirms the deletion (and deletes its on-device data); the
-     * `endIfCurrent` here is an idempotent backstop for the same session. The sign-in screen
-     * follows from the session state, not from `deleteSuccess`.
+     * Deletes the account of THIS screen's session. The client only asks the server; once it
+     * confirms, the same job ends exactly that session, which deletes what the phone keeps for
+     * it. The sign-in screen follows from the session state.
+     *
+     * The request and the end run in the app's scope, not this screen's: leaving Settings (or
+     * the end itself closing it) while the request is out must not leave the phone signed in
+     * to an account the server has deleted. This screen only shows the outcome, if it is
+     * still there.
+     *
+     * Bound to the session of the tap: if another account signed in while the request was
+     * out, the answer does nothing to it and shows nothing (an answer that arrives after the
+     * switch is refused by the client the same way, as a superseded operation, which shows no
+     * error).
+     *
+     * A failed or unconfirmed request causes no deletion-specific teardown on the phone, and
+     * is reported. That includes a deletion the server carried out whose answer never arrived:
+     * the phone stays signed in until its next request, which the server refuses
+     * (`user_not_found`), and that ends the session (D1). The one session end that can happen
+     * while the request is out is the client's own: the server definitively refused the
+     * session. That session is then over, and it is reported as such, not as a failed deletion.
      */
     fun deleteAccount() {
         val session = owner?.takeIf { !it.isDemo } ?: return
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true, deleteError = null)
-            try {
+            val deletion = appScope.async {
                 supabase.deleteAccount(session)
                 lifecycle.endIfCurrent(session.sessionId, EndReason.AccountDeleted)
-                _state.value = _state.value.copy(isLoading = false, deleteSuccess = true)
+            }
+            try {
+                deletion.await()
+                _state.value = _state.value.copy(isLoading = false)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    deleteError = UiError.action(UiError.Action.DeleteAccount, e),
+                    deleteError = if (e is ApiError.TokenExpired) {
+                        UiError.from(e)
+                    } else {
+                        UiError.action(UiError.Action.DeleteAccount, e)
+                    },
                 )
             }
         }
