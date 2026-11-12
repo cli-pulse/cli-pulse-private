@@ -95,6 +95,8 @@
 		B18429BE19305EFBF4EA2BE9 /* PrivacySettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D7578D231149D6491E5BCD7 /* PrivacySettingsSection.swift */; };
 		CE9C5A560EFC6CC22716D4CD /* AppUpdaterSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C420EAEAF8AC7DB112700AF8 /* AppUpdaterSection.swift */; };
 		E63FBDBE21C6066701023522 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A87404BA11DA4150BF4E2CFC /* PrivacyInfo.xcprivacy */; };
+		9C7858E5FAE25C7C659A7B82 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 54D44D63C033F076FB81C15B /* PrivacyInfo.xcprivacy */; };
+		E2A669E4AF3FEA8CD1B23CB2 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 595F2271416030DEA737AE50 /* PrivacyInfo.xcprivacy */; };
 		575D2BF2C29402C80B27C72A /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 5B7D33A2D9D06F8943862ADC /* ThirdPartyNotices.txt */; };
 		6EC2300029DF1AD7442C74F2 /* ThirdPartyNotices.txt in Resources */ = {isa = PBXBuildFile; fileRef = 5B7D33A2D9D06F8943862ADC /* ThirdPartyNotices.txt */; };
 		PKG00004 /* CLIPulseCore in Frameworks */ = {isa = PBXBuildFile; productRef = PKG00002 /* CLIPulseCore */; };
@@ -190,6 +192,8 @@
 		77263B69430D40067A043AE0 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		919F5D02538C32B6FAB601DB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A87404BA11DA4150BF4E2CFC /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		54D44D63C033F076FB81C15B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		595F2271416030DEA737AE50 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		B10001 /* CLIPulseBarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIPulseBarApp.swift; sourceTree = "<group>"; };
 		B10006 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		B10007 /* OverviewTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewTab.swift; sourceTree = "<group>"; };
@@ -396,6 +400,7 @@
 				B10062 /* yyh.CLI-Pulse.helper.agent.plist */,
 				C420EAEAF8AC7DB112700AF8 /* AppUpdaterSection.swift */,
 				2D7578D231149D6491E5BCD7 /* PrivacySettingsSection.swift */,
+				54D44D63C033F076FB81C15B /* PrivacyInfo.xcprivacy */,
 			);
 			path = "CLI Pulse Bar";
 			sourceTree = "<group>";
@@ -492,6 +497,7 @@
 				B60003 /* HelperDaemon.swift */,
 				B60004 /* Info.plist */,
 				B60005 /* CLIPulseHelper.entitlements */,
+				595F2271416030DEA737AE50 /* PrivacyInfo.xcprivacy */,
 			);
 			path = CLIPulseHelper;
 			sourceTree = "<group>";
@@ -591,6 +597,7 @@
 			buildPhases = (
 				F60002 /* Sources */,
 				D60001 /* Frameworks */,
+				F60003 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -668,6 +675,7 @@
 			files = (
 				A10012 /* Assets.xcassets in Resources */,
 				575D2BF2C29402C80B27C72A /* ThirdPartyNotices.txt in Resources */,
+				9C7858E5FAE25C7C659A7B82 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -699,6 +707,14 @@
 			files = (
 				A40007 /* Assets.xcassets in Resources */,
 				3036AA4850DF27DC6019D997 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F60003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E2A669E4AF3FEA8CD1B23CB2 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

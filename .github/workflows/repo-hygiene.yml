@@ -117,6 +117,18 @@ jobs:
       # as the line above: this workflow is not path-filtered.
       - run: bash scripts/check_sentry_pins.sh
       - run: bash scripts/test_check_sentry_pins.sh
+      # 1.63: the privacy manifests (PrivacyInfo.xcprivacy) of the iPhone app,
+      # the Watch app, the widgets, the Mac app and its LoginItem. Until 1.63
+      # they declared only UserDefaults CA92.1 (the Mac two had none) while
+      # every one of those binaries links systemUptime and stat/lstat: Apple
+      # checks those categories at upload (ITMS-91053). This checks Apple's
+      # vocabulary and types (plistlib: the runner has no plutil), that each
+      # manifest is in its target's Resources phase, the sources each target
+      # compiles against what its manifest declares (drift either way), and
+      # each collected-data entry against the published App Store label.
+      # Path-blind: the PR that adds an `lstat` is a Swift PR in CLIPulseCore.
+      - run: python3 scripts/check_privacy_manifests.py
+      - run: python3 scripts/test_check_privacy_manifests.py
       # Characters App Store Connect refuses: it refused the 1.57 iOS What's
       # New for one "✕" (409 INVALID_CHARACTERS, 2026-10-20), after the Mac's
       # had been written. Apple publishes no list, so the listing and What's

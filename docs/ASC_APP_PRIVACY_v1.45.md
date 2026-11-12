@@ -99,6 +99,14 @@ it.
 
 ## Privacy manifest (`PrivacyInfo.xcprivacy`)
 
+> **Superseded in 1.63.** What follows was the v1.45 reading. Since 1.63 every
+> Apple target ships a manifest (the Mac app and its LoginItem too), each
+> declaring the required-reason APIs its binary links (SystemBootTime and
+> FileTimestamp, not just UserDefaults) and the collected-data rows of the
+> published label that its own code sends. `scripts/check_privacy_manifests.py`
+> (Repo Hygiene) keeps them in step with the code and the label, which is
+> recorded in `scripts/privacy_manifests.json`.
+
 **No change needed, and none was made.**
 
 Apple's privacy-manifest requirement covers iOS, iPadOS, tvOS, watchOS and
