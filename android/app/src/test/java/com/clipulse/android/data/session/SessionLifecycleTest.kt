@@ -187,6 +187,30 @@ class SessionLifecycleTest {
     }
 
     @Test
+    fun `a zero retry base backs off instead of spinning`() = runTest {
+        val env = Env(this)
+        env.lifecycle.retryBaseMillis = 0
+        val a = env.installA()
+        env.dao.fill("A")
+        env.dao.failingClears += "dashboard"
+        var attempts = 0
+        env.dao.beforeClear = { table ->
+            // A retry that spins at one instant stops here instead of running forever.
+            if (table == "dashboard" && ++attempts >= 50) env.dao.failingClears.clear()
+        }
+
+        env.lifecycle.endIfCurrent(a, EndReason.UserSignedOut)
+        runCurrent() // no virtual time passes
+
+        assertEquals("retried without waiting at all", 1, attempts)
+        env.dao.failingClears.clear()
+        advanceTimeBy(2)
+        runCurrent()
+        assertNull(env.store.teardownPending)
+        env.scope.cancel()
+    }
+
+    @Test
     fun `a teardown that throws part-way is retried`() = runTest {
         val env = Env(this)
         val a = env.installA()

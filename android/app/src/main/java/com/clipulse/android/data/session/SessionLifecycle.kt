@@ -251,7 +251,8 @@ class SessionLifecycle internal constructor(
     private fun scheduleRetry() {
         synchronized(retryLock) {
             if (retryJob?.isActive == true) return
-            val wait = minOf(retryBaseMillis shl minOf(retryAttempts, MAX_BACKOFF_SHIFT), retryMaxMillis)
+            // At least 1 ms: a base or cap of zero must back off, not spin at one instant.
+            val wait = maxOf(1L, minOf(retryBaseMillis shl minOf(retryAttempts, MAX_BACKOFF_SHIFT), retryMaxMillis))
             retryAttempts++
             retryJob = appScope.launch {
                 delay(wait)
