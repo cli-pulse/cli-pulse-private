@@ -128,13 +128,23 @@ public enum FirstRunPresentation {
     ///
     /// Returns the decision. The sentinel is written whether or not the window
     /// is shown, because its job is to describe launches, not presentations.
+    ///
+    /// The keys come from the app's own persistent domain and its launch
+    /// arguments, the two places an app-owned key can be. Not
+    /// `dictionaryRepresentation()`, which also returns NSGlobalDomain's keys:
+    /// the privacy manifest's UserDefaults reason (CA92.1) covers only what the
+    /// app wrote (1.63 A3). `hasPriorUse` only ever matched app-owned prefixes,
+    /// so the answer is the same.
     @discardableResult
     public static func evaluateAndRecordLaunch(
         defaults: UserDefaults = .standard,
+        ownDomain: String? = Bundle.main.bundleIdentifier,
         appVersion: String
     ) -> Bool {
+        let ownKeys = ownDomain.flatMap { defaults.persistentDomain(forName: $0) }.map { Array($0.keys) } ?? []
+        let launchArgumentKeys = Array(defaults.volatileDomain(forName: UserDefaults.argumentDomain).keys)
         let decision = shouldPresent(
-            existingKeys: defaults.dictionaryRepresentation().keys,
+            existingKeys: ownKeys + launchArgumentKeys,
             alreadyShown: defaults.bool(forKey: shownKey),
             hasSentinel: defaults.string(forKey: lastSeenAppVersionKey) != nil
         )

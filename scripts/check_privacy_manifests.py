@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Privacy manifests (PrivacyInfo.xcprivacy) checked against Apple's vocabulary,
-the project, the code each target compiles, and the published App Store label.
+the project, the code each target compiles, a reviewed per-target record, and
+the published App Store label.
 
 WHY THIS EXISTS
 ---------------
@@ -13,49 +14,61 @@ a new `lstat` or `systemUptime` could land in any target with every gate green.
 Apple validates the required-reason categories at upload (ITMS-91053) and the
 Xcode privacy report reads the collected-data part, so both halves matter.
 
+THE REVIEWED RECORD (scripts/privacy_manifests.json)
+---------------------------------------------------
+Per target: the categories and reason codes its manifest declares, each reason
+with the call sites (or the SDK) it rests on; the collected-data rows; and the
+categories its archived executable was measured to link. The 1.63 A3 PR has the
+review: why each call site meets the whole text of its reason. The manifest
+must equal the record exactly, and the record must stay true of the code.
+
 WHAT IT CHECKS (stdlib only, runs on the Linux CI runner: no plutil there)
 -------------------------------------------------------------------------
-1. Semantics of every manifest named in scripts/privacy_manifests.json: UTF-8
-   without a BOM, parses as an XML plist (plistlib, the plutil -lint
-   equivalent), only the four top-level keys Apple defines and each with its
-   type, known category / reason / data-type / purpose strings, a reason that
-   belongs to its category, no duplicates, tracking off with no domains.
-2. The project: each manifest is in its own target's Resources build phase
-   (project.pbxproj, parsed as an OpenStep plist).
-3. Drift: the sources each target compiles (its own Sources phase plus
-   CLIPulseCore, with `#if os(...)` / `canImport(...)` resolved for the
-   target's platform) are searched for the required-reason APIs below. A
-   category the code uses and the manifest does not declare fails, as does
-   app-group UserDefaults without reason 1C8F.1 in a target entitled to the
-   group. `binary_categories` in the config records what the archived binary
-   was measured to link (Sentry's merged code included, which no source here
-   shows); those must be declared too. A category declared with no use in
-   either fails, so the manifests cannot drift the other way either.
-   Reviewed exceptions: scripts/privacy_manifests_allowlist.json (an entry
-   that no longer matches anything fails).
-4. Collected data: every NSPrivacyCollectedDataTypes entry must be one of the
-   rows of the published label in the config (type, linked, tracking and
-   purposes exactly), and every label row must be declared by some target.
-
-The reason chosen for each call site, and why it meets Apple's whole reason
-text, is recorded in the PR that added this check (1.63 A3); this script only
-keeps the manifests from drifting away from that review.
+1. Semantics of every manifest: UTF-8 without a BOM, parses as an XML plist
+   (plistlib, the plutil -lint equivalent), only the four top-level keys Apple
+   defines and each with its type, every element of the right type, known
+   category / reason / data-type / purpose strings, a reason that belongs to
+   its category, no duplicates, tracking off with no domains.
+2. The project: every target that ships a bundle (application or extension) is
+   in the record or exempted there with a reason; each manifest is in its own
+   target's Resources phase with no platform filter, and no build setting
+   excludes it; no synchronized folder, no unscanned source type and no
+   unreviewed package arranges sources this check cannot see.
+3. The packages: CLIPulseCore's targets and dependencies are the reviewed
+   ones, and sentry-cocoa is pinned at the version the binaries were measured
+   with (a bump means measuring again with --archive).
+4. The code each target compiles (its Sources phases plus the package's
+   sources for its platform), with comments and string contents blanked,
+   `#if` resolved only where the answer is certain (os(), true/false, a few
+   canImport()) and both branches read otherwise, searched across line breaks:
+   - a required-reason API whose category the manifest lacks fails;
+   - app-group `UserDefaults(suiteName:)` without 1C8F.1 in a target entitled
+     to the group fails, and 1C8F.1 without the entitlement fails;
+   - reading a default the system writes (AppleLanguages, NSGlobalDomain,
+     dictionaryRepresentation()) fails: no UserDefaults reason covers it;
+   - each recorded reason's cited call site must still be compiled into that
+     target, so a reason cannot outlive the code that needed it.
+5. Collected data: each manifest's rows equal the target's recorded rows
+   exactly (type, linked, tracking, purposes); every recorded row is a row of
+   the published label, and every label row is recorded for some target.
+Reviewed exceptions: scripts/privacy_manifests_allowlist.json (an entry that no
+longer matches anything fails).
 
 ARCHIVE MODE (macOS only: needs xcrun)
 -------------------------------------
     python3 scripts/check_privacy_manifests.py --archive <x.xcarchive> [...]
 lists every .xcprivacy in the archive, requires each target's manifest at its
-bundle's path with the same content as the repo's, and reads each target's
-executable (nm -u, swift-demangle, the ObjC selector strings) for the
-required-reason APIs it links. A category the binary links that the target's
-own manifest does not declare fails, and so does a `binary_categories` entry
-that no longer matches the measurement.
+bundle's path with the repo's content, and reads each target's executable
+(nm -u, swift-demangle, the ObjC selector strings) for the required-reason APIs
+it links. A category the binary links that the manifest does not declare
+fails, and so does a `binary_categories` entry that no longer matches.
 
 Exit 0 clean, 1 problems found, 2 could not check.
 """
 from __future__ import annotations
 
 import argparse
+import bisect
 import json
 import plistlib
 import re
@@ -68,6 +81,11 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG = "scripts/privacy_manifests.json"
 ALLOWLIST = "scripts/privacy_manifests_allowlist.json"
 
+
+class CheckError(Exception):
+    """The check could not run to the end (a tool failed, input unreadable)."""
+
+
 # ---------------------------------------------------------------------------
 # Apple's vocabulary. Copied from Xcode 27.1's own definition of the format
 # (PlugIns/DVTCorePlistStructDefs.dvtplugin, "App Privacy Configuration",
@@ -78,6 +96,7 @@ CAT_BOOT = "NSPrivacyAccessedAPICategorySystemBootTime"
 CAT_DISK = "NSPrivacyAccessedAPICategoryDiskSpace"
 CAT_KEYB = "NSPrivacyAccessedAPICategoryActiveKeyboards"
 CAT_DEFAULTS = "NSPrivacyAccessedAPICategoryUserDefaults"
+SYSTEM_DEFAULTS = "SystemWrittenDefaults"  # this check's own rule name
 
 CATEGORY_REASONS = {
     CAT_FILE: {"DDA9.1", "C617.1", "3B52.1", "0A2A.1"},
@@ -118,46 +137,78 @@ DATA_ENTRY_KEYS = {
     "NSPrivacyCollectedDataTypeTracking", "NSPrivacyCollectedDataTypePurposes",
 }
 
+# Every product type that ships a bundle a privacy manifest can sit in.
+BUNDLE_PRODUCT_TYPES = (
+    "com.apple.product-type.application",          # and .watchapp2, .messages, ...
+    "com.apple.product-type.app-extension",        # and .messages, .intents-service, ...
+    "com.apple.product-type.watchkit2-extension",
+    "com.apple.product-type.extensionkit-extension",
+    "com.apple.product-type.tv-app-extension",
+    "com.apple.product-type.app-clip",
+)
+
 # ---------------------------------------------------------------------------
-# Source patterns: (category, regex, what it is). Matched on the code with
-# comments and string contents blanked, except where `strings` is True.
-# Apple's lists: developer.apple.com, "Describing use of required reason API".
+# Source patterns: (categories, regex, what it is). Run over a whole file's
+# code with comments and string contents blanked and other platforms' `#if`
+# branches removed, so a call split across lines still matches; `strings`
+# patterns run on the view that keeps string contents. Apple's lists:
+# developer.apple.com, "Describing use of required reason API".
 # ---------------------------------------------------------------------------
+QUAL = r"(?<![\w.])(?:(?:Darwin|Foundation|Glibc)\s*\.\s*)?"  # module-qualified calls too
+CALL = r"\s*\((?!\s*\))"  # a call: `stat()` with nothing inside is the struct's initializer
 SOURCE_PATTERNS = [
     # FileTimestamp. Apple names creationDate, modificationDate,
     # fileModificationDate, contentModificationDateKey, creationDateKey, and
     # the stat/getattrlist families. Our stat calls read only type, owner and
     # size, but the category is per API, not per field.
-    (CAT_FILE, r"\.(?:creationDate|modificationDate)\b", "FileAttributeKey / URLResourceValues .creationDate / .modificationDate"),
-    (CAT_FILE, r"\bfile(?:Modification|Creation)Date\b", "NSDictionary fileModificationDate / fileCreationDate"),
-    (CAT_FILE, r"\b(?:contentModificationDate|creationDate)Key\b", "URLResourceKey .contentModificationDateKey / .creationDateKey"),
-    (CAT_FILE, r"\bcontentModificationDate\b", "URLResourceValues.contentModificationDate"),
-    (CAT_FILE, r"\bNS(?:File(?:Creation|Modification)Date|URL(?:ContentModification|Creation)DateKey)\b", "the ObjC names of the keys above"),
-    # `stat()` with nothing inside is the struct's initializer, not a call.
-    (CAT_FILE, r"(?<![\w.])(?:Darwin\.)?(?:l?stat|fstat|fstatat|stat64|lstat64|fstat64)\s*\((?!\s*\))", "stat / lstat / fstat / fstatat"),
-    (CAT_FILE, r"\b(?:f?getattrlist|getattrlistbulk|getattrlistat)\s*\(", "getattrlist family"),
+    ((CAT_FILE,), r"\.(?:creationDate|modificationDate)\b", "FileAttributeKey / URLResourceValues .creationDate / .modificationDate"),
+    ((CAT_FILE,), r"\bfile(?:Modification|Creation)Date\b", "NSDictionary fileModificationDate / fileCreationDate"),
+    ((CAT_FILE,), r"\b(?:contentModificationDate|creationDate)Key\b", "URLResourceKey .contentModificationDateKey / .creationDateKey"),
+    ((CAT_FILE,), r"\bcontentModificationDate\b", "URLResourceValues.contentModificationDate"),
+    ((CAT_FILE,), r"\bNS(?:File(?:Creation|Modification)Date|URL(?:ContentModification|Creation)DateKey)\b", "the ObjC names of the keys above"),
+    ((CAT_FILE,), QUAL + r"(?:l?stat|fstat|fstatat|stat64|lstat64|fstat64)" + CALL, "stat / lstat / fstat / fstatat"),
+    # getattrlist returns timestamps or volume capacity depending on the
+    # attributes asked for, so it needs both until a reviewed allowlist entry
+    # says which one a call site is.
+    ((CAT_FILE, CAT_DISK), QUAL + r"(?:f?getattrlist|getattrlistbulk|getattrlistat)\s*\(", "getattrlist family"),
     # SystemBootTime. Apple names systemUptime and mach_absolute_time.
-    (CAT_BOOT, r"\bsystemUptime\b", "ProcessInfo.systemUptime"),
-    (CAT_BOOT, r"\bmach_absolute_time\s*\(", "mach_absolute_time()"),
+    ((CAT_BOOT,), r"\bsystemUptime\b", "ProcessInfo.systemUptime"),
+    ((CAT_BOOT,), QUAL + r"mach_absolute_time\s*\(", "mach_absolute_time()"),
     # Not on Apple's list; the same clock counted from boot, so treated alike.
-    (CAT_BOOT, r"\bmach_continuous_time\s*\(", "mach_continuous_time() (not on Apple's list; same boot clock)"),
-    (CAT_BOOT, r"\bKERN_BOOTTIME\b", "sysctl KERN_BOOTTIME (how Sentry reads boot time)"),
-    # DiskSpace.
-    (CAT_DISK, r"\bvolume(?:Available|Total)Capacity\w*Key\b", "URLResourceKey volume capacity keys"),
-    (CAT_DISK, r"\.system(?:Free)?Size\b", "FileAttributeKey .systemFreeSize / .systemSize"),
-    (CAT_DISK, r"\bNS(?:FileSystem(?:Free)?Size|URLVolume\w*Capacity\w*Key)\b", "the ObjC names of the keys above"),
-    (CAT_DISK, r"\battributesOfFileSystem\b", "FileManager.attributesOfFileSystem (free/total size)"),
-    (CAT_DISK, r"(?<![\w.])(?:Darwin\.)?f?statv?fs(?:64)?\s*\((?!\s*\))", "statfs / statvfs / fstatfs / fstatvfs"),
+    ((CAT_BOOT,), QUAL + r"mach_continuous_time\s*\(", "mach_continuous_time() (not on Apple's list; same boot clock)"),
+    ((CAT_BOOT,), r"\bKERN_BOOTTIME\b", "sysctl KERN_BOOTTIME (how Sentry reads boot time)"),
+    # DiskSpace: the keys, the URLResourceValues accessors, the file-system
+    # attributes and the statfs family.
+    ((CAT_DISK,), r"\bvolume(?:Available|Total)Capacity\w*Key\b", "URLResourceKey volume capacity keys"),
+    ((CAT_DISK,), r"\.volume(?:AvailableCapacity(?:ForImportantUsage|ForOpportunisticUsage)?|TotalCapacity)\b", "URLResourceValues volume capacity"),
+    ((CAT_DISK,), r"\.system(?:Free)?Size\b", "FileAttributeKey .systemFreeSize / .systemSize"),
+    ((CAT_DISK,), r"\bNS(?:FileSystem(?:Free)?Size|URLVolume\w*Capacity\w*Key)\b", "the ObjC names of the keys above"),
+    ((CAT_DISK,), r"\battributesOfFileSystem\b", "FileManager.attributesOfFileSystem (free/total size)"),
+    ((CAT_DISK,), QUAL + r"f?statv?fs(?:64)?" + CALL, "statfs / statvfs / fstatfs / fstatvfs"),
     # ActiveKeyboards.
-    (CAT_KEYB, r"\bactiveInputModes\b", "UITextInputMode.activeInputModes"),
+    ((CAT_KEYB,), r"\bactiveInputModes\b", "UITextInputMode.activeInputModes"),
     # UserDefaults: any use needs the category (CA92.1 for the app's own).
-    (CAT_DEFAULTS, r"\b(?:NS)?UserDefaults\b", "UserDefaults"),
-    (CAT_DEFAULTS, r"@AppStorage\b", "@AppStorage (UserDefaults underneath)"),
+    ((CAT_DEFAULTS,), r"\b(?:NS)?UserDefaults\b", "UserDefaults"),
+    ((CAT_DEFAULTS,), r"@AppStorage\b", "@AppStorage (UserDefaults underneath)"),
 ]
 SOURCE_PATTERNS_STRINGS = [
-    (CAT_BOOT, r"kern\.boottime", "sysctlbyname(\"kern.boottime\")"),
+    ((CAT_BOOT,), r"kern\.boottime", "sysctlbyname(\"kern.boottime\")"),
 ]
 APP_GROUP_DEFAULTS = re.compile(r"\bUserDefaults\s*\(\s*suiteName\s*:")
+
+# Defaults the system (or another app) writes. CA92.1 covers only what the app
+# itself wrote, 1C8F.1 only its app group, so reading these through UserDefaults
+# has no reason that fits. Matched on the view that keeps string contents.
+DEFAULTS_GETTER = r"\.\s*(?:string|stringArray|array|object|dictionary|value|bool|integer|double|float|url|data)\s*\(\s*forKey\s*:\s*"
+SYSTEM_KEY_LITERAL = r'"(?:Apple[A-Z]\w*|NSGlobalDomain|com\.apple\.[\w.-]*)"'
+SYSTEM_DEFAULTS_PATTERNS = [
+    (DEFAULTS_GETTER + SYSTEM_KEY_LITERAL, "a key the system writes"),
+    (r"\bdictionaryRepresentation\s*\(\s*\)", "dictionaryRepresentation() (every domain, NSGlobalDomain's included)"),
+    (r"\bUserDefaults\s*\.\s*globalDomain\b", "UserDefaults.globalDomain"),
+    (r'\bsuiteName\s*:\s*' + SYSTEM_KEY_LITERAL, "another app's or the system's suite"),
+    (r'\bpersistentDomain\s*\(\s*forName\s*:\s*' + SYSTEM_KEY_LITERAL, "another app's or the system's domain"),
+]
+SYSTEM_KEY_BINDING = re.compile(r"\b(?:let|var)\s+(\w+)\s*(?::\s*String\s*)?=\s*" + SYSTEM_KEY_LITERAL)
 
 # ---------------------------------------------------------------------------
 # Binary patterns for --archive. Imports from `nm -u` (Darwin's $INODE64
@@ -165,19 +216,20 @@ APP_GROUP_DEFAULTS = re.compile(r"\bUserDefaults\s*\(\s*suiteName\s*:")
 # ---------------------------------------------------------------------------
 BINARY_IMPORTS = {
     # FileTimestamp: the stat and getattrlist families and their aliases.
-    **{s: CAT_FILE for s in (
+    **{s: (CAT_FILE,) for s in (
         "_stat", "_lstat", "_fstat", "_fstatat", "_stat64", "_lstat64", "_fstat64",
         "_stat$INODE64", "_lstat$INODE64", "_fstat$INODE64", "_fstatat$INODE64",
-        "_getattrlist", "_getattrlistbulk", "_fgetattrlist", "_getattrlistat",
         # FileAttributeKey / URLResourceKey constants (data symbols)
         "_NSFileCreationDate", "_NSFileModificationDate",
         "_NSURLContentModificationDateKey", "_NSURLCreationDateKey",
     )},
+    # getattrlist: timestamps or capacity, depending on what is asked for.
+    **{s: (CAT_FILE, CAT_DISK) for s in ("_getattrlist", "_getattrlistbulk", "_fgetattrlist", "_getattrlistat")},
     # SystemBootTime: the mach clocks.
-    "_mach_absolute_time": CAT_BOOT,
-    "_mach_continuous_time": CAT_BOOT,  # not on Apple's list; same boot clock
+    "_mach_absolute_time": (CAT_BOOT,),
+    "_mach_continuous_time": (CAT_BOOT,),  # not on Apple's list; same boot clock
     # DiskSpace: the statfs family and the capacity keys.
-    **{s: CAT_DISK for s in (
+    **{s: (CAT_DISK,) for s in (
         "_statfs", "_statfs64", "_statfs$INODE64", "_fstatfs", "_fstatfs64",
         "_fstatfs$INODE64", "_statvfs", "_fstatvfs", "_getfsstat", "_getfsstat$INODE64",
         "_NSURLVolumeAvailableCapacityKey", "_NSURLVolumeAvailableCapacityForImportantUsageKey",
@@ -185,7 +237,7 @@ BINARY_IMPORTS = {
         "_NSFileSystemFreeSize", "_NSFileSystemSize",
     )},
     # UserDefaults: the class itself.
-    "_OBJC_CLASS_$_NSUserDefaults": CAT_DEFAULTS,
+    "_OBJC_CLASS_$_NSUserDefaults": (CAT_DEFAULTS,),
 }
 BINARY_DEMANGLED = [
     # Swift overlay accessors that reach the same APIs without a C import.
@@ -193,6 +245,7 @@ BINARY_DEMANGLED = [
     (CAT_FILE, re.compile(r"FileAttributeKey\.(?:creationDate|modificationDate)\b")),
     (CAT_BOOT, re.compile(r"ProcessInfo\.systemUptime\b")),
     (CAT_DISK, re.compile(r"URLResourceValues\.volume(?:Available|Total)Capacity")),
+    (CAT_DISK, re.compile(r"FileAttributeKey\.system(?:Free)?Size\b")),
     (CAT_DEFAULTS, re.compile(r"\bNSUserDefaults\b|\bUserDefaults\b")),
 ]
 BINARY_STRINGS = {
@@ -207,7 +260,7 @@ BINARY_STRINGS = {
 
 SHORT = {
     CAT_FILE: "FileTimestamp", CAT_BOOT: "SystemBootTime", CAT_DISK: "DiskSpace",
-    CAT_KEYB: "ActiveKeyboards", CAT_DEFAULTS: "UserDefaults",
+    CAT_KEYB: "ActiveKeyboards", CAT_DEFAULTS: "UserDefaults", SYSTEM_DEFAULTS: SYSTEM_DEFAULTS,
 }
 
 
@@ -240,9 +293,18 @@ def load_manifest(path: Path, label: str, problems: list[str]):
     return data
 
 
+def _kind(value) -> str:
+    """The plist type of a value with its article: "an array", "a string"."""
+    name = {dict: "dictionary", list: "array", str: "string", bool: "boolean", int: "integer",
+            float: "real", bytes: "data"}.get(type(value), type(value).__name__)
+    return ("an " if name[0] in "aeiou" else "a ") + name
+
+
 def validate_manifest(data, label: str, problems: list[str]) -> None:
+    """Every element is type-checked before it is compared or hashed, so a
+    malformed manifest reads as a message, never as a crash."""
     if not isinstance(data, dict):
-        problems.append(f"{label}: the top level is a {type(data).__name__}, not a dictionary")
+        problems.append(f"{label}: the top level is {_kind(data)}, not a dictionary")
         return
     for key in sorted(set(data) - set(TOP_LEVEL_TYPES)):
         problems.append(f"{label}: unknown top-level key {key!r} (Apple defines {', '.join(TOP_LEVEL_TYPES)})")
@@ -250,7 +312,7 @@ def validate_manifest(data, label: str, problems: list[str]) -> None:
         if key not in data:
             problems.append(f"{label}: missing {key} (every manifest here states all four keys)")
         elif not isinstance(data[key], typ):
-            problems.append(f"{label}: {key} is a {type(data[key]).__name__}, not a {typ.__name__}")
+            problems.append(f"{label}: {key} is {_kind(data[key])}, not {_kind(typ())}")
     if data.get("NSPrivacyTracking") is True:
         problems.append(f"{label}: NSPrivacyTracking is true; CLI Pulse does no tracking and its label says so")
     domains = data.get("NSPrivacyTrackingDomains")
@@ -266,14 +328,14 @@ def validate_manifest(data, label: str, problems: list[str]) -> None:
         for i, entry in enumerate(apis):
             where = f"{label}: NSPrivacyAccessedAPITypes[{i}]"
             if not isinstance(entry, dict):
-                problems.append(f"{where}: not a dictionary")
+                problems.append(f"{where}: is {_kind(entry)}, not a dictionary")
                 continue
             for key in sorted(set(entry) - API_ENTRY_KEYS):
                 problems.append(f"{where}: unknown key {key!r}")
             cat = entry.get("NSPrivacyAccessedAPIType")
             reasons = entry.get("NSPrivacyAccessedAPITypeReasons")
             if not isinstance(cat, str):
-                problems.append(f"{where}: NSPrivacyAccessedAPIType is missing or not a string")
+                problems.append(f"{where}: NSPrivacyAccessedAPIType is {'missing' if cat is None else _kind(cat)}, not a string")
                 continue
             if cat not in CATEGORY_REASONS:
                 problems.append(f"{where}: unknown category {cat!r}")
@@ -281,13 +343,17 @@ def validate_manifest(data, label: str, problems: list[str]) -> None:
             if cat in seen_cats:
                 problems.append(f"{where}: {cat} is declared twice")
             seen_cats.add(cat)
-            if not isinstance(reasons, list) or not reasons:
+            if not isinstance(reasons, list):
+                problems.append(f"{where}: NSPrivacyAccessedAPITypeReasons of {cat} is "
+                                f"{'missing' if reasons is None else _kind(reasons)}, not an array")
+                continue
+            if not reasons:
                 problems.append(f"{where}: {cat} has no NSPrivacyAccessedAPITypeReasons")
                 continue
             seen_reasons: set[str] = set()
             for reason in reasons:
                 if not isinstance(reason, str):
-                    problems.append(f"{where}: a reason is not a string")
+                    problems.append(f"{where}: a reason of {cat} is {_kind(reason)}, not a string")
                 elif reason not in CATEGORY_REASONS[cat]:
                     problems.append(
                         f"{where}: reason {reason!r} is not a reason Apple defines for {cat} "
@@ -295,7 +361,8 @@ def validate_manifest(data, label: str, problems: list[str]) -> None:
                     )
                 elif reason in seen_reasons:
                     problems.append(f"{where}: reason {reason} is listed twice for {cat}")
-                seen_reasons.add(reason)
+                else:
+                    seen_reasons.add(reason)
 
     collected = data.get("NSPrivacyCollectedDataTypes")
     if isinstance(collected, list):
@@ -303,43 +370,81 @@ def validate_manifest(data, label: str, problems: list[str]) -> None:
         for i, entry in enumerate(collected):
             where = f"{label}: NSPrivacyCollectedDataTypes[{i}]"
             if not isinstance(entry, dict):
-                problems.append(f"{where}: not a dictionary")
+                problems.append(f"{where}: is {_kind(entry)}, not a dictionary")
                 continue
             for key in sorted(set(entry) - DATA_ENTRY_KEYS):
                 problems.append(f"{where}: unknown key {key!r}")
             for key in sorted(DATA_ENTRY_KEYS - set(entry)):
                 problems.append(f"{where}: missing {key}")
             typ = entry.get("NSPrivacyCollectedDataType")
-            if typ is not None and typ not in DATA_TYPES:
+            if typ is not None and not isinstance(typ, str):
+                problems.append(f"{where}: NSPrivacyCollectedDataType is {_kind(typ)}, not a string")
+                typ = None
+            elif typ is not None and typ not in DATA_TYPES:
                 problems.append(f"{where}: unknown data type {typ!r}")
             for key in ("NSPrivacyCollectedDataTypeLinked", "NSPrivacyCollectedDataTypeTracking"):
                 if key in entry and not isinstance(entry[key], bool):
-                    problems.append(f"{where}: {key} is not a boolean")
+                    problems.append(f"{where}: {key} is {_kind(entry[key])}, not a boolean")
             if entry.get("NSPrivacyCollectedDataTypeTracking") is True:
                 problems.append(f"{where}: {typ} is marked as used for tracking")
-            purposes = entry.get("NSPrivacyCollectedDataTypePurposes")
             if "NSPrivacyCollectedDataTypePurposes" in entry:
-                if not isinstance(purposes, list) or not purposes:
+                purposes = entry["NSPrivacyCollectedDataTypePurposes"]
+                if not isinstance(purposes, list):
+                    problems.append(f"{where}: NSPrivacyCollectedDataTypePurposes is {_kind(purposes)}, not an array")
+                elif not purposes:
                     problems.append(f"{where}: {typ} has no purposes")
                 else:
+                    strs = []
                     for p in purposes:
-                        if p not in PURPOSES:
+                        if not isinstance(p, str):
+                            problems.append(f"{where}: a purpose of {typ} is {_kind(p)}, not a string")
+                        elif p not in PURPOSES:
                             problems.append(f"{where}: unknown purpose {p!r}")
-                    if len(set(purposes)) != len(purposes):
+                        else:
+                            strs.append(p)
+                    if len(set(strs)) != len(strs):
                         problems.append(f"{where}: {typ} lists a purpose twice")
-            row = (typ, entry.get("NSPrivacyCollectedDataTypeLinked"))
-            if row in seen_rows:
-                problems.append(f"{where}: {typ} (linked={row[1]}) is declared twice")
-            seen_rows.add(row)
+            linked = entry.get("NSPrivacyCollectedDataTypeLinked")
+            if typ is not None and isinstance(linked, bool):
+                if (typ, linked) in seen_rows:
+                    problems.append(f"{where}: {typ} (linked={linked}) is declared twice")
+                seen_rows.add((typ, linked))
 
 
 def declared_reasons(data) -> dict[str, set[str]]:
+    """{category: {reasons}} from a manifest, ignoring malformed parts (which
+    validate_manifest has already reported)."""
     out: dict[str, set[str]] = {}
-    for entry in (data or {}).get("NSPrivacyAccessedAPITypes") or []:
+    apis = (data or {}).get("NSPrivacyAccessedAPITypes") if isinstance(data, dict) else None
+    for entry in apis if isinstance(apis, list) else []:
         if isinstance(entry, dict) and isinstance(entry.get("NSPrivacyAccessedAPIType"), str):
             reasons = entry.get("NSPrivacyAccessedAPITypeReasons")
-            out[entry["NSPrivacyAccessedAPIType"]] = set(r for r in reasons if isinstance(r, str)) if isinstance(reasons, list) else set()
+            out[entry["NSPrivacyAccessedAPIType"]] = (
+                {r for r in reasons if isinstance(r, str)} if isinstance(reasons, list) else set())
     return out
+
+
+def collected_rows(data) -> list[tuple]:
+    """(type, linked, tracking, purposes) for each well-formed collected row."""
+    out = []
+    rows = (data or {}).get("NSPrivacyCollectedDataTypes") if isinstance(data, dict) else None
+    for entry in rows if isinstance(rows, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        typ = entry.get("NSPrivacyCollectedDataType")
+        purposes = entry.get("NSPrivacyCollectedDataTypePurposes")
+        if not isinstance(typ, str) or not isinstance(purposes, list):
+            continue
+        out.append((typ, entry.get("NSPrivacyCollectedDataTypeLinked"),
+                    entry.get("NSPrivacyCollectedDataTypeTracking"),
+                    tuple(sorted(p for p in purposes if isinstance(p, str)))))
+    return out
+
+
+def row_text(row: tuple) -> str:
+    typ, linked, tracking, purposes = row
+    short = [p.replace("NSPrivacyCollectedDataTypePurpose", "") for p in purposes]
+    return f"{typ.replace('NSPrivacyCollectedDataType', '')} linked={linked} tracking={tracking} purposes={short}"
 
 
 # ---------------------------------------------------------------------------
@@ -354,8 +459,7 @@ class OpenStepParser:
 
     def parse(self):
         self._skip()
-        value = self._value()
-        return value
+        return self._value()
 
     def _skip(self):
         s = self.s
@@ -439,18 +543,20 @@ class Project:
                 for child in obj.get("children", []):
                     self.parent[child] = oid
 
+    def native_targets(self):
+        return [(oid, obj) for oid, obj in self.objects.items() if obj.get("isa") == "PBXNativeTarget"]
+
     def target(self, name: str):
-        for oid, obj in self.objects.items():
-            if obj.get("isa") == "PBXNativeTarget" and obj.get("name") == name:
+        for oid, obj in self.native_targets():
+            if obj.get("name") == name:
                 return oid, obj
         return None, None
 
     def path_of(self, ref_id: str) -> Path | None:
-        obj = self.objects.get(ref_id, {})
         parts = []
         node = ref_id
-        tree = obj.get("sourceTree")
-        while True:
+        tree = None
+        while node is not None:
             o = self.objects.get(node, {})
             if o.get("path"):
                 parts.append(o["path"])
@@ -458,19 +564,15 @@ class Project:
             if tree != "<group>":
                 break
             node = self.parent.get(node)
-            if node is None:
-                break
         if tree in ("SOURCE_ROOT", "<group>", None):
             return Path(self.srcroot, *reversed(parts))
         return None  # BUILT_PRODUCTS_DIR, SDKROOT, ...
 
-    def phase(self, target, isa: str):
-        for pid in target.get("buildPhases", []):
-            if self.objects.get(pid, {}).get("isa") == isa:
-                return pid, self.objects[pid]
-        return None, None
+    def phases(self, target, isa: str):
+        return [(pid, self.objects[pid]) for pid in target.get("buildPhases", [])
+                if self.objects.get(pid, {}).get("isa") == isa]
 
-    def phase_files(self, phase) -> list[tuple[str, Path | None, str | None]]:
+    def phase_files(self, phase) -> list[tuple[str, dict, Path | None, str | None]]:
         out = []
         for bf in phase.get("files", []):
             bfo = self.objects.get(bf, {})
@@ -478,15 +580,19 @@ class Project:
             product = None
             if bfo.get("productRef"):
                 product = self.objects.get(bfo["productRef"], {}).get("productName")
-            out.append((bf, self.path_of(ref) if ref else None, product))
+            out.append((bf, bfo, self.path_of(ref) if ref else None, product))
         return out
 
-    def links_product(self, target, product: str) -> bool:
-        for dep in target.get("packageProductDependencies", []):
-            if self.objects.get(dep, {}).get("productName") == product:
-                return True
-        _, fw = self.phase(target, "PBXFrameworksBuildPhase")
-        return bool(fw) and any(p == product for _, _, p in self.phase_files(fw))
+    def linked_products(self, target) -> set[str]:
+        out = {self.objects.get(dep, {}).get("productName") for dep in target.get("packageProductDependencies", [])}
+        for _, fw in self.phases(target, "PBXFrameworksBuildPhase"):
+            out |= {p for _, _, _, p in self.phase_files(fw) if p}
+        out.discard(None)
+        return out
+
+    def build_settings(self, target) -> list[dict]:
+        lst = self.objects.get(target.get("buildConfigurationList"), {})
+        return [self.objects.get(c, {}).get("buildSettings", {}) for c in lst.get("buildConfigurations", [])]
 
 
 # ---------------------------------------------------------------------------
@@ -496,9 +602,9 @@ _TOKEN = re.compile(r'//|/\*|\*/|"""|"|\\\(|\\.|\(|\)|\n')
 
 
 def blank_swift(text: str) -> tuple[str, str]:
-    """Two views with the same line structure: code with comments and string
-    contents blanked, and code with only comments blanked. Handles nested
-    block comments, single- and multi-line strings, escapes and string
+    """Two views with the same length and line structure: code with comments
+    and string contents blanked, and code with only comments blanked. Handles
+    nested block comments, single- and multi-line strings, escapes and string
     interpolation, which is enough for an API-name search."""
     code: list[str] = []
     keep: list[str] = []
@@ -577,25 +683,26 @@ def blank_swift(text: str) -> tuple[str, str]:
     return "".join(code), "".join(keep)
 
 
-# canImport answers per platform for the modules the sources test.
+# canImport answers that do not depend on the SDK release: checked against the
+# Xcode 27.1 SDKs (MacOSX, iPhoneOS and WatchOS 27.x). Anything not listed is
+# unknown, and an unknown condition has both branches read: watchOS has UIKit,
+# macOS 27 has ActivityKit, and older SDKs in CI may differ from this Mac's.
 CAN_IMPORT = {
-    "macos": {"AppKit": True, "UIKit": False, "WidgetKit": True, "WatchKit": False,
-              "WatchConnectivity": False, "ActivityKit": False, "IOKit": True,
-              "ServiceManagement": True, "Darwin": True, "Foundation": True},
-    "ios": {"AppKit": False, "UIKit": True, "WidgetKit": True, "WatchKit": False,
-            "WatchConnectivity": True, "ActivityKit": True, "IOKit": False,
-            "ServiceManagement": False, "Darwin": True, "Foundation": True},
-    "watchos": {"AppKit": False, "UIKit": False, "WidgetKit": True, "WatchKit": True,
-                "WatchConnectivity": True, "ActivityKit": False, "IOKit": False,
-                "ServiceManagement": False, "Darwin": True, "Foundation": True},
+    "macos": {"AppKit": True, "UIKit": False, "Foundation": True, "Darwin": True, "SwiftUI": True, "Combine": True},
+    "ios": {"AppKit": False, "UIKit": True, "Foundation": True, "Darwin": True, "SwiftUI": True, "Combine": True},
+    "watchos": {"AppKit": False, "UIKit": True, "Foundation": True, "Darwin": True, "SwiftUI": True, "Combine": True},
 }
 OS_NAME = {"macos": "macOS", "ios": "iOS", "watchos": "watchOS"}
+_KNOWN_OS = {"macOS", "iOS", "watchOS", "tvOS", "visionOS", "xrOS", "Linux", "Windows", "Android", "FreeBSD", "OpenBSD", "WASI", "OSX"}
 
 
 def eval_condition(expr: str, platform: str):
-    """Tri-state: True, False, or None (depends on a build flag we cannot see,
-    such as DEBUG or DEVID_BUILD: then both branches count)."""
-    tokens = re.findall(r"\|\||&&|!|\(|\)|[A-Za-z_][A-Za-z0-9_]*\s*\([^()]*\)|[A-Za-z_][A-Za-z0-9_]*", expr)
+    """Tri-state: True, False, or None. None (both branches read) for anything
+    whose answer is not certain here: build flags (DEBUG, DEVID_BUILD, ...),
+    compiler() / swift() / hasFeature() versions, arch(), targetEnvironment(),
+    and canImport() of anything outside CAN_IMPORT. `expr` comes from the view
+    with comments blanked, so a trailing `// && os(watchOS)` is not part of it."""
+    tokens = re.findall(r"\|\||&&|!|\(|\)|[A-Za-z_][A-Za-z0-9_]*\s*\([^()]*\)|[A-Za-z_][A-Za-z0-9_]*|\S", expr)
     pos = 0
 
     def peek():
@@ -610,25 +717,22 @@ def eval_condition(expr: str, platform: str):
             return None if v is None else not v
         if tok == "(":
             v = disj()
-            pos += 1  # ')'
+            if peek() == ")":
+                pos += 1
             return v
-        m = re.match(r"(\w+)\s*\(([^()]*)\)", tok or "")
+        m = re.match(r"(\w+)\s*\(([^()]*)\)$", tok or "")
         if m:
             fn, arg = m.group(1), m.group(2).strip()
             if fn == "os":
-                return arg == OS_NAME[platform]
+                return arg == OS_NAME[platform] if arg in _KNOWN_OS else None
             if fn == "canImport":
                 return CAN_IMPORT[platform].get(arg.split(".")[0])
-            if fn == "targetEnvironment":
-                return False if arg == "macCatalyst" else None
-            if fn in ("swift", "compiler", "hasFeature", "hasAttribute"):
-                return True
-            return None  # arch(...) and anything else
-        if tok in ("true",):
+            return None  # compiler, swift, hasFeature, arch, targetEnvironment, ...
+        if tok == "true":
             return True
-        if tok in ("false",):
+        if tok == "false":
             return False
-        return None  # a -D flag (DEBUG, DEVID_BUILD, ...)
+        return None  # a -D flag (DEBUG, DEVID_BUILD, ...) or something unparsed
 
     def conj():
         nonlocal pos
@@ -649,18 +753,23 @@ def eval_condition(expr: str, platform: str):
         return v
 
     try:
-        return disj()
+        value = disj()
     except Exception:
         return None
+    return value if pos >= len(tokens) else None  # leftover tokens: not understood
 
 
-def active_lines(raw: str, platform: str) -> list[bool]:
-    """For each line, whether it can be compiled for `platform`."""
+_DIRECTIVE = re.compile(r"^\s*#(if|elseif|else|endif)\b(.*)$")
+
+
+def active_lines(code_lines: list[str], platform: str) -> list[bool]:
+    """For each line, whether it can be compiled for `platform`. Directives are
+    read from the view with comments and strings blanked, so a `#if` inside a
+    comment or a string is not one."""
     out = []
-    stack = []  # frames: [state_of_current_branch, taken_definitely, all_prior_false]
-    directive = re.compile(r"^\s*#(if|elseif|else|endif)\b(.*)$")
-    for line in raw.split("\n"):
-        m = directive.match(line)
+    stack = []  # frames: [state_of_current_branch, a_branch_was_definitely_taken, all_prior_definitely_false]
+    for line in code_lines:
+        m = _DIRECTIVE.match(line)
         if m:
             kind, rest = m.group(1), m.group(2).strip()
             if kind == "if":
@@ -687,61 +796,168 @@ def active_lines(raw: str, platform: str) -> list[bool]:
     return out
 
 
-_CODE_RX = [(cat, re.compile(rx), what) for cat, rx, what in SOURCE_PATTERNS]
-_STRING_RX = [(cat, re.compile(rx), what) for cat, rx, what in SOURCE_PATTERNS_STRINGS]
-# A cheap first pass: a line none of these words appears in cannot match.
-_PREFILTER = re.compile(
-    r"Date|stat|getattrlist|[Uu]ptime|mach_|BOOTTIME|boottime|Capacity|Size|attributesOfFileSystem|"
-    r"InputModes|UserDefaults|AppStorage"
-)
+# For each pattern, words one of which any match must contain. A file with none
+# of them skips that pattern: a speed-up only, the regex still decides. Kept by
+# hand because optional characters (`l?stat`, `f?statv?fs`) defeat extraction;
+# `test_check_privacy_manifests.py` has a case per family that would go quiet
+# if a needle were wrong.
+_NEEDLES = {
+    "FileAttributeKey / URLResourceValues .creationDate / .modificationDate": ("creationDate", "modificationDate"),
+    "NSDictionary fileModificationDate / fileCreationDate": ("fileModificationDate", "fileCreationDate"),
+    "URLResourceKey .contentModificationDateKey / .creationDateKey": ("contentModificationDateKey", "creationDateKey"),
+    "URLResourceValues.contentModificationDate": ("contentModificationDate",),
+    "the ObjC names of the keys above": ("NSFile", "NSURL"),
+    "stat / lstat / fstat / fstatat": ("stat",),
+    "getattrlist family": ("getattrlist",),
+    "ProcessInfo.systemUptime": ("systemUptime",),
+    "mach_absolute_time()": ("mach_absolute_time",),
+    "mach_continuous_time() (not on Apple's list; same boot clock)": ("mach_continuous_time",),
+    "sysctl KERN_BOOTTIME (how Sentry reads boot time)": ("KERN_BOOTTIME",),
+    "URLResourceKey volume capacity keys": ("Capacity",),
+    "URLResourceValues volume capacity": ("Capacity",),
+    "FileAttributeKey .systemFreeSize / .systemSize": ("systemFreeSize", "systemSize"),
+    "FileManager.attributesOfFileSystem (free/total size)": ("attributesOfFileSystem",),
+    "statfs / statvfs / fstatfs / fstatvfs": ("stat",),
+    "UITextInputMode.activeInputModes": ("activeInputModes",),
+    "UserDefaults": ("UserDefaults",),
+    "@AppStorage (UserDefaults underneath)": ("AppStorage",),
+    "sysctlbyname(\"kern.boottime\")": ("kern.boottime",),
+}
 
 
+def _compile(patterns):
+    return [(cats, re.compile(rx), what, _NEEDLES[what]) for cats, rx, what in patterns]
+
+
+_CODE_RX = _compile(SOURCE_PATTERNS)
+_STRING_RX = _compile(SOURCE_PATTERNS_STRINGS)
+_SYSDEF_RX = [(re.compile(rx), what) for rx, what in SYSTEM_DEFAULTS_PATTERNS]
 _SCAN_CACHE: dict = {}
 
 
-def scan_source(path: Path, platform: str, cache: dict):
-    """[(category, line_no, what, text, is_app_group)] for one file, on the
-    lines `platform` compiles. A file is searched once per content (the cache
-    outlives one check, for the tests); only the #if resolution is per
-    platform."""
-    raw = path.read_text(encoding="utf-8", errors="replace")
-    entry = cache.get(path)
-    if entry is None or entry["raw"] != raw:
-        if path.suffix == ".swift":
-            code, keep = blank_swift(raw)
+class SourceFile:
+    """One file, read once per content; views per platform on demand."""
+
+    def __init__(self, raw: str, swift: bool):
+        self.raw = raw
+        self.swift = swift
+        if swift:
+            self.code, self.keep = blank_swift(raw)
         else:  # C / ObjC (the vendored decoder): read as is
-            code = keep = raw
-        raw_lines = raw.split("\n")
-        hits = []
-        for no, (cl, kl) in enumerate(zip(code.split("\n"), keep.split("\n")), start=1):
-            if not _PREFILTER.search(kl):
-                continue
-            for cat, rx, what in _CODE_RX:
-                if rx.search(cl):
-                    hits.append((cat, no, what, raw_lines[no - 1].strip(), bool(APP_GROUP_DEFAULTS.search(cl))))
-            for cat, rx, what in _STRING_RX:
-                if rx.search(kl):
-                    hits.append((cat, no, what, raw_lines[no - 1].strip(), False))
-        entry = cache[path] = {"raw": raw, "hits": hits, "active": {}}
-    if not entry["hits"]:
-        return []
-    active = entry["active"].get(platform)
-    if active is None:
-        active = (active_lines(entry["raw"], platform) if path.suffix == ".swift"
-                  else [True] * (entry["raw"].count("\n") + 1))
-        entry["active"][platform] = active
-    return [h for h in entry["hits"] if active[h[1] - 1]]
+            self.code = self.keep = raw
+        self.line_starts = [0] + [m.end() for m in re.finditer("\n", raw)]
+        self.raw_lines = raw.split("\n")
+        self._views: dict[str, tuple[str, str]] = {}
+        self._hits: dict[str, list] = {}
+        self._sysdef: dict[str, list] = {}
+
+    def line_of(self, offset: int) -> int:
+        return bisect.bisect_right(self.line_starts, offset)
+
+    def views(self, platform: str) -> tuple[str, str]:
+        """(code, keep) with lines this platform does not compile blanked."""
+        if platform not in self._views:
+            if not self.swift:
+                self._views[platform] = (self.code, self.keep)
+            else:
+                code_lines = self.code.split("\n")
+                active = active_lines(code_lines, platform)
+                keep_lines = self.keep.split("\n")
+                c = "\n".join(line if a else " " * len(line) for line, a in zip(code_lines, active))
+                k = "\n".join(line if a else " " * len(line) for line, a in zip(keep_lines, active))
+                self._views[platform] = (c, k)
+        return self._views[platform]
+
+    def hits(self, platform: str):
+        """[(category, line, what, text, is_app_group)] on lines `platform` compiles."""
+        if platform in self._hits:
+            return self._hits[platform]
+        out = []
+        candidates = [(view_index, cats, rx, what) for view_index, table in ((0, _CODE_RX), (1, _STRING_RX))
+                      for cats, rx, what, needles in table if any(n in self.keep for n in needles)]
+        if candidates:
+            views = self.views(platform)
+            group_lines = {self.line_of(m.start()) for m in APP_GROUP_DEFAULTS.finditer(views[0])}
+            for view_index, cats, rx, what in candidates:
+                for m in rx.finditer(views[view_index]):
+                    line = self.line_of(m.start())
+                    for cat in cats:
+                        out.append((cat, line, what, self.raw_lines[line - 1].strip(), line in group_lines))
+        self._hits[platform] = out
+        return out
+
+    def system_defaults_reads(self, platform: str):
+        """[(line, what, text)]: reads of defaults the system writes."""
+        if platform in self._sysdef:
+            return self._sysdef[platform]
+        if not any(n in self.keep for n in ("forKey", "dictionaryRepresentation", "globalDomain", "suiteName", "persistentDomain")):
+            self._sysdef[platform] = []
+            return []
+        code, keep = self.views(platform)
+        out = []
+        for rx, what in _SYSDEF_RX:
+            view = code if "dictionaryRepresentation" in rx.pattern or "globalDomain" in rx.pattern else keep
+            for m in rx.finditer(view):
+                line = self.line_of(m.start())
+                out.append((line, what, self.raw_lines[line - 1].strip()))
+        bound = {m.group(1) for m in SYSTEM_KEY_BINDING.finditer(keep)}
+        if bound:
+            rx = re.compile(DEFAULTS_GETTER + r"(?:(?:Self|[A-Z]\w*)\s*\.\s*)?(" + "|".join(map(re.escape, sorted(bound))) + r")\b")
+            for m in rx.finditer(code):
+                line = self.line_of(m.start())
+                out.append((line, f"a key the system writes ({m.group(1)})", self.raw_lines[line - 1].strip()))
+        self._sysdef[platform] = out
+        return out
+
+    def matches(self, platform: str, pattern: str) -> bool:
+        code, _ = self.views(platform)
+        return re.search(pattern, code) is not None
+
+
+def source_file(path: Path) -> SourceFile:
+    raw = path.read_text(encoding="utf-8", errors="replace")
+    entry = _SCAN_CACHE.get(path)
+    if entry is None or entry.raw != raw:
+        entry = _SCAN_CACHE[path] = SourceFile(raw, path.suffix == ".swift")
+    return entry
 
 
 # ---------------------------------------------------------------------------
 # The repo check
 # ---------------------------------------------------------------------------
+SCANNED_SUFFIXES = {".swift", ".c", ".h", ".m"}
+NEVER_COMPILED = {".xcprivacy", ".plist", ".strings", ".xcassets", ".json", ".txt", ".entitlements"}
+
+
 def entitlement_groups(path: Path) -> list[str]:
     try:
         data = plistlib.loads(path.read_bytes())
     except Exception:
         return []
-    return list(data.get("com.apple.security.application-groups") or [])
+    groups = data.get("com.apple.security.application-groups") if isinstance(data, dict) else None
+    return [g for g in groups if isinstance(g, str)] if isinstance(groups, list) else []
+
+
+def package_checks(root: Path, cfg: dict, problems: list[str]) -> None:
+    pkg = cfg["package"]
+    base = root / pkg["path"]
+    manifest = (base / "Package.swift").read_text(encoding="utf-8")
+    deps = re.findall(r'\.package\s*\(\s*url\s*:\s*"([^"]+)"', manifest)
+    for url in deps:
+        if url not in pkg["dependencies"]:
+            problems.append(f"{pkg['path']}/Package.swift: depends on {url}, which {CONFIG} has not reviewed; "
+                            f"measure what it links (--archive) and record it")
+    present = sorted(p.name for p in (base / "Sources").iterdir() if p.is_dir())
+    for name in present:
+        if name not in pkg["targets"]:
+            problems.append(f"{pkg['path']}/Sources/{name}: a package target {CONFIG} does not list, so its "
+                            f"sources are not scanned")
+    resolved = json.loads((root / cfg["package_resolved"]).read_text(encoding="utf-8"))
+    pins = {p.get("identity"): (p.get("state") or {}).get("version") for p in resolved.get("pins", [])}
+    for sdk, info in cfg["sdks"].items():
+        if pins.get(sdk) != info["version"]:
+            problems.append(f"{cfg['package_resolved']}: {sdk} is pinned at {pins.get(sdk)}, but binary_categories "
+                            f"were measured with {info['version']}; archive, run --archive, and update {CONFIG}")
 
 
 def check_repo(root: Path, verbose: bool) -> list[str]:
@@ -751,14 +967,42 @@ def check_repo(root: Path, verbose: bool) -> list[str]:
     allow_entries = allow.get("entries", [])
     allow_used = [False] * len(allow_entries)
     project = Project(root / cfg["project"], root)
-    label_rows = cfg["label"]["rows"]
-    covered = [False] * len(label_rows)
-    cache = _SCAN_CACHE
+    label_rows = [(r["type"], r["linked"], r["tracking"], tuple(sorted(r["purposes"]))) for r in cfg["label"]["rows"]]
+    covered = set()
 
-    shared_files: list[Path] = []
-    for rel in cfg["shared_sources"]:
-        base = root / rel
-        shared_files += sorted(p for p in base.rglob("*") if p.suffix in (".swift", ".m", ".c", ".h") and p.is_file())
+    # Arrangements the source scan cannot see.
+    for oid, obj in project.objects.items():
+        if str(obj.get("isa", "")).startswith("PBXFileSystemSynchronized"):
+            problems.append(f"{cfg['project']}: {obj['isa']} {oid} ({obj.get('path', '?')}): synchronized folders "
+                            f"are not mapped to targets by this check; list the files in the target instead")
+    for remote in (o for o in project.objects.values() if o.get("isa") == "XCRemoteSwiftPackageReference"):
+        problems.append(f"{cfg['project']}: remote package {remote.get('repositoryURL')} is linked straight into the "
+                        f"project; review what it links and record it in {CONFIG}")
+    package_checks(root, cfg, problems)
+
+    # Every bundle-shipping target is listed or exempted.
+    listed = {t["name"] for t in cfg["targets"]}
+    exempt = cfg.get("exempt_targets", {})
+    existing = set()
+    for _, obj in project.native_targets():
+        name, ptype = obj.get("name"), str(obj.get("productType", ""))
+        existing.add(name)
+        if ptype.startswith(BUNDLE_PRODUCT_TYPES) and name not in listed and name not in exempt:
+            problems.append(f"target {name!r} ({ptype}) ships a bundle but is not in {CONFIG}; add it with its "
+                            f"manifest and reviewed record, or exempt it there with a reason")
+    for name in exempt:
+        if name not in existing:
+            problems.append(f"{CONFIG}: exempt_targets names {name!r}, which is not a target; remove it")
+
+    pkg = cfg["package"]
+    package_files: dict[str, list[Path]] = {}
+    for tname, tinfo in pkg["targets"].items():
+        base = root / pkg["path"] / tinfo["sources"]
+        files = sorted(p for p in base.rglob("*") if p.is_file())
+        for f in files:
+            if f.suffix in (".mm", ".cpp", ".cc", ".cxx", ".s", ".S"):
+                problems.append(f"{f.relative_to(root)}: {f.suffix} sources are not scanned by this check")
+        package_files[tname] = [f for f in files if f.suffix in SCANNED_SUFFIXES]
 
     for t in cfg["targets"]:
         name, platform = t["name"], t["platform"]
@@ -773,78 +1017,154 @@ def check_repo(root: Path, verbose: bool) -> list[str]:
         if target is None:
             problems.append(f"{name}: no such target in {cfg['project']}")
             continue
-        # 1. the manifest ships: it is in this target's Resources phase.
-        rid, res = project.phase(target, "PBXResourcesBuildPhase")
-        in_resources = bool(res) and any(p == mpath for _, p, _ in project.phase_files(res))
-        if not in_resources:
-            where = f"Resources build phase ({rid})" if rid else "Resources build phase (the target has none)"
+
+        # 1. The manifest ships: in this target's Resources phase, unfiltered.
+        res_phases = project.phases(target, "PBXResourcesBuildPhase")
+        found = [(pid, ph, bf, bfo) for pid, ph in res_phases
+                 for bf, bfo, p, _ in project.phase_files(ph) if p == mpath]
+        if not found:
+            where = (f"Resources build phase ({', '.join(pid for pid, _ in res_phases)})" if res_phases
+                     else "Resources build phase (the target has none)")
             problems.append(f"{name}: {mpath} is not in the target's {where}, so it is not copied into the bundle")
+        for pid, ph, bf, bfo in found:
+            for key in ("platformFilter", "platformFilters"):
+                if key in bfo:
+                    problems.append(f"{name}: the manifest's build file {bf} carries {key} = {bfo[key]}, which "
+                                    f"can leave it out of the {name} bundle; remove the filter")
+            settings = bfo.get("settings") or {}
+            if settings:
+                problems.append(f"{name}: the manifest's build file {bf} carries settings {settings}; a resource "
+                                f"copied as-is needs none")
+            if str(ph.get("runOnlyForDeploymentPostprocessing", "0")) != "0":
+                problems.append(f"{name}: Resources phase {pid} runs only for deployment postprocessing, so the "
+                                f"manifest is missing from ordinary builds")
+        for bs in project.build_settings(target):
+            for key in ("EXCLUDED_SOURCE_FILE_NAMES", "INCLUDED_SOURCE_FILE_NAMES"):
+                val = bs.get(key)
+                vals = val if isinstance(val, list) else [val] if val else []
+                if key == "EXCLUDED_SOURCE_FILE_NAMES" and any(
+                        re.fullmatch(str(v).replace(".", r"\.").replace("*", ".*"), mpath.name) for v in vals):
+                    problems.append(f"{name}: {key} = {vals} excludes {mpath.name}")
         for other in cfg["targets"]:
             if other is t:
                 continue
             _, ot = project.target(other["name"])
-            if ot is None:
-                continue
-            _, ores = project.phase(ot, "PBXResourcesBuildPhase")
-            if ores and any(p == mpath for _, p, _ in project.phase_files(ores)):
+            if ot is not None and any(p == mpath for _, ph in project.phases(ot, "PBXResourcesBuildPhase")
+                                      for _, _, p, _ in project.phase_files(ph)):
                 problems.append(f"{name}: {mpath} is also in {other['name']}'s Resources phase; each bundle carries its own")
 
-        # 2. what the sources it compiles use.
-        _, src = project.phase(target, "PBXSourcesBuildPhase")
-        files = [root / p for _, p, _ in project.phase_files(src) if p is not None] if src else []
-        if project.links_product(target, "CLIPulseCore"):
-            files += shared_files
-            for rel in cfg.get("platform_sources", {}).get(platform, []):
-                files += sorted(p for p in (root / rel).rglob("*") if p.suffix in (".c", ".h", ".m", ".swift"))
+        # 2. What it compiles.
+        files: list[Path] = []
+        for _, src in project.phases(target, "PBXSourcesBuildPhase"):
+            for bf, _, p, product in project.phase_files(src):
+                if p is None:
+                    continue
+                if p.suffix in SCANNED_SUFFIXES:
+                    files.append(root / p)
+                elif p.suffix not in NEVER_COMPILED:
+                    problems.append(f"{name}: compiles {p}, a {p.suffix or 'suffix-less'} file this check does not scan")
+        products = project.linked_products(target)
+        for product in sorted(products - set(cfg.get("reviewed_products", []))):
+            problems.append(f"{name}: links package product {product!r}, which {CONFIG} has not reviewed")
+        if pkg["product"] in products:
+            for tname, tinfo in pkg["targets"].items():
+                if platform in tinfo["platforms"]:
+                    files += package_files[tname]
         groups = entitlement_groups(root / t["entitlements"]) if t.get("entitlements") else []
+
         used: dict[str, list] = {}
         group_uses = []
+        sysdef = []
+        compiled: dict[str, SourceFile] = {}
         for f in files:
             if not f.is_file():
                 problems.append(f"{name}: compiles {f.relative_to(root)}, which does not exist")
                 continue
             rel = f.relative_to(root).as_posix()
-            for cat, no, what, text, is_group in scan_source(f, platform, cache):
-                hit = (rel, no, what, text)
-                skipped = False
+            sf = source_file(f)
+            compiled[rel] = sf
+
+            def allowed(cat, text):
+                hit = False
                 for k, e in enumerate(allow_entries):
                     if e["target"] == name and e["category"] == cat and e["file"] == rel and re.search(e["pattern"], text):
                         allow_used[k] = True
-                        skipped = True
-                if skipped:
+                        hit = True
+                return hit
+
+            for cat, no, what, text, is_group in sf.hits(platform):
+                if allowed(cat, text):
                     continue
-                used.setdefault(cat, []).append(hit)
+                used.setdefault(cat, []).append((rel, no, what, text))
                 if is_group:
-                    group_uses.append(hit)
-        measured = set(t.get("binary_categories", []))
+                    group_uses.append((rel, no))
+            for no, what, text in sf.system_defaults_reads(platform):
+                if not allowed(SYSTEM_DEFAULTS, text):
+                    sysdef.append((rel, no, what, text))
+
+        for rel, no, what, text in sysdef:
+            problems.append(f"{name}: {rel}:{no} reads {what} through UserDefaults; no UserDefaults reason covers "
+                            f"what the system or another app wrote (CA92.1 is the app's own values, 1C8F.1 its app group)")
         for cat, hits in sorted(used.items()):
             if cat not in declared:
                 rel, no, what, text = hits[0]
                 more = f" (and {len(hits) - 1} more)" if len(hits) > 1 else ""
-                problems.append(
-                    f"{name}: {rel}:{no} uses {what} ({cat}){more}, which {label} does not declare"
-                )
+                problems.append(f"{name}: {rel}:{no} uses {what} ({cat}){more}, which {label} does not declare")
+        measured = set(t.get("binary_categories", []))
         for cat in sorted(measured - set(declared)):
-            problems.append(
-                f"{name}: the archived binary links {SHORT.get(cat, cat)} ({cat}, recorded in {CONFIG} "
-                f"binary_categories), which {label} does not declare"
-            )
-        for cat in sorted(set(declared) - set(used) - measured):
-            problems.append(
-                f"{name}: {label} declares {cat}, but neither the sources {name} compiles nor its "
-                f"measured binary use it; remove it or record the use"
-            )
+            problems.append(f"{name}: the archived binary links {SHORT.get(cat, cat)} ({cat}, recorded in {CONFIG} "
+                            f"binary_categories), which {label} does not declare")
         defaults_reasons = declared.get(CAT_DEFAULTS, set())
-        if group_uses and groups and APP_GROUP_REASON not in defaults_reasons and CAT_DEFAULTS in declared:
-            rel, no, _, _ = group_uses[0]
-            problems.append(
-                f"{name}: uses app-group UserDefaults ({rel}:{no}) and is entitled to {groups[0]}, "
-                f"but {label} does not declare reason {APP_GROUP_REASON} for {CAT_DEFAULTS}"
-            )
+        if group_uses and groups and CAT_DEFAULTS in declared and APP_GROUP_REASON not in defaults_reasons:
+            rel, no = group_uses[0]
+            problems.append(f"{name}: uses app-group UserDefaults ({rel}:{no}) and is entitled to {groups[0]}, "
+                            f"but {label} does not declare reason {APP_GROUP_REASON} for {CAT_DEFAULTS}")
         if APP_GROUP_REASON in defaults_reasons and not groups:
-            problems.append(
-                f"{name}: {label} declares {APP_GROUP_REASON} (app group) but {t.get('entitlements')} grants no app group"
-            )
+            problems.append(f"{name}: {label} declares {APP_GROUP_REASON} (app group) but "
+                            f"{t.get('entitlements')} grants no app group")
+
+        # 3. The reviewed record: categories and reasons exactly, each reason
+        #    still resting on code this target compiles.
+        record = {cat: set(rs) for cat, rs in t["reasons"].items()}
+        if data is not None and declared != record:
+            for cat in sorted(set(declared) | set(record)):
+                have, want = sorted(declared.get(cat, set())), sorted(record.get(cat, set()))
+                if have != want:
+                    problems.append(f"{name}: {label} declares {SHORT.get(cat, cat)} reasons {have or 'none'}, "
+                                    f"but the reviewed record in {CONFIG} is {want or 'none'}")
+        for cat, reasons in t["reasons"].items():
+            for reason, info in reasons.items():
+                for ev in info.get("evidence", []):
+                    if "sdk" in ev:
+                        sdk = cfg["sdks"].get(ev["sdk"])
+                        if sdk is None or cat not in sdk["categories"] or pkg["product"] not in products:
+                            problems.append(f"{name}: {SHORT.get(cat, cat)} {reason} cites SDK {ev['sdk']}, which "
+                                            f"{name} does not link or which does not use that category per {CONFIG}")
+                        continue
+                    sf = compiled.get(ev["file"])
+                    if sf is None or not sf.matches(platform, ev["match"]):
+                        problems.append(f"{name}: {SHORT.get(cat, cat)} {reason} cites {ev['file']} /{ev['match']}/, "
+                                        f"which no longer matches a line {name} compiles; re-review the reason and "
+                                        f"update {CONFIG}")
+        for cat in sorted(set(record) - set(used) - measured):
+            problems.append(f"{name}: the record declares {cat}, but neither the sources {name} compiles nor its "
+                            f"measured binary use it; remove it")
+
+        # 4. Collected data: the reviewed rows exactly, each a label row.
+        want_rows = [(r["type"], r["linked"], r["tracking"], tuple(sorted(r["purposes"]))) for r in t["collected"]]
+        for row in want_rows:
+            if row not in label_rows:
+                problems.append(f"{CONFIG}: {name} records {row_text(row)}, which is not a row of the published label")
+            covered.add(row)
+        if data is not None:
+            have_rows = collected_rows(data)
+            for row in sorted(set(have_rows) - set(want_rows)):
+                same = [row_text(r) for r in want_rows if r[0] == row[0]]
+                hint = f" (the record has {'; '.join(same)})" if same else " (the record has no such type for this target)"
+                problems.append(f"{name}: {label} collects {row_text(row)}, which is not in its reviewed record{hint}")
+            for row in sorted(set(want_rows) - set(have_rows)):
+                problems.append(f"{name}: {label} is missing the reviewed row {row_text(row)}")
+
         if verbose:
             print(f"--- {name} ({platform}): {len(files)} source files")
             for cat, hits in sorted(used.items()):
@@ -852,38 +1172,9 @@ def check_repo(root: Path, verbose: bool) -> list[str]:
                       f"declared {sorted(declared.get(cat, set())) or 'NO'}")
             print(f"    binary_categories: {sorted(SHORT[c] for c in measured)}")
 
-        # 3. collected data: rows of the published label, nothing else.
-        for i, entry in enumerate((data or {}).get("NSPrivacyCollectedDataTypes") or []):
-            if not isinstance(entry, dict):
-                continue
-            row = {
-                "type": entry.get("NSPrivacyCollectedDataType"),
-                "linked": entry.get("NSPrivacyCollectedDataTypeLinked"),
-                "tracking": entry.get("NSPrivacyCollectedDataTypeTracking"),
-                "purposes": sorted(entry.get("NSPrivacyCollectedDataTypePurposes") or []),
-            }
-            match = [k for k, r in enumerate(label_rows)
-                     if r["type"] == row["type"] and r["linked"] == row["linked"]
-                     and r["tracking"] == row["tracking"] and sorted(r["purposes"]) == row["purposes"]]
-            if not match:
-                same_type = [r for r in label_rows if r["type"] == row["type"]]
-                want = "; ".join(
-                    f"linked={r['linked']} tracking={r['tracking']} purposes={sorted(r['purposes'])}" for r in same_type
-                ) or "the label does not list this type"
-                problems.append(
-                    f"{label}: NSPrivacyCollectedDataTypes[{i}] {row['type']} linked={row['linked']} "
-                    f"tracking={row['tracking']} purposes={row['purposes']} is not a row of the published "
-                    f"label ({want})"
-                )
-            for k in match:
-                covered[k] = True
-
-    for k, r in enumerate(label_rows):
-        if not covered[k]:
-            problems.append(
-                f"label row {r['type']} linked={r['linked']} purposes={sorted(r['purposes'])} is declared "
-                f"by no target's manifest"
-            )
+    for row in label_rows:
+        if row not in covered:
+            problems.append(f"label row {row_text(row)} is recorded for no target")
     for k, e in enumerate(allow_entries):
         if not allow_used[k]:
             problems.append(f"{ALLOWLIST}: entry {k} ({e['target']}, {e['file']}) matches nothing; remove it")
@@ -894,15 +1185,25 @@ def check_repo(root: Path, verbose: bool) -> list[str]:
 # Archive mode
 # ---------------------------------------------------------------------------
 def run(cmd: list[str], stdin: str | None = None) -> str:
-    return subprocess.run(cmd, input=stdin, capture_output=True, text=True, check=False).stdout
+    """A tool's stdout; any failure stops the check ("could not check")
+    rather than yielding a partial measurement."""
+    try:
+        proc = subprocess.run(cmd, input=stdin, capture_output=True, text=True, check=False)
+    except OSError as exc:
+        raise CheckError(f"{cmd[0]} {' '.join(cmd[1:2])}: {exc}") from exc
+    if proc.returncode != 0:
+        raise CheckError(f"{' '.join(cmd[:3])} exited {proc.returncode}: {proc.stderr.strip()[:500]}")
+    return proc.stdout
 
 
 def binary_categories(exe: Path) -> dict[str, list[str]]:
+    if not exe.is_file():
+        raise CheckError(f"{exe}: no such executable")
     found: dict[str, list[str]] = {}
     imports = run(["xcrun", "nm", "-u", str(exe)]).split()
     for sym in sorted(set(imports)):
-        if sym in BINARY_IMPORTS:
-            found.setdefault(BINARY_IMPORTS[sym], []).append(sym)
+        for cat in BINARY_IMPORTS.get(sym, ()):
+            found.setdefault(cat, []).append(sym)
     demangled = run(["xcrun", "swift-demangle", "--simplified"], "\n".join(sorted(set(imports))))
     for line in demangled.splitlines():
         for cat, rx in BINARY_DEMANGLED:
@@ -917,8 +1218,7 @@ def binary_categories(exe: Path) -> dict[str, list[str]]:
 
 def check_archives(root: Path, archives: list[Path]) -> list[str]:
     if not shutil.which("xcrun"):
-        print("archive mode needs xcrun (macOS with Xcode)", file=sys.stderr)
-        sys.exit(2)
+        raise CheckError("archive mode needs xcrun (macOS with Xcode)")
     problems: list[str] = []
     cfg = json.loads((root / CONFIG).read_text(encoding="utf-8"))
     for archive in archives:
@@ -978,8 +1278,8 @@ def main(argv=None) -> int:
     root = args.root.resolve()
     try:
         problems = check_archives(root, args.archive) if args.archive else check_repo(root, args.verbose)
-    except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
-        print(f"check_privacy_manifests: could not check: {exc!r}", file=sys.stderr)
+    except (CheckError, OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        print(f"check_privacy_manifests: could not check: {exc}", file=sys.stderr)
         return 2
     for p in problems:
         print(f"FAIL: {p}")

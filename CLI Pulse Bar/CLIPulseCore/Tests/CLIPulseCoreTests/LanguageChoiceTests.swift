@@ -133,13 +133,13 @@ final class LanguageChoiceTests: XCTestCase {
     // MARK: - AppleLanguages
 
     func test_choice_isNotMirroredUntilTheAppAsks() {
-        let store = LocaleOverrideStore(defaults: defaults)
+        let store = LocaleOverrideStore(defaults: defaults, ownDomain: suiteName)
         store.set("ja")
         XCTAssertNil(writtenAppleLanguages, "only the macOS app, at launch, may write AppleLanguages")
     }
 
     func test_choice_writesAppleLanguages_andSystemDefaultRemovesIt() {
-        let store = LocaleOverrideStore(defaults: defaults)
+        let store = LocaleOverrideStore(defaults: defaults, ownDomain: suiteName)
         store.mirrorToAppleLanguages()
 
         store.set("ko")
@@ -163,7 +163,7 @@ final class LanguageChoiceTests: XCTestCase {
         defaults.set(["ja"], forKey: "AppleLanguages")
         defaults.set(["ja"], forKey: LocaleOverrideStore.mirroredLanguagesKey)
 
-        let store = LocaleOverrideStore(defaults: defaults)
+        let store = LocaleOverrideStore(defaults: defaults, ownDomain: suiteName)
         store.mirrorToAppleLanguages()
 
         XCTAssertNil(writtenAppleLanguages, "a pin the app wrote survived the choice it mirrored")
@@ -176,7 +176,7 @@ final class LanguageChoiceTests: XCTestCase {
         defaults.set(["ko"], forKey: "AppleLanguages")
         defaults.set(["ja"], forKey: LocaleOverrideStore.mirroredLanguagesKey)
 
-        let store = LocaleOverrideStore(defaults: defaults)
+        let store = LocaleOverrideStore(defaults: defaults, ownDomain: suiteName)
         store.mirrorToAppleLanguages()
 
         XCTAssertEqual(writtenAppleLanguages, ["ko"])
@@ -184,7 +184,7 @@ final class LanguageChoiceTests: XCTestCase {
     }
 
     func test_systemDefault_leavesALanguageChangedInSystemSettingsSinceAlone() {
-        let store = LocaleOverrideStore(defaults: defaults)
+        let store = LocaleOverrideStore(defaults: defaults, ownDomain: suiteName)
         store.mirrorToAppleLanguages()
         store.set("ja")
         defaults.set(["zh-Hant"], forKey: "AppleLanguages")
@@ -199,7 +199,7 @@ final class LanguageChoiceTests: XCTestCase {
     /// in it from the next launch without picking again.
     func test_mirroringAtLaunch_catchesUpAnEarlierChoice() {
         defaults.set("es", forKey: "cli_pulse_locale_override")
-        let store = LocaleOverrideStore(defaults: defaults)
+        let store = LocaleOverrideStore(defaults: defaults, ownDomain: suiteName)
         store.mirrorToAppleLanguages()
         XCTAssertEqual(writtenAppleLanguages, ["es"])
     }
@@ -208,7 +208,7 @@ final class LanguageChoiceTests: XCTestCase {
     /// same key) is the user's and must survive launch.
     func test_mirroringAtLaunch_withoutAChoice_leavesSystemSettingsAlone() {
         defaults.set(["ko"], forKey: "AppleLanguages")
-        let store = LocaleOverrideStore(defaults: defaults)
+        let store = LocaleOverrideStore(defaults: defaults, ownDomain: suiteName)
         store.mirrorToAppleLanguages()
         XCTAssertEqual(writtenAppleLanguages, ["ko"])
     }
@@ -218,7 +218,7 @@ final class LanguageChoiceTests: XCTestCase {
     /// Default must still switch live, to what the system list says.
     func test_systemDefault_afterLaunchingWithAChoice_switchesLive() {
         defaults.set("ja", forKey: "cli_pulse_locale_override")
-        let store = LocaleOverrideStore(defaults: defaults, systemPreferredLanguages: { ["ko-KR", "en-US"] })
+        let store = LocaleOverrideStore(defaults: defaults, ownDomain: suiteName, systemPreferredLanguages: { ["ko-KR", "en-US"] })
         store.mirrorToAppleLanguages()
 
         store.set(nil)
@@ -233,17 +233,51 @@ final class LanguageChoiceTests: XCTestCase {
     func test_resolvedLocalization_afterSystemDefault_isTheSystemListsCatalogue() throws {
         // A language the bundle would not pick by itself, so a report that
         // ignored the live branch could not pass by matching it.
-        let bundleOwn = LocaleOverrideStore.resolvedLocalization(for: LocaleOverrideStore(defaults: defaults))
+        let bundleOwn = LocaleOverrideStore.resolvedLocalization(for: LocaleOverrideStore(defaults: defaults, ownDomain: suiteName))
         let candidates: [String] = ["ko", "es"]
         let system = try XCTUnwrap(candidates.first { $0 != bundleOwn })
         defaults.set("ja", forKey: "cli_pulse_locale_override")
-        let store = LocaleOverrideStore(defaults: defaults, systemPreferredLanguages: { [system, "en-US"] })
+        let store = LocaleOverrideStore(defaults: defaults, ownDomain: suiteName, systemPreferredLanguages: { [system, "en-US"] })
         store.mirrorToAppleLanguages()
         XCTAssertEqual(LocaleOverrideStore.resolvedLocalization(for: store), "ja")
 
         store.set(nil)
 
         XCTAssertEqual(LocaleOverrideStore.resolvedLocalization(for: store), system)
+    }
+
+    /// 1.63 (A3): "System Default" is the system's language list as Locale
+    /// reports it, not a UserDefaults read of `AppleLanguages`, which would fall
+    /// through to NSGlobalDomain (the privacy manifest's CA92.1 covers only what
+    /// the app wrote). A value only this store's suite holds, as a per-app
+    /// language in System Settings would be, is therefore not what it reads.
+    func test_systemDefault_readsTheSystemListFromLocale_notFromDefaults() throws {
+        let fromLocale = LocaleOverrideStore.systemLocalization(preferences: Locale.preferredLanguages)
+        let decoy = try XCTUnwrap(["ko", "es"].first { $0 != fromLocale })
+        defaults.set("ja", forKey: "cli_pulse_locale_override")
+        let store = LocaleOverrideStore(defaults: defaults, ownDomain: suiteName)
+        store.mirrorToAppleLanguages()
+        defaults.set([decoy], forKey: "AppleLanguages")  // no longer the app's mirror
+
+        store.set(nil)
+
+        XCTAssertEqual(writtenAppleLanguages, [decoy], "a language set elsewhere was removed")
+        XCTAssertEqual(LocaleOverrideStore.resolvedLocalization(for: store), fromLocale)
+    }
+
+    /// Without a domain of its own to read, the store never removes
+    /// `AppleLanguages` (it cannot tell its own pin from the user's); it only
+    /// forgets what it mirrored.
+    func test_storeWithoutItsOwnDomain_neverRemovesAppleLanguages() {
+        let store = LocaleOverrideStore(defaults: defaults)
+        store.mirrorToAppleLanguages()
+        store.set("ja")
+        XCTAssertEqual(writtenAppleLanguages, ["ja"])
+
+        store.set(nil)
+
+        XCTAssertEqual(writtenAppleLanguages, ["ja"])
+        XCTAssertNil(recordedMirror)
     }
 
     func test_systemLocalization_picksTheShippedCatalogueForAPreferenceList() {
