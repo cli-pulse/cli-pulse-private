@@ -101,7 +101,9 @@ public final class LocaleOverrideStore: ObservableObject {
         let stored = defaults.string(forKey: Self.defaultsKey)
         self.override = stored
         self.launchOverride = stored
-        self.systemPreferredLanguages = systemPreferredLanguages ?? { Locale.preferredLanguages }
+        self.systemPreferredLanguages = systemPreferredLanguages ?? {
+            defaults.stringArray(forKey: Self.appleLanguagesKey) ?? Locale.preferredLanguages
+        }
     }
 
     public func set(_ newValue: String?) {
