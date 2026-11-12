@@ -417,10 +417,11 @@ class TokenStoreSessionTest {
                     store.authGeneration,
                     store.deviceIdFor(a),
                     store.state.value.sessionId,
+                    // The rotation is not published before its commit returns.
+                    store.snapshot()?.accessToken,
                 )
             }
-            assertEquals(listOf(a, a, a, null, true, generation, "device-A", a), reads)
-            assertEquals("the rotation is not published before its commit returns", "access-A", store.snapshot()!!.accessToken)
+            assertEquals(listOf(a, a, a, null, true, generation, "device-A", a, "access-A"), reads)
         }
         assertEquals("access-A2", store.snapshot()!!.accessToken)
     }
@@ -431,9 +432,11 @@ class TokenStoreSessionTest {
 
         BlockedCommit(prefs) { store.endIfCurrent(a, EndReason.UserSignedOut) }.use {
             // Memory already holds the wiped store; the end is published when its commit returns.
-            assertEquals(a, store.snapshot()?.sessionId)
-            assertEquals("Name A", store.userName)
-            assertEquals("a@example.test", store.userEmail)
+            // Read on another thread, so a read that takes the lock fails instead of hanging.
+            val reads = returnsWithoutWaiting("a name read") {
+                listOf(store.snapshot()?.sessionId, store.userName, store.userEmail)
+            }
+            assertEquals(listOf(a, "Name A", "a@example.test"), reads)
         }
         assertNull(store.snapshot())
         assertNull(store.userName)
@@ -445,9 +448,10 @@ class TokenStoreSessionTest {
         val demo = store.enterDemoMode()
 
         BlockedCommit(prefs) { store.endIfCurrent(demo, EndReason.DemoExit) }.use {
-            assertEquals(demo, store.snapshot()?.sessionId)
-            assertTrue(store.snapshot()!!.isDemo)
-            assertTrue(store.isDemoMode)
+            val reads = returnsWithoutWaiting("a demo flag read") {
+                listOf(store.snapshot()?.sessionId, store.snapshot()?.isDemo, store.isDemoMode)
+            }
+            assertEquals(listOf(demo, true, true), reads)
         }
         assertNull(store.snapshot())
         assertFalse(store.isDemoMode)
