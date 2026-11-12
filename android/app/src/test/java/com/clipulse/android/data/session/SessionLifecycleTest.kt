@@ -386,6 +386,28 @@ class SessionLifecycleTest {
     }
 
     @Test
+    fun `a writer whose deadline fires right after it took the lock writes nothing`() = runTest(timeout = 10.seconds) {
+        val env = Env(this)
+        env.installA()
+        val ctxA = env.store.snapshot()!!
+        // The deadline fires after lock() returned and before the timeout block did.
+        env.lifecycle.afterWriteLockAcquired = { delay(env.lifecycle.writeTimeoutMillis + 1) }
+        var ran = false
+
+        val result = runCatching {
+            env.lifecycle.write(ctxA) {
+                ran = true
+                env.dao.saveDashboard(CachedDashboard(json = "late"))
+            }
+        }
+
+        assertTrue("got $result", result.exceptionOrNull() is ApiError.TeardownPending)
+        assertFalse("a writer past its deadline ran its block", ran)
+        assertTrue(env.dao.allRows().isEmpty())
+        env.scope.cancel()
+    }
+
+    @Test
     fun `a writer whose deadline fires right after it took the lock still releases it`() = runTest(timeout = 10.seconds) {
         val env = Env(this)
         env.installA()

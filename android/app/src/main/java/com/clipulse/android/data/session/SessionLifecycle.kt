@@ -177,18 +177,21 @@ class SessionLifecycle internal constructor(
      * Ownership of the lock is recorded the moment `lock()` returns, inside the deadline, and the
      * `finally` that releases it is entered before the deadline starts. A deadline can fire after
      * `lock()` returned but before the timeout block did; `withTimeoutOrNull` then returns null
-     * although the lock is held. So its result never decides whether to unlock: the flag does.
+     * although the lock is held. So two things are tracked apart: whether the lock is held
+     * (`owned`, which decides the unlock) and whether the deadline was met (the block's result,
+     * which decides the write). A writer whose deadline passed writes nothing, lock or not.
      */
     suspend fun <T> write(ctx: SessionContext, block: suspend () -> T): T {
         if (tokenStore.sessionId != ctx.sessionId) throw ApiError.SessionSuperseded
         var owned = false
         try {
-            withTimeoutOrNull(writeTimeoutMillis) {
+            val inTime = withTimeoutOrNull(writeTimeoutMillis) {
                 stateMutex.lock()
                 owned = true
                 afterWriteLockAcquired?.invoke()
-            }
-            if (!owned) throw ApiError.TeardownPending
+                true
+            } == true
+            if (!inTime) throw ApiError.TeardownPending
             if (tokenStore.sessionId != ctx.sessionId) throw ApiError.SessionSuperseded
             if (tokenStore.teardownPending != null || !tokenStore.isDurable) {
                 scheduleRetry()
