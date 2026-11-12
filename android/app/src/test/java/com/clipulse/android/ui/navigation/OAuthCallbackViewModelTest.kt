@@ -125,7 +125,7 @@ class OAuthCallbackViewModelTest {
      * may have started another sign-in, and the old link would claim THAT flow's record.
      */
     @Test
-    fun `an old link handed over after a newer flow started costs that flow; without it the newer callback arrives`() = runBlocking<Unit> {
+    fun `an old link handed over after a newer flow started costs that flow, and without it the newer callback arrives`() = runBlocking<Unit> {
         withTimeout(10_000) {
             val vm = OAuthCallbackViewModel(store)
             val activity = activityScope()
