@@ -670,7 +670,7 @@ final class MainThreadStallProbeWiringTests: XCTestCase {
     func testPrivacyNamesTheStallReportAndWhatItCarries() throws {
         let policy = try read("PRIVACY.md").replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
         for claim in [
-            "Since v1.60 the Mac app also sends an error report when its main thread has not answered for ten seconds, at most two a launch",
+            "Since v1.60 the Mac app also sends a separate report of its own when its main thread has not answered for ten seconds, at most two a launch",
             "a fixed word for what the main thread was doing",
             "a fixed word for the kind of event loop it was in",
             "It has no stack trace and no breadcrumbs",
