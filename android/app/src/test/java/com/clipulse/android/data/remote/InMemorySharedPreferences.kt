@@ -41,6 +41,13 @@ internal class InMemorySharedPreferences private constructor(initial: Map<String
     @Volatile
     var nextCommitThrows: RuntimeException? = null
 
+    /**
+     * Runs inside an apply() after memory changed, without this double's lock: a test blocks
+     * in it to hold a TokenStore writer (a claim, say) right after its change took effect.
+     */
+    @Volatile
+    var applyHook: (() -> Unit)? = null
+
     /** The process dies now: only what reached disk survives. */
     @Synchronized
     fun restart(): InMemorySharedPreferences = InMemorySharedPreferences(HashMap(durable))
@@ -128,6 +135,7 @@ internal class InMemorySharedPreferences private constructor(initial: Map<String
                 toMemory()
                 appliedButNotWritten = true
             }
+            applyHook?.invoke()
         }
     }
 }

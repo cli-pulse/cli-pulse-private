@@ -5,44 +5,25 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.lifecycle.lifecycleScope
 import com.clipulse.android.data.remote.OAuthCallbackParser
-import com.clipulse.android.data.remote.OAuthDeepLinkCallback
-import com.clipulse.android.data.remote.OAuthDeepLinkNotice
-import com.clipulse.android.data.remote.OAuthDeepLinkOutcome
-import com.clipulse.android.data.remote.OAuthDeepLinkRouter
 import com.clipulse.android.data.remote.SupabaseConfig
-import com.clipulse.android.data.remote.TokenStore
 import com.clipulse.android.ui.diagnostics.ConfigurationErrorScreen
 import com.clipulse.android.ui.navigation.AppNavigation
+import com.clipulse.android.ui.navigation.OAuthCallbackViewModel
 import com.clipulse.android.ui.theme.CLIPulseTheme
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    @Inject lateinit var tokenStore: TokenStore
-
     /**
-     * Successful OAuth callback awaiting exchange. Consumed by the screen
-     * matching [OAuthDeepLinkCallback.kind]. The durable pending-flow record was
-     * claimed (removed) when the callback was routed, so it is delivered once.
+     * Claims and holds an OAuth callback (or notice) until the screen of its kind consumes
+     * it. Retained across a recreation: a rotation while the browser was open, or while the
+     * claim was out, neither loses the callback nor delivers it twice.
      */
-    var pendingCallback by mutableStateOf<OAuthDeepLinkCallback?>(null)
-        private set
-
-    /**
-     * User-visible notice that a deep link arrived but did not produce a usable
-     * callback (cancel, error, state mismatch, malformed code). Consumed by the
-     * screen matching [OAuthDeepLinkNotice.kind]. The pending-flow record has
-     * already been cleared when this is set.
-     */
-    var pendingNotice by mutableStateOf<OAuthDeepLinkNotice?>(null)
-        private set
+    private val oauthCallbacks: OAuthCallbackViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,6 +43,8 @@ class MainActivity : ComponentActivity() {
         handleOAuthDeepLink(intent)
         enableEdgeToEdge()
         setContent {
+            val pendingCallback by oauthCallbacks.pendingCallback.collectAsState()
+            val pendingNotice by oauthCallbacks.pendingNotice.collectAsState()
             CLIPulseTheme {
                 AppNavigation(
                     pendingCallback = pendingCallback,
@@ -76,7 +59,8 @@ class MainActivity : ComponentActivity() {
         // Persist the deep-link intent so a configuration change after onNewIntent
         // recreates with getIntent() == deep link and onCreate can replay it.
         // Replay is idempotent: the first pass claimed the pending flow record, so
-        // the router returns Drop on the second pass.
+        // the router returns Drop on the second pass, and what the first pass routed is
+        // still held by [oauthCallbacks].
         setIntent(intent)
         // Don't process deep links when config is missing — there's no client to
         // exchange against and the diagnostics screen is the only thing rendered.
@@ -86,12 +70,12 @@ class MainActivity : ComponentActivity() {
 
     /** Called by the screen after handling a successful callback. */
     fun consumePendingCallback() {
-        pendingCallback = null
+        oauthCallbacks.consumeCallback()
     }
 
     /** Called by the screen after surfacing a notice to the user. */
     fun consumePendingNotice() {
-        pendingNotice = null
+        oauthCallbacks.consumeNotice()
     }
 
     private fun handleOAuthDeepLink(intent: Intent?) {
@@ -102,28 +86,11 @@ class MainActivity : ComponentActivity() {
         val isCustom = data.scheme == "clipulse" && data.host == "auth" && data.path == "/callback"
         if (!isHttps && !isCustom) return
 
-        val parsed = OAuthCallbackParser.parse(data)
-        lifecycleScope.launch {
-            // Claimed, not just read: the record is removed here, once. A second callback for
-            // the same flow (a replayed intent, a second tap on the browser's return) finds
-            // nothing, and a sign-in or sign-out since the flow started has already dropped it.
-            // The claim takes the store's lock on an IO thread (a token rotation may be holding
-            // it while its commit waits for the disk); routing continues here, on main.
-            val pending = tokenStore.claimPendingOAuthFlow()
-
-            when (val outcome = OAuthDeepLinkRouter.route(parsed = parsed, pending = pending)) {
-                is OAuthDeepLinkOutcome.DeliverCallback -> {
-                    pendingCallback = outcome.callback
-                }
-
-                is OAuthDeepLinkOutcome.DeliverNotice -> {
-                    pendingNotice = outcome.notice
-                }
-
-                OAuthDeepLinkOutcome.Drop -> {
-                    // Unsolicited deep link (no pending flow). Silently ignore.
-                }
-            }
-        }
+        // Claimed, not just read: the record is removed once, by the retained owner (on an
+        // IO thread, in its own scope, so a recreation cannot cancel it half-way). A second
+        // callback for the same flow (a replayed intent, a second tap on the browser's
+        // return) finds nothing, and a sign-in or sign-out since the flow started has
+        // already dropped it.
+        oauthCallbacks.receive(OAuthCallbackParser.parse(data))
     }
 }
