@@ -188,17 +188,6 @@ class SupabaseClientDemoModeTest {
     }
 
     @Test
-    fun `signOut ends the local session and revokes it`() = runTest {
-        tokenStore.installSession("access-1", "refresh-1", "user-1")
-        server.enqueue(MockResponse().setResponseCode(204))
-
-        client.signOut()
-
-        assertNull(tokenStore.snapshot()?.accessToken)
-        assertEquals("Bearer access-1", server.takeRequest().getHeader("Authorization"))
-    }
-
-    @Test
     fun `a refresh that returns after sign-out does not bring the session back`() = runTest {
         val id = tokenStore.installSession("stale-1", "refresh-1", "user-1")!!
         server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {

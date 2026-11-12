@@ -174,15 +174,6 @@ class SupabaseClient internal constructor(
     }
 
     /**
-     * Ends the current session on this device, then asks the server to revoke it with the
-     * token captured in the same step.
-     */
-    suspend fun signOut(): Unit = withContext(Dispatchers.IO) {
-        val ended = lifecycle.endCurrent(EndReason.UserSignedOut) ?: return@withContext
-        revoke(ended.accessToken)
-    }
-
-    /**
      * Asks the server to revoke [token] and touches nothing on this device, so it can still be
      * running after the next account has signed in (see SettingsViewModel.signOut, which ends
      * the local session itself before the screen changes).
