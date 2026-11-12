@@ -21,13 +21,13 @@ import javax.inject.Inject
  *  - the claim runs in [viewModelScope], not in the Activity's lifecycle scope. The claim
  *    removes the pending record (on an IO thread); if it ran in the Activity's scope, a
  *    rotation while it was out would cancel it after the record was gone and before the
- *    callback was routed, and the replayed intent would find nothing: the sign-in or link
- *    would be lost without a word;
+ *    callback was routed: the sign-in or link would be lost without a word;
  *  - the routed callback is held here until a screen consumes it, so a recreation between
- *    routing and consumption delivers it to the new screen;
- *  - the record is handed out once ([TokenStore.claimPendingOAuthFlow]), so the replayed
- *    intent of the recreated Activity claims nothing and the callback is delivered exactly
- *    once.
+ *    routing and consumption delivers it to the new screen. That is why a recreated
+ *    Activity does not hand its old deep link over again (MainActivity.onCreate): a replay
+ *    has nothing to add, and would claim a newer flow's record against the old link's state;
+ *  - the record is handed out once ([TokenStore.claimPendingOAuthFlow]), so a second
+ *    delivery of the same link claims nothing and the callback is delivered exactly once.
  *
  * Nothing here is saved for a process death: the PKCE verifier stays out of any
  * SavedStateHandle. A process death between the claim and the exchange needs a new sign-in,

@@ -4,6 +4,7 @@ import androidx.lifecycle.viewModelScope
 import com.clipulse.android.MainDispatcherRule
 import com.clipulse.android.data.remote.InMemorySharedPreferences
 import com.clipulse.android.data.remote.OAuthCallbackResult
+import com.clipulse.android.data.remote.OAuthDeepLinkNoticeReason
 import com.clipulse.android.data.remote.TokenStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +27,9 @@ import java.util.concurrent.TimeUnit
 /**
  * The owner of a browser round-trip's answer, against a real TokenStore. An "Activity" is a
  * scope of its own that dies with it (its lifecycle scope); the view model outlives it.
+ * A recreated Activity hands nothing over (MainActivity.onCreate, pinned by
+ * MainActivityDeepLinkWiringTest); a second `receive` of the same link here stands for a
+ * second delivery of it, which must not deliver the callback twice either.
  */
 class OAuthCallbackViewModelTest {
 
@@ -69,7 +73,7 @@ class OAuthCallbackViewModelTest {
             assertNull("the record is gone from the store", prefs.getString("pending_oauth_state", null))
 
             // Rotation: the first Activity is destroyed before the claim's result is back,
-            // and the new one replays the same intent.
+            // and the same link reaches the view model again.
             first.cancel()
             release.countDown()
             val second = activityScope()
@@ -107,11 +111,59 @@ class OAuthCallbackViewModelTest {
             first.cancel() // destroyed before its screen consumed the callback
 
             val second = activityScope()
-            second.launch { vm.receive(success("state-1")) } // the replay
+            second.launch { vm.receive(success("state-1")) } // the same link again
             settle(vm, second)
 
             assertEquals("verifier-1", vm.pendingCallback.value?.codeVerifier)
             second.cancel()
+            vm.viewModelScope.cancel()
+        }
+    }
+
+    /**
+     * Why a recreated Activity must not hand its old deep link over again: by then the user
+     * may have started another sign-in, and the old link would claim THAT flow's record.
+     */
+    @Test
+    fun `an old link handed over after a newer flow started costs that flow; without it the newer callback arrives`() = runBlocking<Unit> {
+        withTimeout(10_000) {
+            val vm = OAuthCallbackViewModel(store)
+            val activity = activityScope()
+            // Flow 1 completes: its link is routed, and the screen takes the callback.
+            store.beginOAuthLogin(
+                TokenStore.PendingOAuthFlow("login", "github", "verifier-1", "state-1", System.currentTimeMillis()),
+            )
+            activity.launch { vm.receive(success("state-1")) }
+            settle(vm, activity)
+            assertEquals("verifier-1", vm.pendingCallback.value?.codeVerifier)
+            vm.consumeCallback()
+
+            // Flow 2 starts; the browser is open.
+            store.beginOAuthLogin(
+                TokenStore.PendingOAuthFlow("login", "github", "verifier-2", "state-2", System.currentTimeMillis()),
+            )
+
+            // The hazard: flow 1's link handed over again (what onCreate did on a recreation).
+            activity.launch { vm.receive(success("state-1")) }
+            settle(vm, activity)
+            assertEquals(OAuthDeepLinkNoticeReason.STATE_MISMATCH, vm.pendingNotice.value?.reason)
+            vm.consumeNotice()
+            // ... and flow 2's real callback then finds nothing.
+            activity.launch { vm.receive(success("state-2")) }
+            settle(vm, activity)
+            assertNull(vm.pendingCallback.value)
+
+            // Start over without the replay: a newer flow is still pending when its own
+            // callback comes (through onNewIntent), and that callback is delivered.
+            store.beginOAuthLogin(
+                TokenStore.PendingOAuthFlow("login", "github", "verifier-3", "state-3", System.currentTimeMillis()),
+            )
+            activity.launch { vm.receive(success("state-3")) }
+            settle(vm, activity)
+            assertEquals("verifier-3", vm.pendingCallback.value?.codeVerifier)
+            assertNull(vm.pendingNotice.value)
+
+            activity.cancel()
             vm.viewModelScope.cancel()
         }
     }

@@ -40,7 +40,17 @@ class MainActivity : ComponentActivity() {
             }
             return
         }
-        handleOAuthDeepLink(intent)
+        // Only on a first creation. A recreated Activity (a rotation, or a restore after a
+        // process death: savedInstanceState != null) still carries the intent it was created
+        // with, which can be an OLD OAuth deep link. That link's flow was claimed when it
+        // first arrived, and whatever it routed is still held by [oauthCallbacks], which
+        // outlives the recreation, so replaying it has nothing to add. Worse, if a newer
+        // sign-in or link has started since, the replay would claim THAT flow's pending
+        // record against the old link's state: a spurious state mismatch, and the real
+        // callback would then find nothing to complete. A deep link that arrives while the
+        // Activity exists, including one that brings a recreated Activity back, comes
+        // through onNewIntent.
+        if (savedInstanceState == null) handleOAuthDeepLink(intent)
         enableEdgeToEdge()
         setContent {
             val pendingCallback by oauthCallbacks.pendingCallback.collectAsState()
@@ -56,11 +66,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        // Persist the deep-link intent so a configuration change after onNewIntent
-        // recreates with getIntent() == deep link and onCreate can replay it.
-        // Replay is idempotent: the first pass claimed the pending flow record, so
-        // the router returns Drop on the second pass, and what the first pass routed is
-        // still held by [oauthCallbacks].
+        // Keeps getIntent() current. A recreation does not hand it over again (see
+        // onCreate): what this pass routes is held by [oauthCallbacks] across a recreation.
         setIntent(intent)
         // Don't process deep links when config is missing — there's no client to
         // exchange against and the diagnostics screen is the only thing rendered.
@@ -88,9 +95,8 @@ class MainActivity : ComponentActivity() {
 
         // Claimed, not just read: the record is removed once, by the retained owner (on an
         // IO thread, in its own scope, so a recreation cannot cancel it half-way). A second
-        // callback for the same flow (a replayed intent, a second tap on the browser's
-        // return) finds nothing, and a sign-in or sign-out since the flow started has
-        // already dropped it.
+        // callback for the same flow (a second tap on the browser's return) finds nothing,
+        // and a sign-in or sign-out since the flow started has already dropped it.
         oauthCallbacks.receive(OAuthCallbackParser.parse(data))
     }
 }
