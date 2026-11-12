@@ -1,0 +1,12 @@
+{
+  "_about": [
+    "Reviewed exceptions for scripts/check_privacy_manifests.py's source scan.",
+    "An entry hides one use of a required-reason API from one target's check:",
+    "  {\"target\": <Xcode target>, \"category\": <NSPrivacyAccessedAPICategory...>,",
+    "   \"file\": <repo-relative path>, \"pattern\": <regex over that line>, \"reason\": <why it needs no declaration>}",
+    "Use it only for a match that is not a call of the API (the scanner already skips comments, string",
+    "contents and code another platform's #if excludes). A call the binary makes is declared, not listed here.",
+    "An entry that no longer matches anything fails the check, so this list can only shrink."
+  ],
+  "entries": []
+}

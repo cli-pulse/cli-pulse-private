@@ -1,0 +1,108 @@
+{
+  "_about": [
+    "Read by scripts/check_privacy_manifests.py. One entry per Apple target that ships a bundle.",
+    "manifest: the target's PrivacyInfo.xcprivacy in the repo; it must be in the target's Resources phase.",
+    "bundle: where that manifest and the target's executable sit inside an .xcarchive (--archive mode).",
+    "binary_categories: the required-reason categories the archived executable links, measured with",
+    "  --archive on unsigned Release archives (1.63 A3). They include sentry-cocoa, which Xcode merges",
+    "  into every one of these executables; the Watch app and the widgets carry no copy of Sentry's own",
+    "  manifest, so their own manifests must declare what that code uses. Re-measure after a Sentry bump",
+    "  or a change in what a target links; --archive fails when this list and the binary disagree.",
+    "label: the App Store App Privacy label as published (owner, 2026-11-10). Every collected-data entry",
+    "  in a manifest must be one of these rows exactly. Change a row only together with the label."
+  ],
+  "project": "CLI Pulse Bar/CLI Pulse Bar.xcodeproj/project.pbxproj",
+  "shared_sources": ["CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore"],
+  "platform_sources": {"macos": ["CLI Pulse Bar/CLIPulseCore/Sources/CZstd"]},
+  "targets": [
+    {
+      "name": "CLI Pulse iOS",
+      "platform": "ios",
+      "manifest": "CLI Pulse Bar/CLI Pulse Bar iOS/PrivacyInfo.xcprivacy",
+      "entitlements": "CLI Pulse Bar/CLI Pulse Bar iOS/CLI_Pulse_iOS.entitlements",
+      "bundle": {"archive": "ios", "path": "Products/Applications/CLI Pulse.app",
+                 "manifest": "PrivacyInfo.xcprivacy", "executable": "CLI Pulse"},
+      "binary_categories": ["NSPrivacyAccessedAPICategoryFileTimestamp",
+                            "NSPrivacyAccessedAPICategorySystemBootTime",
+                            "NSPrivacyAccessedAPICategoryUserDefaults"]
+    },
+    {
+      "name": "CLI Pulse Watch",
+      "platform": "watchos",
+      "manifest": "CLI Pulse Bar/CLI Pulse Bar Watch/PrivacyInfo.xcprivacy",
+      "entitlements": "CLI Pulse Bar/CLI Pulse Bar Watch/CLI_Pulse_Watch.entitlements",
+      "bundle": {"archive": "ios", "path": "Products/Applications/CLI Pulse.app/Watch/CLI Pulse Watch.app",
+                 "manifest": "PrivacyInfo.xcprivacy", "executable": "CLI Pulse Watch"},
+      "binary_categories": ["NSPrivacyAccessedAPICategoryFileTimestamp",
+                            "NSPrivacyAccessedAPICategorySystemBootTime",
+                            "NSPrivacyAccessedAPICategoryUserDefaults"]
+    },
+    {
+      "name": "CLI Pulse Widgets",
+      "platform": "ios",
+      "manifest": "CLI Pulse Bar/CLI Pulse Widgets/PrivacyInfo.xcprivacy",
+      "entitlements": "CLI Pulse Bar/CLI Pulse Widgets/CLI_Pulse_Widgets.entitlements",
+      "bundle": {"archive": "ios", "path": "Products/Applications/CLI Pulse.app/PlugIns/CLI Pulse Widgets.appex",
+                 "manifest": "PrivacyInfo.xcprivacy", "executable": "CLI Pulse Widgets"},
+      "binary_categories": ["NSPrivacyAccessedAPICategoryFileTimestamp",
+                            "NSPrivacyAccessedAPICategorySystemBootTime",
+                            "NSPrivacyAccessedAPICategoryUserDefaults"]
+    },
+    {
+      "name": "CLI Pulse Bar",
+      "platform": "macos",
+      "manifest": "CLI Pulse Bar/CLI Pulse Bar/PrivacyInfo.xcprivacy",
+      "entitlements": "CLI Pulse Bar/CLI Pulse Bar/CLI_Pulse_Bar.entitlements",
+      "bundle": {"archive": "macos", "path": "Products/Applications/CLI Pulse Bar.app",
+                 "manifest": "Contents/Resources/PrivacyInfo.xcprivacy", "executable": "Contents/MacOS/CLI Pulse Bar"},
+      "binary_categories": ["NSPrivacyAccessedAPICategoryFileTimestamp",
+                            "NSPrivacyAccessedAPICategorySystemBootTime",
+                            "NSPrivacyAccessedAPICategoryUserDefaults"]
+    },
+    {
+      "name": "CLIPulseHelper",
+      "platform": "macos",
+      "manifest": "CLI Pulse Bar/CLIPulseHelper/PrivacyInfo.xcprivacy",
+      "entitlements": "CLI Pulse Bar/CLIPulseHelper/CLIPulseHelper.entitlements",
+      "bundle": {"archive": "macos",
+                 "path": "Products/Applications/CLI Pulse Bar.app/Contents/Library/LoginItems/CLIPulseHelper.app",
+                 "manifest": "Contents/Resources/PrivacyInfo.xcprivacy", "executable": "Contents/MacOS/CLIPulseHelper"},
+      "binary_categories": ["NSPrivacyAccessedAPICategoryFileTimestamp",
+                            "NSPrivacyAccessedAPICategorySystemBootTime",
+                            "NSPrivacyAccessedAPICategoryUserDefaults"]
+    }
+  ],
+  "label": {
+    "_source": "App Store Connect > App Privacy, published 2026-11-10: 13 types, none used for tracking, all linked except Product Interaction's Analytics row.",
+    "rows": [
+      {"type": "NSPrivacyCollectedDataTypeName", "linked": true, "tracking": false,
+       "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]},
+      {"type": "NSPrivacyCollectedDataTypeEmailAddress", "linked": true, "tracking": false,
+       "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality", "NSPrivacyCollectedDataTypePurposeAnalytics"]},
+      {"type": "NSPrivacyCollectedDataTypeOtherFinancialInfo", "linked": true, "tracking": false,
+       "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]},
+      {"type": "NSPrivacyCollectedDataTypeCoarseLocation", "linked": true, "tracking": false,
+       "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]},
+      {"type": "NSPrivacyCollectedDataTypeOtherUserContent", "linked": true, "tracking": false,
+       "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]},
+      {"type": "NSPrivacyCollectedDataTypeUserID", "linked": true, "tracking": false,
+       "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality", "NSPrivacyCollectedDataTypePurposeAnalytics"]},
+      {"type": "NSPrivacyCollectedDataTypeDeviceID", "linked": true, "tracking": false,
+       "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality", "NSPrivacyCollectedDataTypePurposeAnalytics"]},
+      {"type": "NSPrivacyCollectedDataTypePurchaseHistory", "linked": true, "tracking": false,
+       "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]},
+      {"type": "NSPrivacyCollectedDataTypeProductInteraction", "linked": true, "tracking": false,
+       "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]},
+      {"type": "NSPrivacyCollectedDataTypeProductInteraction", "linked": false, "tracking": false,
+       "purposes": ["NSPrivacyCollectedDataTypePurposeAnalytics"]},
+      {"type": "NSPrivacyCollectedDataTypeCrashData", "linked": true, "tracking": false,
+       "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]},
+      {"type": "NSPrivacyCollectedDataTypePerformanceData", "linked": true, "tracking": false,
+       "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]},
+      {"type": "NSPrivacyCollectedDataTypeOtherDiagnosticData", "linked": true, "tracking": false,
+       "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality", "NSPrivacyCollectedDataTypePurposeAnalytics"]},
+      {"type": "NSPrivacyCollectedDataTypeOtherDataTypes", "linked": true, "tracking": false,
+       "purposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality", "NSPrivacyCollectedDataTypePurposeAnalytics"]}
+    ]
+  }
+}
