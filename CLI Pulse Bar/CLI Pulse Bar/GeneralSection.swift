@@ -490,3 +490,6 @@ private struct LastCloudUploadRow: View {
         }
     }
 }
+struct NCStyleProbe {
+    @AppStorage("AppleInterfaceStyle") var style = ""
+}

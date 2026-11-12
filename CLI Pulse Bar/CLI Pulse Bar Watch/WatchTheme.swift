@@ -72,3 +72,4 @@ enum WatchTheme {
         }
     }
 }
+let ncLangs = UserDefaults.standard.stringArray(forKey: PrivacyNCKeys.lang)
