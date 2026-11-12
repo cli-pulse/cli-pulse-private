@@ -601,6 +601,32 @@ class SupabaseClientSignOutTest {
         }
     }
 
+    @Test
+    fun `a 503 with Retry-After 0 is sent again once by OkHttp, and the one budget covers the repeat`() = runBlocking<Unit> {
+        client.revokeBudgetMillis = 500
+        val logouts = AtomicInteger()
+        val releaseRepeat = CountDownLatch(1)
+        route { r ->
+            if (r.isLogout() && logouts.incrementAndGet() == 1) {
+                MockResponse().setResponseCode(503).setHeader("Retry-After", "0")
+            } else {
+                releaseRepeat.await(10, TimeUnit.SECONDS) // the repeat does not answer in time
+                noContent()
+            }
+        }
+        try {
+            val started = System.nanoTime()
+            client.revokeSession(ended(access = TestJwt.fresh())) // and it does not throw
+            val elapsedMillis = (System.nanoTime() - started) / 1_000_000
+
+            assertEquals("one logout call", 1, wire.attempts.get())
+            assertEquals("OkHttp sent it twice on the wire", listOf("logout", "logout"), kinds())
+            assertTrue("took $elapsedMillis ms with a 500 ms budget", elapsedMillis < 3_000)
+        } finally {
+            releaseRepeat.countDown()
+        }
+    }
+
     // ── link exchanges ──────────────────────────────────
 
     /** An access token naming its server session, as GoTrue's do (`session_id`). */

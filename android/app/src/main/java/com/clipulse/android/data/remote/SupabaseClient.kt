@@ -213,8 +213,10 @@ class SupabaseClient internal constructor(
      * Bounded: a wait of at most [revokeWaitMillis] (10 s), then at most three requests (one
      * renewal, two logouts) that share one [revokeBudgetMillis] (20 s) budget for everything
      * they do on the network, connecting and reading included; what the budget has not
-     * covered is not sent. The requests go through a client of their own with no transparent
-     * retries and no redirects ([revokeCall]), so three requests are three wire attempts.
+     * covered is not sent. The requests go through a client of their own with no
+     * connection-failure retries and no redirects ([revokeCall]). OkHttp can still send any
+     * one of them a second time, once, when it is answered 503 with `Retry-After: 0`; that
+     * repeat is part of the same call, so the same budget covers it.
      *
      *  - A renewal or link exchange of the same session still out when the sign-out came (a
      *    request or the background sync renewing it) is waited for. Its new pair is dropped
@@ -306,8 +308,10 @@ class SupabaseClient internal constructor(
 
     /**
      * The revocation's own client: the app's (its interceptors, the demo-mode guard included)
-     * without transparent retries or redirects. Each call's timeout is what is left of the
-     * revocation's one budget ([revokeCall]).
+     * without connection-failure retries or redirects. OkHttp still repeats a request once on
+     * a 503 with `Retry-After: 0` (no setting turns that off); the repeat runs inside the same
+     * call, and each call's timeout is what is left of the revocation's one budget
+     * ([revokeCall]).
      */
     private val revokeClient: OkHttpClient by lazy {
         client.newBuilder()
