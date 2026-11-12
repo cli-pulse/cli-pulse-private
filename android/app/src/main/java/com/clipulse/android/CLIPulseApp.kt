@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.clipulse.android.data.remote.SupabaseConfig
+import com.clipulse.android.data.session.SessionLifecycle
 import com.clipulse.android.util.SentryInit
 import com.clipulse.android.worker.SyncWorker
 import dagger.hilt.android.HiltAndroidApp
@@ -15,6 +16,11 @@ class CLIPulseApp : Application(), Configuration.Provider {
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
+    // Lazy: building it opens the encrypted preferences and the database, which must happen
+    // after crash reporting is installed, not during field injection.
+    @Inject
+    lateinit var sessionLifecycle: dagger.Lazy<SessionLifecycle>
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -23,6 +29,9 @@ class CLIPulseApp : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         SentryInit.install(this)
+        // Finishes a sign-out (or a refused session) whose on-device data deletion the last
+        // process did not live to complete, then keeps doing so for every later end.
+        sessionLifecycle.get().start()
         // Don't enqueue periodic sync on a mis-configured release build.
         // Without SUPABASE_URL/SUPABASE_ANON_KEY the worker would loop on
         // 401s and burn battery; MainActivity surfaces a blocking diagnostics

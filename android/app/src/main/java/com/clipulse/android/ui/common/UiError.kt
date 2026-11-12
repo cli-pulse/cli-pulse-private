@@ -36,14 +36,19 @@ sealed class UiError {
             "over_email_send_rate_limit", "over_request_rate_limit", "over_sms_send_rate_limit",
         )
 
-        fun from(error: Throwable): UiError = when (error) {
+        /**
+         * Null for [ApiError.SessionSuperseded]: an operation of a session that has already
+         * been replaced or signed out has nothing to tell the screen that now shows.
+         */
+        fun from(error: Throwable): UiError? = when (error) {
+            is ApiError.SessionSuperseded -> null
             is ApiError.TokenExpired -> SessionExpired
             is ApiError.Http -> fromHttp(error.code, error.body)
             is IOException -> Offline
             else -> Unknown(error.message)
         }
 
-        fun action(action: Action, error: Throwable): UiError = ActionFailed(action, from(error))
+        fun action(action: Action, error: Throwable): UiError? = from(error)?.let { ActionFailed(action, it) }
 
         internal fun fromHttp(code: Int, body: String): UiError {
             val errorCode = errorCode(body)

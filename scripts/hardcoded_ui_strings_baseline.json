@@ -1454,6 +1454,18 @@
    "reason": "KEEP_NOT_USER_VISIBLE: ApiError.message, for logs and Sentry. Screens render UiError (ui/common/UiError.kt), which classifies the exception — GoTrue error_code included — and takes its words from string resources."
   },
   {
+   "path": "android/app/src/main/java/com/clipulse/android/data/remote/SupabaseClient.kt",
+   "literal": "\"The session this operation belonged to has ended.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: ApiError.SessionSuperseded.message, for logs and Sentry. UiError.from maps SessionSuperseded to no error at all, so no screen renders it."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/data/remote/SupabaseClient.kt",
+   "literal": "\"Previous session data is still being removed.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: ApiError.TeardownPending.message, for logs and Sentry. Screens render UiError (ui/common/UiError.kt), which shows the generic string-resource error for it."
+  },
+  {
    "path": "android/app/src/main/java/com/clipulse/android/ui/settings/SettingsScreen.kt",
    "literal": "\"Apple\"",
    "count": 1,

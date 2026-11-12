@@ -39,18 +39,14 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
     linkCallback: OAuthDeepLinkCallback? = null,
     linkNotice: OAuthDeepLinkNotice? = null,
-    onSignOut: () -> Unit,
     onManageSubscription: () -> Unit = {},
     onViewDevices: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
 
-    // Account deletion succeeded: leave for the sign-in screen. Read from the view model's
-    // state rather than a callback handed to it, so a rotation during the request cannot
-    // leave the user on the tabs of an account that no longer exists.
-    LaunchedEffect(state.deleteSuccess) {
-        if (state.deleteSuccess) onSignOut()
-    }
+    // Sign-out, demo exit and account deletion only END the session (through the view model).
+    // The navigation gate sees the session change and leaves the tabs; this screen has no
+    // callback for it, so a tap and the state change it causes cannot leave the tabs twice.
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -62,7 +58,7 @@ fun SettingsScreen(
     // pending-flow record, so we can exchange directly.
     LaunchedEffect(linkCallback) {
         val cb = linkCallback ?: return@LaunchedEffect
-        viewModel.completeLinkIdentity(cb.code, cb.codeVerifier)
+        viewModel.completeLinkIdentity(cb.code, cb.codeVerifier, cb.sessionId)
         (context as? MainActivity)?.consumePendingCallback()
     }
 
@@ -344,10 +340,7 @@ fun SettingsScreen(
         // Demo mode exit or Sign out
         if (state.isDemoMode) {
             OutlinedButton(
-                onClick = {
-                    viewModel.exitDemoMode()
-                    onSignOut()
-                },
+                onClick = { viewModel.exitDemoMode() },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.tertiary),
             ) {
@@ -357,10 +350,7 @@ fun SettingsScreen(
             }
         } else {
             OutlinedButton(
-                onClick = {
-                    viewModel.signOut()
-                    onSignOut()
-                },
+                onClick = { viewModel.signOut() },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)

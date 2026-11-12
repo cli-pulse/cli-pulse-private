@@ -153,4 +153,26 @@ class OverviewViewModelTest {
         assertEquals(0, d.activeSessions)
         vm.viewModelScope.cancel()
     }
+
+    @Test
+    fun `the poll stops quietly when its session was replaced`() = runTest {
+        var calls = 0
+        coEvery { repository.refreshDashboard() } coAnswers {
+            calls++
+            if (calls >= 2) throw ApiError.SessionSuperseded
+            dashboardFlow.value = testDashboard
+        }
+        val vm = OverviewViewModel(repository)
+        assertEquals(1, calls)
+
+        mainDispatcherRule.testDispatcher.scheduler.advanceTimeBy(61_000)
+        mainDispatcherRule.testDispatcher.scheduler.runCurrent()
+        assertEquals(2, calls)
+        assertNull("not an error for the next session", vm.state.value.error)
+
+        mainDispatcherRule.testDispatcher.scheduler.advanceTimeBy(300_000)
+        mainDispatcherRule.testDispatcher.scheduler.runCurrent()
+        assertEquals("the poll stopped", 2, calls)
+        vm.viewModelScope.cancel()
+    }
 }

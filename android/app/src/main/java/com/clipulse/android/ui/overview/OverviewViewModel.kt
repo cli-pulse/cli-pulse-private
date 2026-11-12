@@ -72,6 +72,10 @@ class OverviewViewModel @Inject constructor(
                 } catch (e: ApiError.TokenExpired) {
                     _state.value = _state.value.copy(error = UiError.SessionExpired)
                     break // Stop auto-refresh on auth failure
+                } catch (e: ApiError.SessionSuperseded) {
+                    // The session this screen belongs to was replaced or signed out; its screens
+                    // are about to go. Stop quietly: nothing here is an error for the next one.
+                    break
                 } catch (_: Exception) { }
             }
         }

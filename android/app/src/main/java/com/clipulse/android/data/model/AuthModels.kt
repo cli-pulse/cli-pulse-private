@@ -8,6 +8,8 @@ data class AuthResponse(
     val refresh_token: String? = null,
     val user: UserDTO,
     val paired: Boolean,
+    /** The local session this sign-in installed (or me() validated). Local only; the server never sends it. */
+    val sessionId: String? = null,
 )
 
 @JsonClass(generateAdapter = true)

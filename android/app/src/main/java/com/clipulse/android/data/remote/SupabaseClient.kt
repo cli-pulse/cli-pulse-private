@@ -3,7 +3,11 @@ package com.clipulse.android.data.remote
 import com.clipulse.android.BuildConfig
 import com.clipulse.android.data.DemoDataProvider
 import com.clipulse.android.data.model.*
+import com.clipulse.android.data.session.SessionLifecycle
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Interceptor
@@ -18,10 +22,8 @@ import java.net.URLEncoder
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -46,15 +48,24 @@ internal const val OAUTH_REDIRECT_TO: String = "clipulse://auth/callback"
  * Before 1.62 each screen fetched for itself and demo mode got 401/400 ("Your session
  * expired") on every tab, while SyncWorker sent register_device + dashboard_summary every
  * 15 minutes without a token.
+ *
+ * Sessions: every public call works for ONE session, a [SessionContext] passed in or read
+ * once at entry, and every request it makes goes through [sendAuthed] for that session. A
+ * request is never sent, and a result never returned, for a session that is no longer the
+ * current one ([ApiError.SessionSuperseded]); a renewal never hands one session's tokens to
+ * another's request; and a session ends only through [TokenStore.endIfCurrent], for the
+ * answers [classifyAuthRejection] and [classifyRefreshResponse] list.
  */
 class SupabaseClient internal constructor(
     private val tokenStore: TokenStore,
+    private val lifecycle: SessionLifecycle,
     private val supabaseUrl: String,
     private val supabaseAnonKey: String,
     httpClientBuilder: OkHttpClient.Builder,
 ) {
-    constructor(tokenStore: TokenStore) : this(
+    constructor(tokenStore: TokenStore, lifecycle: SessionLifecycle) : this(
         tokenStore,
+        lifecycle,
         BuildConfig.SUPABASE_URL,
         BuildConfig.SUPABASE_ANON_KEY,
         OkHttpClient.Builder(),
@@ -62,7 +73,16 @@ class SupabaseClient internal constructor(
 
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
 
+    /** One renewal at a time; it guards the token writes, not the reads. */
     private val refreshMutex = Mutex()
+
+    /** Test seam: runs after a request came back for a still-current session, before the caller sees it. */
+    @Volatile
+    internal var afterRequestHook: (path: String) -> Unit = {}
+
+    /** Test seam: the clock the access-token expiry check reads. */
+    @Volatile
+    internal var nowMillis: () -> Long = { System.currentTimeMillis() }
 
     /** Demo mode's alerts, kept so acknowledge / resolve / snooze change what the Alerts tab shows. */
     private val demoAlerts = AtomicReference<List<AlertRecord>?>(null)
@@ -74,17 +94,24 @@ class SupabaseClient internal constructor(
         .writeTimeout(15, TimeUnit.SECONDS)
         .build()
 
+    /** The current session, read once. Hand it to every call of one operation. */
+    fun session(): SessionContext? = tokenStore.snapshot()
+
+    private fun sessionOrThrow(ctx: SessionContext?): SessionContext =
+        ctx ?: tokenStore.snapshot() ?: throw ApiError.TokenExpired
+
     // ── Auth ──────────────────────────────────────────────
 
     suspend fun signInWithGoogle(idToken: String, name: String?, email: String?): AuthResponse =
         withContext(Dispatchers.IO) {
+            val attempt = tokenStore.beginAuthAttempt()
             val body = JSONObject().apply {
                 put("provider", "google")
                 put("id_token", idToken)
                 if (name != null) put("name", name)
             }
-            val json = post("$supabaseUrl/auth/v1/token?grant_type=id_token", body, auth = false)
-            handleAuthResponse(json, email)
+            val json = postUnauthenticated("$supabaseUrl/auth/v1/token?grant_type=id_token", body)
+            handleAuthResponse(attempt, json, email, receivedAtMillis = nowMillis())
         }
 
     suspend fun sendOTP(email: String): Unit = withContext(Dispatchers.IO) {
@@ -92,103 +119,67 @@ class SupabaseClient internal constructor(
             put("email", email)
             put("create_user", true)
         }
-        post("$supabaseUrl/auth/v1/otp", body, auth = false)
+        postUnauthenticated("$supabaseUrl/auth/v1/otp", body)
     }
 
     suspend fun verifyOTP(email: String, code: String): AuthResponse =
         withContext(Dispatchers.IO) {
+            val attempt = tokenStore.beginAuthAttempt()
             val body = JSONObject().apply {
                 put("email", email)
                 put("token", code)
                 put("type", "email")
             }
-            val json = post("$supabaseUrl/auth/v1/verify", body, auth = false)
-            handleAuthResponse(json, email)
+            val json = postUnauthenticated("$supabaseUrl/auth/v1/verify", body)
+            handleAuthResponse(attempt, json, email, receivedAtMillis = nowMillis())
         }
 
     suspend fun signInWithPassword(email: String, password: String): AuthResponse =
         withContext(Dispatchers.IO) {
+            val attempt = tokenStore.beginAuthAttempt()
             val body = JSONObject().apply {
                 put("email", email)
                 put("password", password)
             }
-            val json = post("$supabaseUrl/auth/v1/token?grant_type=password", body, auth = false)
-            handleAuthResponse(json, email)
+            val json = postUnauthenticated("$supabaseUrl/auth/v1/token?grant_type=password", body)
+            handleAuthResponse(attempt, json, email, receivedAtMillis = nowMillis())
         }
 
-    suspend fun me(): AuthResponse = withContext(Dispatchers.IO) {
-        val json = get("$supabaseUrl/auth/v1/user")
+    /**
+     * Validates [ctx]'s session with the server and refreshes its profile. Both requests run
+     * for that one session; the profile is stored only if it is still current.
+     */
+    suspend fun me(ctx: SessionContext? = null): AuthResponse = withContext(Dispatchers.IO) {
+        val session = sessionOrThrow(ctx)
+        val json = get(session, "$supabaseUrl/auth/v1/user")
         val userId = json.optString("id")
-        tokenStore.userId = userId
         val metadata = json.optJSONObject("user_metadata") ?: JSONObject()
 
-        val profile = restGetArray("/rest/v1/profiles?id=eq.${enc(userId)}&select=paired,name,email")
+        val profile = restGetArray(session, "/rest/v1/profiles?id=eq.${enc(userId)}&select=paired,name,email")
         val p = profile.optJSONObject(0) ?: JSONObject()
+        val name = p.optString("name", metadata.optString("name", ""))
+        val email = p.optString("email", json.optString("email", ""))
 
+        if (!tokenStore.setProfileIfCurrent(session.sessionId, userId, name, email)) {
+            throw ApiError.SessionSuperseded
+        }
+        val now = tokenStore.snapshotIfCurrent(session.sessionId) ?: throw ApiError.SessionSuperseded
         AuthResponse(
-            access_token = tokenStore.accessToken ?: "",
-            refresh_token = tokenStore.refreshToken,
-            user = UserDTO(
-                id = userId,
-                name = p.optString("name", metadata.optString("name", "")),
-                email = p.optString("email", json.optString("email", "")),
-            ),
+            access_token = now.accessToken ?: "",
+            refresh_token = now.refreshToken,
+            user = UserDTO(id = userId, name = name, email = email),
             paired = p.optBoolean("paired", false),
+            sessionId = session.sessionId,
         )
     }
 
-    suspend fun refreshAccessToken(staleToken: String? = null): Pair<String, String> = refreshMutex.withLock {
-        withContext(Dispatchers.IO) {
-            // If another coroutine already refreshed while we waited for the lock, skip
-            if (staleToken != null && tokenStore.accessToken != staleToken) {
-                return@withContext (tokenStore.accessToken ?: "") to (tokenStore.refreshToken ?: "")
-            }
-            val rt = tokenStore.refreshToken ?: throw ApiError.TokenExpired
-            val body = JSONObject().apply { put("refresh_token", rt) }
-            val json = post("$supabaseUrl/auth/v1/token?grant_type=refresh_token", body, auth = false)
-            if (json.has("error")) {
-                val errorMsg = json.optString("error_description", json.optString("error", "Token refresh failed"))
-                throw ApiError.Http(401, errorMsg)
-            }
-            val newAccess = json.optString("access_token")
-            if (newAccess.isNullOrBlank()) {
-                throw ApiError.Http(401, "Empty access_token in refresh response")
-            }
-            val newRefresh = json.optString("refresh_token", rt)
-            // The session may have ended (sign-out, demo) or been replaced by the next account's
-            // while the request was out; writing now would bring the old one back.
-            if (tokenStore.refreshToken != rt) throw ApiError.TokenExpired
-            tokenStore.accessToken = newAccess
-            tokenStore.refreshToken = newRefresh
-            newAccess to newRefresh
-        }
-    }
-
     /**
-     * R0 (B3): the signed-in user's Supabase GoTrue JWT for a PRIVATE realtime
-     * terminal join (subscriber auth — distinct from the helper's minted ES256
-     * producer token). [forceRefresh] mints a fresh one via the single-flight
-     * [refreshAccessToken] (used on a join rejection or the proactive live-join
-     * push, so a >1 h background can't leave the join on an expired token —
-     * Gemini #3); otherwise returns the current cached token. Null when signed
-     * out. A refresh failure falls back to the current token rather than
-     * blanking the join.
+     * Ends the current session on this device, then asks the server to revoke it with the
+     * token captured in the same step.
      */
-    suspend fun realtimeAccessToken(forceRefresh: Boolean = false): String? {
-        val current = tokenStore.accessToken?.takeIf { it.isNotBlank() }
-        if (!forceRefresh) return current
-        return try {
-            refreshAccessToken(staleToken = current).first.takeIf { it.isNotBlank() }
-        } catch (_: Exception) {
-            current
-        }
-    }
-
-    /** Ends the session on this device, then asks the server to revoke it. */
     suspend fun signOut(): Unit = withContext(Dispatchers.IO) {
-        val token = tokenStore.accessToken
-        tokenStore.clear()
-        revoke(token)
+        val ended = lifecycle.endCurrent(EndReason.UserSignedOut) ?: return@withContext
+        revoke(ended.accessToken)
     }
 
     /**
@@ -216,13 +207,14 @@ class SupabaseClient internal constructor(
 
     // ── Dashboard ────────────────────────────────────────
 
-    suspend fun dashboard(): DashboardSummary = withContext(Dispatchers.IO) {
-        if (tokenStore.isDemoMode) return@withContext DemoDataProvider.dashboard()
+    suspend fun dashboard(ctx: SessionContext? = null): DashboardSummary = withContext(Dispatchers.IO) {
+        val session = sessionOrThrow(ctx)
+        if (session.isDemo) return@withContext DemoDataProvider.dashboard()
         // v0.42 (2026-05-08): pass the device's local-TZ today so the server
         // computes today/30-day windows against the user's wall clock instead
         // of UTC. Server falls back to current_date if param absent (default
         // NULL via PostgREST), so callers on older servers still work.
-        val json = rpc("dashboard_summary", JSONObject().apply {
+        val json = rpc(session, "dashboard_summary", JSONObject().apply {
             put("p_user_today", localTodayKey())
         })
         DashboardSummary(
@@ -239,10 +231,11 @@ class SupabaseClient internal constructor(
 
     // ── Providers ────────────────────────────────────────
 
-    suspend fun providers(): List<ProviderUsage> = withContext(Dispatchers.IO) {
-        if (tokenStore.isDemoMode) return@withContext DemoDataProvider.providers()
+    suspend fun providers(ctx: SessionContext? = null): List<ProviderUsage> = withContext(Dispatchers.IO) {
+        val session = sessionOrThrow(ctx)
+        if (session.isDemo) return@withContext DemoDataProvider.providers()
         // v0.42: same local-TZ today fix as dashboard().
-        val arr = rpcArray("provider_summary", JSONObject().apply {
+        val arr = rpcArray(session, "provider_summary", JSONObject().apply {
             put("p_user_today", localTodayKey())
         })
         (0 until arr.length()).map { i ->
@@ -279,11 +272,13 @@ class SupabaseClient internal constructor(
 
     // ── Sessions ─────────────────────────────────────────
 
-    suspend fun sessions(): List<SessionRecord> = withContext(Dispatchers.IO) {
-        if (tokenStore.isDemoMode) return@withContext DemoDataProvider.sessions()
-        val userId = enc(tokenStore.userId ?: "")
+    suspend fun sessions(ctx: SessionContext? = null): List<SessionRecord> = withContext(Dispatchers.IO) {
+        val session = sessionOrThrow(ctx)
+        if (session.isDemo) return@withContext DemoDataProvider.sessions()
+        val userId = enc(session.userId ?: "")
         val arr = restGetArray(
-            "/rest/v1/sessions?user_id=eq.$userId&select=*,devices(name)&order=last_active_at.desc&limit=50"
+            session,
+            "/rest/v1/sessions?user_id=eq.$userId&select=*,devices(name)&order=last_active_at.desc&limit=50",
         )
         (0 until arr.length()).map { i ->
             val r = arr.getJSONObject(i)
@@ -309,10 +304,11 @@ class SupabaseClient internal constructor(
 
     // ── Daily Usage ──────────────────────────────────────
 
-    suspend fun dailyUsage(days: Int = 30): List<DailyUsage> = withContext(Dispatchers.IO) {
-        if (tokenStore.isDemoMode) return@withContext DemoDataProvider.dailyUsage(days)
+    suspend fun dailyUsage(days: Int = 30, ctx: SessionContext? = null): List<DailyUsage> = withContext(Dispatchers.IO) {
+        val session = sessionOrThrow(ctx)
+        if (session.isDemo) return@withContext DemoDataProvider.dailyUsage(days)
         val params = JSONObject().put("days", days)
-        val arr = rpcArray("get_daily_usage", params)
+        val arr = rpcArray(session, "get_daily_usage", params)
         (0 until arr.length()).mapNotNull { i ->
             val r = arr.getJSONObject(i)
             val date = r.optString("metric_date").takeIf { it.isNotBlank() } ?: return@mapNotNull null
@@ -332,11 +328,13 @@ class SupabaseClient internal constructor(
 
     // ── Devices ──────────────────────────────────────────
 
-    suspend fun devices(): List<DeviceRecord> = withContext(Dispatchers.IO) {
-        if (tokenStore.isDemoMode) return@withContext DemoDataProvider.devices()
-        val userId = enc(tokenStore.userId ?: "")
+    suspend fun devices(ctx: SessionContext? = null): List<DeviceRecord> = withContext(Dispatchers.IO) {
+        val session = sessionOrThrow(ctx)
+        if (session.isDemo) return@withContext DemoDataProvider.devices()
+        val userId = enc(session.userId ?: "")
         val arr = restGetArray(
-            "/rest/v1/devices?user_id=eq.$userId&select=*&order=last_seen_at.desc"
+            session,
+            "/rest/v1/devices?user_id=eq.$userId&select=*&order=last_seen_at.desc",
         )
         (0 until arr.length()).map { i ->
             val r = arr.getJSONObject(i)
@@ -387,11 +385,13 @@ class SupabaseClient internal constructor(
 
     // ── Alerts ───────────────────────────────────────────
 
-    suspend fun alerts(): List<AlertRecord> = withContext(Dispatchers.IO) {
-        if (tokenStore.isDemoMode) return@withContext currentDemoAlerts()
-        val userId = enc(tokenStore.userId ?: "")
+    suspend fun alerts(ctx: SessionContext? = null): List<AlertRecord> = withContext(Dispatchers.IO) {
+        val session = sessionOrThrow(ctx)
+        if (session.isDemo) return@withContext currentDemoAlerts()
+        val userId = enc(session.userId ?: "")
         val arr = restGetArray(
-            "/rest/v1/alerts?user_id=eq.$userId&select=*&order=created_at.desc&limit=50"
+            session,
+            "/rest/v1/alerts?user_id=eq.$userId&select=*&order=created_at.desc&limit=50",
         )
         (0 until arr.length()).map { i ->
             val r = arr.getJSONObject(i)
@@ -420,13 +420,15 @@ class SupabaseClient internal constructor(
         }
     }
 
-    suspend fun acknowledgeAlert(id: String) = withContext(Dispatchers.IO) {
-        if (tokenStore.isDemoMode) {
+    suspend fun acknowledgeAlert(id: String, ctx: SessionContext? = null) = withContext(Dispatchers.IO) {
+        val session = sessionOrThrow(ctx)
+        if (session.isDemo) {
             updateDemoAlert(id) { it.copy(isRead = true, acknowledgedAt = isoNow()) }
             return@withContext
         }
-        val userId = enc(tokenStore.userId ?: "")
+        val userId = enc(session.userId ?: "")
         restPatch(
+            session,
             "/rest/v1/alerts?id=eq.${enc(id)}&user_id=eq.$userId",
             JSONObject().apply {
                 put("acknowledged_at", isoNow())
@@ -435,26 +437,30 @@ class SupabaseClient internal constructor(
         )
     }
 
-    suspend fun resolveAlert(id: String) = withContext(Dispatchers.IO) {
-        if (tokenStore.isDemoMode) {
+    suspend fun resolveAlert(id: String, ctx: SessionContext? = null) = withContext(Dispatchers.IO) {
+        val session = sessionOrThrow(ctx)
+        if (session.isDemo) {
             updateDemoAlert(id) { it.copy(isResolved = true) }
             return@withContext
         }
-        val userId = enc(tokenStore.userId ?: "")
+        val userId = enc(session.userId ?: "")
         restPatch(
+            session,
             "/rest/v1/alerts?id=eq.${enc(id)}&user_id=eq.$userId",
             JSONObject().apply { put("is_resolved", true) },
         )
     }
 
-    suspend fun snoozeAlert(id: String, minutes: Int) = withContext(Dispatchers.IO) {
+    suspend fun snoozeAlert(id: String, minutes: Int, ctx: SessionContext? = null) = withContext(Dispatchers.IO) {
         val until = isoAt(System.currentTimeMillis() + minutes * 60_000L)
-        if (tokenStore.isDemoMode) {
+        val session = sessionOrThrow(ctx)
+        if (session.isDemo) {
             updateDemoAlert(id) { it.copy(snoozedUntil = until) }
             return@withContext
         }
-        val userId = enc(tokenStore.userId ?: "")
+        val userId = enc(session.userId ?: "")
         restPatch(
+            session,
             "/rest/v1/alerts?id=eq.${enc(id)}&user_id=eq.$userId",
             JSONObject().apply { put("snoozed_until", until) },
         )
@@ -462,10 +468,11 @@ class SupabaseClient internal constructor(
 
     // ── Settings ─────────────────────────────────────────
 
-    suspend fun settings(): SettingsSnapshot = withContext(Dispatchers.IO) {
-        if (tokenStore.isDemoMode) return@withContext SettingsSnapshot()
-        val userId = enc(tokenStore.userId ?: "")
-        val arr = restGetArray("/rest/v1/user_settings?user_id=eq.$userId&select=*")
+    suspend fun settings(ctx: SessionContext? = null): SettingsSnapshot = withContext(Dispatchers.IO) {
+        val session = sessionOrThrow(ctx)
+        if (session.isDemo) return@withContext SettingsSnapshot()
+        val userId = enc(session.userId ?: "")
+        val arr = restGetArray(session, "/rest/v1/user_settings?user_id=eq.$userId&select=*")
         val s = arr.optJSONObject(0) ?: JSONObject()
         SettingsSnapshot(
             notificationsEnabled = s.optBoolean("notifications_enabled", true),
@@ -491,9 +498,10 @@ class SupabaseClient internal constructor(
         )
     }
 
-    suspend fun updateSettings(patch: JSONObject): Unit = withContext(Dispatchers.IO) {
-        val userId = enc(tokenStore.userId ?: return@withContext)
-        restPatch("/rest/v1/user_settings?user_id=eq.$userId", patch)
+    suspend fun updateSettings(patch: JSONObject, ctx: SessionContext? = null): Unit = withContext(Dispatchers.IO) {
+        val session = ctx ?: tokenStore.snapshot() ?: return@withContext
+        val userId = enc(session.userId ?: return@withContext)
+        restPatch(session, "/rest/v1/user_settings?user_id=eq.$userId", patch)
     }
 
     /**
@@ -503,18 +511,22 @@ class SupabaseClient internal constructor(
      * Best-effort + caller-throttled (see DashboardRepository) so we don't
      * hammer the DB on every 30s polling cycle.
      */
-    suspend fun evaluateBudgetAlerts(): Int = withContext(Dispatchers.IO) {
-        if (tokenStore.isDemoMode) return@withContext 0
+    suspend fun evaluateBudgetAlerts(ctx: SessionContext? = null): Int = withContext(Dispatchers.IO) {
         try {
-            val json = rpc("evaluate_budget_alerts")
+            val session = sessionOrThrow(ctx)
+            if (session.isDemo) return@withContext 0
+            val json = rpc(session, "evaluate_budget_alerts")
             json.optInt("alerts_created", 0)
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             0
         }
     }
 
-    suspend fun testWebhook(): Unit = withContext(Dispatchers.IO) {
-        val userId = tokenStore.userId ?: return@withContext
+    suspend fun testWebhook(ctx: SessionContext? = null): Unit = withContext(Dispatchers.IO) {
+        val session = ctx ?: tokenStore.snapshot() ?: return@withContext
+        val userId = session.userId ?: return@withContext
         val body = JSONObject().apply {
             put("user_id", userId)
             put("alert", JSONObject().apply {
@@ -524,16 +536,19 @@ class SupabaseClient internal constructor(
                 put("message", "If you see this, your webhook integration is working correctly.")
             })
         }
-        post("$supabaseUrl/functions/v1/send-webhook", body)
+        post(session, "$supabaseUrl/functions/v1/send-webhook", body)
     }
 
-    // ─�� Server Tier ──────────────────────────────────────
+    // ── Server Tier ──────────────────────────────────────
 
-    suspend fun serverTier(): String = withContext(Dispatchers.IO) {
-        if (tokenStore.isDemoMode) return@withContext "free"
+    suspend fun serverTier(ctx: SessionContext? = null): String = withContext(Dispatchers.IO) {
         try {
-            val json = rpc("get_user_tier")
+            val session = sessionOrThrow(ctx)
+            if (session.isDemo) return@withContext "free"
+            val json = rpc(session, "get_user_tier")
             json.optString("tier", "free")
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             "free"
         }
@@ -543,106 +558,97 @@ class SupabaseClient internal constructor(
 
     data class ReceiptResult(val verified: Boolean, val tier: String, val isNetworkError: Boolean = false)
 
-    suspend fun validateReceipt(purchaseToken: String, productId: String): ReceiptResult =
-        withContext(Dispatchers.IO) {
-            try {
-                val body = JSONObject().apply {
-                    put("platform", "google")
-                    put("purchaseToken", purchaseToken)
-                    put("productId", productId)
-                    put("packageName", "com.clipulse.android")
-                }
-                val req = Request.Builder()
-                    .url("$supabaseUrl/functions/v1/validate-receipt")
-                    .post(body.toString().toRequestBody(jsonMedia))
-                    .addHeader("Content-Type", "application/json")
-                    .addHeader("apikey", supabaseAnonKey)
-                    .apply {
-                        tokenStore.accessToken?.let {
-                            addHeader("Authorization", "Bearer $it")
-                        }
-                    }
-                    .build()
-                val resp = client.newCall(req).execute()
-                resp.use { r ->
-                    if (r.code >= 500) {
-                        // Server error (transient) — treat like network error for retry
-                        return@withContext ReceiptResult(false, "free", isNetworkError = true)
-                    }
-                    if (!r.isSuccessful) return@withContext ReceiptResult(false, "free")
-                    val json = JSONObject(r.body?.string() ?: "{}")
-                    ReceiptResult(
-                        verified = json.optBoolean("verified", false),
-                        tier = json.optString("tier", "free"),
-                    )
-                }
-            } catch (_: java.io.IOException) {
-                // Network error — distinguishable from server rejection
-                ReceiptResult(false, "free", isNetworkError = true)
-            } catch (_: Exception) {
-                ReceiptResult(false, "free")
+    suspend fun validateReceipt(
+        purchaseToken: String,
+        productId: String,
+        ctx: SessionContext? = null,
+    ): ReceiptResult = withContext(Dispatchers.IO) {
+        try {
+            val session = sessionOrThrow(ctx)
+            val body = JSONObject().apply {
+                put("platform", "google")
+                put("purchaseToken", purchaseToken)
+                put("productId", productId)
+                put("packageName", "com.clipulse.android")
             }
+            sendAuthed(session, "$supabaseUrl/functions/v1/validate-receipt") {
+                post(body.toString().toRequestBody(jsonMedia))
+                header("Content-Type", "application/json")
+            }.use { r ->
+                if (r.code >= 500) {
+                    // Server error (transient) — treat like network error for retry
+                    return@withContext ReceiptResult(false, "free", isNetworkError = true)
+                }
+                if (!r.isSuccessful) return@withContext ReceiptResult(false, "free")
+                val json = JSONObject(r.body?.string() ?: "{}")
+                ReceiptResult(
+                    verified = json.optBoolean("verified", false),
+                    tier = json.optString("tier", "free"),
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: java.io.IOException) {
+            // Network error — distinguishable from server rejection
+            ReceiptResult(false, "free", isNetworkError = true)
+        } catch (_: ApiError.Http) {
+            // The receipt endpoint's own answers are read above and never thrown: an Http error
+            // here is the session renewal failing (5xx, 429, offline proxy). Not a rejection of
+            // the purchase, so the caller keeps the current tier and retries.
+            ReceiptResult(false, "free", isNetworkError = true)
+        } catch (_: ApiError.SessionSuperseded) {
+            // The account changed during the check: nothing was decided about this purchase.
+            ReceiptResult(false, "free", isNetworkError = true)
+        } catch (_: Exception) {
+            ReceiptResult(false, "free")
         }
+    }
 
     // ── Device Registration ──────────────────────────────
 
-    suspend fun registerDevice(name: String, type: String = "Android", system: String): String =
-        withContext(Dispatchers.IO) {
-            val userId = tokenStore.userId ?: throw ApiError.TokenExpired
-            val body = JSONObject().apply {
-                put("user_id", userId)
-                put("name", name)
-                put("type", type)
-                put("system", system)
-                put("status", "Online")
-                put("helper_version", "1.0.0")
-            }
-            val req = Request.Builder()
-                .url("$supabaseUrl/rest/v1/devices")
-                .post(body.toString().toRequestBody(jsonMedia))
-                .addHeader("Content-Type", "application/json")
-                .addHeader("apikey", supabaseAnonKey)
-                .addHeader("Prefer", "return=representation")
-                .apply {
-                    tokenStore.accessToken?.let {
-                        addHeader("Authorization", "Bearer $it")
-                    }
-                }
-                .build()
-            val resp = client.newCall(req).execute()
-            resp.use { r ->
-                if (!r.isSuccessful) throw ApiError.Http(r.code, r.body?.string() ?: "")
-                val arr = JSONArray(r.body?.string() ?: "[]")
-                arr.getJSONObject(0).optString("id")
-            }
+    suspend fun registerDevice(
+        ctx: SessionContext,
+        name: String,
+        type: String = "Android",
+        system: String,
+    ): String = withContext(Dispatchers.IO) {
+        val userId = ctx.userId ?: throw ApiError.TokenExpired
+        val body = JSONObject().apply {
+            put("user_id", userId)
+            put("name", name)
+            put("type", type)
+            put("system", system)
+            put("status", "Online")
+            put("helper_version", "1.0.0")
         }
+        sendAuthed(ctx, "$supabaseUrl/rest/v1/devices") {
+            post(body.toString().toRequestBody(jsonMedia))
+            header("Content-Type", "application/json")
+            header("Prefer", "return=representation")
+        }.use { r ->
+            if (!r.isSuccessful) throw ApiError.Http(r.code, r.body?.string() ?: "")
+            val arr = JSONArray(r.body?.string() ?: "[]")
+            arr.getJSONObject(0).optString("id")
+        }
+    }
 
-    suspend fun updatePushToken(deviceId: String, token: String): Unit =
+    suspend fun updatePushToken(ctx: SessionContext, deviceId: String, token: String): Unit =
         withContext(Dispatchers.IO) {
             val body = JSONObject().apply {
                 put("push_token", token)
                 put("push_platform", "fcm")
             }
-            val req = Request.Builder()
-                .url("$supabaseUrl/rest/v1/devices?id=eq.${enc(deviceId)}")
-                .patch(body.toString().toRequestBody(jsonMedia))
-                .addHeader("Content-Type", "application/json")
-                .addHeader("apikey", supabaseAnonKey)
-                .apply {
-                    tokenStore.accessToken?.let {
-                        addHeader("Authorization", "Bearer $it")
-                    }
-                }
-                .build()
-            val resp = client.newCall(req).execute()
-            resp.use { r ->
+            sendAuthed(ctx, "$supabaseUrl/rest/v1/devices?id=eq.${enc(deviceId)}") {
+                patch(body.toString().toRequestBody(jsonMedia))
+                header("Content-Type", "application/json")
+            }.use { r ->
                 if (!r.isSuccessful) throw ApiError.Http(r.code, r.body?.string() ?: "")
             }
         }
 
-    suspend fun syncProviderQuotas(results: List<ProviderQuotaPayload>): Unit =
+    suspend fun syncProviderQuotas(ctx: SessionContext, results: List<ProviderQuotaPayload>): Unit =
         withContext(Dispatchers.IO) {
-            val userId = tokenStore.userId ?: return@withContext
+            val userId = ctx.userId ?: return@withContext
             if (results.isEmpty()) return@withContext
 
             val arr = JSONArray()
@@ -658,20 +664,11 @@ class SupabaseClient internal constructor(
                     put("updated_at", isoNow())
                 })
             }
-            val req = Request.Builder()
-                .url("$supabaseUrl/rest/v1/provider_quotas")
-                .post(arr.toString().toRequestBody(jsonMedia))
-                .addHeader("Content-Type", "application/json")
-                .addHeader("apikey", supabaseAnonKey)
-                .addHeader("Prefer", "resolution=merge-duplicates")
-                .apply {
-                    tokenStore.accessToken?.let {
-                        addHeader("Authorization", "Bearer $it")
-                    }
-                }
-                .build()
-            val resp = client.newCall(req).execute()
-            resp.use { r ->
+            sendAuthed(ctx, "$supabaseUrl/rest/v1/provider_quotas") {
+                post(arr.toString().toRequestBody(jsonMedia))
+                header("Content-Type", "application/json")
+                header("Prefer", "resolution=merge-duplicates")
+            }.use { r ->
                 if (!r.isSuccessful) {
                     // Log but don't throw — quota sync is non-critical
                     android.util.Log.w("SupabaseClient", "syncProviderQuotas failed: ${r.code}")
@@ -709,49 +706,87 @@ class SupabaseClient internal constructor(
         return Triple(url, verifier, state)
     }
 
-    /** Exchange an OAuth authorization code for a Supabase session (PKCE). */
-    suspend fun exchangeOAuthCode(code: String, codeVerifier: String): Unit = withContext(Dispatchers.IO) {
-        val body = JSONObject().apply {
-            put("auth_code", code)
-            put("code_verifier", codeVerifier)
-        }
-        val req = Request.Builder()
-            .url("$supabaseUrl/auth/v1/token?grant_type=pkce")
-            .post(body.toString().toRequestBody(jsonMedia))
-            .addHeader("Content-Type", "application/json")
-            .addHeader("apikey", supabaseAnonKey)
-            .build()
-        val resp: okhttp3.Response = client.newCall(req).execute()
-        resp.use { r: okhttp3.Response ->
-            val responseBody = r.body?.string() ?: ""
-            if (!r.isSuccessful) throw ApiError.Http(r.code, responseBody)
-            val json = JSONObject(responseBody)
-            // Use optString + explicit guard (not throwing getString) so a
-            // partial/non-conforming token response surfaces as a typed
-            // ApiError instead of an uncaught JSONException crashing the
-            // auth flow — matches refreshAccessToken's pattern.
-            val at = json.optString("access_token")
-            val rt = json.optString("refresh_token")
-            if (at.isBlank() || rt.isBlank()) {
-                throw ApiError.Http(r.code, "OAuth code exchange: missing access/refresh token in response")
+    /**
+     * Exchange an OAuth authorization code for a Supabase session (PKCE). Returns the id of
+     * the session it installed.
+     *
+     * [authGeneration] is the sign-in generation saved with the pending flow when the user
+     * left for the browser (TokenStore.beginOAuthLogin), carried through the claim and the
+     * delivery. A callback does not become the newest attempt by arriving late: if any
+     * sign-in or demo entry happened since the flow started, it installs
+     * nothing ([ApiError.SessionSuperseded]). A flow without a generation (saved by 1.62)
+     * cannot prove it is still the latest and is dropped the same way.
+     */
+    suspend fun exchangeOAuthCode(code: String, codeVerifier: String, authGeneration: Long?): String =
+        withContext(Dispatchers.IO) {
+            if (authGeneration == null || authGeneration != tokenStore.authGeneration) {
+                throw ApiError.SessionSuperseded
             }
-            val user = json.optJSONObject("user")
-            val uid = user?.optString("id") ?: ""
-            val meta = user?.optJSONObject("user_metadata")
-            val name = meta?.optString("name") ?: meta?.optString("full_name") ?: ""
-            val email = user?.optString("email") ?: ""
-            tokenStore.updateAuthState(at, rt, uid)
-            tokenStore.userName = name
-            tokenStore.userEmail = email
+            val body = JSONObject().apply {
+                put("auth_code", code)
+                put("code_verifier", codeVerifier)
+            }
+            val req = Request.Builder()
+                .url("$supabaseUrl/auth/v1/token?grant_type=pkce")
+                .post(body.toString().toRequestBody(jsonMedia))
+                .addHeader("Content-Type", "application/json")
+                .addHeader("apikey", supabaseAnonKey)
+                .build()
+            val parsed = client.newCall(req).execute().use { r ->
+                val receivedAt = nowMillis()
+                val responseBody = r.body?.string() ?: ""
+                if (!r.isSuccessful) throw ApiError.Http(r.code, responseBody)
+                val json = JSONObject(responseBody)
+                // Use optString + explicit guard (not throwing getString) so a
+                // partial/non-conforming token response surfaces as a typed
+                // ApiError instead of an uncaught JSONException crashing the
+                // auth flow.
+                val at = json.optString("access_token")
+                val rt = json.optString("refresh_token")
+                if (at.isBlank() || rt.isBlank()) {
+                    throw ApiError.Http(r.code, "OAuth code exchange: missing access/refresh token in response")
+                }
+                val user = json.optJSONObject("user")
+                val meta = user?.optJSONObject("user_metadata")
+                OAuthSession(
+                    accessToken = at,
+                    refreshToken = rt,
+                    userId = user?.optString("id") ?: "",
+                    name = meta?.optString("name") ?: meta?.optString("full_name") ?: "",
+                    email = user?.optString("email") ?: "",
+                    receivedAtMillis = receivedAt,
+                )
+            }
+            // A caller cancelled while the exchange was out installs nothing.
+            currentCoroutineContext().ensureActive()
+            lifecycle.install(
+                accessToken = parsed.accessToken,
+                refreshToken = parsed.refreshToken,
+                userId = parsed.userId,
+                userName = parsed.name,
+                userEmail = parsed.email,
+                attempt = authGeneration,
+                receivedAtMillis = parsed.receivedAtMillis,
+            ) ?: throw ApiError.SessionSuperseded
         }
-    }
+
+    private class OAuthSession(
+        val accessToken: String,
+        val refreshToken: String,
+        val userId: String,
+        val name: String,
+        val email: String,
+        /** When the answer arrived ([nowMillis]): the token's lifetime runs from then. */
+        val receivedAtMillis: Long,
+    )
 
     // ── Identity Linking ──────────────────────────────────
 
     /** List OAuth identities linked to the current user. */
-    suspend fun userIdentities(): List<UserIdentity> = withContext(Dispatchers.IO) {
-        if (tokenStore.isDemoMode) return@withContext emptyList()
-        val json = get("$supabaseUrl/auth/v1/user")
+    suspend fun userIdentities(ctx: SessionContext? = null): List<UserIdentity> = withContext(Dispatchers.IO) {
+        val session = sessionOrThrow(ctx)
+        if (session.isDemo) return@withContext emptyList()
+        val json = get(session, "$supabaseUrl/auth/v1/user")
         val arr = json.optJSONArray("identities") ?: JSONArray()
         (0 until arr.length()).mapNotNull { i ->
             val row = arr.optJSONObject(i) ?: return@mapNotNull null
@@ -771,96 +806,97 @@ class SupabaseClient internal constructor(
      * The `state` is a CSRF token that Supabase propagates through the OAuth roundtrip
      * and echoes back in the redirect — callers must verify it matches before exchanging.
      */
-    suspend fun linkIdentityAuthorizeUrl(provider: String): Triple<String, String, String> =
-        withContext(Dispatchers.IO) {
-            val token = tokenStore.accessToken ?: throw ApiError.TokenExpired
-            val verifier = generateCodeVerifier()
-            val challenge = sha256Base64Url(verifier)
-            val state = generateCodeVerifier().take(32)
-            // See `OAUTH_REDIRECT_TO` -- same custom-scheme rationale as login.
-            val redirectTo = URLEncoder.encode(OAUTH_REDIRECT_TO, "UTF-8")
-            val url = "$supabaseUrl/auth/v1/user/identities/authorize" +
-                "?provider=$provider" +
-                "&redirect_to=$redirectTo" +
-                "&code_challenge=$challenge" +
-                "&code_challenge_method=S256" +
-                "&state=$state" +
-                "&skip_http_redirect=true"
-            val req = Request.Builder()
-                .url(url)
-                .get()
-                .addHeader("apikey", supabaseAnonKey)
-                .addHeader("Authorization", "Bearer $token")
-                .build()
-            val resp = client.newCall(req).execute()
-            resp.use { r ->
-                val responseBody = r.body?.string() ?: ""
-                if (!r.isSuccessful) throw ApiError.Http(r.code, responseBody)
-                val json = JSONObject(responseBody)
-                val authUrl = json.optString("url")
-                if (authUrl.isNullOrEmpty()) throw ApiError.Http(500, "No url in authorize response")
-                Triple(authUrl, verifier, state)
-            }
+    suspend fun linkIdentityAuthorizeUrl(
+        provider: String,
+        ctx: SessionContext? = null,
+    ): Triple<String, String, String> = withContext(Dispatchers.IO) {
+        val session = sessionOrThrow(ctx)
+        val verifier = generateCodeVerifier()
+        val challenge = sha256Base64Url(verifier)
+        val state = generateCodeVerifier().take(32)
+        // See `OAUTH_REDIRECT_TO` -- same custom-scheme rationale as login.
+        val redirectTo = URLEncoder.encode(OAUTH_REDIRECT_TO, "UTF-8")
+        val url = "$supabaseUrl/auth/v1/user/identities/authorize" +
+            "?provider=$provider" +
+            "&redirect_to=$redirectTo" +
+            "&code_challenge=$challenge" +
+            "&code_challenge_method=S256" +
+            "&state=$state" +
+            "&skip_http_redirect=true"
+        sendAuthed(session, url) { get() }.use { r ->
+            val responseBody = r.body?.string() ?: ""
+            if (!r.isSuccessful) throw ApiError.Http(r.code, responseBody)
+            val json = JSONObject(responseBody)
+            val authUrl = json.optString("url")
+            if (authUrl.isNullOrEmpty()) throw ApiError.Http(500, "No url in authorize response")
+            Triple(authUrl, verifier, state)
         }
+    }
 
     /**
-     * Exchange a link-identity PKCE code. Rotates the session tokens to reflect the
-     * newly linked identity, but does not replace the current user.
+     * Exchange a link-identity PKCE code for the session the link was started from
+     * ([sessionId], from the pending flow MainActivity claimed; TokenStore binds a 1.62 flow
+     * to its session at the claim). The rotated tokens are stored only for that session and
+     * only while it is current: a callback that arrives after a sign-out, or after the next
+     * account signed in, changes nothing.
+     *
+     * The whole exchange, request and commit, holds the refresh mutex: it produces tokens
+     * like a renewal does, and a renewal must not land between this request and its commit
+     * (or the reverse), so neither can overwrite the other's newer pair.
      */
-    suspend fun exchangeOAuthCodeForLink(code: String, codeVerifier: String): Unit =
+    suspend fun exchangeOAuthCodeForLink(code: String, codeVerifier: String, sessionId: String): Unit =
         withContext(Dispatchers.IO) {
-            val body = JSONObject().apply {
-                put("auth_code", code)
-                put("code_verifier", codeVerifier)
-            }
-            val req = Request.Builder()
-                .url("$supabaseUrl/auth/v1/token?grant_type=pkce")
-                .post(body.toString().toRequestBody(jsonMedia))
-                .addHeader("Content-Type", "application/json")
-                .addHeader("apikey", supabaseAnonKey)
-                .build()
-            val resp = client.newCall(req).execute()
-            resp.use { r ->
-                val responseBody = r.body?.string() ?: ""
-                if (!r.isSuccessful) throw ApiError.Http(r.code, responseBody)
-                val json = JSONObject(responseBody)
-                val at = json.optString("access_token", "")
-                val rt = json.optString("refresh_token", "")
-                if (at.isNotEmpty()) {
-                    tokenStore.accessToken = at
-                    if (rt.isNotEmpty()) tokenStore.refreshToken = rt
+            refreshMutex.withLock {
+                val session = tokenStore.snapshotIfCurrent(sessionId) ?: throw ApiError.SessionSuperseded
+                if (session.isDemo) throw DemoModeRequestBlocked("$supabaseUrl/auth/v1/token")
+                val body = JSONObject().apply {
+                    put("auth_code", code)
+                    put("code_verifier", codeVerifier)
                 }
+                val req = Request.Builder()
+                    .url("$supabaseUrl/auth/v1/token?grant_type=pkce")
+                    .post(body.toString().toRequestBody(jsonMedia))
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("apikey", supabaseAnonKey)
+                    .build()
+                val (at, rt, receivedAt) = client.newCall(req).execute().use { r ->
+                    val arrivedAt = nowMillis()
+                    val responseBody = r.body?.string() ?: ""
+                    if (!r.isSuccessful) throw ApiError.Http(r.code, responseBody)
+                    val json = JSONObject(responseBody)
+                    Triple(json.optString("access_token", ""), json.optString("refresh_token", ""), arrivedAt)
+                }
+                currentCoroutineContext().ensureActive()
+                if (at.isBlank() || rt.isBlank()) {
+                    if (tokenStore.snapshotIfCurrent(sessionId) == null) throw ApiError.SessionSuperseded
+                } else if (!tokenStore.rotateIfCurrent(sessionId, at, rt, receivedAt)) {
+                    throw ApiError.SessionSuperseded
+                }
+                Unit
             }
         }
 
     /** Unlink a given identity from the current user. */
-    suspend fun unlinkIdentity(identityId: String): Unit = withContext(Dispatchers.IO) {
-        val token = tokenStore.accessToken ?: throw ApiError.TokenExpired
+    suspend fun unlinkIdentity(identityId: String, ctx: SessionContext? = null): Unit = withContext(Dispatchers.IO) {
+        val session = sessionOrThrow(ctx)
         val encodedId = URLEncoder.encode(identityId, "UTF-8")
-        val req = Request.Builder()
-            .url("$supabaseUrl/auth/v1/user/identities/$encodedId")
-            .delete()
-            .addHeader("apikey", supabaseAnonKey)
-            .addHeader("Authorization", "Bearer $token")
-            .build()
-        val resp = client.newCall(req).execute()
-        resp.use { r ->
+        sendAuthed(session, "$supabaseUrl/auth/v1/user/identities/$encodedId") { delete() }.use { r ->
             val responseBody = r.body?.string() ?: ""
             if (!r.isSuccessful) throw ApiError.Http(r.code, responseBody)
         }
     }
 
+    // java.util.Base64 (API 26 = minSdk), not android.util.Base64: the same bytes, and it
+    // runs in JVM unit tests.
     private fun generateCodeVerifier(): String {
         val bytes = ByteArray(32)
         java.security.SecureRandom().nextBytes(bytes)
-        return android.util.Base64.encodeToString(bytes,
-            android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
 
     private fun sha256Base64Url(input: String): String {
         val digest = java.security.MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
-        return android.util.Base64.encodeToString(digest,
-            android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(digest)
     }
 
     // ── Health ────────────────────────────────────────────
@@ -881,14 +917,15 @@ class SupabaseClient internal constructor(
 
     // ── Teams ─────────────────────────────────────────────
 
-    suspend fun rpcPublic(function: String, params: JSONObject = JSONObject()): JSONObject =
-        withContext(Dispatchers.IO) { rpc(function, params) }
+    suspend fun rpcPublic(function: String, params: JSONObject = JSONObject(), ctx: SessionContext? = null): JSONObject =
+        withContext(Dispatchers.IO) { rpc(sessionOrThrow(ctx), function, params) }
 
     data class TeamInfo(val id: String, val name: String, val role: String)
 
-    suspend fun fetchTeamsForUser(userId: String): List<TeamInfo> = withContext(Dispatchers.IO) {
+    suspend fun fetchTeamsForUser(userId: String, ctx: SessionContext? = null): List<TeamInfo> = withContext(Dispatchers.IO) {
         val arr = restGetArray(
-            "/rest/v1/team_members?user_id=eq.${enc(userId)}&select=role,teams(id,name)"
+            sessionOrThrow(ctx),
+            "/rest/v1/team_members?user_id=eq.${enc(userId)}&select=role,teams(id,name)",
         )
         (0 until arr.length()).mapNotNull { i ->
             val row = arr.getJSONObject(i)
@@ -903,9 +940,10 @@ class SupabaseClient internal constructor(
 
     data class TeamMemberInfo(val userId: String, val name: String, val email: String, val role: String)
 
-    suspend fun fetchTeamMembers(teamId: String): List<TeamMemberInfo> = withContext(Dispatchers.IO) {
+    suspend fun fetchTeamMembers(teamId: String, ctx: SessionContext? = null): List<TeamMemberInfo> = withContext(Dispatchers.IO) {
         val arr = restGetArray(
-            "/rest/v1/team_members?team_id=eq.${enc(teamId)}&select=role,user_id,profiles(name,email)"
+            sessionOrThrow(ctx),
+            "/rest/v1/team_members?team_id=eq.${enc(teamId)}&select=role,user_id,profiles(name,email)",
         )
         (0 until arr.length()).mapNotNull { i ->
             val row = arr.getJSONObject(i)
@@ -921,8 +959,11 @@ class SupabaseClient internal constructor(
 
     data class TeamInviteInfo(val id: String, val email: String, val role: String, val createdAt: String)
 
-    suspend fun fetchTeamDetails(teamId: String): Pair<List<TeamMemberInfo>, List<TeamInviteInfo>> = withContext(Dispatchers.IO) {
-        val result = rpc("team_details", JSONObject().apply { put("p_team_id", teamId) })
+    suspend fun fetchTeamDetails(
+        teamId: String,
+        ctx: SessionContext? = null,
+    ): Pair<List<TeamMemberInfo>, List<TeamInviteInfo>> = withContext(Dispatchers.IO) {
+        val result = rpc(sessionOrThrow(ctx), "team_details", JSONObject().apply { put("p_team_id", teamId) })
         val membersArr = result.optJSONArray("members") ?: JSONArray()
         val invitesArr = result.optJSONArray("invites") ?: JSONArray()
         val members = (0 until membersArr.length()).mapNotNull { i ->
@@ -946,34 +987,26 @@ class SupabaseClient internal constructor(
         members to invites
     }
 
-    suspend fun updateMemberRole(teamId: String, userId: String, role: String) = withContext(Dispatchers.IO) {
-        rpc("update_member_role", JSONObject().apply {
-            put("p_team_id", teamId)
-            put("p_user_id", userId)
-            put("p_role", role)
-        })
-    }
+    suspend fun updateMemberRole(teamId: String, userId: String, role: String, ctx: SessionContext? = null) =
+        withContext(Dispatchers.IO) {
+            rpc(sessionOrThrow(ctx), "update_member_role", JSONObject().apply {
+                put("p_team_id", teamId)
+                put("p_user_id", userId)
+                put("p_role", role)
+            })
+        }
 
     // ── Account Deletion ─────────────────────────────────
 
-    suspend fun deleteAccount() = withContext(Dispatchers.IO) {
-        rpc("delete_user_account")
-        signOut()
-    }
-
-    // ── HTTP Helpers (all suspend, no runBlocking) ─────
-
     /**
-     * Gate for the authenticated helpers below. Demo mode fails locally (see [DemoModeGuard]).
-     * With neither an access token nor a refresh token there is no session to send: the server
-     * would answer 401 and the refresh below could not run, so this throws the same
-     * [ApiError.TokenExpired] without the request.
+     * Deletes the account of [ctx]'s session, then ends exactly that session on this device
+     * (never one that signed in while the request was out) and revokes it.
      */
-    private fun requireSession(url: String) {
-        if (tokenStore.isDemoMode) throw DemoModeRequestBlocked(url)
-        if (tokenStore.accessToken.isNullOrBlank() && tokenStore.refreshToken.isNullOrBlank()) {
-            throw ApiError.TokenExpired
-        }
+    suspend fun deleteAccount(ctx: SessionContext? = null): Unit = withContext(Dispatchers.IO) {
+        val session = sessionOrThrow(ctx)
+        rpc(session, "delete_user_account")
+        val ended = lifecycle.endIfCurrent(session.sessionId, EndReason.AccountDeleted)
+        if (ended != null) revoke(ended.accessToken)
     }
 
     /** Forget demo mode's alert changes, so the next demo session starts from the sample data. */
@@ -995,125 +1028,220 @@ class SupabaseClient internal constructor(
         }
     }
 
-    // NOTE: All callers must be on Dispatchers.IO (public methods enforce this via withContext)
-    private suspend fun get(url: String, retried: Boolean = false): JSONObject {
-        requireSession(url)
-        val currentToken = tokenStore.accessToken
-        val req = Request.Builder().url(url).get()
-            .addHeader("apikey", supabaseAnonKey)
-            .apply {
-                currentToken?.let {
-                    addHeader("Authorization", "Bearer $it")
+    // ── Session-bound requests ───────────────────────────
+
+    /**
+     * Sends one authenticated request for [ctx]'s session and returns the response, which the
+     * caller reads and closes. In order:
+     *
+     *  - demo mode fails locally; a session that is no longer current is never sent for
+     *    ([ApiError.SessionSuperseded]); no token at all is [ApiError.TokenExpired];
+     *  - an access token that has expired (by its lifetime from when this device received it)
+     *    is renewed first;
+     *  - the answer is checked against the current session again before anything else;
+     *  - a 401/403 is classified ([classifyAuthRejection]) from a peek at the body: an expiry
+     *    or an ambiguous 401 renews once and retries once (a renewal before sending counts);
+     *    "session gone" ends the session at once. A rejection of the RENEWED token is returned
+     *    as it is with the credentials kept: the server just issued that token, so a rejection
+     *    says something about the server (a signing-key rotation, a proxy), not about this
+     *    session. Sessions end only for "session gone" or a refused renewal. Everything else
+     *    is returned untouched.
+     *
+     * Cancellation is never turned into an error: after the blocking call returns, a cancelled
+     * caller gets its CancellationException and nothing else happens.
+     */
+    private suspend fun sendAuthed(
+        ctx: SessionContext,
+        url: String,
+        configure: Request.Builder.() -> Unit,
+    ): Response {
+        if (ctx.isDemo) throw DemoModeRequestBlocked(url)
+        val start = tokenStore.snapshotIfCurrent(ctx.sessionId) ?: throw ApiError.SessionSuperseded
+        if (start.accessToken.isNullOrBlank() && start.refreshToken.isNullOrBlank()) throw ApiError.TokenExpired
+        var access: String? = start.accessToken
+        var renewed = false
+        if (!start.refreshToken.isNullOrBlank() &&
+            (access.isNullOrBlank() || isAccessTokenExpired(access, nowMillis(), start.accessReceivedAt))
+        ) {
+            access = renew(ctx, access)
+            renewed = true
+        }
+        while (true) {
+            val builder = Request.Builder().url(url).header("apikey", supabaseAnonKey)
+            if (!access.isNullOrBlank()) builder.header("Authorization", "Bearer $access")
+            builder.configure()
+            val request = builder.build()
+            if (tokenStore.snapshotIfCurrent(ctx.sessionId) == null) throw ApiError.SessionSuperseded
+
+            val response = client.newCall(request).execute()
+            try {
+                currentCoroutineContext().ensureActive()
+            } catch (e: CancellationException) {
+                response.close()
+                throw e
+            }
+            if (tokenStore.snapshotIfCurrent(ctx.sessionId) == null) {
+                response.close()
+                throw ApiError.SessionSuperseded
+            }
+
+            val path = request.url.encodedPath
+            val rejection = if (response.code == 401 || response.code == 403) {
+                classifyAuthRejection(path, response.code, response.peekBody(PEEK_BYTES).string())
+            } else {
+                AuthRejection.None
+            }
+            when (rejection) {
+                AuthRejection.None -> {
+                    afterRequestHook(path)
+                    return response
+                }
+                AuthRejection.SessionGone -> {
+                    response.close()
+                    lifecycle.endIfCurrent(ctx.sessionId, EndReason.SessionGone)
+                    throw ApiError.TokenExpired
+                }
+                AuthRejection.Expiry, AuthRejection.Ambiguous -> {
+                    if (renewed) {
+                        // Rejected with a token the server has just issued: an error to report,
+                        // not a verdict on the session. Nothing ends.
+                        afterRequestHook(path)
+                        return response
+                    }
+                    val canRenew = !tokenStore.snapshotIfCurrent(ctx.sessionId)?.refreshToken.isNullOrBlank()
+                    if (!canRenew) {
+                        if (rejection == AuthRejection.Ambiguous) {
+                            afterRequestHook(path)
+                            return response
+                        }
+                        // An expired token and no way to renew it, ever: renew() ends it.
+                    }
+                    response.close()
+                    access = renew(ctx, access)
+                    renewed = true
                 }
             }
-            .build()
-        val resp = client.newCall(req).execute()
-        if (resp.code == 401 && !retried) {
-            resp.close() // Free connection before blocking on refresh
-            refreshAccessToken(staleToken = currentToken)
-            return get(url, retried = true)
-        }
-        return resp.use { r ->
-            if (!r.isSuccessful) throw ApiError.Http(r.code, r.body?.string() ?: "")
-            JSONObject(r.body?.string() ?: "{}")
         }
     }
 
-    private suspend fun post(url: String, body: JSONObject, auth: Boolean = true, retried: Boolean = false): JSONObject {
-        if (auth) requireSession(url)
-        val currentToken = if (auth) tokenStore.accessToken else null
+    /**
+     * Renews [ctx]'s session and returns the access token to use now. Under [refreshMutex]:
+     * the session must still be current (a renewal for an ended session never runs, and never
+     * picks up the next account's tokens); if another request of this same session renewed
+     * while this one waited, its token is used without a second request. A refused renewal
+     * ends the session; any other failure is thrown as it is and keeps the credentials.
+     * Internal for tests only.
+     */
+    internal suspend fun renew(ctx: SessionContext, staleAccess: String?): String = refreshMutex.withLock {
+        val current = tokenStore.snapshotIfCurrent(ctx.sessionId) ?: throw ApiError.SessionSuperseded
+        val currentAccess = current.accessToken
+        if (!currentAccess.isNullOrBlank() && currentAccess != staleAccess &&
+            !isAccessTokenExpired(currentAccess, nowMillis(), current.accessReceivedAt)
+        ) {
+            return@withLock currentAccess
+        }
+        val refreshToken = current.refreshToken
+        if (refreshToken.isNullOrBlank()) {
+            lifecycle.endIfCurrent(ctx.sessionId, EndReason.SessionRefused)
+            throw ApiError.TokenExpired
+        }
+        val (outcome, receivedAt) = performRefreshRequest(refreshToken)
+        when (outcome) {
+            is RefreshOutcome.Renewed -> {
+                if (!tokenStore.rotateIfCurrent(ctx.sessionId, outcome.accessToken, outcome.refreshToken, receivedAt)) {
+                    throw ApiError.SessionSuperseded
+                }
+                outcome.accessToken
+            }
+            is RefreshOutcome.Refused -> {
+                lifecycle.endIfCurrent(ctx.sessionId, EndReason.SessionRefused)
+                throw ApiError.TokenExpired
+            }
+            is RefreshOutcome.Failed -> throw outcome.error
+        }
+    }
+
+    /**
+     * One `grant_type=refresh_token` request, classified ([classifyRefreshResponse]), with the
+     * moment its answer arrived ([nowMillis]; a renewed token's lifetime runs from then, not
+     * from whenever the store's lock was free). Reads and writes nothing on this device; the
+     * caller decides what to store.
+     */
+    internal suspend fun performRefreshRequest(refreshToken: String): Pair<RefreshOutcome, Long> = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("$supabaseUrl/auth/v1/token?grant_type=refresh_token")
+            .post(JSONObject().put("refresh_token", refreshToken).toString().toRequestBody(jsonMedia))
+            .header("Content-Type", "application/json")
+            .header("apikey", supabaseAnonKey)
+            .build()
+        val answer = try {
+            client.newCall(request).execute().use { r ->
+                val receivedAt = nowMillis()
+                classifyRefreshResponse(r.code, r.body?.string() ?: "") to receivedAt
+            }
+        } catch (e: IOException) {
+            RefreshOutcome.Failed(e) to nowMillis()
+        }
+        currentCoroutineContext().ensureActive()
+        answer
+    }
+
+    // ── HTTP Helpers (all suspend, no runBlocking) ─────
+    // NOTE: All callers must be on Dispatchers.IO (public methods enforce this via withContext)
+
+    private suspend fun get(ctx: SessionContext, url: String): JSONObject =
+        sendAuthed(ctx, url) { get() }.use { r ->
+            if (!r.isSuccessful) throw ApiError.Http(r.code, r.body?.string() ?: "")
+            JSONObject(r.body?.string() ?: "{}")
+        }
+
+    private suspend fun post(ctx: SessionContext, url: String, body: JSONObject): JSONObject =
+        sendAuthed(ctx, url) {
+            post(body.toString().toRequestBody(jsonMedia))
+            header("Content-Type", "application/json")
+        }.use { r ->
+            if (!r.isSuccessful) throw ApiError.Http(r.code, r.body?.string() ?: "")
+            val text = r.body?.string() ?: "{}"
+            if (text.isBlank() || text == "null") JSONObject() else JSONObject(text)
+        }
+
+    /** Sign-in requests: no session yet, so no bearer and no renewal. */
+    private fun postUnauthenticated(url: String, body: JSONObject): JSONObject {
         val req = Request.Builder().url(url)
             .post(body.toString().toRequestBody(jsonMedia))
             .addHeader("Content-Type", "application/json")
             .addHeader("apikey", supabaseAnonKey)
-            .apply {
-                if (auth) currentToken?.let {
-                    addHeader("Authorization", "Bearer $it")
-                }
-            }
             .build()
-        val resp = client.newCall(req).execute()
-        if (resp.code == 401 && auth && !retried) {
-            resp.close()
-            refreshAccessToken(staleToken = currentToken)
-            return post(url, body, auth, retried = true)
-        }
-        return resp.use { r ->
+        return client.newCall(req).execute().use { r ->
             if (!r.isSuccessful) throw ApiError.Http(r.code, r.body?.string() ?: "")
             val text = r.body?.string() ?: "{}"
             if (text.isBlank() || text == "null") JSONObject() else JSONObject(text)
         }
     }
 
-    private suspend fun restGetArray(path: String, retried: Boolean = false): JSONArray {
-        requireSession(path)
-        val currentToken = tokenStore.accessToken
-        val req = Request.Builder().url("$supabaseUrl$path").get()
-            .addHeader("Content-Type", "application/json")
-            .addHeader("apikey", supabaseAnonKey)
-            .apply {
-                currentToken?.let {
-                    addHeader("Authorization", "Bearer $it")
-                }
-            }
-            .build()
-        val resp = client.newCall(req).execute()
-        if (resp.code == 401 && !retried) {
-            resp.close()
-            refreshAccessToken(staleToken = currentToken)
-            return restGetArray(path, retried = true)
-        }
-        return resp.use { r ->
+    private suspend fun restGetArray(ctx: SessionContext, path: String): JSONArray =
+        sendAuthed(ctx, "$supabaseUrl$path") {
+            get()
+            header("Content-Type", "application/json")
+        }.use { r ->
             if (!r.isSuccessful) throw ApiError.Http(r.code, r.body?.string() ?: "")
             JSONArray(r.body?.string() ?: "[]")
         }
-    }
 
-    private suspend fun restPatch(path: String, body: JSONObject, retried: Boolean = false) {
-        requireSession(path)
-        val currentToken = tokenStore.accessToken
-        val req = Request.Builder().url("$supabaseUrl$path")
-            .patch(body.toString().toRequestBody(jsonMedia))
-            .addHeader("Content-Type", "application/json")
-            .addHeader("apikey", supabaseAnonKey)
-            .apply {
-                currentToken?.let {
-                    addHeader("Authorization", "Bearer $it")
-                }
-            }
-            .build()
-        val resp = client.newCall(req).execute()
-        if (resp.code == 401 && !retried) {
-            resp.close()
-            refreshAccessToken(staleToken = currentToken)
-            restPatch(path, body, retried = true)
-            return
-        }
-        resp.use { r ->
+    private suspend fun restPatch(ctx: SessionContext, path: String, body: JSONObject) {
+        sendAuthed(ctx, "$supabaseUrl$path") {
+            patch(body.toString().toRequestBody(jsonMedia))
+            header("Content-Type", "application/json")
+        }.use { r ->
             if (!r.isSuccessful) throw ApiError.Http(r.code, r.body?.string() ?: "")
         }
     }
 
-    private suspend fun rpc(function: String, params: JSONObject = JSONObject(), retried: Boolean = false): JSONObject {
-        requireSession("/rest/v1/rpc/$function")
-        val currentToken = tokenStore.accessToken
-        val req = Request.Builder().url("$supabaseUrl/rest/v1/rpc/$function")
-            .post(params.toString().toRequestBody(jsonMedia))
-            .addHeader("Content-Type", "application/json")
-            .addHeader("apikey", supabaseAnonKey)
-            .apply {
-                currentToken?.let {
-                    addHeader("Authorization", "Bearer $it")
-                }
-            }
-            .build()
-        val resp = client.newCall(req).execute()
-        if (resp.code == 401 && !retried) {
-            resp.close()
-            refreshAccessToken(staleToken = currentToken)
-            return rpc(function, params, retried = true)
-        }
-        return resp.use { r ->
+    private suspend fun rpc(ctx: SessionContext, function: String, params: JSONObject = JSONObject()): JSONObject =
+        sendAuthed(ctx, "$supabaseUrl/rest/v1/rpc/$function") {
+            post(params.toString().toRequestBody(jsonMedia))
+            header("Content-Type", "application/json")
+        }.use { r ->
             if (!r.isSuccessful) throw ApiError.Http(r.code, r.body?.string() ?: "")
             val text = r.body?.string() ?: "{}"
             if (text.isBlank() || text == "null") JSONObject()
@@ -1121,43 +1249,54 @@ class SupabaseClient internal constructor(
                 JSONObject().put("_array", JSONArray(text))
             } else JSONObject(text)
         }
-    }
 
-    private suspend fun rpcArray(function: String, params: JSONObject = JSONObject(), retried: Boolean = false): JSONArray {
-        requireSession("/rest/v1/rpc/$function")
-        val currentToken = tokenStore.accessToken
-        val req = Request.Builder().url("$supabaseUrl/rest/v1/rpc/$function")
-            .post(params.toString().toRequestBody(jsonMedia))
-            .addHeader("Content-Type", "application/json")
-            .addHeader("apikey", supabaseAnonKey)
-            .apply {
-                currentToken?.let {
-                    addHeader("Authorization", "Bearer $it")
-                }
-            }
-            .build()
-        val resp = client.newCall(req).execute()
-        if (resp.code == 401 && !retried) {
-            resp.close()
-            refreshAccessToken(staleToken = currentToken)
-            return rpcArray(function, params, retried = true)
-        }
-        return resp.use { r ->
+    private suspend fun rpcArray(ctx: SessionContext, function: String, params: JSONObject = JSONObject()): JSONArray =
+        sendAuthed(ctx, "$supabaseUrl/rest/v1/rpc/$function") {
+            post(params.toString().toRequestBody(jsonMedia))
+            header("Content-Type", "application/json")
+        }.use { r ->
             if (!r.isSuccessful) throw ApiError.Http(r.code, r.body?.string() ?: "")
             JSONArray(r.body?.string() ?: "[]")
         }
-    }
 
-    private suspend fun handleAuthResponse(json: JSONObject, fallbackEmail: String?): AuthResponse {
+    /**
+     * Installs the session a sign-in answered with, if [attempt] is still the current sign-in
+     * generation (an older attempt that answers last must not replace the newer session), then
+     * fetches its profile for that session only. [receivedAtMillis]: when the answer arrived.
+     */
+    private suspend fun handleAuthResponse(
+        attempt: Long,
+        json: JSONObject,
+        fallbackEmail: String?,
+        receivedAtMillis: Long,
+    ): AuthResponse {
         val token = json.optString("access_token")
+        if (token.isBlank()) throw ApiError.Http(200, "sign-in answer without an access token")
         val refresh = json.optString("refresh_token").takeIf { it.isNotBlank() }
         val user = json.optJSONObject("user") ?: JSONObject()
         val userId = user.optString("id")
 
-        tokenStore.updateAuthState(access = token, refresh = refresh, user = userId)
+        // A caller cancelled while the sign-in request was out installs nothing; neither does an
+        // attempt that a newer sign-in or demo mode overtook (checked under the
+        // store's lock together with the install).
+        currentCoroutineContext().ensureActive()
+        val sessionId = lifecycle.install(
+            accessToken = token,
+            refreshToken = refresh,
+            userId = userId,
+            attempt = attempt,
+            receivedAtMillis = receivedAtMillis,
+        ) ?: throw ApiError.SessionSuperseded
+        val session = tokenStore.snapshotIfCurrent(sessionId) ?: throw ApiError.SessionSuperseded
 
         val profile = try {
-            restGetArray("/rest/v1/profiles?id=eq.${enc(userId)}&select=paired,name,email")
+            restGetArray(session, "/rest/v1/profiles?id=eq.${enc(userId)}&select=paired,name,email")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: ApiError.SessionSuperseded) {
+            throw e
+        } catch (e: ApiError.TokenExpired) {
+            throw e
         } catch (_: Exception) {
             JSONArray()
         }
@@ -1166,14 +1305,14 @@ class SupabaseClient internal constructor(
 
         val name = p.optString("name").ifBlank { metadata.optString("name", "") }
         val email = p.optString("email").ifBlank { user.optString("email", fallbackEmail ?: "") }
-        tokenStore.userName = name
-        tokenStore.userEmail = email
+        if (!tokenStore.setProfileIfCurrent(sessionId, null, name, email)) throw ApiError.SessionSuperseded
 
         return AuthResponse(
             access_token = token,
             refresh_token = refresh,
             user = UserDTO(id = userId, name = name, email = email),
             paired = p.optBoolean("paired", false),
+            sessionId = sessionId,
         )
     }
 
@@ -1220,6 +1359,11 @@ class SupabaseClient internal constructor(
         }
         return out
     }
+
+    private companion object {
+        /** Enough of an error body to read GoTrue's or PostgREST's error code. */
+        const val PEEK_BYTES = 64L * 1024L
+    }
 }
 
 /**
@@ -1245,5 +1389,22 @@ sealed class ApiError : Exception() {
 
     data object TokenExpired : ApiError() {
         override val message: String get() = "Session expired. Please sign in again."
+    }
+
+    /**
+     * The operation belonged to a session that is no longer the current one: it was signed
+     * out, or the next account signed in, while the operation was running. Not an expiry:
+     * nothing ends because of it, and no screen shows it (UiError.from maps it to nothing).
+     */
+    data object SessionSuperseded : ApiError() {
+        override val message: String get() = "The session this operation belonged to has ended."
+    }
+
+    /**
+     * The previous session's on-device data could not be deleted in time, so this write was
+     * skipped. Retryable: the next start or sign-out runs the deletion again.
+     */
+    data object TeardownPending : ApiError() {
+        override val message: String get() = "Previous session data is still being removed."
     }
 }

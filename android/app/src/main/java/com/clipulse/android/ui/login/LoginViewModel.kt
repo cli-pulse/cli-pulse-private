@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.clipulse.android.data.remote.ApiError
 import com.clipulse.android.data.remote.SupabaseClient
 import com.clipulse.android.data.remote.TokenStore
+import com.clipulse.android.data.session.SessionLifecycle
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -15,42 +17,62 @@ import com.clipulse.android.ui.common.UiError
 data class LoginUiState(
     val isLoading: Boolean = false,
     val error: UiError? = null,
-    val isLoggedIn: Boolean = false,
+    /**
+     * The session a sign-in on this screen installed. The screen hands it to the gate, which
+     * shows the tabs only if it is still the current session. Not a Boolean: "signed in" says
+     * nothing about WHICH session, and A -> signed out -> B would look the same as A.
+     */
+    val completedSessionId: String? = null,
     val showOtpInput: Boolean = false,
     val otpEmail: String = "",
 )
 
+/**
+ * The sign-in form. It does not restore saved sessions (SessionGateViewModel does, once per
+ * session, in the Activity's scope) and never clears credentials: a session ends only through
+ * TokenStore.endIfCurrent.
+ */
 @HiltViewModel
 class LoginViewModel @Inject constructor(
     private val supabase: SupabaseClient,
     private val tokenStore: TokenStore,
+    private val lifecycle: SessionLifecycle,
 ) : ViewModel() {
 
-    // Gate cached non-demo sessions behind tryRestoreSession: start in isLoading
-    // until me() either confirms the token (→ isLoggedIn=true) or rejects it
-    // (401/TokenExpired → tokens cleared, isLoggedIn stays false). Flipping
-    // isLoggedIn=true at construction would let LoginScreen call onLoggedIn()
-    // before validation, leaving the user in the authed stack with stale tokens
-    // when the eventual 401 arrives. Demo mode bypasses validation as before.
-    private val _state = MutableStateFlow(
-        LoginUiState(
-            isLoggedIn = tokenStore.isDemoMode,
-            isLoading = !tokenStore.isDemoMode && tokenStore.isLoggedIn,
-        )
-    )
+    private val _state = MutableStateFlow(LoginUiState())
     val state: StateFlow<LoginUiState> = _state
 
-    fun signInWithGoogle(idToken: String, name: String?, email: String?) {
+    /** The latest sign-in attempt started here; an older one's result is dropped (main thread only). */
+    private var attempt = 0
+
+    /**
+     * Runs one sign-in attempt. Only the latest attempt may change the screen: an older one
+     * that answers last neither completes nor shows its error. [ApiError.SessionSuperseded]
+     * (a newer sign-in won in the client) is not an error.
+     */
+    private fun signIn(work: suspend () -> String) {
+        val mine = ++attempt
+        _state.value = _state.value.copy(isLoading = true, error = null)
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
             try {
-                supabase.signInWithGoogle(idToken, name, email)
-                _state.value = _state.value.copy(isLoading = false, isLoggedIn = true)
+                val sessionId = work()
+                if (mine == attempt) {
+                    _state.value = _state.value.copy(isLoading = false, completedSessionId = sessionId)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiError.SessionSuperseded) {
+                if (mine == attempt) _state.value = _state.value.copy(isLoading = false)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))
+                if (mine == attempt) _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))
             }
         }
     }
+
+    private fun installed(sessionId: String?): String = sessionId ?: throw ApiError.SessionSuperseded
+
+    fun signInWithGoogle(idToken: String, name: String?, email: String?) =
+        signIn { installed(supabase.signInWithGoogle(idToken, name, email).sessionId) }
 
     fun sendOTP(email: String) {
         viewModelScope.launch {
@@ -62,6 +84,8 @@ class LoginViewModel @Inject constructor(
                     showOtpInput = true,
                     otpEmail = email,
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))
             }
@@ -69,97 +93,65 @@ class LoginViewModel @Inject constructor(
     }
 
     fun verifyOTP(code: String) {
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
-            try {
-                supabase.verifyOTP(_state.value.otpEmail, code)
-                _state.value = _state.value.copy(isLoading = false, isLoggedIn = true)
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))
-            }
-        }
+        val email = _state.value.otpEmail
+        signIn { installed(supabase.verifyOTP(email, code).sessionId) }
     }
 
-    fun signInWithPassword(email: String, password: String) {
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
-            try {
-                supabase.signInWithPassword(email, password)
-                _state.value = _state.value.copy(isLoading = false, isLoggedIn = true)
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))
-            }
-        }
-    }
+    fun signInWithPassword(email: String, password: String) =
+        signIn { installed(supabase.signInWithPassword(email, password).sessionId) }
+
+    /** A browser sign-in between its tap and the browser opening (main thread only). */
+    private var oauthStarting = false
 
     /**
      * Start a login OAuth flow: build the Supabase authorize URL and persist the pending-flow
      * record (kind/provider/verifier/state) so we survive process death during the browser
-     * round-trip. Returns the URL to open, or null on error.
+     * round-trip. The flow starts a new sign-in generation, saved with it: its callback may
+     * install a session only if nothing newer started meanwhile. Then [open] gets the URL.
+     * Suspends while the store saves the flow on an IO thread, never blocking the main thread
+     * on the store's lock.
+     *
+     * A second tap while one is starting does nothing: two flows would open two browser tabs,
+     * the second overwriting the first's pending record, and finishing in the first tab would
+     * end in a state mismatch.
      */
-    fun startOAuthLogin(provider: String): String {
-        val (url, verifier, state) = supabase.oauthAuthorizeUrl(provider)
-        tokenStore.savePendingOAuthFlow(
-            TokenStore.PendingOAuthFlow(
-                kind = "login",
-                provider = provider,
-                codeVerifier = verifier,
-                state = state,
-                createdAt = System.currentTimeMillis(),
+    suspend fun startOAuthLogin(provider: String, open: (String) -> Unit) {
+        if (oauthStarting) return
+        oauthStarting = true
+        try {
+            val (url, verifier, state) = supabase.oauthAuthorizeUrl(provider)
+            tokenStore.beginOAuthLogin(
+                TokenStore.PendingOAuthFlow(
+                    kind = "login",
+                    provider = provider,
+                    codeVerifier = verifier,
+                    state = state,
+                    createdAt = System.currentTimeMillis(),
+                )
             )
-        )
-        return url
-    }
-
-    /** Exchange an OAuth authorization code obtained via deep link. */
-    fun exchangeOAuthCode(code: String, codeVerifier: String) {
-        viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
-            try {
-                supabase.exchangeOAuthCode(code, codeVerifier)
-                // Exchange succeeded — clear the durable pending-flow record so we don't
-                // re-fire stale callbacks. The TTL would eventually clean it up anyway.
-                tokenStore.clearPendingOAuthFlow()
-                _state.value = _state.value.copy(isLoading = false, isLoggedIn = true)
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))
-            }
+            open(url)
+        } finally {
+            oauthStarting = false
         }
     }
 
+    /**
+     * Exchange an OAuth authorization code obtained via deep link (MainActivity claimed the
+     * record), under the sign-in generation the browser flow started with.
+     */
+    fun exchangeOAuthCode(code: String, codeVerifier: String, authGeneration: Long?) =
+        signIn { supabase.exchangeOAuthCode(code, codeVerifier, authGeneration) }
+
+    /**
+     * Demo mode is a session of its own, with a synthetic id; it needs no check. Entering it
+     * abandons every sign-in still out (their answers install nothing).
+     */
     fun enterDemoMode() {
-        tokenStore.isDemoMode = true
-        _state.value = _state.value.copy(isLoggedIn = true)
-    }
-
-    fun tryRestoreSession() {
-        if (tokenStore.isDemoMode) {
-            _state.value = _state.value.copy(isLoggedIn = true)
-            return
-        }
-        if (!tokenStore.isLoggedIn) return
+        val mine = ++attempt
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true)
-            try {
-                supabase.me()
-                _state.value = _state.value.copy(isLoading = false, isLoggedIn = true)
-            } catch (e: ApiError.TokenExpired) {
-                // Confirmed auth failure — clear credentials
-                tokenStore.clear()
-                _state.value = _state.value.copy(isLoading = false, isLoggedIn = false)
-            } catch (e: ApiError.Http) {
-                if (e.code == 401 || e.code == 403) {
-                    tokenStore.clear()
-                    _state.value = _state.value.copy(isLoading = false, isLoggedIn = false)
-                } else {
-                    // Transient error — keep tokens, proceed as logged in
-                    _state.value = _state.value.copy(isLoading = false, isLoggedIn = true,
-                        error = UiError.OfflineUsingCachedSession)
-                }
-            } catch (_: Exception) {
-                // Network error — keep tokens, proceed as logged in
-                _state.value = _state.value.copy(isLoading = false, isLoggedIn = true,
-                    error = UiError.OfflineUsingCachedSession)
+            val sessionId = lifecycle.enterDemoMode()
+            if (mine == attempt) {
+                _state.value = _state.value.copy(isLoading = false, error = null, completedSessionId = sessionId)
             }
         }
     }

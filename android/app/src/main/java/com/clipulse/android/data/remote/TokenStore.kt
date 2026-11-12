@@ -4,8 +4,39 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
+import java.util.UUID
+
+/**
+ * The encrypted credential store. Every mutator runs under this object's monitor and writes
+ * in a single `SharedPreferences.Editor` transaction, then publishes [state]. A session is
+ * identified by a random `sessionId` written with its credentials; every write that belongs
+ * to a session is conditional on that session still being the current one.
+ *
+ * Session transitions ([installSession], [enterDemoMode], [endIfCurrent], [clearPendingIfEquals])
+ * are called ONLY by SessionLifecycle, which serialises them with cache writes, hydration and
+ * the deletion of an ended session's data (SessionNavigationWiringTest checks the sources).
+ * They and token rotations use `commit()`: they run on an IO thread, and the next account's
+ * cache writes must never be durable while the transition that allowed them is not. Any
+ * successful commit writes the whole map, so one success also makes every earlier change
+ * durable; [isDurable] reports whether the last commit reached disk.
+ *
+ * Reading never takes the lock. A mutator holds the lock through its `commit()`, which can wait
+ * for the disk, so every session read ([snapshot], [snapshotIfCurrent], [sessionId],
+ * [teardownPending], [isDurable], [authGeneration], [deviceIdFor], [isDemoMode], [userName],
+ * [userEmail], [state]) comes from one immutable view, published after every change: the main
+ * thread can call them at any time, and they always agree with each other. Tokens are read
+ * only through a [SessionContext]. The
+ * writers a screen calls ([beginOAuthLogin], [savePendingOAuthFlow], [claimPendingOAuthFlow])
+ * suspend and take the lock on an IO thread. Every other writer runs on an IO thread already.
+ */
 class TokenStore internal constructor(
     private val prefs: SharedPreferences,
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     constructor(context: Context) : this(
         EncryptedSharedPreferences.create(
@@ -17,70 +48,349 @@ class TokenStore internal constructor(
         ),
     )
 
-    var accessToken: String?
-        get() = prefs.getString(KEY_ACCESS_TOKEN, null)
-        set(value) {
-            val edit = prefs.edit().putString(KEY_ACCESS_TOKEN, value)
-            // A real session always ends demo mode, whichever sign-in path wrote it.
-            if (!value.isNullOrBlank()) edit.putBoolean(KEY_DEMO_MODE, false)
+    /** Why the last session ended, until the next one starts. In memory only. */
+    private var lastEndReason: EndReason? = null
+
+    /** False after a commit that did not reach disk, until one does. */
+    @Volatile
+    private var durable = true
+
+    /**
+     * Called, with the lock held, when a commit did not reach disk. SessionLifecycle sets it to
+     * its retry, so a failed write is written again without waiting for some later write.
+     */
+    @Volatile
+    internal var onCommitFailed: (() -> Unit)? = null
+
+    /** What the lock-free reads return. Replaced as a whole, never changed. */
+    private class View(
+        val state: SessionState,
+        val session: SessionContext?,
+        val deviceId: String?,
+        val userName: String?,
+        val userEmail: String?,
+        val authGeneration: Long,
+    )
+
+    @Volatile
+    private var view: View = readViewLocked()
+
+    private val _state = MutableStateFlow(view.state)
+
+    /** The current session id and teardown marker, re-published after every change. */
+    val state: StateFlow<SessionState> get() = _state
+
+    // ── Reads (all from the published view; tokens only through a SessionContext) ──
+
+    /** The current session is demo mode. */
+    val isDemoMode: Boolean get() = view.state.isDemo
+
+    /** The current session's display name, if it has one. */
+    val userName: String? get() = view.userName
+
+    /** The current session's email, if it has one. */
+    val userEmail: String? get() = view.userEmail
+
+    /** The current session's id, or null when signed out. */
+    val sessionId: String? get() = view.session?.sessionId
+
+    /** The id of an ended session whose on-device data still has to be deleted. */
+    val teardownPending: String? get() = view.state.teardownPending
+
+    /** Whether the last commit reached disk (see the class comment). */
+    val isDurable: Boolean get() = durable
+
+    /** The current sign-in generation (see [beginAuthAttempt]). */
+    val authGeneration: Long get() = view.authGeneration
+
+    /** The current session in one read: id, tokens and user together, or null when signed out. */
+    fun snapshot(): SessionContext? = view.session
+
+    /** [snapshot], but only while [sessionId] is still the current session. */
+    fun snapshotIfCurrent(sessionId: String): SessionContext? =
+        view.session?.takeIf { it.sessionId == sessionId }
+
+    /** The device row registered for [sessionId], if that session is still the current one. */
+    fun deviceIdFor(sessionId: String): String? {
+        val v = view
+        return if (v.session?.sessionId == sessionId) v.deviceId else null
+    }
+
+    // ── Sign-in generations ───────────────────────────────────────────────
+
+    /**
+     * Starts a sign-in attempt: the generation moves on and is returned. Only an attempt
+     * whose generation is still the current one may install its session ([installSession]),
+     * so a newer attempt or demo mode overtakes every older one, whichever order the answers
+     * come back in. (A sign-in whose screen went away is cancelled with it and installs
+     * nothing: the client checks for cancellation right before the install.)
+     */
+    @Synchronized
+    fun beginAuthAttempt(): Long {
+        val (generation, edit) = nextGenerationLocked(prefs.edit())
+        edit.apply()
+        publishLocked()
+        return generation
+    }
+
+    /**
+     * Starts a browser sign-in: the generation moves on and is saved WITH the pending flow
+     * in one transaction, so the callback carries the generation of the moment the user
+     * left for the browser (across a process death too), not of the moment it came back.
+     * Suspends: the sign-in screen calls it, and the lock is taken on an IO thread.
+     */
+    suspend fun beginOAuthLogin(flow: PendingOAuthFlow): Long = withContext(io) {
+        synchronized(this@TokenStore) {
+            val (generation, edit) = nextGenerationLocked(prefs.edit())
+            putPendingFlow(edit, flow.copy(authGeneration = generation))
             edit.apply()
+            publishLocked()
+            generation
         }
+    }
 
-    var refreshToken: String?
-        get() = prefs.getString(KEY_REFRESH_TOKEN, null)
-        set(value) = prefs.edit().putString(KEY_REFRESH_TOKEN, value).apply()
+    private fun nextGenerationLocked(edit: SharedPreferences.Editor): Pair<Long, SharedPreferences.Editor> {
+        val next = prefs.getLong(KEY_AUTH_GENERATION, 0L) + 1
+        return next to edit.putLong(KEY_AUTH_GENERATION, next)
+    }
 
-    var userId: String?
-        get() = prefs.getString(KEY_USER_ID, null)
-        set(value) = prefs.edit().putString(KEY_USER_ID, value).apply()
+    // ── Session transitions (SessionLifecycle only) ───────────────────────
 
-    var userName: String?
-        get() = prefs.getString(KEY_USER_NAME, null)
-        set(value) = prefs.edit().putString(KEY_USER_NAME, value).apply()
+    /**
+     * Installs a signed-in session with a fresh id, in one committed transaction, if
+     * [attempt] is still the current sign-in generation (null: no attempt check). Null
+     * means it was overtaken and nothing was written.
+     *
+     * Ends demo mode, forgets the previous session's device row and every pending OAuth
+     * flow (an abandoned browser sign-in must not complete over this session later). If a
+     * session was current, its id becomes the teardown marker.
+     */
+    @Synchronized
+    fun installSession(
+        accessToken: String?,
+        refreshToken: String?,
+        userId: String?,
+        userName: String? = null,
+        userEmail: String? = null,
+        attempt: Long? = null,
+        receivedAtMillis: Long = System.currentTimeMillis(),
+    ): String? {
+        require(!accessToken.isNullOrBlank() || !refreshToken.isNullOrBlank()) { "a session needs a token" }
+        if (attempt != null && attempt != prefs.getLong(KEY_AUTH_GENERATION, 0L)) return null
+        val previous = currentSessionIdLocked()
+        val id = UUID.randomUUID().toString()
+        val edit = prefs.edit()
+            .putString(KEY_ACCESS_TOKEN, accessToken)
+            .putString(KEY_REFRESH_TOKEN, refreshToken)
+            .putLong(KEY_ACCESS_RECEIVED_AT, receivedAtMillis)
+            .putString(KEY_USER_ID, userId)
+            .putString(KEY_USER_NAME, userName)
+            .putString(KEY_USER_EMAIL, userEmail)
+            .putString(KEY_SESSION_ID, id)
+            .putBoolean(KEY_DEMO_MODE, false)
+            .remove(KEY_DEVICE_ID)
+        removePendingFlow(edit)
+        if (previous != null) edit.putString(KEY_TEARDOWN_PENDING, previous)
+        commitLocked(edit)
+        lastEndReason = null
+        publishLocked()
+        return id
+    }
 
-    var userEmail: String?
-        get() = prefs.getString(KEY_USER_EMAIL, null)
-        set(value) = prefs.edit().putString(KEY_USER_EMAIL, value).apply()
+    /**
+     * Demo mode as a session of its own: the flag and a synthetic `demo-<uuid>` id in one
+     * committed transaction, so leaving it is the same [endIfCurrent] as any other end. It
+     * also abandons every sign-in still out and drops pending OAuth flows: a password
+     * answer or a browser callback that arrives later must not replace the demo.
+     */
+    @Synchronized
+    fun enterDemoMode(): String {
+        val previous = currentSessionIdLocked()
+        if (previous != null && prefs.getBoolean(KEY_DEMO_MODE, false)) return previous
+        val id = DEMO_ID_PREFIX + UUID.randomUUID().toString()
+        val edit = nextGenerationLocked(prefs.edit()).second
+            .putBoolean(KEY_DEMO_MODE, true)
+            .putString(KEY_SESSION_ID, id)
+        removePendingFlow(edit)
+        if (previous != null) {
+            edit.remove(KEY_ACCESS_TOKEN).remove(KEY_REFRESH_TOKEN).remove(KEY_ACCESS_RECEIVED_AT)
+                .remove(KEY_USER_ID).remove(KEY_USER_NAME).remove(KEY_USER_EMAIL).remove(KEY_DEVICE_ID)
+                .putString(KEY_TEARDOWN_PENDING, previous)
+        }
+        commitLocked(edit)
+        lastEndReason = null
+        publishLocked()
+        return id
+    }
 
-    var deviceId: String?
-        get() = prefs.getString(KEY_DEVICE_ID, null)
-        set(value) = prefs.edit().putString(KEY_DEVICE_ID, value).apply()
+    /**
+     * Stores a renewed token pair, but only for [sessionId] and only while it is current:
+     * a renewal that comes back after a sign-out, or after the next account signed in, is
+     * dropped instead of bringing the old session back or overwriting the new one. The
+     * client serialises every token-producing request with its refresh mutex. If the commit
+     * does not reach disk, the coordinator's retry writes it again ([onCommitFailed]); nothing
+     * else has to write first. [receivedAtMillis] is when the answer carrying the pair arrived.
+     */
+    @Synchronized
+    fun rotateIfCurrent(
+        sessionId: String,
+        accessToken: String,
+        refreshToken: String,
+        receivedAtMillis: Long = System.currentTimeMillis(),
+    ): Boolean {
+        require(accessToken.isNotBlank() && refreshToken.isNotBlank()) { "a renewal needs both tokens" }
+        if (currentSessionIdLocked() != sessionId || prefs.getBoolean(KEY_DEMO_MODE, false)) return false
+        commitLocked(
+            prefs.edit()
+                .putString(KEY_ACCESS_TOKEN, accessToken)
+                .putString(KEY_REFRESH_TOKEN, refreshToken)
+                .putLong(KEY_ACCESS_RECEIVED_AT, receivedAtMillis),
+        )
+        publishLocked()
+        return true
+    }
 
-    var isDemoMode: Boolean
-        get() = prefs.getBoolean(KEY_DEMO_MODE, false)
-        set(value) = prefs.edit().putBoolean(KEY_DEMO_MODE, value).apply()
+    /**
+     * THE end of a session. If [expectedSessionId] is current, ONE committed transaction
+     * removes every credential (and everything else in this store, as sign-out always has,
+     * except the sign-in generation and the one-time cache check) and writes the teardown
+     * marker for that id; returns what was removed. Returns null, and changes nothing, when
+     * that session is not current: already ended, or replaced by the next one.
+     */
+    @Synchronized
+    fun endIfCurrent(expectedSessionId: String, reason: EndReason): EndedSession? {
+        val current = snapshotLocked() ?: return null
+        if (current.sessionId != expectedSessionId) return null
+        val ended = EndedSession(
+            sessionId = expectedSessionId,
+            accessToken = prefs.getString(KEY_ACCESS_TOKEN, null),
+            refreshToken = prefs.getString(KEY_REFRESH_TOKEN, null),
+            reason = reason,
+        )
+        val generation = prefs.getLong(KEY_AUTH_GENERATION, 0L)
+        val cacheChecked = prefs.getBoolean(KEY_LEGACY_CACHE_CHECKED, false)
+        // Editor.clear() is applied before the puts of the same transaction, so the marker
+        // survives the wipe it belongs to.
+        commitLocked(
+            prefs.edit()
+                .clear()
+                .putString(KEY_TEARDOWN_PENDING, expectedSessionId)
+                .putLong(KEY_AUTH_GENERATION, generation)
+                .putBoolean(KEY_LEGACY_CACHE_CHECKED, cacheChecked),
+        )
+        lastEndReason = reason
+        publishLocked()
+        return ended
+    }
 
-    val isLoggedIn: Boolean get() = isDemoMode || !accessToken.isNullOrBlank()
+    /** [endIfCurrent] for whatever session is current, read and ended under one lock. */
+    @Synchronized
+    fun endCurrent(reason: EndReason): EndedSession? {
+        val id = currentSessionIdLocked() ?: return null
+        return endIfCurrent(id, reason)
+    }
 
-    /** A signed-in account, as opposed to demo mode or signed out. */
-    val hasSession: Boolean get() = !isDemoMode && !accessToken.isNullOrBlank()
+    /** Clears the teardown marker if it still names [sessionId]; true only if that reached disk. */
+    @Synchronized
+    fun clearPendingIfEquals(sessionId: String): Boolean {
+        if (prefs.getString(KEY_TEARDOWN_PENDING, null) != sessionId) return false
+        commitLocked(prefs.edit().remove(KEY_TEARDOWN_PENDING))
+        publishLocked()
+        return durable
+    }
+
+    /**
+     * First start of a version with session teardown: if no session is stored, an older
+     * version may have signed out without deleting its cache. Marks it for teardown, once.
+     */
+    @Synchronized
+    fun markLegacyCacheForTeardownIfNeeded(): Boolean {
+        if (prefs.getBoolean(KEY_LEGACY_CACHE_CHECKED, false)) return false
+        val edit = prefs.edit().putBoolean(KEY_LEGACY_CACHE_CHECKED, true)
+        val mark = currentSessionIdLocked() == null && prefs.getString(KEY_TEARDOWN_PENDING, null) == null
+        if (mark) edit.putString(KEY_TEARDOWN_PENDING, LEGACY_CACHE_MARKER)
+        commitLocked(edit)
+        publishLocked()
+        return mark
+    }
+
+    /** Writes the whole map again; true when it reached disk. */
+    @Synchronized
+    fun recommit(): Boolean {
+        commitLocked(prefs.edit().putLong(KEY_DURABILITY_PROBE, System.nanoTime()))
+        return durable
+    }
+
+    // ── Session-bound writes ──────────────────────────────────────────────
+
+    /** Writes the profile fields that are not blank, only while [sessionId] is current. */
+    @Synchronized
+    fun setProfileIfCurrent(sessionId: String, userId: String?, name: String?, email: String?): Boolean {
+        if (currentSessionIdLocked() != sessionId) return false
+        val edit = prefs.edit()
+        if (!userId.isNullOrBlank()) edit.putString(KEY_USER_ID, userId)
+        if (!name.isNullOrBlank()) edit.putString(KEY_USER_NAME, name)
+        if (!email.isNullOrBlank()) edit.putString(KEY_USER_EMAIL, email)
+        edit.apply()
+        publishLocked()
+        return true
+    }
+
+    /** Records the device row registered for [sessionId], only while it is current. */
+    @Synchronized
+    fun setDeviceIdIfCurrent(sessionId: String, deviceId: String): Boolean {
+        if (currentSessionIdLocked() != sessionId) return false
+        prefs.edit().putString(KEY_DEVICE_ID, deviceId).apply()
+        publishLocked()
+        return true
+    }
 
     // ── Pending OAuth flow (login or link) ─────────────────────────────
     // Durable across process death / backgrounding so we can complete the browser round-trip.
 
-    /** Pending-flow record. [kind] is "login" or "link". [state] is the CSRF token for the authorize URL. */
+    /**
+     * Pending-flow record. [kind] is "login" or "link". [state] is the CSRF token for the
+     * authorize URL. [sessionId] is the session a link flow belongs to; [authGeneration] is
+     * the sign-in generation a login flow was started with ([beginOAuthLogin]).
+     */
     data class PendingOAuthFlow(
         val kind: String,
         val provider: String,
         val codeVerifier: String,
         val state: String,
         val createdAt: Long,
+        val sessionId: String? = null,
+        val authGeneration: Long? = null,
     )
 
     /** Max age of a pending flow before it's considered stale. */
     private val PENDING_TTL_MS = 10 * 60 * 1000L // 10 min
 
-    fun savePendingOAuthFlow(flow: PendingOAuthFlow) {
-        prefs.edit()
-            .putString(KEY_PENDING_KIND, flow.kind)
+    /** Saves a link flow (login flows go through [beginOAuthLogin]). Suspends, like it. */
+    suspend fun savePendingOAuthFlow(flow: PendingOAuthFlow): Unit = withContext(io) {
+        synchronized(this@TokenStore) {
+            val edit = prefs.edit()
+            putPendingFlow(edit, flow)
+            edit.apply()
+        }
+    }
+
+    private fun putPendingFlow(edit: SharedPreferences.Editor, flow: PendingOAuthFlow) {
+        edit.putString(KEY_PENDING_KIND, flow.kind)
             .putString(KEY_PENDING_PROVIDER, flow.provider)
             .putString(KEY_PENDING_VERIFIER, flow.codeVerifier)
             .putString(KEY_PENDING_STATE, flow.state)
             .putLong(KEY_PENDING_CREATED_AT, flow.createdAt)
-            .apply()
+            .putString(KEY_PENDING_SESSION_ID, flow.sessionId)
+        if (flow.authGeneration != null) {
+            edit.putLong(KEY_PENDING_GENERATION, flow.authGeneration)
+        } else {
+            edit.remove(KEY_PENDING_GENERATION)
+        }
     }
 
-    fun loadPendingOAuthFlow(): PendingOAuthFlow? {
+    @Synchronized
+    internal fun loadPendingOAuthFlow(): PendingOAuthFlow? {
         val kind = prefs.getString(KEY_PENDING_KIND, null) ?: return null
         val provider = prefs.getString(KEY_PENDING_PROVIDER, null) ?: return null
         val verifier = prefs.getString(KEY_PENDING_VERIFIER, null) ?: return null
@@ -90,32 +400,51 @@ class TokenStore internal constructor(
             clearPendingOAuthFlow()
             return null
         }
-        return PendingOAuthFlow(kind, provider, verifier, state, createdAt)
+        val sessionId = prefs.getString(KEY_PENDING_SESSION_ID, null)
+        val generation = if (prefs.contains(KEY_PENDING_GENERATION)) prefs.getLong(KEY_PENDING_GENERATION, 0L) else null
+        return PendingOAuthFlow(kind, provider, verifier, state, createdAt, sessionId, generation)
     }
 
-    fun clearPendingOAuthFlow() {
-        prefs.edit()
-            .remove(KEY_PENDING_KIND)
+    /**
+     * Removes the pending flow and returns it, once: a second delivery of the same callback
+     * (a replayed intent, a double tap on the browser's return) gets null.
+     *
+     * A link flow saved by 1.62 has no session id. Every sign-in and sign-out since it was
+     * saved would have dropped it, so it belongs to the session current NOW: it is bound to
+     * that session here, under the same lock, and the exchange later requires exactly that
+     * session. With no session, it is discarded.
+     *
+     * Suspends: MainActivity calls it, and the lock is taken on an IO thread.
+     */
+    suspend fun claimPendingOAuthFlow(): PendingOAuthFlow? = withContext(io) {
+        synchronized(this@TokenStore) { claimPendingOAuthFlowLocked() }
+    }
+
+    private fun claimPendingOAuthFlowLocked(): PendingOAuthFlow? {
+        val flow = loadPendingOAuthFlow() ?: return null
+        clearPendingOAuthFlow()
+        if (flow.kind == "link" && flow.sessionId == null) {
+            val owner = currentSessionIdLocked() ?: return null
+            return flow.copy(sessionId = owner)
+        }
+        return flow
+    }
+
+    @Synchronized
+    private fun clearPendingOAuthFlow() {
+        val edit = prefs.edit()
+        removePendingFlow(edit)
+        edit.apply()
+    }
+
+    private fun removePendingFlow(edit: SharedPreferences.Editor) {
+        edit.remove(KEY_PENDING_KIND)
             .remove(KEY_PENDING_PROVIDER)
             .remove(KEY_PENDING_VERIFIER)
             .remove(KEY_PENDING_STATE)
             .remove(KEY_PENDING_CREATED_AT)
-            .apply()
-    }
-
-    /** Atomically update auth tokens + userId in a single write transaction. */
-    fun updateAuthState(access: String?, refresh: String?, user: String?) {
-        val edit = prefs.edit()
-            .putString(KEY_ACCESS_TOKEN, access)
-            .putString(KEY_REFRESH_TOKEN, refresh)
-            .putString(KEY_USER_ID, user)
-        // A real session always ends demo mode, whichever sign-in path wrote it.
-        if (!access.isNullOrBlank()) edit.putBoolean(KEY_DEMO_MODE, false)
-        edit.apply()
-    }
-
-    fun clear() {
-        prefs.edit().clear().apply()
+            .remove(KEY_PENDING_SESSION_ID)
+            .remove(KEY_PENDING_GENERATION)
     }
 
     // Provider API keys
@@ -130,18 +459,98 @@ class TokenStore internal constructor(
         prefs.edit().remove("provider_${provider}_apiKey").apply()
     }
 
+    // ── Internals (call with the monitor held) ────────────────────────────
+
+    private fun commitLocked(edit: SharedPreferences.Editor) {
+        val ok = edit.commit()
+        durable = ok
+        if (!ok) onCommitFailed?.invoke()
+    }
+
+    /**
+     * The current session's id. A session exists while there is a token or demo mode is on.
+     * A session saved by 1.62 or earlier has no id yet: it gets one here, once.
+     */
+    private fun currentSessionIdLocked(): String? {
+        val demo = prefs.getBoolean(KEY_DEMO_MODE, false)
+        val hasToken = !prefs.getString(KEY_ACCESS_TOKEN, null).isNullOrBlank() ||
+            !prefs.getString(KEY_REFRESH_TOKEN, null).isNullOrBlank()
+        if (!demo && !hasToken) return null
+        prefs.getString(KEY_SESSION_ID, null)?.takeIf { it.isNotBlank() }?.let { return it }
+        val minted = (if (demo) DEMO_ID_PREFIX else "") + UUID.randomUUID().toString()
+        // apply(), not commit(): this can run on the main thread at start-up, and a lost id is
+        // simply minted again (nothing outside this process remembers it).
+        prefs.edit().putString(KEY_SESSION_ID, minted).apply()
+        return minted
+    }
+
+    private fun snapshotLocked(): SessionContext? {
+        val id = currentSessionIdLocked() ?: return null
+        val demo = prefs.getBoolean(KEY_DEMO_MODE, false)
+        return SessionContext(
+            sessionId = id,
+            accessToken = if (demo) null else prefs.getString(KEY_ACCESS_TOKEN, null),
+            refreshToken = if (demo) null else prefs.getString(KEY_REFRESH_TOKEN, null),
+            userId = if (demo) null else prefs.getString(KEY_USER_ID, null),
+            isDemo = demo,
+            accessReceivedAt = if (demo || !prefs.contains(KEY_ACCESS_RECEIVED_AT)) {
+                null
+            } else {
+                prefs.getLong(KEY_ACCESS_RECEIVED_AT, 0L)
+            },
+        )
+    }
+
+    private fun readViewLocked(): View {
+        val session = snapshotLocked()
+        return View(
+            state = SessionState(
+                sessionId = session?.sessionId,
+                isDemo = session?.isDemo == true,
+                endedReason = if (session == null) lastEndReason else null,
+                teardownPending = prefs.getString(KEY_TEARDOWN_PENDING, null),
+            ),
+            session = session,
+            deviceId = if (session != null) prefs.getString(KEY_DEVICE_ID, null) else null,
+            userName = if (session != null && !session.isDemo) prefs.getString(KEY_USER_NAME, null) else null,
+            userEmail = if (session != null && !session.isDemo) prefs.getString(KEY_USER_EMAIL, null) else null,
+            authGeneration = prefs.getLong(KEY_AUTH_GENERATION, 0L),
+        )
+    }
+
+    /** Publishes the view, then the flow; the readers above see one or the other, both whole. */
+    private fun publishLocked() {
+        val next = readViewLocked()
+        view = next
+        _state.value = next.state
+    }
+
     companion object {
+        /** Prefix of demo mode's synthetic session id. */
+        const val DEMO_ID_PREFIX = "demo-"
+
+        /** Teardown marker for cache rows an older version may have left behind. */
+        const val LEGACY_CACHE_MARKER = "legacy-cache"
+
         private const val KEY_ACCESS_TOKEN = "access_token"
         private const val KEY_REFRESH_TOKEN = "refresh_token"
+        private const val KEY_ACCESS_RECEIVED_AT = "access_received_at"
         private const val KEY_USER_ID = "user_id"
         private const val KEY_USER_NAME = "user_name"
         private const val KEY_USER_EMAIL = "user_email"
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_DEMO_MODE = "demo_mode"
+        private const val KEY_SESSION_ID = "session_id"
+        private const val KEY_TEARDOWN_PENDING = "teardown_pending"
+        private const val KEY_AUTH_GENERATION = "auth_generation"
+        private const val KEY_LEGACY_CACHE_CHECKED = "legacy_cache_checked"
+        private const val KEY_DURABILITY_PROBE = "durability_probe"
         private const val KEY_PENDING_KIND = "pending_oauth_kind"
         private const val KEY_PENDING_PROVIDER = "pending_oauth_provider"
         private const val KEY_PENDING_VERIFIER = "pending_oauth_verifier"
         private const val KEY_PENDING_STATE = "pending_oauth_state"
         private const val KEY_PENDING_CREATED_AT = "pending_oauth_created_at"
+        private const val KEY_PENDING_SESSION_ID = "pending_oauth_session_id"
+        private const val KEY_PENDING_GENERATION = "pending_oauth_generation"
     }
 }
