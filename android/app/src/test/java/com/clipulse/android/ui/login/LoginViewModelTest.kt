@@ -21,8 +21,10 @@ import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -226,10 +228,41 @@ class LoginViewModelTest {
         val vm = vm()
         every { supabase.oauthAuthorizeUrl("github") } returns Triple("https://example.test/authorize", "verifier-1", "state-1")
 
-        vm.startOAuthLogin("github")
+        val opened = mutableListOf<String>()
+
+        vm.startOAuthLogin("github") { opened += it }
 
         coVerify(exactly = 1) { tokenStore.beginOAuthLogin(match { it.kind == "login" && it.state == "state-1" }) }
         coVerify(exactly = 0) { tokenStore.savePendingOAuthFlow(any()) }
+        assertEquals(listOf("https://example.test/authorize"), opened)
+        vm.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `a second tap while a browser sign-in is starting starts nothing`() = runTest {
+        val vm = vm()
+        every { supabase.oauthAuthorizeUrl("github") } returns Triple("https://example.test/authorize", "verifier-1", "state-1")
+        val saving = CompletableDeferred<Unit>()
+        coEvery { tokenStore.beginOAuthLogin(any()) } coAnswers {
+            saving.await()
+            1L
+        }
+        val opened = mutableListOf<String>()
+
+        val first = launch { vm.startOAuthLogin("github") { opened += it } }
+        runCurrent() // the first tap is saving its flow
+        val second = launch { vm.startOAuthLogin("github") { opened += it } }
+        runCurrent()
+        saving.complete(Unit)
+        first.join()
+        second.join()
+
+        assertEquals("one browser tab", 1, opened.size)
+        coVerify(exactly = 1) { tokenStore.beginOAuthLogin(any()) }
+
+        // Once it has opened, a new tap starts a new flow.
+        vm.startOAuthLogin("github") { opened += it }
+        assertEquals(2, opened.size)
         vm.viewModelScope.cancel()
     }
 }

@@ -252,9 +252,11 @@ fun LoginScreen(
                 OutlinedButton(
                     onClick = {
                         scope.launch {
-                            // The flow is saved (on an IO thread) before the browser opens.
-                            val url = viewModel.startOAuthLogin("github")
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            // The flow is saved (on an IO thread) before the browser opens; a
+                            // second tap meanwhile is ignored.
+                            viewModel.startOAuthLogin("github") { url ->
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),

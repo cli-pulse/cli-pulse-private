@@ -100,26 +100,39 @@ class LoginViewModel @Inject constructor(
     fun signInWithPassword(email: String, password: String) =
         signIn { installed(supabase.signInWithPassword(email, password).sessionId) }
 
+    /** A browser sign-in between its tap and the browser opening (main thread only). */
+    private var oauthStarting = false
+
     /**
      * Start a login OAuth flow: build the Supabase authorize URL and persist the pending-flow
      * record (kind/provider/verifier/state) so we survive process death during the browser
      * round-trip. The flow starts a new sign-in generation, saved with it: its callback may
-     * install a session only if nothing newer started meanwhile. Returns the URL to open.
-     * Suspends while the store saves the flow on an IO thread: the screen opens the browser
-     * once this returns, never blocking the main thread on the store's lock.
+     * install a session only if nothing newer started meanwhile. Then [open] gets the URL.
+     * Suspends while the store saves the flow on an IO thread, never blocking the main thread
+     * on the store's lock.
+     *
+     * A second tap while one is starting does nothing: two flows would open two browser tabs,
+     * the second overwriting the first's pending record, and finishing in the first tab would
+     * end in a state mismatch.
      */
-    suspend fun startOAuthLogin(provider: String): String {
-        val (url, verifier, state) = supabase.oauthAuthorizeUrl(provider)
-        tokenStore.beginOAuthLogin(
-            TokenStore.PendingOAuthFlow(
-                kind = "login",
-                provider = provider,
-                codeVerifier = verifier,
-                state = state,
-                createdAt = System.currentTimeMillis(),
+    suspend fun startOAuthLogin(provider: String, open: (String) -> Unit) {
+        if (oauthStarting) return
+        oauthStarting = true
+        try {
+            val (url, verifier, state) = supabase.oauthAuthorizeUrl(provider)
+            tokenStore.beginOAuthLogin(
+                TokenStore.PendingOAuthFlow(
+                    kind = "login",
+                    provider = provider,
+                    codeVerifier = verifier,
+                    state = state,
+                    createdAt = System.currentTimeMillis(),
+                )
             )
-        )
-        return url
+            open(url)
+        } finally {
+            oauthStarting = false
+        }
     }
 
     /**
