@@ -10,7 +10,9 @@
     "and the LoginItem (Frameworks/Sentry.framework); the widget extension carries none. No target relies on it:",
     "each target's own manifest declares what its executable links. A Sentry bump needs a fresh --archive measurement",
     "(the check fails while Package.resolved's pin differs from sdks.sentry-cocoa.version).",
-    "label: the App Store App Privacy label as published (2026-11-10). Change a row only together with the label."
+    "label: the App Store App Privacy label as published (2026-11-10). Change a row only together with the label.",
+    "package.targets: every target CLIPulseCore's Package.swift declares (kind, path, dependencies), compared exactly;",
+    "reviewed_build_settings: (EXCLUDED|INCLUDED)_SOURCE_FILE_NAMES[...] settings and .xcconfig bases, project or target, any configuration (none today)."
   ],
   "scope": [
     "Required-reason rules govern App Store uploads. The reasons recorded here are reviewed for the App Store builds:",
@@ -26,18 +28,37 @@
     "product": "CLIPulseCore",
     "targets": {
       "CLIPulseCore": {
+        "kind": "target",
+        "path": null,
         "sources": "Sources/CLIPulseCore",
         "platforms": [
           "macos",
           "ios",
           "watchos"
+        ],
+        "dependencies": [
+          "product:Sentry@sentry-cocoa",
+          "target:CZstd"
         ]
       },
       "CZstd": {
+        "kind": "target",
+        "path": "Sources/CZstd",
         "sources": "Sources/CZstd",
         "platforms": [
           "macos"
-        ]
+        ],
+        "dependencies": []
+      },
+      "CLIPulseCoreTests": {
+        "kind": "testTarget",
+        "path": null,
+        "sources": "Tests/CLIPulseCoreTests",
+        "platforms": [],
+        "dependencies": [
+          "target:CLIPulseCore"
+        ],
+        "note": "tests: built by swift test, never linked into an app"
       }
     },
     "dependencies": [
@@ -48,6 +69,7 @@
   "reviewed_products": [
     "CLIPulseCore"
   ],
+  "reviewed_build_settings": [],
   "sdks": {
     "sentry-cocoa": {
       "version": "9.12.1",

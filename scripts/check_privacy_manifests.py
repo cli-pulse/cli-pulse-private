@@ -31,12 +31,15 @@ WHAT IT CHECKS (stdlib only, runs on the Linux CI runner: no plutil there)
    its category, no duplicates, tracking off with no domains.
 2. The project: every target that ships a bundle (application or extension) is
    in the record or exempted there with a reason; each manifest is in its own
-   target's Resources phase with no platform filter, and no build setting
-   excludes it; no synchronized folder, no unscanned source type and no
-   unreviewed package arranges sources this check cannot see.
-3. The packages: CLIPulseCore's targets and dependencies are the reviewed
-   ones, and sentry-cocoa is pinned at the version the binaries were measured
-   with (a bump means measuring again with --archive).
+   target's Resources phase with no platform filter; no
+   (EXCLUDED|INCLUDED)_SOURCE_FILE_NAMES setting, conditional or not, and no
+   .xcconfig base on the project or a recorded target unless reviewed; no
+   synchronized folder, unscanned source type, unreviewed package product or
+   other local package.
+3. The packages: every target CLIPulseCore's Package.swift declares (kind,
+   custom path, dependencies) and every package dependency (url or local
+   path) is the reviewed one, and sentry-cocoa is pinned at the version the
+   binaries were measured with (a bump means measuring again with --archive).
 4. The code each target compiles (its Sources phases plus the package's
    sources for its platform), with comments and string contents blanked,
    `#if` resolved only where the answer is certain (os(), true/false, a few
@@ -44,10 +47,16 @@ WHAT IT CHECKS (stdlib only, runs on the Linux CI runner: no plutil there)
    - a required-reason API whose category the manifest lacks fails;
    - app-group `UserDefaults(suiteName:)` without 1C8F.1 in a target entitled
      to the group fails, and 1C8F.1 without the entitlement fails;
-   - reading a default the system writes (AppleLanguages, NSGlobalDomain,
-     dictionaryRepresentation()) fails: no UserDefaults reason covers it;
-   - each recorded reason's cited call site must still be compiled into that
-     target, so a reason cannot outlive the code that needed it.
+   - reading a default the system writes (AppleLanguages and other Apple*
+     keys, by literal, @AppStorage or a name bound to one anywhere in the
+     target; NSGlobalDomain; dictionaryRepresentation()) fails: no UserDefaults
+     reason covers it;
+   - each recorded reason's cited call site must still be present in code the
+     target can compile (both branches of an uncertain #if count), so a
+     reason cannot outlive the code that needed it.
+   A function referenced as a value (`= Darwin.statfs`, a default argument)
+   counts like a call. This is a drift detector, not a proof: the reviewed
+   inventory in the PR that added it is what shows each declaration is right.
 5. Collected data: each manifest's rows equal the target's recorded rows
    exactly (type, linked, tracking, purposes); every recorded row is a row of
    the published label, and every label row is recorded for some target.
@@ -156,6 +165,13 @@ BUNDLE_PRODUCT_TYPES = (
 # ---------------------------------------------------------------------------
 QUAL = r"(?<![\w.])(?:(?:Darwin|Foundation|Glibc)\s*\.\s*)?"  # module-qualified calls too
 CALL = r"\s*\((?!\s*\))"  # a call: `stat()` with nothing inside is the struct's initializer
+# A name that is both a struct and a function (stat, statfs, statvfs) used as a
+# function value: right after `=` or as an argument (after `(` or `,`, with an
+# optional label), and not followed by what a call or a type use would be
+# (`(`, `.`, `<`, `>`, `[`, `]`, `?`, `!`). A lone type in a tuple or a
+# one-label parameter (`(s: statfs)`) is over-reported, never missed.
+FUNC_VALUE = r"(?:=|[(,]\s*(?:\w+\s*:)?)\s*(?:(?:Darwin|Foundation|Glibc)\s*\.\s*)?"
+NOT_TYPE_USE = r"\b(?!\s*[(.<>\[\]?!])"
 SOURCE_PATTERNS = [
     # FileTimestamp. Apple names creationDate, modificationDate,
     # fileModificationDate, contentModificationDateKey, creationDateKey, and
@@ -166,16 +182,22 @@ SOURCE_PATTERNS = [
     ((CAT_FILE,), r"\b(?:contentModificationDate|creationDate)Key\b", "URLResourceKey .contentModificationDateKey / .creationDateKey"),
     ((CAT_FILE,), r"\bcontentModificationDate\b", "URLResourceValues.contentModificationDate"),
     ((CAT_FILE,), r"\bNS(?:File(?:Creation|Modification)Date|URL(?:ContentModification|Creation)DateKey)\b", "the ObjC names of the keys above"),
-    ((CAT_FILE,), QUAL + r"(?:l?stat|fstat|fstatat|stat64|lstat64|fstat64)" + CALL, "stat / lstat / fstat / fstatat"),
+    # `stat` and `stat64` are also struct names: a call, or the function passed
+    # or assigned as a value (after `=`, or as an argument).
+    ((CAT_FILE,), QUAL + r"(?:stat|stat64)" + CALL, "stat / lstat / fstat / fstatat"),
+    ((CAT_FILE,), FUNC_VALUE + r"(?:stat|stat64)" + NOT_TYPE_USE, "stat / lstat / fstat / fstatat"),
+    # These names are functions only, so any reference counts, called or not
+    # (`let probe = Darwin.lstat`, a default argument value).
+    ((CAT_FILE,), QUAL + r"(?:lstat|fstat|fstatat|lstat64|fstat64)\b", "stat / lstat / fstat / fstatat"),
     # getattrlist returns timestamps or volume capacity depending on the
     # attributes asked for, so it needs both until a reviewed allowlist entry
     # says which one a call site is.
-    ((CAT_FILE, CAT_DISK), QUAL + r"(?:f?getattrlist|getattrlistbulk|getattrlistat)\s*\(", "getattrlist family"),
+    ((CAT_FILE, CAT_DISK), QUAL + r"(?:f?getattrlist|getattrlistbulk|getattrlistat)\b", "getattrlist family"),
     # SystemBootTime. Apple names systemUptime and mach_absolute_time.
     ((CAT_BOOT,), r"\bsystemUptime\b", "ProcessInfo.systemUptime"),
-    ((CAT_BOOT,), QUAL + r"mach_absolute_time\s*\(", "mach_absolute_time()"),
+    ((CAT_BOOT,), QUAL + r"mach_absolute_time\b", "mach_absolute_time()"),
     # Not on Apple's list; the same clock counted from boot, so treated alike.
-    ((CAT_BOOT,), QUAL + r"mach_continuous_time\s*\(", "mach_continuous_time() (not on Apple's list; same boot clock)"),
+    ((CAT_BOOT,), QUAL + r"mach_continuous_time\b", "mach_continuous_time() (not on Apple's list; same boot clock)"),
     ((CAT_BOOT,), r"\bKERN_BOOTTIME\b", "sysctl KERN_BOOTTIME (how Sentry reads boot time)"),
     # DiskSpace: the keys, the URLResourceValues accessors, the file-system
     # attributes and the statfs family.
@@ -184,7 +206,11 @@ SOURCE_PATTERNS = [
     ((CAT_DISK,), r"\.system(?:Free)?Size\b", "FileAttributeKey .systemFreeSize / .systemSize"),
     ((CAT_DISK,), r"\bNS(?:FileSystem(?:Free)?Size|URLVolume\w*Capacity\w*Key)\b", "the ObjC names of the keys above"),
     ((CAT_DISK,), r"\battributesOfFileSystem\b", "FileManager.attributesOfFileSystem (free/total size)"),
-    ((CAT_DISK,), QUAL + r"f?statv?fs(?:64)?" + CALL, "statfs / statvfs / fstatfs / fstatvfs"),
+    # `statfs` and `statvfs` are also struct names (call, or a function value);
+    # `fstatfs` and `fstatvfs` are functions only.
+    ((CAT_DISK,), QUAL + r"statv?fs(?:64)?" + CALL, "statfs / statvfs / fstatfs / fstatvfs"),
+    ((CAT_DISK,), FUNC_VALUE + r"statv?fs(?:64)?" + NOT_TYPE_USE, "statfs / statvfs / fstatfs / fstatvfs"),
+    ((CAT_DISK,), QUAL + r"fstatv?fs(?:64)?\b", "statfs / statvfs / fstatfs / fstatvfs"),
     # ActiveKeyboards.
     ((CAT_KEYB,), r"\bactiveInputModes\b", "UITextInputMode.activeInputModes"),
     # UserDefaults: any use needs the category (CA92.1 for the app's own).
@@ -208,7 +234,13 @@ SYSTEM_DEFAULTS_PATTERNS = [
     (r'\bsuiteName\s*:\s*' + SYSTEM_KEY_LITERAL, "another app's or the system's suite"),
     (r'\bpersistentDomain\s*\(\s*forName\s*:\s*' + SYSTEM_KEY_LITERAL, "another app's or the system's domain"),
 ]
-SYSTEM_KEY_BINDING = re.compile(r"\b(?:let|var)\s+(\w+)\s*(?::\s*String\s*)?=\s*" + SYSTEM_KEY_LITERAL)
+# @AppStorage reads the key it names; its key is the first unlabeled argument.
+APPSTORAGE_KEY = r"@AppStorage\s*\(\s*(?:wrappedValue\s*:\s*(?:[^,()]|\([^()]*\))*,\s*)?"
+SYSTEM_DEFAULTS_PATTERNS.append((APPSTORAGE_KEY + SYSTEM_KEY_LITERAL, "a key the system writes, through @AppStorage"))
+# A name bound to a system key (`static let lang = "AppleLanguages"`, an enum
+# case's raw value), collected across every file a target compiles.
+SYSTEM_KEY_BINDING = re.compile(
+    r"\b(?:(?:let|var)\s+(\w+)\s*(?::\s*String\s*)?|case\s+(\w+)\s*)=\s*" + SYSTEM_KEY_LITERAL)
 
 # ---------------------------------------------------------------------------
 # Binary patterns for --archive. Imports from `nm -u` (Darwin's $INODE64
@@ -433,8 +465,12 @@ def collected_rows(data) -> list[tuple]:
             continue
         typ = entry.get("NSPrivacyCollectedDataType")
         purposes = entry.get("NSPrivacyCollectedDataTypePurposes")
+        linked = entry.get("NSPrivacyCollectedDataTypeLinked")
+        tracking = entry.get("NSPrivacyCollectedDataTypeTracking")
         if not isinstance(typ, str) or not isinstance(purposes, list):
             continue
+        if not isinstance(linked, bool) or not isinstance(tracking, bool):
+            continue  # validate_manifest has reported it
         out.append((typ, entry.get("NSPrivacyCollectedDataTypeLinked"),
                     entry.get("NSPrivacyCollectedDataTypeTracking"),
                     tuple(sorted(p for p in purposes if isinstance(p, str)))))
@@ -590,9 +626,13 @@ class Project:
         out.discard(None)
         return out
 
-    def build_settings(self, target) -> list[dict]:
-        lst = self.objects.get(target.get("buildConfigurationList"), {})
-        return [self.objects.get(c, {}).get("buildSettings", {}) for c in lst.get("buildConfigurations", [])]
+    def configurations(self, owner) -> list[tuple[str, dict]]:
+        """(id, XCBuildConfiguration) for a target's or the project's list."""
+        lst = self.objects.get(owner.get("buildConfigurationList"), {})
+        return [(c, self.objects.get(c, {})) for c in lst.get("buildConfigurations", [])]
+
+    def project_object(self):
+        return next(((oid, o) for oid, o in self.objects.items() if o.get("isa") == "PBXProject"), (None, {}))
 
 
 # ---------------------------------------------------------------------------
@@ -801,13 +841,15 @@ def active_lines(code_lines: list[str], platform: str) -> list[bool]:
 # hand because optional characters (`l?stat`, `f?statv?fs`) defeat extraction;
 # `test_check_privacy_manifests.py` has a case per family that would go quiet
 # if a needle were wrong.
+# The stat family as a whole word ("static", "status" and "state" are not it).
+_STAT_WORD = re.compile(r"(?<![A-Za-z])[lf]?stat(?:at|64|v?fs(?:64)?)?(?![A-Za-z])")
 _NEEDLES = {
     "FileAttributeKey / URLResourceValues .creationDate / .modificationDate": ("creationDate", "modificationDate"),
     "NSDictionary fileModificationDate / fileCreationDate": ("fileModificationDate", "fileCreationDate"),
     "URLResourceKey .contentModificationDateKey / .creationDateKey": ("contentModificationDateKey", "creationDateKey"),
     "URLResourceValues.contentModificationDate": ("contentModificationDate",),
     "the ObjC names of the keys above": ("NSFile", "NSURL"),
-    "stat / lstat / fstat / fstatat": ("stat",),
+    "stat / lstat / fstat / fstatat": _STAT_WORD,
     "getattrlist family": ("getattrlist",),
     "ProcessInfo.systemUptime": ("systemUptime",),
     "mach_absolute_time()": ("mach_absolute_time",),
@@ -817,7 +859,7 @@ _NEEDLES = {
     "URLResourceValues volume capacity": ("Capacity",),
     "FileAttributeKey .systemFreeSize / .systemSize": ("systemFreeSize", "systemSize"),
     "FileManager.attributesOfFileSystem (free/total size)": ("attributesOfFileSystem",),
-    "statfs / statvfs / fstatfs / fstatvfs": ("stat",),
+    "statfs / statvfs / fstatfs / fstatvfs": _STAT_WORD,
     "UITextInputMode.activeInputModes": ("activeInputModes",),
     "UserDefaults": ("UserDefaults",),
     "@AppStorage (UserDefaults underneath)": ("AppStorage",),
@@ -873,8 +915,13 @@ class SourceFile:
         if platform in self._hits:
             return self._hits[platform]
         out = []
+        def present(needles) -> bool:
+            if isinstance(needles, re.Pattern):
+                return needles.search(self.keep) is not None
+            return any(n in self.keep for n in needles)
+
         candidates = [(view_index, cats, rx, what) for view_index, table in ((0, _CODE_RX), (1, _STRING_RX))
-                      for cats, rx, what, needles in table if any(n in self.keep for n in needles)]
+                      for cats, rx, what, needles in table if present(needles)]
         if candidates:
             views = self.views(platform)
             group_lines = {self.line_of(m.start()) for m in APP_GROUP_DEFAULTS.finditer(views[0])}
@@ -886,27 +933,35 @@ class SourceFile:
         self._hits[platform] = out
         return out
 
-    def system_defaults_reads(self, platform: str):
-        """[(line, what, text)]: reads of defaults the system writes."""
-        if platform in self._sysdef:
-            return self._sysdef[platform]
-        if not any(n in self.keep for n in ("forKey", "dictionaryRepresentation", "globalDomain", "suiteName", "persistentDomain")):
-            self._sysdef[platform] = []
-            return []
-        code, keep = self.views(platform)
+    def system_key_bindings(self) -> set[str]:
+        """Names this file binds to a system key, whatever the platform."""
+        if "_bindings" not in self.__dict__:
+            self._bindings = {a or b for a, b in SYSTEM_KEY_BINDING.findall(self.keep)}
+        return self._bindings
+
+    def system_defaults_reads(self, platform: str, bound: frozenset = frozenset()):
+        """[(line, what, text)]: reads of defaults the system writes. `bound`:
+        the names bound to system keys anywhere in the target."""
+        key = (platform, bound)
+        if key in self._sysdef:
+            return self._sysdef[key]
         out = []
-        for rx, what in _SYSDEF_RX:
-            view = code if "dictionaryRepresentation" in rx.pattern or "globalDomain" in rx.pattern else keep
-            for m in rx.finditer(view):
-                line = self.line_of(m.start())
-                out.append((line, what, self.raw_lines[line - 1].strip()))
-        bound = {m.group(1) for m in SYSTEM_KEY_BINDING.finditer(keep)}
-        if bound:
-            rx = re.compile(DEFAULTS_GETTER + r"(?:(?:Self|[A-Z]\w*)\s*\.\s*)?(" + "|".join(map(re.escape, sorted(bound))) + r")\b")
-            for m in rx.finditer(code):
-                line = self.line_of(m.start())
-                out.append((line, f"a key the system writes ({m.group(1)})", self.raw_lines[line - 1].strip()))
-        self._sysdef[platform] = out
+        if any(n in self.keep for n in ("forKey", "dictionaryRepresentation", "globalDomain", "suiteName",
+                                        "persistentDomain", "AppStorage")):
+            code, keep = self.views(platform)
+            for rx, what in _SYSDEF_RX:
+                view = code if "dictionaryRepresentation" in rx.pattern or "globalDomain" in rx.pattern else keep
+                for m in rx.finditer(view):
+                    line = self.line_of(m.start())
+                    out.append((line, what, self.raw_lines[line - 1].strip()))
+            names = sorted(n for n in bound if n in code)
+            if names:
+                ident = r"(?:(?:Self|[A-Z]\w*)\s*\.\s*)?(" + "|".join(map(re.escape, names)) + r")\b(?:\s*\.\s*rawValue\b)?"
+                for prefix, how in ((DEFAULTS_GETTER, ""), (APPSTORAGE_KEY, ", through @AppStorage")):
+                    for m in re.finditer(prefix + ident, code):
+                        line = self.line_of(m.start())
+                        out.append((line, f"a key the system writes ({m.group(1)}){how}", self.raw_lines[line - 1].strip()))
+        self._sysdef[key] = out
         return out
 
     def matches(self, platform: str, pattern: str) -> bool:
@@ -938,26 +993,193 @@ def entitlement_groups(path: Path) -> list[str]:
     return [g for g in groups if isinstance(g, str)] if isinstance(groups, list) else []
 
 
-def package_checks(root: Path, cfg: dict, problems: list[str]) -> None:
+def _split_top(text: str, code: str, start: int, end: int) -> list[tuple[int, int]]:
+    """Spans of the comma-separated items between start and end at bracket
+    depth 0, read on `code` (strings blanked, so a comma in a string is not one)."""
+    items, depth, item_start = [], 0, start
+    for i in range(start, end):
+        c = code[i]
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        elif c == "," and depth == 0:
+            items.append((item_start, i))
+            item_start = i + 1
+    if text[item_start:end].strip():
+        items.append((item_start, end))
+    return items
+
+
+def _closing(code: str, open_index: int) -> int:
+    """Index of the bracket closing the one at open_index."""
+    depth = 0
+    for i in range(open_index, len(code)):
+        if code[i] in "([{":
+            depth += 1
+        elif code[i] in ")]}":
+            depth -= 1
+            if depth == 0:
+                return i
+    raise ValueError("unbalanced brackets in Package.swift")
+
+
+def _labelled_args(keep: str, code: str, open_paren: int) -> dict[str, tuple[int, int]]:
+    """{label: (start, end)} of a call's arguments (unlabelled ones as "_0", "_1")."""
+    close = _closing(code, open_paren)
+    out, n = {}, 0
+    for a, b in _split_top(keep, code, open_paren + 1, close):
+        m = re.match(r"\s*(\w+)\s*:", code[a:b])
+        if m and not code[a:b].lstrip().startswith("."):
+            out[m.group(1)] = (a + m.end(), b)
+        else:
+            out[f"_{n}"] = (a, b)
+            n += 1
+    return out
+
+
+def _string(keep: str, span) -> str | None:
+    m = re.fullmatch(r'\s*"([^"]*)"\s*', keep[span[0]:span[1]]) if span else None
+    return m.group(1) if m else None
+
+
+def parse_package(text: str) -> dict:
+    """The declarations of a Package.swift that decide what is compiled:
+    {"targets": {name: {"kind", "path", "dependencies"}}, "urls": [...],
+     "paths": [...] (local packages), "unparsed": [...]} . Only an array
+    literal `targets: [...]` of `.target(...)`-style calls is understood;
+    anything else lands in "unparsed", which the caller fails on."""
+    code, keep = blank_swift(text)
+    out = {"targets": {}, "urls": [], "paths": [], "unparsed": []}
+    for m in re.finditer(r"\.package\s*\(", code):
+        args = _labelled_args(keep, code, m.end() - 1)
+        if "url" in args:
+            out["urls"].append(_string(keep, args["url"]))
+        elif "path" in args:
+            out["paths"].append(_string(keep, args["path"]))
+        else:
+            out["unparsed"].append(keep[m.start():_closing(code, m.end() - 1) + 1].strip()[:80])
+    pm = re.search(r"\bPackage\s*\(", code)
+    pargs = _labelled_args(keep, code, pm.end() - 1) if pm else {}
+    span = pargs.get("targets")
+    lb = code.find("[", span[0], span[1]) if span else -1
+    if lb < 0 or code[span[0]:lb].strip():
+        out["unparsed"].append("no `targets: [...]` array literal in Package(...)")
+        return out
+    close = _closing(code, lb)
+    for a, b in _split_top(keep, code, lb + 1, close):
+        item = code[a:b]
+        km = re.match(r"\s*\.(\w+)\s*\(", item)
+        if not km:
+            out["unparsed"].append(keep[a:b].strip()[:80])
+            continue
+        args = _labelled_args(keep, code, a + km.end() - 1)
+        name = _string(keep, args.get("name"))
+        deps = []
+        if "dependencies" in args:
+            da, db = args["dependencies"]
+            lb = code.index("[", da)
+            for x, y in _split_top(keep, code, lb + 1, _closing(code, lb)):
+                dep = keep[x:y].strip()
+                dm = re.match(r'"([^"]+)"$', dep)
+                if dm:
+                    deps.append(f"target:{dm.group(1)}")
+                    continue
+                cm = re.match(r"\.(\w+)\s*\(", code[x:y].strip())
+                if cm:
+                    dargs = _labelled_args(keep, code, code.index("(", x))
+                    dname = _string(keep, dargs.get("name"))
+                    pkg_name = _string(keep, dargs.get("package"))
+                    deps.append(f"{cm.group(1)}:{dname}" + (f"@{pkg_name}" if pkg_name else ""))
+                else:
+                    deps.append(f"unparsed:{dep[:40]}")
+        out["targets"][name or f"?{len(out['targets'])}"] = {
+            "kind": km.group(1), "path": _string(keep, args.get("path")), "dependencies": sorted(deps)}
+    return out
+
+
+def package_checks(root: Path, cfg: dict, project, problems: list[str]) -> None:
     pkg = cfg["package"]
     base = root / pkg["path"]
-    manifest = (base / "Package.swift").read_text(encoding="utf-8")
-    deps = re.findall(r'\.package\s*\(\s*url\s*:\s*"([^"]+)"', manifest)
-    for url in deps:
+    where = f"{pkg['path']}/Package.swift"
+    parsed = parse_package((base / "Package.swift").read_text(encoding="utf-8"))
+    for item in parsed["unparsed"]:
+        problems.append(f"{where}: cannot read {item!r}; this check understands a `targets: [...]` literal of "
+                        f"`.target(...)` calls and `.package(url:/path:)` only")
+    for url in parsed["urls"]:
         if url not in pkg["dependencies"]:
-            problems.append(f"{pkg['path']}/Package.swift: depends on {url}, which {CONFIG} has not reviewed; "
+            problems.append(f"{where}: depends on {url}, which {CONFIG} has not reviewed; "
                             f"measure what it links (--archive) and record it")
+    for path in parsed["paths"]:
+        problems.append(f"{where}: depends on the local package at {path}, whose sources this check does not scan; "
+                        f"review it and record it in {CONFIG}")
+    reviewed = pkg["targets"]
+    for name, decl in parsed["targets"].items():
+        want = reviewed.get(name)
+        got = {"kind": decl["kind"], "path": decl["path"], "dependencies": decl["dependencies"]}
+        if want is None:
+            problems.append(f"{where}: declares {decl['kind']} {name!r} (path {decl['path'] or 'default'}), which the "
+                            f"reviewed record in {CONFIG} does not list, so its sources are not scanned")
+            continue
+        have = {"kind": want.get("kind"), "path": want.get("path"), "dependencies": sorted(want.get("dependencies", []))}
+        if got != have:
+            problems.append(f"{where}: {name!r} is declared as {got}, but the reviewed record says {have}")
+        default = ("Tests/" if decl["kind"] == "testTarget" else "Sources/") + name
+        if want.get("sources") != (decl["path"] or default):
+            problems.append(f"{CONFIG}: package target {name!r} is scanned at {want.get('sources')}, but "
+                            f"{where} builds it from {decl['path'] or default}")
+    for name in reviewed:
+        if name not in parsed["targets"]:
+            problems.append(f"{CONFIG}: package target {name!r} is not declared in {where}; remove it from the record")
     present = sorted(p.name for p in (base / "Sources").iterdir() if p.is_dir())
     for name in present:
         if name not in pkg["targets"]:
             problems.append(f"{pkg['path']}/Sources/{name}: a package target {CONFIG} does not list, so its "
                             f"sources are not scanned")
+    for oid, obj in project.objects.items():
+        if obj.get("isa") == "XCLocalSwiftPackageReference":
+            rel = (project.srcroot / obj.get("relativePath", "")).as_posix()
+            if rel != pkg["path"]:
+                problems.append(f"{cfg['project']}: links the local package {rel}, which {CONFIG} does not review; "
+                                f"its sources are not scanned")
     resolved = json.loads((root / cfg["package_resolved"]).read_text(encoding="utf-8"))
     pins = {p.get("identity"): (p.get("state") or {}).get("version") for p in resolved.get("pins", [])}
     for sdk, info in cfg["sdks"].items():
         if pins.get(sdk) != info["version"]:
             problems.append(f"{cfg['package_resolved']}: {sdk} is pinned at {pins.get(sdk)}, but binary_categories "
                             f"were measured with {info['version']}; archive, run --archive, and update {CONFIG}")
+
+
+SOURCE_FILTER_KEY = re.compile(r"^(?:EXCLUDED|INCLUDED)_SOURCE_FILE_NAMES(?:\[.*\])?$")
+
+
+def source_filter_settings(project, owner, owner_name, cfg, problems, used) -> None:
+    """Build settings that can keep a file out of a target, in any
+    configuration, conditional (`[sdk=...]`, `[arch=...]`) or not, and
+    .xcconfig files, whose settings this check does not read: each fails
+    unless the reviewed record lists it (`reviewed_build_settings`). Resolving
+    which configuration ships and what a pattern matches is left to review."""
+    reviewed = cfg.get("reviewed_build_settings", [])
+    for cid, conf in project.configurations(owner):
+        cname = conf.get("name", "?")
+        if conf.get("baseConfigurationReference"):
+            ref = conf["baseConfigurationReference"]
+            path = project.path_of(ref)
+            entry = {"owner": owner_name, "configuration": cname, "key": "baseConfigurationReference", "value": str(path)}
+            if entry in [{k: r.get(k) for k in entry} for r in reviewed]:
+                used.add(json.dumps(entry, sort_keys=True))
+            else:
+                problems.append(f"{owner_name}: configuration {cname} ({cid}) is based on {path} (an .xcconfig), whose "
+                                f"settings this check does not read; record it in reviewed_build_settings after review")
+        for key, value in (conf.get("buildSettings") or {}).items():
+            if not SOURCE_FILTER_KEY.match(str(key)):
+                continue
+            entry = {"owner": owner_name, "configuration": cname, "key": key, "value": value}
+            if entry in [{k: r.get(k) for k in entry} for r in reviewed]:
+                used.add(json.dumps(entry, sort_keys=True))
+                continue
+            problems.append(f"{owner_name}: build setting \"{key}\" = {value!r} in configuration {cname} ({cid}) can "
+                            f"leave files, the privacy manifest among them, out of the bundle; not in the reviewed record")
 
 
 def check_repo(root: Path, verbose: bool) -> list[str]:
@@ -978,7 +1200,10 @@ def check_repo(root: Path, verbose: bool) -> list[str]:
     for remote in (o for o in project.objects.values() if o.get("isa") == "XCRemoteSwiftPackageReference"):
         problems.append(f"{cfg['project']}: remote package {remote.get('repositoryURL')} is linked straight into the "
                         f"project; review what it links and record it in {CONFIG}")
-    package_checks(root, cfg, problems)
+    package_checks(root, cfg, project, problems)
+    reviewed_settings_used: set[str] = set()
+    _, project_obj = project.project_object()
+    source_filter_settings(project, project_obj, "project", cfg, problems, reviewed_settings_used)
 
     # Every bundle-shipping target is listed or exempted.
     listed = {t["name"] for t in cfg["targets"]}
@@ -1038,13 +1263,7 @@ def check_repo(root: Path, verbose: bool) -> list[str]:
             if str(ph.get("runOnlyForDeploymentPostprocessing", "0")) != "0":
                 problems.append(f"{name}: Resources phase {pid} runs only for deployment postprocessing, so the "
                                 f"manifest is missing from ordinary builds")
-        for bs in project.build_settings(target):
-            for key in ("EXCLUDED_SOURCE_FILE_NAMES", "INCLUDED_SOURCE_FILE_NAMES"):
-                val = bs.get(key)
-                vals = val if isinstance(val, list) else [val] if val else []
-                if key == "EXCLUDED_SOURCE_FILE_NAMES" and any(
-                        re.fullmatch(str(v).replace(".", r"\.").replace("*", ".*"), mpath.name) for v in vals):
-                    problems.append(f"{name}: {key} = {vals} excludes {mpath.name}")
+        source_filter_settings(project, target, name, cfg, problems, reviewed_settings_used)
         for other in cfg["targets"]:
             if other is t:
                 continue
@@ -1080,11 +1299,13 @@ def check_repo(root: Path, verbose: bool) -> list[str]:
             if not f.is_file():
                 problems.append(f"{name}: compiles {f.relative_to(root)}, which does not exist")
                 continue
-            rel = f.relative_to(root).as_posix()
-            sf = source_file(f)
-            compiled[rel] = sf
+            compiled[f.relative_to(root).as_posix()] = source_file(f)
+        # Names bound to system keys anywhere in what this target compiles, so
+        # `forKey: Keys.lang` in one file finds `static let lang = "AppleLanguages"` in another.
+        bound = frozenset().union(*(sf.system_key_bindings() for sf in compiled.values()))
 
-            def allowed(cat, text):
+        for rel, sf in compiled.items():
+            def allowed(cat, text, rel=rel):
                 hit = False
                 for k, e in enumerate(allow_entries):
                     if e["target"] == name and e["category"] == cat and e["file"] == rel and re.search(e["pattern"], text):
@@ -1098,7 +1319,7 @@ def check_repo(root: Path, verbose: bool) -> list[str]:
                 used.setdefault(cat, []).append((rel, no, what, text))
                 if is_group:
                     group_uses.append((rel, no))
-            for no, what, text in sf.system_defaults_reads(platform):
+            for no, what, text in sf.system_defaults_reads(platform, bound):
                 if not allowed(SYSTEM_DEFAULTS, text):
                     sysdef.append((rel, no, what, text))
 
@@ -1175,6 +1396,10 @@ def check_repo(root: Path, verbose: bool) -> list[str]:
     for row in label_rows:
         if row not in covered:
             problems.append(f"label row {row_text(row)} is recorded for no target")
+    for r in cfg.get("reviewed_build_settings", []):
+        entry = {k: r.get(k) for k in ("owner", "configuration", "key", "value")}
+        if json.dumps(entry, sort_keys=True) not in reviewed_settings_used:
+            problems.append(f"{CONFIG}: reviewed_build_settings entry {entry} matches nothing; remove it")
     for k, e in enumerate(allow_entries):
         if not allow_used[k]:
             problems.append(f"{ALLOWLIST}: entry {k} ({e['target']}, {e['file']}) matches nothing; remove it")

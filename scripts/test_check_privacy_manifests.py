@@ -36,6 +36,7 @@ RESOLVED = f"{APP}/CLI Pulse Bar.xcodeproj/project.xcworkspace/xcshareddata/swif
 PACKAGE = f"{APP}/CLIPulseCore/Package.swift"
 CORE = f"{APP}/CLIPulseCore/Sources/CLIPulseCore"
 DUMMY = f"{CORE}/PrivacyManifestNegativeControl.swift"
+DUMMY2 = f"{CORE}/PrivacyManifestNegativeControl2.swift"
 LOCALE = f"{CORE}/LocaleOverrideStore.swift"
 RUNTIME_ENV = f"{CORE}/CLIPulseRuntimeEnvironment.swift"
 WIDGET_PROVIDER = f"{APP}/CLI Pulse Widgets/WidgetDataProvider.swift"
@@ -123,6 +124,18 @@ def drop_collected(typ):
 
 def target_cfg(cfg, name):
     return next(t for t in cfg["targets"] if t["name"] == name)
+
+
+def in_config(config_id: str, line: str, anchor: str = "buildSettings = {\n", indent: str = "\t\t\t\t"):
+    """Adds a line to one XCBuildConfiguration (by id): a build setting by
+    default, or an attribute of the configuration itself with
+    anchor="isa = XCBuildConfiguration;\n"."""
+    def mutate(root):
+        text = (root / PBXPROJ).read_text(encoding="utf-8")
+        at = text.index(f"\t\t{config_id} /* ")
+        at = text.index(anchor, at) + len(anchor)
+        (root / PBXPROJ).write_text(text[:at] + indent + line + "\n" + text[at:], encoding="utf-8")
+    return mutate
 
 
 def add_objects(objects: str):
@@ -301,7 +314,69 @@ CASES = [
      edit_text(PBXPROJ, '\t\t\t\tCODE_SIGN_ENTITLEMENTS = "CLI Pulse Bar/CLI_Pulse_Bar.entitlements";\n',
                '\t\t\t\tCODE_SIGN_ENTITLEMENTS = "CLI Pulse Bar/CLI_Pulse_Bar.entitlements";\n'
                '\t\t\t\tEXCLUDED_SOURCE_FILE_NAMES = "*.xcprivacy";\n'),
-     1, r"CLI Pulse Bar: EXCLUDED_SOURCE_FILE_NAMES = \['\*\.xcprivacy'\] excludes PrivacyInfo\.xcprivacy"),
+     1, r"CLI Pulse Bar: build setting \"EXCLUDED_SOURCE_FILE_NAMES\" = '\*\.xcprivacy' in configuration (Debug|Release) "
+        r"\(G1000[56]\) can leave files, the privacy manifest among them, out of the bundle"),
+    # --- round 3 ---------------------------------------------------------------
+    ("R3-1: a conditional EXCLUDED_SOURCE_FILE_NAMES on the LoginItem's Release", [PBXPROJ],
+     in_config("G60002", '"EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]" = "*.xcprivacy";'),
+     1, r"CLIPulseHelper: build setting \"EXCLUDED_SOURCE_FILE_NAMES\[sdk=macosx\*\]\" = '\*\.xcprivacy' in "
+        r"configuration Release \(G60002\) can leave files, the privacy manifest among them, out of the bundle"),
+    ("R3-1: an INCLUDED_SOURCE_FILE_NAMES at project level", [PBXPROJ],
+     in_config("G10004", 'INCLUDED_SOURCE_FILE_NAMES = "*.swift";'),
+     1, r"project: build setting \"INCLUDED_SOURCE_FILE_NAMES\" = '\*\.swift' in configuration Release \(G10004\)"),
+    ("R3-1: an .xcconfig base on the project", [PBXPROJ],
+     both(add_objects('\t\tNC0040 /* Base.xcconfig */ = {isa = PBXFileReference; path = Base.xcconfig; sourceTree = SOURCE_ROOT; };\n'),
+          in_config("G10002", "baseConfigurationReference = NC0040 /* Base.xcconfig */;",
+                    anchor="isa = XCBuildConfiguration;\n", indent="\t\t\t")),
+     1, r"project: configuration Debug \(G10002\) is based on CLI Pulse Bar/Base\.xcconfig \(an \.xcconfig\), whose settings"),
+    ("R3-1: a reviewed build setting that matches nothing", [CONFIG],
+     edit_config(lambda c: c.__setitem__("reviewed_build_settings", [
+         {"owner": "project", "configuration": "Release", "key": "EXCLUDED_SOURCE_FILE_NAMES", "value": "x", "reason": "t"}])),
+     1, r"reviewed_build_settings entry .* matches nothing; remove it"),
+    ("R3-2: a custom-path package target the record does not list", [PACKAGE, f"{APP}/CLIPulseCore/PrivacyExtra/Probe.swift"],
+     both(edit_text(PACKAGE, '                .target(name: "CZstd", condition: .when(platforms: [.macOS]))',
+                    '                .target(name: "CZstd", condition: .when(platforms: [.macOS])),\n                "PrivacyExtra"'),
+          edit_text(PACKAGE, "        .testTarget(", '        .target(name: "PrivacyExtra", path: "PrivacyExtra"),\n        .testTarget('),
+          lambda r: ((r / APP / "CLIPulseCore/PrivacyExtra").mkdir(exist_ok=True),
+                     (r / APP / "CLIPulseCore/PrivacyExtra/Probe.swift").write_text(
+                         "import Darwin\npublic func probe(_ p: UnsafePointer<CChar>) -> Int32 {\n"
+                         "    var value = statfs()\n    return statfs(p, &value)\n}\n"))),
+     1, r"Package\.swift: declares target 'PrivacyExtra' \(path PrivacyExtra\), which the reviewed record .* does not "
+        r"list, so its sources are not scanned"),
+    ("R3-2: a local package dependency", [PACKAGE],
+     edit_text(PACKAGE, '.package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.10.0")',
+               '.package(url: "https://github.com/getsentry/sentry-cocoa", from: "9.10.0"),\n        .package(path: "../Extra")'),
+     1, r"Package\.swift: depends on the local package at \.\./Extra, whose sources this check does not scan"),
+    ("R3-2: a dependency added to a reviewed package target", [PACKAGE],
+     edit_text(PACKAGE, '                .target(name: "CZstd", condition: .when(platforms: [.macOS]))',
+               '                .target(name: "CZstd", condition: .when(platforms: [.macOS])),\n                "CLIPulseCoreTests"'),
+     1, r"Package\.swift: 'CLIPulseCore' is declared as .*target:CLIPulseCoreTests.*, but the reviewed record says"),
+    ("R3-3: Darwin.statfs assigned as a function value", [DUMMY],
+     dummy("var probe: (UnsafePointer<CChar>, UnsafeMutablePointer<statfs>) -> Int32 = Darwin.statfs"),
+     1, r"CLI Pulse iOS: .*/PrivacyManifestNegativeControl\.swift:3 uses statfs / statvfs / fstatfs / fstatvfs \(NSPrivacyAccessedAPICategoryDiskSpace\)"),
+    ("R3-3: statfs as a default argument value", [DUMMY],
+     dummy("func check(_ p: String,\n           using f: (UnsafePointer<CChar>, UnsafeMutablePointer<statfs>) -> Int32 = statfs) {}"),
+     1, r"CLI Pulse Watch: .*/PrivacyManifestNegativeControl\.swift:4 uses statfs"),
+    ("R3-3: fstatfs referenced without a call", [DUMMY],
+     dummy("let reader = fstatfs"),
+     1, r"CLI Pulse Widgets: .*/PrivacyManifestNegativeControl\.swift:3 uses statfs / statvfs / fstatfs / fstatvfs"),
+    ("R3-4: @AppStorage on a system key", [DUMMY],
+     dummy('import SwiftUI\nstruct NCView {\n    @AppStorage("AppleInterfaceStyle") var style = ""\n}'),
+     1, r"CLI Pulse iOS: .*/PrivacyManifestNegativeControl\.swift:5 reads a key the system writes, through @AppStorage"),
+    ("R3-4: @AppStorage(wrappedValue:, system key)", [DUMMY],
+     dummy('import SwiftUI\nstruct NCView {\n    @AppStorage(wrappedValue: "", "AppleLanguages") var langs: String\n}'),
+     1, r"CLI Pulse Bar: .*/PrivacyManifestNegativeControl\.swift:5 reads a key the system writes, through @AppStorage"),
+    ("R3-4/5: @AppStorage on a name bound to a system key in another file", [DUMMY, DUMMY2],
+     both(dummy('enum PrivacyNCKeys { static let style: String = "AppleInterfaceStyle" }'),
+          lambda r: (r / DUMMY2).write_text('import SwiftUI\nstruct NCView {\n    @AppStorage(PrivacyNCKeys.style) var style = ""\n}\n')),
+     1, r"CLI Pulse iOS: .*/PrivacyManifestNegativeControl2\.swift:3 reads a key the system writes \(style\), through @AppStorage"),
+    ("R3-5: forKey: on a name bound to a system key in another file", [DUMMY, DUMMY2],
+     both(dummy('enum PrivacyNCKeys { static let lang = "AppleLanguages" }'),
+          lambda r: (r / DUMMY2).write_text("import Foundation\nlet ncLangs = UserDefaults.standard.stringArray(forKey: PrivacyNCKeys.lang)\n")),
+     1, r"CLI Pulse Watch: .*/PrivacyManifestNegativeControl2\.swift:2 reads a key the system writes \(lang\) through UserDefaults"),
+    ("R3 SHOULD: a Linked flag that is an array", [WATCH],
+     edit_plist(WATCH, lambda d: collected(d, "CrashData").__setitem__("NSPrivacyCollectedDataTypeLinked", [])),
+     1, r"NSPrivacyCollectedDataTypeLinked is an array, not a boolean"),
     ("a manifest file that is missing", [MAC], lambda r: (r / MAC).unlink(),
      1, r"CLI Pulse Bar/CLI Pulse Bar/PrivacyInfo\.xcprivacy: cannot read"),
     ("a new app extension target, not in the record", [PBXPROJ, f"{APP}/NC Share Extension/Probe.swift"],
@@ -403,6 +478,12 @@ PATTERN_SAMPLES = [
     ("let t = ProcessInfo.processInfo.systemUptime", {"SystemBootTime"}),
     ("let t = mach_absolute_time()", {"SystemBootTime"}),
     ("let t = mach_continuous_time()", {"SystemBootTime"}),
+    ("let clock: () -> UInt64 = mach_absolute_time", {"SystemBootTime"}),
+    ("let probe = Darwin.lstat", {"FileTimestamp"}),
+    ("var probe: (UnsafePointer<CChar>, UnsafeMutablePointer<stat>) -> Int32 = Darwin.stat", {"FileTimestamp"}),
+    ("let probe = Foundation.statvfs", {"DiskSpace"}),
+    ("run(with: statfs)", {"DiskSpace"}),
+    ("let g = getattrlist", {"FileTimestamp", "DiskSpace"}),
     ("var mib = [CTL_KERN, KERN_BOOTTIME]", {"SystemBootTime"}),
     ('_ = sysctlbyname("kern.boottime", &tv, &size, nil, 0)', {"SystemBootTime"}),
     ("let k: URLResourceKey = .volumeAvailableCapacityForImportantUsageKey", {"DiskSpace"}),
@@ -422,6 +503,13 @@ NEAR_MISSES = [
     "// lstat(p, &s) systemUptime",      # a comment
     'let s = "statfs(p, &s) volumeTotalCapacity"',  # a string
     "let x = myfstatfs(p)",              # another identifier
+    "let n = MemoryLayout<statfs>.size",  # type uses of the struct names
+    "var s: statfs = statfs()",
+    "let p = UnsafeMutablePointer<statfs>.allocate(capacity: 1)",
+    "func g(_ s: statfs) {}",
+    "let t = statfs.self",
+    "let a: [stat] = []",
+    "static let isStatic = true; let state = status",  # words that contain "stat"
 ]
 
 
@@ -460,7 +548,8 @@ def main() -> int:
         spec.loader.exec_module(check)
         for name, touched, mutate, want_rc, want, *absent in CASES:
             saved = {t: (root / t).read_bytes() if (root / t).exists() else None for t in touched}
-            extra_dirs = [root / APP / "NC Share Extension", root / APP / "CLIPulseCore/Sources/NCExtra"]
+            extra_dirs = [root / APP / "NC Share Extension", root / APP / "CLIPulseCore/Sources/NCExtra",
+                          root / APP / "CLIPulseCore/PrivacyExtra"]
             try:
                 if mutate:
                     mutate(root)

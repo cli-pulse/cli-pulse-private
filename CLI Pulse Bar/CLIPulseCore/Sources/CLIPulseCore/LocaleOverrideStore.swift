@@ -87,9 +87,15 @@ public final class LocaleOverrideStore: ObservableObject {
 
     /// `defaults` falls back to `DisplayPreferences.defaults`, `.standard` in the
     /// app, so a store built without one never reads or writes the `xctest`
-    /// tool's domain, which every test run on the Mac shares. `ownDomain` names
-    /// the persistent domain `defaults` writes to; without it (a store on another
-    /// suite that did not say which) the mirror is never removed, only forgotten.
+    /// tool's domain, which every test run on the Mac shares.
+    ///
+    /// Contract: `ownDomain` must name the persistent domain `defaults` writes
+    /// to: the bundle identifier for `.standard`, the suite's name for
+    /// `UserDefaults(suiteName:)`. It is filled in only when `defaults` is
+    /// `DisplayPreferences.defaults`; a caller passing other defaults passes the
+    /// matching domain too. Without one the mirror is never removed from
+    /// `AppleLanguages`, only forgotten, because the store cannot tell its own
+    /// pin from a per-app language the user set.
     init(
         defaults: UserDefaults = DisplayPreferences.defaults,
         ownDomain: String? = nil,
