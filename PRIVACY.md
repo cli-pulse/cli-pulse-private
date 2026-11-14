@@ -116,7 +116,7 @@ pass through our servers.
 | **Your subscription**, if you buy one in the App Store or Google Play reports one for your Google account: the plan, that it is active, when the current period ends, which store, the App Store's product and transaction IDs or Google Play's order ID (or, if Google gives none, the start of the purchase token), and when it was last checked. To check it, the app sends our server the App Store's signed transaction and product ID, or Google Play's purchase token, product ID and the app's package name | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | Keeps your plan with your account, so every device shows it; deleted with your account |
 | **Crash reports** from the Mac, iPhone, Apple Watch and Android apps (see *Security practices* for what they contain) | Sentry (sentry.io), scrubbed before leaving the device | ✅ Yes, when a crash or error happens, whether or not you are signed in; the same SDK also reports each app session's start and whether it ended in a crash | So crashes are visible to us without waiting for an App Store or Google Play review |
 | **Anonymous install statistics** (Mac app only: random install id, install channel, app version, OS major.minor, display language, and a few once-ever yes/no milestones listed below) | Supabase, **not linked to any account** | ✅ Yes, unless you turn it off | Tells us whether the app actually works for people who never sign in |
-| **Network details of every request to our server**, from every app: your IP address, and the approximate location (city and country) that our hosting provider works out from it and records with the request; the label each request carries, which names the app, or the library or browser making the request, usually with version numbers (for the Mac, iPhone and Apple Watch apps, also the system's); and the address each request asks for, which can include your account's ID | Supabase's request and sign-in logs, kept for about 90 days; with each sign-in, Supabase Auth's record of that session, removed when you delete your account, and when you sign out only if our server accepts the app's sign-out request (from 1.63 an app renews a sign-in that has expired, or is about to, before sending the request, or else, if our server refuses the request because of its sign-in, renews it then and sends the request once more; it renews at most once and spends at most 20 seconds on the network. 1.62 and earlier send the request once, without renewing first. Signing out while offline, or with an expired sign-in that can no longer be renewed, leaves the record; records of expired sessions are cleaned up later). From 1.63 a sign-out removes only that device's record; in 1.62 and earlier it removed the records of all your devices. Linking a sign-in method on iPhone (Settings › Linked Accounts) can start a new session there, and from 1.63 the record of the session it replaced is not removed by a later Sign Out on that iPhone; Android 1.63.0 asks our server to remove that record as soon as the link completes; for each attempt to pair a Mac, our own database, until the cleanup after it is an hour old (at most about a day) | ✅ Yes, with every request | Running and protecting the service (pairing attempts are counted to limit their rate). Deleting your account does not remove log entries already written |
+| **Network details of every request to our server**, from every app: your IP address, and the approximate location (city and country) that our hosting provider works out from it and records with the request; the label each request carries, which names the app, or the library or browser making the request, usually with version numbers (for the Mac, iPhone and Apple Watch apps, also the system's); and the address each request asks for, which can include your account's ID | Supabase's request and sign-in logs, kept for about 90 days; for each attempt to pair a Mac, our own database, until the cleanup after it is an hour old (at most about a day); and, with each sign-in, Supabase Auth's record of that session, which stays until you delete your account unless a sign-out removes it. Our server does not remove the record of an expired or abandoned session on its own. A sign-out removes it only if our server accepts the app's sign-out request (from 1.63 an app renews a sign-in that has expired, or is about to, before sending the request, or else, if our server refuses the request because of its sign-in, renews it then and sends the request once more; it renews at most once, waits at most 10 seconds for a renewal already under way, and then spends at most 20 seconds on the network. 1.62 and earlier send the request once, without renewing first). Signing out while offline, or with an expired sign-in that can no longer be renewed, leaves the record. From 1.63 a sign-out removes only that device's record; in 1.62 and earlier it removed the records of all your devices. So from 1.63 a Sign Out also does not remove the record of a session that a sign-in or link started but the app did not keep: one whose answer came after you had cancelled that sign-in, started another, chosen Try Demo or signed out, and, on iPhone, the session that linking a sign-in method (Settings › Linked Accounts) replaced. Such a record stays until you delete your account. Android 1.63.0 asks our server to remove the session a link replaced on the phone as soon as the link completes | ✅ Yes, with every request | Running and protecting the service (pairing attempts are counted to limit their rate). Deleting your account does not remove log entries already written |
 
 **The key point:** the two categories of data you'd be most worried about —
 provider API keys and raw session-log contents — never touch our servers, full
@@ -678,8 +678,9 @@ with CLI Pulse 1.55, and later releases follow them:
   app records no web requests. Since Android 1.63.0 its hook, besides removing
   the secrets named above, replaces UUIDs and email addresses and drops the
   query string and fragment of any web address, in a report's error messages,
-  breadcrumbs, tags and extras; it checks field names in tags, extras, contexts
-  and breadcrumb data, at every level of nesting. Unlike the Apple apps' hook,
+  breadcrumbs, tags and extras; it checks field names in tags, extras and
+  breadcrumb data, and in maps and lists inside a report's contexts, to eight
+  levels of nesting (deeper ones are dropped). Unlike the Apple apps' hook,
   it does not look for other parts of an address that look like an
   identifier. Its breadcrumbs come from the Sentry SDK's own defaults: the
   app's screens opening and closing, the app moving to the background, and
@@ -791,6 +792,9 @@ with CLI Pulse 1.55, and later releases follow them:
   the table). If our server cannot delete the account, for example because the
   phone is offline, the app says so, keeps you signed in and deletes nothing
   (unless our server refuses its sign-in meanwhile, as the table describes).
+  If our server deleted the account but its answer did not reach the phone,
+  the app also reports a failure and keeps what it saved until our server
+  refuses its sign-in.
   You can also have your account deleted without any of the apps: see
   *Deleting your account* below.
 - **Sign out on the Mac, iPhone and Apple Watch:** from 1.63, Sign Out asks
@@ -799,8 +803,8 @@ with CLI Pulse 1.55, and later releases follow them:
   that the request is accepted; otherwise, if our server refuses the request
   because of its sign-in, the app renews it then and tries once more. It
   renews at most once, and the renewed sign-in is used for this alone and not
-  kept. It spends at most 20 seconds on the network and does not try again
-  later, so a sign-out while offline leaves that sign-in on our server (see
+  kept. It waits at most 10 seconds for a renewal already under way, then
+  spends at most 20 seconds on the network, and does not try again later, so a sign-out while offline leaves that sign-in on our server (see
   *Network details* in the table). An Apple
   Watch that uses the sign-in your iPhone passed it shares the iPhone's: its
   own Sign Out sends our server nothing (as it has since 1.61), and the
@@ -813,8 +817,8 @@ with CLI Pulse 1.55, and later releases follow them:
   details and saved usage figures from the phone first, without waiting for
   the network (a deletion that fails is retried, also after a restart, as the
   table describes), then asks our server to end this phone's sign-in only, in the
-  same way as the item above (renewing it first if needed, at most 20 seconds
-  on the network, no later retry). Your other devices stay signed in. After
+  same way as the item above (renewing it first if needed, at most about 30
+  seconds in all, no later retry). Your other devices stay signed in. After
   that the app sends nothing linked to your account. The phone's record in
   your account (maker, model, Android version and any notification token)
   stays until you delete the account, and each later sign-in adds a new one.
@@ -965,10 +969,11 @@ exchange for anything — the App Store and Google Play forbid it, and so do we.
 - **Network details of requests** are kept in Supabase's request and sign-in
   logs for about 90 days (the request logs also hold the city and country worked
   out from your IP address), and with each sign-in session until you delete your
-  account or sign out on that device (a sign-out removes it only when our
-  server accepts the app's sign-out request, and *Network details* in the table
-  says which records each version's sign-out removes; records of expired
-  sessions are cleaned up later); a
+  account, unless a sign-out on that device removes it earlier (a sign-out
+  removes it only when our server accepts the app's sign-out request, and
+  *Network details* in the table says which records each version's sign-out
+  removes; our server does not remove the record of an expired or abandoned
+  session on its own); a
   Mac pairing attempt's IP address is deleted at the cleanup after it is an
   hour old. Deleting your account does not remove log entries already written.
 - **Crash reports** are kept by Sentry for the retention period of our Sentry
