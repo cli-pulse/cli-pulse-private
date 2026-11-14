@@ -1,6 +1,7 @@
 Al cerrar sesión, ahora solo se cierra la sesión en el dispositivo que estás usando.
 
-• Cerrar sesión en tu iPhone, iPad o Apple Watch ya no cierra la sesión en tu Mac ni en tus otros dispositivos. Hasta ahora, cerrar sesión en un dispositivo la cerraba en todos. Un dispositivo que todavía tenga una versión anterior de CLI Pulse sigue cerrando la sesión en todos tus dispositivos cuando cierras sesión en él, hasta que se actualice.
+• Cerrar sesión en tu iPhone, iPad o Apple Watch ya no cierra la sesión en tu Mac ni en tus otros dispositivos. Hasta ahora, cerrar sesión en un dispositivo la cerraba en todos.
 • La excepción es un Apple Watch que usa la sesión iniciada en tu iPhone: su sesión se cierra cuando cierras sesión en el iPhone.
-• Si no habías usado la app durante un tiempo, Cerrar sesión dejaba esa sesión válida en el servidor. Ahora también la cierra allí.
-• Los informes de errores ya no incluyen un identificador derivado de tu dispositivo ni los títulos de las pantallas y los botones.
+• En un dispositivo que todavía tenga una versión anterior de CLI Pulse, cerrar sesión la cierra en todos tus dispositivos hasta que ese dispositivo se actualice.
+• Si no habías usado la app durante un tiempo, cerrar sesión podía dejarla abierta en el servidor. Ahora también se cierra allí.
+• Los informes de errores ya no incluyen un identificador derivado de tu dispositivo ni los títulos de las pantallas y los botones que usas.
