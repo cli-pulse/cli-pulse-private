@@ -1,0 +1,7 @@
+Signing out now signs out only the device you are using.
+
+• Signing out on your iPhone or iPad no longer signs out your Mac and your other devices. Until now, it signed you out on all of them. An Apple Watch that uses your iPhone's sign-in is still signed out along with the iPhone.
+• An Apple Watch signed in with its own code now signs out only itself.
+• Signing out on a device that still runs an older version of CLI Pulse can still sign out all your devices, until that device is updated.
+• When a sign-in has expired while the app was not in use, Sign Out now renews it and then asks the server to end it. Before, such a sign-in could stay valid on the server. This needs a network connection.
+• Crash reports no longer include an identifier derived from your device, or the titles of the screens you opened and the buttons you tapped.
