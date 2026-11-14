@@ -1,0 +1,5 @@
+Al cerrar sesión en este Mac, ahora solo se cierra la sesión en este Mac.
+
+• Cerrar sesión en este Mac ya no cierra la sesión en tu iPhone ni en tus otros dispositivos. Hasta ahora, cerrar sesión en un dispositivo la cerraba en todos. Un dispositivo que todavía tenga una versión anterior de CLI Pulse sigue cerrando la sesión en todos tus dispositivos cuando cierras sesión en él, hasta que se actualice.
+• Si este Mac había estado en reposo o no habías usado CLI Pulse durante un tiempo, Cerrar sesión dejaba esa sesión válida en el servidor. Ahora también la cierra allí.
+• Los informes de errores ya no incluyen un identificador derivado del hardware de este Mac.
