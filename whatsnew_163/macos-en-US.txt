@@ -1,6 +1,6 @@
 Signing out on this Mac now signs out only this Mac.
 
-• Signing out on this Mac no longer signs out your iPhone and your other devices. Until now, signing out on one device signed you out on all of them.
-• On a device still running an older version of CLI Pulse, signing out signs out all your devices until that device is updated.
-• When this Mac had been asleep for a while, Sign Out could leave this Mac's sign-in valid on the server. It now ends it there too.
+• Signing out on this Mac no longer signs out your iPhone and your other devices. Until now, it signed you out on all of them.
+• Signing out on a device that still runs an older version of CLI Pulse can still sign out all your devices, until that device is updated.
+• Sign Out now also ends a sign-in that expired while this Mac was asleep. Before, such a sign-in could stay valid on the server. This needs a network connection.
 • Crash reports no longer include an identifier derived from this Mac's hardware.
