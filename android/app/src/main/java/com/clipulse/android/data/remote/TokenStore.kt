@@ -35,14 +35,16 @@ import java.util.UUID
 class TokenStore internal constructor(
     private val prefs: SharedPreferences,
     private val io: CoroutineDispatcher = Dispatchers.IO,
-    startsAfterReset: Boolean = false,
+    resetPending: Boolean = false,
+    onResetMarked: () -> Unit = {},
 ) {
     constructor(context: Context) : this(SecurePrefs.open(context))
 
     private constructor(opened: SecurePrefs.Opened) : this(
         opened.prefs,
         Dispatchers.IO,
-        startsAfterReset = opened.wasReset,
+        resetPending = opened.resetPending,
+        onResetMarked = opened.resetDone,
     )
 
     /** Why the last session ended, until the next one starts. In memory only. */
@@ -75,10 +77,15 @@ class TokenStore internal constructor(
     private val _state = MutableStateFlow(view.state)
 
     init {
-        // 1.63 (D7): SecurePrefs deleted preferences it could never read. The usage cache
-        // restored with them belongs to whoever was signed in there: mark it for deletion now,
-        // before any session can be installed, instead of leaving it to the start-up check.
-        if (startsAfterReset) markResetForTeardown()
+        // 1.63 (D7): SecurePrefs deleted preferences it could never read (now, or in a start
+        // that died before this ran). The usage cache restored with them belongs to whoever was
+        // signed in there: mark it for deletion now, before any session can be installed, and
+        // only then let SecurePrefs forget the reset. A mark that did not reach disk keeps the
+        // reset pending, so the next start marks again.
+        if (resetPending) {
+            markResetForTeardown()
+            if (durable) onResetMarked()
+        }
     }
 
     /** The current session id and teardown marker, re-published after every change. */
