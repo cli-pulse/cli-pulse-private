@@ -8,6 +8,7 @@ import androidx.security.crypto.MasterKey
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.io.RandomAccessFile
 import java.security.GeneralSecurityException
 import java.security.ProviderException
 import java.util.UUID
@@ -163,12 +164,23 @@ internal object SecurePrefs {
         }
 
         override fun record(): String {
-            val token = token() ?: UUID.randomUUID().toString()
-            // Written and synced every time, also over an existing file: an earlier write
-            // whose sync failed must not count as recorded.
-            FileOutputStream(file).use { out ->
+            token()?.let { existing ->
+                // Already recorded: sync it again (an earlier write whose sync failed must not
+                // count), without truncating it, so an interruption cannot erase it.
+                RandomAccessFile(file, "rw").use { it.fd.sync() }
+                return existing
+            }
+            // A new token is written to a temporary file, synced, then renamed over the target:
+            // the intent file only ever holds a whole token.
+            val token = UUID.randomUUID().toString()
+            val temp = File(file.parentFile, file.name + ".tmp")
+            FileOutputStream(temp).use { out ->
                 out.write(token.toByteArray())
                 out.fd.sync()
+            }
+            if (!temp.renameTo(file)) {
+                temp.delete()
+                throw IOException("reset intent could not be placed")
             }
             check(token() == token) { "reset intent not readable after writing" }
             return token

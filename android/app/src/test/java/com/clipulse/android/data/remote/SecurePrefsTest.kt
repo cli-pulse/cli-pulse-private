@@ -245,6 +245,22 @@ class SecurePrefsTest {
     }
 
     @Test
+    fun `recording again keeps an existing token's bytes, and a new token replaces the file whole`() {
+        val file = File(tmp.root, SecurePrefs.RESET_INTENT_FILE)
+        val intent = SecurePrefs.FileIntent(file)
+        val token = intent.record()
+        val before = file.readBytes()
+        assertEquals(token, intent.record())
+        assertTrue("an existing record is synced, not rewritten", before.contentEquals(file.readBytes()))
+        // A leftover temporary file from an interrupted write does not count and is replaced.
+        intent.clear()
+        File(tmp.root, SecurePrefs.RESET_INTENT_FILE + ".tmp").writeText("half")
+        val second = intent.record()
+        assertEquals(second, file.readText())
+        assertFalse(File(tmp.root, SecurePrefs.RESET_INTENT_FILE + ".tmp").exists())
+    }
+
+    @Test
     fun `an empty intent file means no reset (its write never finished, so nothing was deleted)`() {
         val file = File(tmp.root, SecurePrefs.RESET_INTENT_FILE).apply { writeText("") }
         assertNull(SecurePrefs.FileIntent(file).token())
@@ -287,14 +303,15 @@ class SecurePrefsTest {
     fun `a reset already handled is not marked again, even when its intent could not be removed`() {
         val prefs = InMemorySharedPreferences()
         TokenStore(opened(prefs, "t1") {}) // handled, but say the intent file stayed
-        // A later session: signed in, its marker settled, its cache written.
-        val later = TokenStore(prefs.restart())
+        // A later start, then a session: signed in, its marker settled, its cache written.
+        val laterDisk = prefs.restart()
+        val later = TokenStore(laterDisk)
         val id = later.installSession("access", "refresh", "user")!!
         later.clearPendingIfEquals(TokenStore.LEGACY_CACHE_MARKER)
         assertNull(later.teardownPending)
 
         var done = 0
-        val next = TokenStore(opened(prefs.restart(), "t1") { done++ })
+        val next = TokenStore(opened(laterDisk.restart(), "t1") { done++ })
         assertNull("the later session's cache is not marked for this old reset", next.teardownPending)
         assertEquals(id, next.sessionId)
         assertEquals("the stale intent is removed again", 1, done)
