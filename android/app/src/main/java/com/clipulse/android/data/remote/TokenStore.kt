@@ -2,8 +2,6 @@ package com.clipulse.android.data.remote
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,15 +35,14 @@ import java.util.UUID
 class TokenStore internal constructor(
     private val prefs: SharedPreferences,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    startsAfterReset: Boolean = false,
 ) {
-    constructor(context: Context) : this(
-        EncryptedSharedPreferences.create(
-            context,
-            "cli_pulse_secure_prefs",
-            MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        ),
+    constructor(context: Context) : this(SecurePrefs.open(context))
+
+    private constructor(opened: SecurePrefs.Opened) : this(
+        opened.prefs,
+        Dispatchers.IO,
+        startsAfterReset = opened.wasReset,
     )
 
     /** Why the last session ended, until the next one starts. In memory only. */
@@ -76,6 +73,13 @@ class TokenStore internal constructor(
     private var view: View = readViewLocked()
 
     private val _state = MutableStateFlow(view.state)
+
+    init {
+        // 1.63 (D7): SecurePrefs deleted preferences it could never read. The usage cache
+        // restored with them belongs to whoever was signed in there: mark it for deletion now,
+        // before any session can be installed, instead of leaving it to the start-up check.
+        if (startsAfterReset) markResetForTeardown()
+    }
 
     /** The current session id and teardown marker, re-published after every change. */
     val state: StateFlow<SessionState> get() = _state
@@ -313,6 +317,16 @@ class TokenStore internal constructor(
         commitLocked(edit)
         publishLocked()
         return mark
+    }
+
+    @Synchronized
+    private fun markResetForTeardown() {
+        commitLocked(
+            prefs.edit()
+                .putBoolean(KEY_LEGACY_CACHE_CHECKED, true)
+                .putString(KEY_TEARDOWN_PENDING, LEGACY_CACHE_MARKER),
+        )
+        publishLocked()
     }
 
     /** Writes the whole map again; true when it reached disk. */
