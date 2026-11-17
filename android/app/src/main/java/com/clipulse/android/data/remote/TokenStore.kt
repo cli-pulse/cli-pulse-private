@@ -2,8 +2,6 @@ package com.clipulse.android.data.remote
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,15 +35,16 @@ import java.util.UUID
 class TokenStore internal constructor(
     private val prefs: SharedPreferences,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    resetToken: String? = null,
+    onResetHandled: () -> Unit = {},
 ) {
-    constructor(context: Context) : this(
-        EncryptedSharedPreferences.create(
-            context,
-            "cli_pulse_secure_prefs",
-            MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-        ),
+    constructor(context: Context) : this(SecurePrefs.open(context))
+
+    internal constructor(opened: SecurePrefs.Opened) : this(
+        opened.prefs,
+        Dispatchers.IO,
+        resetToken = opened.resetToken,
+        onResetHandled = opened.resetDone,
     )
 
     /** Why the last session ended, until the next one starts. In memory only. */
@@ -76,6 +75,19 @@ class TokenStore internal constructor(
     private var view: View = readViewLocked()
 
     private val _state = MutableStateFlow(view.state)
+
+    init {
+        // 1.63 (D7): SecurePrefs deleted preferences it could never read (now, or in a start
+        // that died before this ran). The usage cache restored with them belongs to whoever was
+        // signed in there: mark it for deletion now, before any session can be installed, with
+        // the reset's token stored as handled in the same commit. A reset already handled (the
+        // commit reached disk later, through a re-commit, or the intent could not be removed)
+        // is never marked again. The intent is removed only once "handled" is on disk.
+        if (resetToken != null) {
+            if (prefs.getString(KEY_RESET_HANDLED, null) != resetToken) markResetForTeardown(resetToken)
+            if (durable && prefs.getString(KEY_RESET_HANDLED, null) == resetToken) onResetHandled()
+        }
+    }
 
     /** The current session id and teardown marker, re-published after every change. */
     val state: StateFlow<SessionState> get() = _state
@@ -270,14 +282,17 @@ class TokenStore internal constructor(
         )
         val generation = prefs.getLong(KEY_AUTH_GENERATION, 0L)
         val cacheChecked = prefs.getBoolean(KEY_LEGACY_CACHE_CHECKED, false)
+        val resetHandled = prefs.getString(KEY_RESET_HANDLED, null)
         // Editor.clear() is applied before the puts of the same transaction, so the marker
-        // survives the wipe it belongs to.
+        // survives the wipe it belongs to. The handled D7 reset survives too: an intent that
+        // could not be removed must not mark a later session's cache.
         commitLocked(
             prefs.edit()
                 .clear()
                 .putString(KEY_TEARDOWN_PENDING, expectedSessionId)
                 .putLong(KEY_AUTH_GENERATION, generation)
-                .putBoolean(KEY_LEGACY_CACHE_CHECKED, cacheChecked),
+                .putBoolean(KEY_LEGACY_CACHE_CHECKED, cacheChecked)
+                .putString(KEY_RESET_HANDLED, resetHandled),
         )
         lastEndReason = reason
         publishLocked()
@@ -313,6 +328,17 @@ class TokenStore internal constructor(
         commitLocked(edit)
         publishLocked()
         return mark
+    }
+
+    @Synchronized
+    private fun markResetForTeardown(token: String) {
+        commitLocked(
+            prefs.edit()
+                .putBoolean(KEY_LEGACY_CACHE_CHECKED, true)
+                .putString(KEY_TEARDOWN_PENDING, LEGACY_CACHE_MARKER)
+                .putString(KEY_RESET_HANDLED, token),
+        )
+        publishLocked()
     }
 
     /** Writes the whole map again; true when it reached disk. */
@@ -560,6 +586,7 @@ class TokenStore internal constructor(
         private const val KEY_TEARDOWN_PENDING = "teardown_pending"
         private const val KEY_AUTH_GENERATION = "auth_generation"
         private const val KEY_LEGACY_CACHE_CHECKED = "legacy_cache_checked"
+        private const val KEY_RESET_HANDLED = "secure_prefs_reset_handled"
         private const val KEY_DURABILITY_PROBE = "durability_probe"
         private const val KEY_PENDING_KIND = "pending_oauth_kind"
         private const val KEY_PENDING_PROVIDER = "pending_oauth_provider"
