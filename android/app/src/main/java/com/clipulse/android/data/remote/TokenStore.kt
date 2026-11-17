@@ -35,16 +35,16 @@ import java.util.UUID
 class TokenStore internal constructor(
     private val prefs: SharedPreferences,
     private val io: CoroutineDispatcher = Dispatchers.IO,
-    resetPending: Boolean = false,
-    onResetMarked: () -> Unit = {},
+    resetToken: String? = null,
+    onResetHandled: () -> Unit = {},
 ) {
     constructor(context: Context) : this(SecurePrefs.open(context))
 
-    private constructor(opened: SecurePrefs.Opened) : this(
+    internal constructor(opened: SecurePrefs.Opened) : this(
         opened.prefs,
         Dispatchers.IO,
-        resetPending = opened.resetPending,
-        onResetMarked = opened.resetDone,
+        resetToken = opened.resetToken,
+        onResetHandled = opened.resetDone,
     )
 
     /** Why the last session ended, until the next one starts. In memory only. */
@@ -79,12 +79,13 @@ class TokenStore internal constructor(
     init {
         // 1.63 (D7): SecurePrefs deleted preferences it could never read (now, or in a start
         // that died before this ran). The usage cache restored with them belongs to whoever was
-        // signed in there: mark it for deletion now, before any session can be installed, and
-        // only then let SecurePrefs forget the reset. A mark that did not reach disk keeps the
-        // reset pending, so the next start marks again.
-        if (resetPending) {
-            markResetForTeardown()
-            if (durable) onResetMarked()
+        // signed in there: mark it for deletion now, before any session can be installed, with
+        // the reset's token stored as handled in the same commit. A reset already handled (the
+        // commit reached disk later, through a re-commit, or the intent could not be removed)
+        // is never marked again. The intent is removed only once "handled" is on disk.
+        if (resetToken != null) {
+            if (prefs.getString(KEY_RESET_HANDLED, null) != resetToken) markResetForTeardown(resetToken)
+            if (durable && prefs.getString(KEY_RESET_HANDLED, null) == resetToken) onResetHandled()
         }
     }
 
@@ -281,14 +282,17 @@ class TokenStore internal constructor(
         )
         val generation = prefs.getLong(KEY_AUTH_GENERATION, 0L)
         val cacheChecked = prefs.getBoolean(KEY_LEGACY_CACHE_CHECKED, false)
+        val resetHandled = prefs.getString(KEY_RESET_HANDLED, null)
         // Editor.clear() is applied before the puts of the same transaction, so the marker
-        // survives the wipe it belongs to.
+        // survives the wipe it belongs to. The handled D7 reset survives too: an intent that
+        // could not be removed must not mark a later session's cache.
         commitLocked(
             prefs.edit()
                 .clear()
                 .putString(KEY_TEARDOWN_PENDING, expectedSessionId)
                 .putLong(KEY_AUTH_GENERATION, generation)
-                .putBoolean(KEY_LEGACY_CACHE_CHECKED, cacheChecked),
+                .putBoolean(KEY_LEGACY_CACHE_CHECKED, cacheChecked)
+                .putString(KEY_RESET_HANDLED, resetHandled),
         )
         lastEndReason = reason
         publishLocked()
@@ -327,11 +331,12 @@ class TokenStore internal constructor(
     }
 
     @Synchronized
-    private fun markResetForTeardown() {
+    private fun markResetForTeardown(token: String) {
         commitLocked(
             prefs.edit()
                 .putBoolean(KEY_LEGACY_CACHE_CHECKED, true)
-                .putString(KEY_TEARDOWN_PENDING, LEGACY_CACHE_MARKER),
+                .putString(KEY_TEARDOWN_PENDING, LEGACY_CACHE_MARKER)
+                .putString(KEY_RESET_HANDLED, token),
         )
         publishLocked()
     }
@@ -581,6 +586,7 @@ class TokenStore internal constructor(
         private const val KEY_TEARDOWN_PENDING = "teardown_pending"
         private const val KEY_AUTH_GENERATION = "auth_generation"
         private const val KEY_LEGACY_CACHE_CHECKED = "legacy_cache_checked"
+        private const val KEY_RESET_HANDLED = "secure_prefs_reset_handled"
         private const val KEY_DURABILITY_PROBE = "durability_probe"
         private const val KEY_PENDING_KIND = "pending_oauth_kind"
         private const val KEY_PENDING_PROVIDER = "pending_oauth_provider"

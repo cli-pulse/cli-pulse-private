@@ -120,7 +120,7 @@ class SessionLifecycleTest {
     fun `after a reset of unreadable preferences the restored cache is deleted before a sign-in can write, even ahead of start`() = runTest {
         // 1.63 D7: SecurePrefs deleted preferences restored without their key; the Room cache
         // restored with them must go before any session's data, whatever wins the lock first.
-        val store = TokenStore(InMemorySharedPreferences(), resetPending = true)
+        val store = TokenStore(InMemorySharedPreferences(), resetToken = "t1")
         val dao = FakeCacheDao().apply { fill("restored") }
         val scope = childScope()
         val lifecycle = SessionLifecycle(store, dao, scope, StandardTestDispatcher(testScheduler))

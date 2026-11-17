@@ -2,7 +2,6 @@ package com.clipulse.android.data.remote
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -10,8 +9,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.security.GeneralSecurityException
-import java.security.KeyStore
 import java.security.ProviderException
+import java.util.UUID
 import javax.crypto.AEADBadTagException
 
 /**
@@ -25,49 +24,52 @@ import javax.crypto.AEADBadTagException
  * 2026-11-16). 1.63.0's rules stop new transfers from carrying the file; a phone restored
  * earlier still has it.
  *
- * What this deletes, and when. Nothing on the first failure: it opens once more, because a
- * Keystore that was briefly busy answers the second time. Only when that second open fails
- * with a cause that names permanent damage does it delete, and only what that cause names:
- * - the keyset no longer authenticates under the current key (`AEADBadTagException` anywhere
- *   in the chain): the file;
- * - Android says the key itself is permanently invalid (`KeyPermanentlyInvalidatedException`):
- *   the key, then the file (a new key cannot read a keyset made for the old one).
- * Nothing else counts, `UnrecoverableKeyException` included: Android also wraps passing
- * Keystore failures in it.
+ * What this deletes, and when. Nothing on the first failure: it waits [RETRY_PAUSE_MS] and
+ * opens once more, because a Keystore that was briefly unavailable answers the second time.
+ * (The wait matters: during such an outage the library's own `containsAlias` check can fail
+ * and make it generate a new key over the old one; a retry inside the same outage invites
+ * that.) Only when the second open fails because the keyset no longer authenticates under
+ * the current key (`AEADBadTagException` anywhere in the chain; Android raises it only for a
+ * failed authentication) does it delete the file. Nothing else counts: `UnrecoverableKeyException`,
+ * `KeyStoreException` and the rest are thrown, as before 1.63, with nothing deleted. The key is
+ * never deleted: with the file gone the library makes a fresh keyset under whatever key exists.
  *
- * Before deleting anything it records a reset intent in `noBackupFilesDir` (never backed up
- * or transferred). [Opened.resetPending] reports that intent; TokenStore then marks the usage
- * cache restored with the old file for deletion and calls [Opened.resetDone] once that mark is
- * on disk. So a process that dies between the deletion and the mark finishes the job on the
- * next start, instead of opening an empty store and keeping the old cache.
+ * Before deleting, it records a reset intent, a random token in `noBackupFilesDir` (never
+ * backed up or transferred), written and synced. [Opened.resetToken] reports it, on this start
+ * and on any later one. TokenStore marks the usage cache restored with the old file for
+ * deletion and stores the token as handled in the same commit; only then is the intent
+ * removed ([Opened.resetDone]). A start that finds the intent already handled (its commit
+ * reached disk late, or the file could not be removed) only removes it again: the cache of a
+ * later session is never marked twice for one reset. This covers a process that dies between
+ * the deletion and the mark. It does not sync the directory entry, so a power loss in that
+ * window is not covered.
  *
- * Any other failure, an intent or a deletion that could not be made, or a failure of the open
- * after the deletion is thrown, as before 1.63. Out of scope: a readable keyset whose
- * individual values are damaged (`create` succeeds then; a later read fails).
- *
- * The master key alias ([MasterKey.DEFAULT_MASTER_KEY_ALIAS]) is used only by this file: no
- * other EncryptedSharedPreferences, EncryptedFile or MasterKey exists in the app.
+ * A token that cannot be read, an intent that cannot be recorded, a deletion that did not
+ * happen, or a failure of the open after the deletion is thrown. Out of scope: a readable
+ * keyset whose individual values are damaged, or a keyset that decrypts but does not parse.
  */
 internal object SecurePrefs {
     const val FILE = "cli_pulse_secure_prefs"
     const val RESET_INTENT_FILE = "secure_prefs_reset_pending"
+    const val RETRY_PAUSE_MS = 750L
     private const val TAG = "SecurePrefs"
 
     /**
-     * [resetPending]: a reset deleted the store, now or in an earlier start, and the cache mark
-     * that must follow it is not on disk yet. [resetDone]: call once that mark reached disk.
+     * [resetToken]: the pending reset's token, or null. [resetDone]: removes the intent; call
+     * it once the token is stored as handled on disk.
      */
-    class Opened(val prefs: SharedPreferences, val resetPending: Boolean, val resetDone: () -> Unit)
+    class Opened(val prefs: SharedPreferences, val resetToken: String?, val resetDone: () -> Unit)
 
-    enum class Cause { KEYSET_UNREADABLE, KEY_INVALIDATED, OTHER }
-
-    /** A durable flag that outlives the deleted store. */
+    /** A durable record that outlives the deleted store. */
     interface ResetIntent {
-        fun isPending(): Boolean
+        /** The recorded token, or null when there is none. Throws when it cannot tell. */
+        fun token(): String?
 
-        /** True when the intent is on disk. */
-        fun record(): Boolean
-        fun clear()
+        /** Records the intent (or syncs the one already there) and returns its token. Throws on failure. */
+        fun record(): String
+
+        /** Removes it; true when it is gone. */
+        fun clear(): Boolean
     }
 
     fun open(context: Context): Opened = open(
@@ -80,56 +82,54 @@ internal object SecurePrefs {
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
             )
         },
-        deleteFile = { context.deleteSharedPreferences(FILE) },
-        deleteKey = { deleteKeystoreEntry(MasterKey.DEFAULT_MASTER_KEY_ALIAS) },
-        intent = FileIntent(File(context.noBackupFilesDir, RESET_INTENT_FILE)),
+        deleteFile = deleteFileStep(context),
+        intent = intentFor(context),
+        pause = { Thread.sleep(RETRY_PAUSE_MS) },
     )
+
+    /** The real deletion: this file, its backup, and the process's cached instance of it. */
+    fun deleteFileStep(context: Context): () -> Boolean = { context.deleteSharedPreferences(FILE) }
+
+    fun intentFor(context: Context): ResetIntent = FileIntent(File(context.noBackupFilesDir, RESET_INTENT_FILE))
 
     /**
      * [create] builds the master key and opens the file, both inside each attempt. [deleteFile]
-     * and [deleteKey] return whether the thing is gone afterwards; one that throws counts as
-     * not done. [classify] is [cause] except in tests.
+     * returns whether the file is gone; one that throws counts as not done.
      */
     fun open(
         create: () -> SharedPreferences,
         deleteFile: () -> Boolean,
-        deleteKey: () -> Boolean,
         intent: ResetIntent,
-        classify: (Throwable) -> Cause = ::cause,
+        pause: () -> Unit = {},
     ): Opened {
         attempt(create)?.let { return opened(it, intent) }
+        pause()
         val failure = try {
             return opened(create(), intent)
         } catch (e: Exception) {
             if (!isOpenFailure(e)) throw e
             e
         }
-        val cause = classify(failure)
-        if (cause == Cause.OTHER) throw failure
-        if (!done { intent.record() }) throw failure
-        when (cause) {
-            Cause.KEYSET_UNREADABLE -> {
-                if (!done(deleteFile)) throw failure
-                runCatching { Log.w(TAG, "encrypted preferences could not be decrypted; deleted, starting signed out") }
-            }
-            Cause.KEY_INVALIDATED -> {
-                if (!done(deleteKey)) throw failure
-                if (!done(deleteFile)) throw failure
-                runCatching { Log.w(TAG, "encryption key permanently invalid; key and preferences deleted, starting signed out") }
-            }
-            Cause.OTHER -> throw failure
+        if (!isUndecryptable(failure)) throw failure
+        try {
+            intent.record()
+        } catch (e: Exception) {
+            failure.addSuppressed(e)
+            throw failure
         }
+        val deleted = try {
+            deleteFile()
+        } catch (e: Exception) {
+            failure.addSuppressed(e)
+            false
+        }
+        if (!deleted) throw failure
+        runCatching { Log.w(TAG, "encrypted preferences could not be decrypted; deleted, starting signed out") }
         return opened(create(), intent)
     }
 
     private fun opened(prefs: SharedPreferences, intent: ResetIntent) =
-        Opened(prefs, resetPending = done { intent.isPending() }, resetDone = { runCatching { intent.clear() } })
-
-    private inline fun done(step: () -> Boolean): Boolean = try {
-        step()
-    } catch (e: Exception) {
-        false
-    }
+        Opened(prefs, resetToken = intent.token(), resetDone = { runCatching { intent.clear() } })
 
     /** The first open: its result, or null after a failure worth one more try. */
     private fun attempt(create: () -> SharedPreferences): SharedPreferences? = try {
@@ -143,43 +143,37 @@ internal object SecurePrefs {
     fun isOpenFailure(e: Throwable): Boolean =
         e is GeneralSecurityException || e is IOException || e is ProviderException
 
-    /** The permanent cause in [e]'s chain, if there is one. */
-    fun cause(e: Throwable): Cause {
+    /** True when [e]'s chain says the keyset failed authentication under the current key. */
+    fun isUndecryptable(e: Throwable): Boolean {
         var t: Throwable? = e
         var depth = 0
         while (t != null && depth < 10) {
-            when (t) {
-                is AEADBadTagException -> return Cause.KEYSET_UNREADABLE
-                is KeyPermanentlyInvalidatedException -> return Cause.KEY_INVALIDATED
-            }
+            if (t is AEADBadTagException) return true
             t = t.cause
             depth++
         }
-        return Cause.OTHER
+        return false
     }
 
-    private fun deleteKeystoreEntry(alias: String): Boolean {
-        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
-        return !keyStore.containsAlias(alias)
-    }
+    /** The intent as a small file holding its token, written and synced to disk. */
+    class FileIntent(private val file: File) : ResetIntent {
+        override fun token(): String? {
+            if (!file.exists()) return null
+            return file.readText().trim().takeIf { it.isNotEmpty() }
+        }
 
-    /** The intent as a file written and synced to disk. */
-    private class FileIntent(private val file: File) : ResetIntent {
-        override fun isPending(): Boolean = file.exists()
-
-        override fun record(): Boolean {
-            if (!file.exists()) {
-                FileOutputStream(file).use { out ->
-                    out.write(1)
-                    out.fd.sync()
-                }
+        override fun record(): String {
+            val token = token() ?: UUID.randomUUID().toString()
+            // Written and synced every time, also over an existing file: an earlier write
+            // whose sync failed must not count as recorded.
+            FileOutputStream(file).use { out ->
+                out.write(token.toByteArray())
+                out.fd.sync()
             }
-            return file.exists()
+            check(token() == token) { "reset intent not readable after writing" }
+            return token
         }
 
-        override fun clear() {
-            file.delete()
-        }
+        override fun clear(): Boolean = !file.exists() || file.delete() || !file.exists()
     }
 }
