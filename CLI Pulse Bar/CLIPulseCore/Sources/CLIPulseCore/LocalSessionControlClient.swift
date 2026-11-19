@@ -667,8 +667,15 @@ public final class LocalSessionControlClient: SessionEventStreaming, MachineCont
     /// System Monitor S4: read-only machine-health snapshot from the helper
     /// (per-process CPU/mem, battery health, native temps/fans/power). The helper
     /// gathers everything the sandbox can't; the app just renders what it returns.
+    ///
+    /// 1.63.1: 10 s per read instead of the default 5 s. The helper's own
+    /// measurement of this collection is 1.6-3.5 s idle and 2.8-5.9 s on a
+    /// loaded Mac, so the old budget sat inside the normal range: on a busy
+    /// Mac a slow reply timed out and the Machine tab said "Can't reach the
+    /// helper" while the helper was fine. (Like every one-shot RPC here, the
+    /// budget applies to each read, header and body.)
     public func getMachineSnapshot() async throws -> MachineSnapshot {
-        let result = try await send(method: "get_machine_snapshot", params: [:])
+        let result = try await send(method: "get_machine_snapshot", params: [:], timeoutOverride: 10)
         return MachineSnapshot(dict: result)
     }
 

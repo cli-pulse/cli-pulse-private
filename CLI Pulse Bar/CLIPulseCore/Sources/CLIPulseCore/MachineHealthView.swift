@@ -1090,19 +1090,30 @@ public struct MachineHealthView: View {
     // MARK: - Refresh
 
     private func refreshLoop() async {
+        // 1.63.1: one slow or failed poll no longer blanks the tab — see
+        // `MachineSnapshotFailureGrace`.
+        var grace = MachineSnapshotFailureGrace()
         while !Task.isCancelled {
             do {
                 let snap = try await client.getMachineSnapshot()
+                if Task.isCancelled { break }
+                grace.recordSuccess()
                 await MainActor.run {
                     snapshot = snap
                     didLoadOnce = true
                 }
             } catch {
+                // The tab went away mid-request (`.task` cancels this loop):
+                // that is not a helper failure, so record nothing.
+                if Task.isCancelled { break }
                 let reason = MachineSnapshotUnavailability(error)
-                await MainActor.run {
-                    didLoadOnce = true
-                    unavailability = reason
-                    if snapshot != nil { snapshot = nil }  // helper went away
+                let hasSnapshot = await MainActor.run { snapshot != nil }
+                if grace.recordFailure(reason, hasSnapshot: hasSnapshot) {
+                    await MainActor.run {
+                        didLoadOnce = true
+                        unavailability = reason
+                        if snapshot != nil { snapshot = nil }  // helper went away
+                    }
                 }
             }
             // Low Power Mode state is free to read (system API) on every build.
