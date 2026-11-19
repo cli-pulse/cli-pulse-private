@@ -64,4 +64,40 @@ public enum MachineSnapshotUnavailability: Equatable, Sendable {
         }
     }
 }
+
+/// 1.63.1 — when one failed Machine-tab poll should replace the snapshot on
+/// screen with the "why there is no snapshot" message.
+///
+/// Until 1.63.1 the first failure did, so a single slow reply on a busy Mac
+/// blanked the tab with "Can't reach the helper" for one poll, and the owner
+/// saw it flash on and off. `.unreachable` covers timeouts and a helper that
+/// is restarting, both of which usually clear on the next poll, so while a
+/// snapshot is on screen it is kept through `toleratedUnreachablePolls`
+/// consecutive `.unreachable` polls and the message appears on the next one.
+/// The other reasons are answers from the helper, not outages, and show at
+/// once; with nothing on screen yet, any failure shows at once (there is
+/// nothing to keep).
+///
+/// Counts the 2 s refresh loop's polls only. A refused or missing socket
+/// fails in milliseconds, so a helper that really stopped still shows the
+/// message within about two poll intervals.
+public struct MachineSnapshotFailureGrace: Equatable, Sendable {
+    public static let toleratedUnreachablePolls = 2
+
+    public private(set) var consecutiveFailures = 0
+
+    public init() {}
+
+    public mutating func recordSuccess() {
+        consecutiveFailures = 0
+    }
+
+    /// Records a failed poll; true when the view should drop its snapshot and
+    /// show `reason`'s message.
+    public mutating func recordFailure(_ reason: MachineSnapshotUnavailability, hasSnapshot: Bool) -> Bool {
+        consecutiveFailures += 1
+        guard hasSnapshot, reason == .unreachable else { return true }
+        return consecutiveFailures > Self.toleratedUnreachablePolls
+    }
+}
 #endif

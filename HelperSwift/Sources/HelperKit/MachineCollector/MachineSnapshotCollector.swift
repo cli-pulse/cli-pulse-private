@@ -22,6 +22,19 @@ public enum MachineSnapshotCollector {
     /// this is 2s where Python uses 5-10s.
     private static let oracleTimeout: TimeInterval = 2
 
+    /// The blocking sensor read, bounded in time and never stacked (1.63.1,
+    /// see `readSensors`).
+    private static let sensorCall = BoundedBlockingCall<SensorSnapshot>(label: "cli-pulse.machine-sensors")
+    /// The sensors are one more oracle, so they get the oracles' budget.
+    private static let sensorTimeout: TimeInterval = oracleTimeout
+    /// The last sensor dict a read produced, and when (uptime ns). Served when
+    /// the current read is late or an earlier stuck read is still running, so
+    /// the temperature / fan / power cards don't drop out for one poll; never
+    /// served once older than `sensorReuseLimitNs`.
+    private static let lastSensorsLock = NSLock()
+    private static var lastSensors: (dict: [String: Any], atNs: UInt64)?
+    private static let sensorReuseLimitNs: UInt64 = 30_000_000_000
+
     // MARK: - Entry points
 
     /// The wire dict, with any non-finite Double removed.
@@ -110,10 +123,14 @@ public enum MachineSnapshotCollector {
         // where the client has closed the connection and the reply write becomes
         // a write to a dead peer.
         //
-        // 2s + 1s grace keeps the worst single-oracle stall at 3s, and since
-        // these run concurrently, so is the whole collection's worst case. A
-        // timed-out oracle degrades exactly as Python's does: nil, and its
-        // fields drop out of the payload.
+        // 2s + up to 2s of TERM/KILL grace bounds each oracle, and the sensor
+        // read gets the same 2s, so the fan-out is bounded at a few seconds
+        // plus spawn time. That bound only holds if the deadline code can
+        // run: until 1.63.1 the drains and the sensor read blocked
+        // cooperative-pool threads, the deadline loops starved, and replies
+        // under load took 10-30 s (see `SubprocessRunner`). A timed-out
+        // oracle degrades exactly as Python's does: nil, and its fields drop
+        // out of the payload.
         async let psCPU = run("/bin/ps", ["-Aceo", psColumns, "-r"], timeout: oracleTimeout)
         async let psMem = run("/bin/ps", ["-Aceo", psColumns, "-m"], timeout: oracleTimeout)
         async let ioreg = run("/usr/sbin/ioreg", ["-r", "-c", "AppleSmartBattery", "-a"])
@@ -235,8 +252,22 @@ public enum MachineSnapshotCollector {
     ///    because its `clipulse-sensors` binary was absent. That difference is
     ///    the point of this port, not a drift — but it means "sensors is null"
     ///    is not a state this helper can produce, and nothing should rely on it.
+    ///
+    /// 1.63.1: `SensorReader.read` is synchronous and blocks for its 300 ms
+    /// IOReport sample plus the SMC/HID reads, with no deadline of its own. It
+    /// used to run right here, on a Swift cooperative-pool thread, alongside
+    /// nine subprocess oracles that also held pool threads (see
+    /// `SubprocessRunner`) — enough to fill the pool on a busy Mac. It now runs
+    /// through `sensorCall`: on its own serial queue (so two overlapping
+    /// snapshots never sample IOReport / SMC at once), awaited for at most
+    /// `sensorTimeout`, and not started again while a previous read is still
+    /// running. A late or skipped read serves the last result if it is recent,
+    /// which also means "sensors is null" is now possible, but only after
+    /// `sensorReuseLimitNs` of failed reads.
     private static func readSensors() async -> [String: Any]? {
-        let s = SensorReader.read(sampleMs: 300)
+        guard let s = await sensorCall.run(timeout: sensorTimeout, { SensorReader.read(sampleMs: 300) }) else {
+            return recentSensors()
+        }
         var out: [String: Any] = [:]
         if let v = s.cpu_power_w { out["cpu_power_w"] = v }
         if let v = s.gpu_power_w { out["gpu_power_w"] = v }
@@ -247,7 +278,22 @@ public enum MachineSnapshotCollector {
         if let v = s.fan_rpm { out["fan_rpm"] = v }
         if let v = s.fan_max_rpm { out["fan_max_rpm"] = v }
         if !s.capability.isEmpty { out["capability"] = s.capability }
-        return out.isEmpty ? nil : out
+        guard !out.isEmpty else { return nil }
+        lastSensorsLock.lock()
+        lastSensors = (out, DispatchTime.now().uptimeNanoseconds)
+        lastSensorsLock.unlock()
+        return out
+    }
+
+    /// The last sensor dict, if a read produced one within `sensorReuseLimitNs`.
+    private static func recentSensors() -> [String: Any]? {
+        lastSensorsLock.lock()
+        defer { lastSensorsLock.unlock() }
+        guard let last = lastSensors,
+              DispatchTime.now().uptimeNanoseconds &- last.atNs < sensorReuseLimitNs else {
+            return nil
+        }
+        return last.dict
     }
 
     // MARK: - Plumbing
