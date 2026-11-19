@@ -22,28 +22,32 @@ final class SubprocessRunnerTests: XCTestCase {
     /// needs a pool thread still gets one at once.
     ///
     /// Old runner: each child's drain held a pool thread (at `.utility`)
-    /// until the child exited, so the probe (also `.utility`) waited the full
-    /// 4 s. New runner: drains read on their own threads.
+    /// until the child exited, so the probe (also `.utility`) could not run
+    /// while the children lived. The children live 30 s — far longer than the
+    /// observation window — and are cancelled and awaited at the end. New
+    /// runner: drains read on their own threads.
     func testRunningChildrenDoNotHoldCooperativePoolThreads() throws {
         let n = ProcessInfo.processInfo.activeProcessorCount + 2
         let dir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        var runs: [Task<SubprocessRunner.RunResult, Never>] = []
+        let finished = DispatchSemaphore(value: 0)
+        var runs: [Task<Void, Never>] = []
         for i in 0..<n {
             let marker = dir.appendingPathComponent("\(i)").path
             runs.append(Task.detached {
-                await SubprocessRunner.runCapturingExit(
+                _ = await SubprocessRunner.runCapturingExit(
                     executable: URL(fileURLWithPath: "/bin/sh"),
-                    arguments: ["-c", "touch \"$0\"; exec sleep 4", marker],
-                    timeoutSeconds: 10
+                    arguments: ["-c", "touch \"$0\"; exec sleep 30", marker],
+                    timeoutSeconds: 60
                 )
+                finished.signal()
             })
         }
-        defer { runs.forEach { $0.cancel() } }
 
         // Spawns happen in the runner tasks; give them a moment (polled on
-        // this thread, not the pool).
+        // this thread, not the pool). A marker proves the child started; the
+        // old runner had created that child's drain before spawning it.
         let started = waitForFiles(in: dir, count: n, timeout: 3)
 
         let probeDone = DispatchSemaphore(value: 0)
@@ -55,8 +59,17 @@ final class SubprocessRunnerTests: XCTestCase {
         let probeOK = probeDone.wait(timeout: .now() + 1.5) == .success
         let probeMs = (DispatchTime.now().uptimeNanoseconds - t0) / 1_000_000
 
+        // Clean up before asserting or returning: cancel every run and wait
+        // until each has reaped its child, so no child, drain thread or
+        // descriptor outlives this test (the descriptor test counts them).
+        runs.forEach { $0.cancel() }
+        var reaped = 0
+        let cleanupEnd = DispatchTime.now() + 20
+        while reaped < n, finished.wait(timeout: cleanupEnd) == .success { reaped += 1 }
+
+        XCTAssertTrue(probeOK, "a 10 ms task waited \(probeMs) ms for a pool thread while \(started) children ran — the runner is parking pool threads again")
         XCTAssertEqual(started, n, "every child should have started")
-        XCTAssertTrue(probeOK, "a 10 ms task waited \(probeMs) ms for a pool thread while \(n) children ran — the runner is parking pool threads again")
+        XCTAssertEqual(reaped, n, "every run should return after cancellation")
     }
 
     // MARK: - Contract the callers rely on

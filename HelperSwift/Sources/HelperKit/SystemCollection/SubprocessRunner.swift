@@ -122,7 +122,7 @@ public enum SubprocessRunner {
             } onCancel: {
                 // Synchronous handler, may run on any thread: start the
                 // reap without blocking the canceller. The catch below
-                // awaits the same reaper, which runs its sequence once.
+                // awaits the same reaper, which serializes the two.
                 Self.reapQueue.async { reaper.terminateAndReap() }
             }
         } catch RunnerError.timedOut {
@@ -211,13 +211,15 @@ public enum SubprocessRunner {
     }
 }
 
-/// One child's SIGTERM → grace → SIGKILL sequence, run at most once.
+/// One child's SIGTERM → grace → SIGKILL sequence, serialized.
 ///
 /// Cancellation (from `onCancel`) and the runner's own catch path can both
-/// ask for it. The lock makes the second caller wait for the first to finish
-/// and then find the child gone, so the signals go out once and neither
-/// caller returns while the child may still be alive. Only ever called on
-/// `SubprocessRunner.reapQueue`: it blocks.
+/// ask for it. The lock makes the second caller wait for the first to finish;
+/// it then normally finds the child gone and returns, so the signals go out
+/// once. Bounded best effort, not a guarantee: if the child is still not
+/// reaped a second after SIGKILL (stuck in uninterruptible I/O), a second
+/// caller repeats the sequence and the runner returns anyway. Only ever
+/// called on `SubprocessRunner.reapQueue`: it blocks.
 private final class ChildReaper: @unchecked Sendable {
     private let process: Process
     private let pid: pid_t
