@@ -1,3 +1,3 @@
 The Machine tab stays up on a busy Mac.
 
-• On a busy Mac, the Machine tab could show "Can't reach the helper" for a moment while the helper was running. The helper now collects machine health without stalling, the app waits longer for it, and one slow refresh keeps the last readings on screen.
+• On a busy Mac, the Machine tab could show "Can't reach the helper" for a moment while the helper was running. The helper no longer holds up its own replies while it collects machine health, the app waits longer for an answer, and a slow refresh or two keeps the last readings on screen.
