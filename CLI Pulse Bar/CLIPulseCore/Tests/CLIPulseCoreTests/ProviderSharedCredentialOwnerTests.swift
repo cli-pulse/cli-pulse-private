@@ -166,7 +166,14 @@ final class ProviderSharedCredentialOwnerTests: XCTestCase {
         )
     }
 
-    func testOwnerStoreSynchronizationFailureFailsClosed()
+    /// `synchronize()` reporting false is not a failed write. It did on the
+    /// owner's Mac (macOS 27, Developer ID) for every write to the app-group
+    /// suite, which cfprefsd held and served to the helper at once (see
+    /// helper/app_group_prefs.py), and this used to roll every claim back, so
+    /// Claude and Gemini were never collected (2026-11-22). The read-back
+    /// decides; `testOwnerWriteThatDoesNotReadBackFailsClosed` covers a write
+    /// that really fails.
+    func testOwnerStoreSynchronizeReportingFalseIsNotAFailure()
         throws
     {
         ProviderSharedCredentialOwner
@@ -184,16 +191,15 @@ final class ProviderSharedCredentialOwnerTests: XCTestCase {
             ProviderSharedCredentialOwner.lookup(
                 kind: .gemini
             ),
-            .unowned,
-            "a read-only synchronize hint is advisory; failed persistence must be enforced at the mutation boundary"
+            .unowned
         )
-        XCTAssertFalse(
+        XCTAssertTrue(
             ProviderSharedCredentialOwner.claim(
                 kind: .gemini,
                 accountID: accountID
             )
         )
-        XCTAssertFalse(
+        XCTAssertTrue(
             ProviderSharedCredentialOwner.reconcile(
                 configs: [
                     ProviderConfig(
@@ -204,10 +210,11 @@ final class ProviderSharedCredentialOwnerTests: XCTestCase {
                 ]
             )
         )
-        XCTAssertNil(
+        XCTAssertEqual(
             ProviderSharedCredentialOwner.owner(
                 kind: .gemini
-            )
+            ),
+            accountID
         )
     }
 
@@ -537,10 +544,10 @@ final class ProviderSharedCredentialOwnerTests: XCTestCase {
 
     // MARK: - synchronize() is not the check
 
-    /// Every other test here stubs `synchronize()` to succeed. On the owner's
-    /// Mac (macOS 27, Developer ID build) it returned false for the app-group
-    /// suite although the value was stored, every claim rolled back, and
-    /// Claude and Gemini were never collected (2026-11-22).
+    /// On the owner's Mac (macOS 27, Developer ID build) `synchronize()`
+    /// returned false for the app-group suite although the value was stored,
+    /// every claim rolled back, and Claude and Gemini were never collected
+    /// (2026-11-22).
     func testClaimSucceedsWhenSynchronizeReportsFalseButTheValueReadsBack() {
         ProviderSharedCredentialOwner.synchronizeDefaults = { _ in false }
         let accountID = UUID()
@@ -559,18 +566,36 @@ final class ProviderSharedCredentialOwnerTests: XCTestCase {
         XCTAssertTrue(ProviderSharedCredentialOwner.isOwner(kind: .gemini, accountID: accountID))
     }
 
-    /// The read-back still decides: a store that drops the write fails the
-    /// claim, whatever `synchronize()` says.
-    func testClaimFailsWhenTheValueDoesNotReadBack() {
+    /// The read-back still decides: a store that drops writes fails every
+    /// change, whatever `synchronize()` says, and the record stays as it was.
+    func testOwnerWriteThatDoesNotReadBackFailsClosed() {
         final class DroppingDefaults: UserDefaults {
             override func set(_ value: Any?, forKey defaultName: String) {}
+            override func removeObject(forKey defaultName: String) {}
         }
-        let name = "ProviderSharedCredentialOwnerTests-dropping-\(UUID().uuidString)"
-        let dropping = DroppingDefaults(suiteName: name)!
-        defer { dropping.removePersistentDomain(forName: name) }
-        ProviderSharedCredentialOwner.defaults = dropping
         ProviderSharedCredentialOwner.synchronizeDefaults = { _ in true }
+
+        // Nothing recorded: a claim cannot be stored.
+        let emptyName = "ProviderSharedCredentialOwnerTests-dropping-\(UUID().uuidString)"
+        let empty = DroppingDefaults(suiteName: emptyName)!
+        defer { UserDefaults().removePersistentDomain(forName: emptyName) }
+        ProviderSharedCredentialOwner.defaults = empty
         XCTAssertFalse(ProviderSharedCredentialOwner.claim(kind: .claude, accountID: UUID()))
+        XCTAssertNil(ProviderSharedCredentialOwner.owner(kind: .claude))
+
+        // An owner recorded before: neither clearing nor replacing it sticks.
+        let seededName = "ProviderSharedCredentialOwnerTests-seeded-\(UUID().uuidString)"
+        let first = UUID()
+        UserDefaults(suiteName: seededName)!.set(
+            first.uuidString, forKey: "cli_pulse_provider_shared_credential_owner_Claude")
+        defer { UserDefaults().removePersistentDomain(forName: seededName) }
+        ProviderSharedCredentialOwner.defaults = DroppingDefaults(suiteName: seededName)!
+        XCTAssertFalse(ProviderSharedCredentialOwner.reconcile(configs: []),
+                       "clearing the owner did not read back")
+        XCTAssertFalse(ProviderSharedCredentialOwner.reconcile(configs: [
+            ProviderConfig(kind: .claude, accountID: UUID(), isEnabled: true, sortOrder: 0),
+        ]), "replacing the owner did not read back")
+        XCTAssertEqual(ProviderSharedCredentialOwner.owner(kind: .claude), first)
     }
 }
 #endif
