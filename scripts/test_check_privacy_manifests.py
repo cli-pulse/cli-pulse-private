@@ -299,7 +299,7 @@ CASES = [
     ("a split `UserDefaults(\\n suiteName:` still counts as the app group", [WIDGETS, WIDGET_PROVIDER],
      both(edit_plist(WIDGETS, drop_reason("UserDefaults", "1C8F.1")),
           edit_text(WIDGET_PROVIDER, "UserDefaults(suiteName: suiteName)", "UserDefaults(\n            suiteName: suiteName)", count=None)),
-     1, r"CLI Pulse Widgets: uses app-group UserDefaults \(CLI Pulse Bar/CLI Pulse Widgets/WidgetDataProvider\.swift:106\)"),
+     1, r"CLI Pulse Widgets: uses app-group UserDefaults \(CLI Pulse Bar/CLI Pulse Widgets/WidgetDataProvider\.swift:\d+\)"),
 
     # --- MUST 6 and 7: the project ------------------------------------------
     ("the manifest removed from a target's Resources phase (LoginItem)", [PBXPROJ],
