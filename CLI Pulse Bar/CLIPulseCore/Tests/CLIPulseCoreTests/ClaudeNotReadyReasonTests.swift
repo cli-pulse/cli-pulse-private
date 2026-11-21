@@ -317,6 +317,79 @@ final class ClaudeNotReadyReasonTests: XCTestCase {
         XCTAssertEqual(log.absence, .keychain(.status(errSecAuthFailed)))
     }
 
+    // MARK: - An expired credentials file does not shadow the keychain
+
+    /// 2026-11-21: `~/.claude/.credentials.json` had expired months earlier
+    /// while Claude Code kept its current login in the keychain. Taken first,
+    /// the file's token was refused on every OAuth call and the card fell back
+    /// to other sources, whose weekly figure was far from Claude's own.
+    func test_resolver_expiredFile_givesWayToTheKeychain() {
+        var asked = 0
+        let resolved = ClaudeCredentials.resolveTokenDetails(
+            config: ProviderConfig(kind: .claude, accountID: accountID),
+            environment: [:],
+            credentialsFile: {
+                ClaudeCredentials.Creds(accessToken: "sk-ant-oat01-stale", rateLimitTier: "default_claude_max_20x",
+                                        expiresAt: now.addingTimeInterval(-86_400))
+            },
+            keychain: {
+                asked += 1
+                return .found(ClaudeCredentials.Creds(accessToken: "sk-ant-oat01-kc", rateLimitTier: "kc_tier"))
+            },
+            now: now)
+        XCTAssertEqual(resolved.token, "sk-ant-oat01-kc")
+        XCTAssertEqual(resolved.tier, "kc_tier")
+        XCTAssertEqual(resolved.source, .sharedKeychain)
+        XCTAssertNil(resolved.absence)
+        XCTAssertEqual(asked, 1)
+    }
+
+    /// With nothing in the keychain the expired file is still the answer, as
+    /// it was before the check: better a token that may refresh than none.
+    func test_resolver_expiredFile_isTheLastResort_whenTheKeychainHasNothing() {
+        let resolved = ClaudeCredentials.resolveTokenDetails(
+            config: ProviderConfig(kind: .claude, accountID: accountID),
+            environment: [:],
+            credentialsFile: {
+                ClaudeCredentials.Creds(accessToken: "sk-ant-oat01-stale", rateLimitTier: nil,
+                                        expiresAt: now.addingTimeInterval(-60))
+            },
+            keychain: { .missing(.status(errSecItemNotFound)) },
+            now: now)
+        XCTAssertEqual(resolved.token, "sk-ant-oat01-stale")
+        XCTAssertEqual(resolved.source, .sharedCredentialsFile)
+        XCTAssertNil(resolved.absence)
+    }
+
+    /// A file that has not expired, or names no expiry, still answers first
+    /// and the keychain is not read (no cross-app dialog).
+    func test_resolver_currentFile_orFileWithoutExpiry_answersFirst() {
+        for expiry in [now.addingTimeInterval(3_600), nil] as [Date?] {
+            let resolved = ClaudeCredentials.resolveTokenDetails(
+                config: ProviderConfig(kind: .claude, accountID: accountID),
+                environment: [:],
+                credentialsFile: {
+                    ClaudeCredentials.Creds(accessToken: "sk-ant-oat01-file", rateLimitTier: nil, expiresAt: expiry)
+                },
+                keychain: { XCTFail("the file answered first"); return .missing(.unreadable) },
+                now: now)
+            XCTAssertEqual(resolved.source, .sharedCredentialsFile, "\(String(describing: expiry))")
+        }
+    }
+
+    func test_credentialsJSON_readsTheExpiry_inMillisecondsOrSeconds() throws {
+        let camel = try XCTUnwrap(ClaudeCredentials.parseCredentialsJSON(Data(
+            #"{"claudeAiOauth":{"accessToken":"sk-ant-oat01-a","expiresAt":1789000000000}}"#.utf8)))
+        XCTAssertEqual(camel.expiresAt, Date(timeIntervalSince1970: 1_789_000_000))
+        let snake = try XCTUnwrap(ClaudeCredentials.parseCredentialsJSON(Data(
+            #"{"claude_ai_oauth":{"access_token":"sk-ant-oat01-b","expires_at":1789000000}}"#.utf8)))
+        XCTAssertEqual(snake.expiresAt, Date(timeIntervalSince1970: 1_789_000_000))
+        let none = try XCTUnwrap(ClaudeCredentials.parseCredentialsJSON(Data(
+            #"{"claudeAiOauth":{"accessToken":"sk-ant-oat01-c","expiresAt":true}}"#.utf8)))
+        XCTAssertNil(none.expiresAt)
+        XCTAssertFalse(none.isExpired(now: now))
+    }
+
     // MARK: - readiness, through the collector
 
     func test_readiness_namesTheReason_fromItsOwnSingleRead() {

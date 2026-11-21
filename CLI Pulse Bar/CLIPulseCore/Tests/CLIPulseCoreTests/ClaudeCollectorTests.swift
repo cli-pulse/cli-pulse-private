@@ -287,7 +287,12 @@ final class ClaudeCollectorTests: XCTestCase {
         XCTAssertEqual(ClaudeCollector().kind, .claude)
     }
 
-    func testIsAvailableWithCLIBinary() {
+    /// Reads this Mac's real Claude sources, which can include Claude Code's
+    /// keychain item and its authorization dialog: live tests only.
+    func testIsAvailableWithCLIBinary() throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["RUN_LIVE_TESTS"] == "1",
+            "Reads this Mac's Claude login, keychain included; set RUN_LIVE_TESTS=1 to run it")
         // If claude CLI exists in PATH, isAvailable should return true even without OAuth token
         let collector = ClaudeCollector()
         let hasCLI = collector.findClaudeBinary() != nil
