@@ -300,13 +300,28 @@ public enum WatchRingMath {
             ?? provider.tiers.first { $0.name.localizedCaseInsensitiveContains("week") }
     }
 
-    /// The provider's 5-hour window: the tier the collector marks primary
-    /// with a 300-minute window, or named "5h Window" (Claude's tiers carry
-    /// no window length). `nil` when the provider reports tiers and none is
-    /// that window, as on Claude's weekly-only plans.
+    /// The provider's 5-hour window: a tier with a 300-minute window, or,
+    /// for tiers that carry no window length, one named for it ("5h Window"
+    /// for Claude and Alibaba, "5h Rate Limit" for Kimi, OpenCode Go's
+    /// "Rolling"). A tier marked secondary is never taken by its name: older
+    /// Codex rows named a weekly-only account's one window "5h Window".
     public static func fiveHourTier(_ provider: ProviderUsage) -> TierDTO? {
-        provider.tiers.first { $0.windowMinutes == 300 }
-            ?? provider.tiers.first { $0.name == "5h Window" }
+        if let byLength = provider.tiers.first(where: { $0.windowMinutes == 300 }) { return byLength }
+        return provider.tiers.first { tier in
+            guard tier.windowMinutes == nil, tier.role != .secondary else { return false }
+            let name = tier.name.lowercased()
+            return name.hasPrefix("5h") || name.hasPrefix("5-hour") || name == "rolling"
+        }
+    }
+
+    /// Whether the widget should draw a "5h" row: `true` with a 5-hour
+    /// window, `false` only for a provider that reports a weekly window and
+    /// no 5-hour one (Claude's weekly-only plans, whose headline is the week),
+    /// `nil` otherwise, which keeps the row as it was.
+    public static func hasFiveHourWindow(_ provider: ProviderUsage) -> Bool? {
+        guard !provider.tiers.isEmpty else { return nil }
+        if fiveHourTier(provider) != nil { return true }
+        return weeklyTier(provider) != nil ? false : nil
     }
 
     /// Consumption fraction `0...1` for the provider's **Weekly** window,

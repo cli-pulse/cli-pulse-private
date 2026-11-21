@@ -3331,10 +3331,9 @@ extension AppState {
                 iconName: provider.providerKind?.iconName ?? "cpu",
                 percent: provider.usagePercent,
                 weeklyPercent: WatchRingMath.weeklyUsagePercent(provider),
-                // A provider that reports tiers says whether it has a 5-hour
-                // window; one with no tiers says nothing (the widget keeps
-                // its old row).
-                hasSessionWindow: provider.tiers.isEmpty ? nil : WatchRingMath.fiveHourTier(provider) != nil,
+                // Whether there is a 5-hour window (`WatchRingMath.hasFiveHourWindow`:
+                // nil keeps the widget's row as it was).
+                hasSessionWindow: WatchRingMath.hasFiveHourWindow(provider),
                 sessionPercent: WatchRingMath.fiveHourTier(provider).map {
                     WatchRingMath.usagePercent(quota: $0.quota, remaining: $0.remaining)
                 }
