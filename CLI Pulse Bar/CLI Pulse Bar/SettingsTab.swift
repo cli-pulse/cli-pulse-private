@@ -64,6 +64,17 @@ struct SettingsTab: View {
                 }
             }
             .padding(12)
+            // Exactly the width the scroll view offers, whatever is inside.
+            // After a tab switch the owner saw every Settings line cut off on
+            // the left and the right (2026-11-21), as if the content were wider
+            // than the window and centred. The control that did it on that Mac
+            // is not known. The same picture comes from a control that cannot
+            // shrink below its content (a segmented picker, a one-line button):
+            // the content then reports a width larger than the window, which an
+            // offscreen render with over-wide pickers reproduced. With a minimum
+            // of 0 the frame always takes the offered width, so the text wraps
+            // to the window and only such a control, if any, runs past the edge.
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             // The sections below (GeneralSection, PairingSection, …) take no
             // input that changes with the language, so SwiftUI would keep their
             // old bodies. Keying rebuilds them, and resets their own transient
