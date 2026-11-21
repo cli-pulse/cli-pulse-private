@@ -283,6 +283,13 @@ public enum ClaudeCredentials {
         return parseCredentialsJSON(data)
     }
 
+    /// The credentials file, unless its token has expired: for reading the
+    /// plan tier, which an expired file from an earlier login names wrongly.
+    static func readCurrentCredentialsFile() -> Creds? {
+        guard let creds = readCredentialsFile(), !creds.isExpired(now: nowProvider()) else { return nil }
+        return creds
+    }
+
     /// Read credentials from macOS Keychain (Claude Code's keychain item).
     ///
     /// The sandboxed app cannot access cross-app keychain items without
@@ -611,7 +618,9 @@ public enum ClaudeCredentials {
         // whose weekly figure was far from Claude's own (owner, 2026-11-21,
         // with a file months past its expiry). An expired file is now the
         // last resort, used only when the keychain has nothing, as CodexBar's
-        // `ClaudeOAuthCredentials.load` does.
+        // `ClaudeOAuthCredentials.load` does. (Should the expired file hold
+        // the current login and the keychain an older one, the keychain's
+        // account is shown; nothing here can tell the two apart.)
         let fileCreds = credentialsFile()
         if let fileCreds, !fileCreds.isExpired(now: now) {
             return ResolvedToken(

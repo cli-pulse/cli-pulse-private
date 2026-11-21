@@ -97,7 +97,7 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
         return Self.snapshot(
             from: usage,
             rateLimitTier: tier
-                ?? ClaudeCredentials.readCredentialsFile()?.rateLimitTier
+                ?? ClaudeCredentials.readCurrentCredentialsFile()?.rateLimitTier
                 ?? ClaudeCredentials.readKeychainCredentialsIfAllowed()?.rateLimitTier,
             sourceLabel: sourceLabel
         )

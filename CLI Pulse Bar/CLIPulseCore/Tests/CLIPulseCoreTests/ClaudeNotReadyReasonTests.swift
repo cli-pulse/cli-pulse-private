@@ -377,6 +377,52 @@ final class ClaudeNotReadyReasonTests: XCTestCase {
         }
     }
 
+    /// An expiry exactly now counts as passed, and every way the keychain can
+    /// come back empty (switched off, on cooldown, declined) still falls back
+    /// to the expired file rather than to no token.
+    func test_resolver_expiryBoundary_andEveryKeychainMiss_fallBackToTheFile() {
+        let atNow = ClaudeCredentials.resolveTokenDetails(
+            config: ProviderConfig(kind: .claude, accountID: accountID),
+            environment: [:],
+            credentialsFile: { ClaudeCredentials.Creds(accessToken: "sk-ant-oat01-stale", rateLimitTier: nil, expiresAt: now) },
+            keychain: { .found(ClaudeCredentials.Creds(accessToken: "sk-ant-oat01-kc", rateLimitTier: nil)) },
+            now: now)
+        XCTAssertEqual(atNow.source, .sharedKeychain, "a token expiring this instant is expired")
+
+        let misses: [ClaudeKeychainMiss] = [
+            .skipped(.skippedBySetting), .skipped(.skippedStrictPrivacyMode),
+            .onCooldown(.declined), .onCooldown(.rejectedToken), .status(errSecAuthFailed), .unreadable,
+        ]
+        for miss in misses {
+            let resolved = ClaudeCredentials.resolveTokenDetails(
+                config: ProviderConfig(kind: .claude, accountID: accountID),
+                environment: [:],
+                credentialsFile: {
+                    ClaudeCredentials.Creds(accessToken: "sk-ant-oat01-stale", rateLimitTier: nil,
+                                            expiresAt: now.addingTimeInterval(-1))
+                },
+                keychain: { .missing(miss) },
+                now: now)
+            XCTAssertEqual(resolved.token, "sk-ant-oat01-stale", "\(miss)")
+            XCTAssertEqual(resolved.source, .sharedCredentialsFile, "\(miss)")
+        }
+    }
+
+    func test_credentialsJSON_ignoresAnExpiryThatIsNotAPositiveNumber() throws {
+        for raw in [#""1789000000000""#, "0", "-5", "null"] {
+            let creds = try XCTUnwrap(ClaudeCredentials.parseCredentialsJSON(Data(
+                #"{"claudeAiOauth":{"accessToken":"sk-ant-oat01-x","expiresAt":\#(raw)}}"#.utf8)))
+            XCTAssertNil(creds.expiresAt, raw)
+        }
+        // Either side of the milliseconds / seconds line.
+        let ms = try XCTUnwrap(ClaudeCredentials.parseCredentialsJSON(Data(
+            #"{"claudeAiOauth":{"accessToken":"sk-ant-oat01-y","expiresAt":100000000001}}"#.utf8)))
+        XCTAssertEqual(try XCTUnwrap(ms.expiresAt).timeIntervalSince1970, 100_000_000.001, accuracy: 1e-6)
+        let s = try XCTUnwrap(ClaudeCredentials.parseCredentialsJSON(Data(
+            #"{"claudeAiOauth":{"accessToken":"sk-ant-oat01-z","expiresAt":99999999999}}"#.utf8)))
+        XCTAssertEqual(s.expiresAt, Date(timeIntervalSince1970: 99_999_999_999))
+    }
+
     func test_credentialsJSON_readsTheExpiry_inMillisecondsOrSeconds() throws {
         let camel = try XCTUnwrap(ClaudeCredentials.parseCredentialsJSON(Data(
             #"{"claudeAiOauth":{"accessToken":"sk-ant-oat01-a","expiresAt":1789000000000}}"#.utf8)))
