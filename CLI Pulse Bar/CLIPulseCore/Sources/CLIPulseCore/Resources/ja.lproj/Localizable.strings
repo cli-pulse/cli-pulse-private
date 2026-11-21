@@ -458,6 +458,10 @@
 "display.mode" = "表示モード";
 "display.merge_menu_bar_icons" = "メニューバーアイコンを統合";
 "display.merge_menu_bar_hint" = "プロバイダー切替付きの単一アイコン";
+"display.window_background" = "ウィンドウの背景";
+"display.window_background_clear" = "透明";
+"display.window_background_solid" = "不透明";
+"display.window_background_hint" = "中央のすりガラスがデフォルトです。左にすると背後がよく透けて見え、右にすると不透明になります。";
 "display.reorder_hint" = "概要タブに表示するプロバイダーを選択。ドラッグで並べ替え。";
 
 /* ── サブスクリプション追加 (i18n sweep) ── */

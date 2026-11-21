@@ -1044,6 +1044,10 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "display.mode" = "Modo de visualización";
 "display.merge_menu_bar_icons" = "Combinar iconos de la barra de menús";
 "display.merge_menu_bar_hint" = "Un solo icono con selector de proveedores";
+"display.window_background" = "Fondo de la ventana";
+"display.window_background_clear" = "Transparente";
+"display.window_background_solid" = "Opaco";
+"display.window_background_hint" = "El vidrio esmerilado, en el centro, es el valor predeterminado. Hacia la izquierda se ve más lo que hay detrás de la ventana; hacia la derecha, el fondo es opaco.";
 "display.reorder_hint" = "Selecciona qué proveedores mostrar en la pestaña Resumen. Arrastra para reordenar.";
 "subscription.loading_plans" = "Cargando planes…";
 "subscription.unavailable" = "Los planes de suscripción no están disponibles en este momento.";

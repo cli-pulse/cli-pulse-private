@@ -1681,6 +1681,10 @@ public enum L10n {
         public static var mode: String { tr("display.mode") }
         public static var mergeMenuBarIcons: String { tr("display.merge_menu_bar_icons") }
         public static var mergeMenuBarHint: String { tr("display.merge_menu_bar_hint") }
+        public static var windowBackground: String { tr("display.window_background") }
+        public static var windowBackgroundClear: String { tr("display.window_background_clear") }
+        public static var windowBackgroundSolid: String { tr("display.window_background_solid") }
+        public static var windowBackgroundHint: String { tr("display.window_background_hint") }
         public static var reorderHint: String { tr("display.reorder_hint") }
         public static var sectionMenuBar: String { tr("display.section_menu_bar") }
         public static var sectionOverviewProviders: String { tr("display.section_overview_providers") }

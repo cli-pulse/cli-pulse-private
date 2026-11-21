@@ -208,6 +208,10 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 providerStatusKey: "false: provider status badges would otherwise "
                     + "fetch public status pages. They draw nothing unless a provider "
                     + "has an incident.",
+                PopoverBackground.defaultsKey: "0: the popover's frosted backdrop blurs "
+                    + "what is behind its window, which an offscreen render does not "
+                    + "have. At 0 it draws nothing, so the popover renders as it did "
+                    + "before the Window background setting.",
             ]
         )
     }
@@ -255,6 +259,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         domainCleared = true
         defaults.set(false, forKey: Self.notificationsKey)
         defaults.set(false, forKey: Self.providerStatusKey)
+        defaults.set(0.0, forKey: PopoverBackground.defaultsKey)
 
         if manifest.appKitLocalization != language {
             manifest.warnings.append(

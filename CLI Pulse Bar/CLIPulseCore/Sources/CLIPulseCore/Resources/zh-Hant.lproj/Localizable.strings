@@ -458,6 +458,10 @@
 "display.mode" = "顯示模式";
 "display.merge_menu_bar_icons" = "合併選單列圖示";
 "display.merge_menu_bar_hint" = "單圖示 + 服務商切換器";
+"display.window_background" = "視窗背景";
+"display.window_background_clear" = "透明";
+"display.window_background_solid" = "不透明";
+"display.window_background_hint" = "預設是中間的毛玻璃。往左更透明，往右更不透明。";
 "display.reorder_hint" = "選擇要在「概覽」分頁顯示的服務商，拖移可重新排序。";
 
 /* ── 訂閱補充 (i18n sweep) ── */

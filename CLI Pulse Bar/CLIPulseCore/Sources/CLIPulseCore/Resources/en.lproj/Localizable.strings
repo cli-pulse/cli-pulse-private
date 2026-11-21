@@ -601,6 +601,10 @@
 "display.mode" = "Display mode";
 "display.merge_menu_bar_icons" = "Merge menu bar icons";
 "display.merge_menu_bar_hint" = "Single icon with provider switcher";
+"display.window_background" = "Window background";
+"display.window_background_clear" = "Clear";
+"display.window_background_solid" = "Solid";
+"display.window_background_hint" = "Frosted glass, in the middle, is the default. Move left to see more of what is behind the window, right for a solid background.";
 "display.reorder_hint" = "Select which providers to show in the Overview tab. Drag to reorder.";
 
 /* ── Subscription additions ── */
