@@ -8,6 +8,7 @@ struct DisplaySection: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var providerState: ProviderState
     @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
+    @AppStorage(PopoverBackground.defaultsKey) private var windowBackground = PopoverBackground.defaultLevel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -50,6 +51,8 @@ struct DisplaySection: View {
             }
             .toggleStyle(.switch)
             .controlSize(.small)
+
+            windowBackgroundControl
 
             Divider()
 
@@ -97,6 +100,44 @@ struct DisplaySection: View {
             }
             .listStyle(.plain)
             .frame(height: min(CGFloat(providerState.providerConfigs.count) * 24, 240))
+        }
+    }
+
+    /// How see-through the menu-bar window is, from the system's clear glass to
+    /// solid. The middle, frosted glass, is the default (`PopoverBackdrop`).
+    private var windowBackgroundControl: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(L10n.display.windowBackground)
+                    .font(.system(size: 11))
+                Spacer()
+                if abs(windowBackground - PopoverBackground.defaultLevel) > 0.005 {
+                    Button(L10n.settings.reset) {
+                        windowBackground = PopoverBackground.defaultLevel
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 9))
+                    .foregroundStyle(Color.accentColor)
+                }
+            }
+            HStack(spacing: 6) {
+                Text(L10n.display.windowBackgroundClear)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                // Titled for VoiceOver; the Text above already shows the title.
+                Slider(value: $windowBackground, in: 0...1) {
+                    Text(L10n.display.windowBackground)
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                Text(L10n.display.windowBackgroundSolid)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            }
+            Text(L10n.display.windowBackgroundHint)
+                .font(.system(size: 9))
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

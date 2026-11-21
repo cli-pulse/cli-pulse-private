@@ -458,6 +458,10 @@
 "display.mode" = "显示模式";
 "display.merge_menu_bar_icons" = "合并菜单栏图标";
 "display.merge_menu_bar_hint" = "单图标 + 服务商切换器";
+"display.window_background" = "窗口背景";
+"display.window_background_clear" = "透明";
+"display.window_background_solid" = "不透明";
+"display.window_background_hint" = "默认是中间的磨砂玻璃。往左更透明，往右更不透明。";
 "display.reorder_hint" = "选择要在「概览」标签页显示的服务商，拖动可重新排序。";
 
 /* ── 订阅补充 (i18n sweep) ── */

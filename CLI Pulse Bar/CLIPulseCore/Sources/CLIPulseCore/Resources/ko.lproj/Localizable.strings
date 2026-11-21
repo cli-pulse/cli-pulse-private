@@ -1031,6 +1031,10 @@
 "display.mode" = "표시 모드";
 "display.merge_menu_bar_icons" = "메뉴 막대 아이콘 합치기";
 "display.merge_menu_bar_hint" = "공급자 전환 기능이 있는 단일 아이콘";
+"display.window_background" = "창 배경";
+"display.window_background_clear" = "투명";
+"display.window_background_solid" = "불투명";
+"display.window_background_hint" = "가운데의 반투명 유리가 기본값입니다. 왼쪽으로 옮기면 창 뒤가 더 잘 비치고, 오른쪽으로 옮기면 불투명해집니다.";
 "display.reorder_hint" = "개요 탭에 표시할 공급자를 선택하세요. 드래그하여 순서를 변경할 수 있습니다.";
 "subscription.loading_plans" = "플랜 불러오는 중…";
 "subscription.unavailable" = "현재 구독 플랜을 이용할 수 없습니다.";

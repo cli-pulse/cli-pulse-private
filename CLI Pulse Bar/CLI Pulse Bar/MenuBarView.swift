@@ -166,6 +166,9 @@ struct MenuBarView: View {
             }
         }
         .frame(width: 380, height: effectiveHeight)
+        // Frosted glass by default over the system's clear Liquid Glass;
+        // Settings › Display › Window background moves it (PopoverBackdrop).
+        .background { PopoverBackdrop() }
         .onAppear {
             reloadAgentSetupState()
             // The slide-out usage panel's provider mode reads this state's
