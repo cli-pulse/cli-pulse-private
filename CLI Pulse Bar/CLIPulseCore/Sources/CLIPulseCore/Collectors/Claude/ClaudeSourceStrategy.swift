@@ -176,9 +176,14 @@ public enum ClaudeResultBuilder {
         // `quota=nil` so the UI can render an "unavailable" placeholder.
         let hasUsage = snapshot.hasAnyUsage
         let overallQuota: Int? = hasUsage ? 100 : nil
-        let overallRemaining: Int? = hasUsage ? (snapshot.sessionUsed.map { max(0, 100 - $0) } ?? 100) : nil
+        // The headline is the 5-hour window, or the week on a plan that has
+        // no 5-hour window (Claude's weekly-only plans: `five_hour` is null).
+        // It used to fall back to 100, so such a plan read "100% left" and
+        // "Operational" whatever its week stood at (owner, 2026-11-22).
+        let headlineUsed = snapshot.sessionUsed ?? snapshot.weeklyUsed
+        let overallRemaining: Int? = hasUsage ? (headlineUsed.map { max(0, 100 - $0) } ?? 100) : nil
         let statusText: String
-        if let used = snapshot.sessionUsed {
+        if let used = headlineUsed {
             statusText = "\(used)% used"
         } else if hasUsage {
             statusText = "Operational"
