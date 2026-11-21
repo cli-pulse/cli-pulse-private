@@ -297,7 +297,9 @@ struct ProviderCountdownBars: View {
                 : L10n.a11y.clauses([provider.name, L10n.a11y.costToday(provider.formattedCost)]))
             // The row labels are abbreviations ("5h", "Wk") sized for an 18pt
             // column; VoiceOver gets the full window names instead.
-            countdownRow(L10n.widget.window5h, spokenName: L10n.quotaTier.window5h, used: provider.sessionUsed)
+            if provider.showsSessionRow {
+                countdownRow(L10n.widget.window5h, spokenName: L10n.quotaTier.window5h, used: provider.sessionUsed)
+            }
             countdownRow(L10n.widget.windowWeekly, spokenName: L10n.quotaTier.weekly, used: provider.weeklyUsed)
         }
     }

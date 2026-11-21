@@ -3330,7 +3330,13 @@ extension AppState {
                 costToday: provider.estimated_cost_today,
                 iconName: provider.providerKind?.iconName ?? "cpu",
                 percent: provider.usagePercent,
-                weeklyPercent: WatchRingMath.weeklyUsagePercent(provider)
+                weeklyPercent: WatchRingMath.weeklyUsagePercent(provider),
+                // Whether there is a 5-hour window (`WatchRingMath.hasFiveHourWindow`:
+                // nil keeps the widget's row as it was).
+                hasSessionWindow: WatchRingMath.hasFiveHourWindow(provider),
+                sessionPercent: WatchRingMath.fiveHourTier(provider).map {
+                    WatchRingMath.usagePercent(quota: $0.quota, remaining: $0.remaining)
+                }
             )
         }
 
@@ -4110,6 +4116,13 @@ struct PublishedWidgetProviderData: Codable, Equatable {
     /// Weekly-window USED fraction for the countdown bars. Key must match
     /// WidgetProviderData.weeklyPercent.
     let weeklyPercent: Double?
+    /// Whether the provider has a 5-hour window, and its USED fraction. A
+    /// weekly-only Claude plan has none, and its headline is the week, so
+    /// the widget's "5h" row would repeat the week under a 5-hour label.
+    /// Keys must match WidgetProviderData. nil: the provider reports no
+    /// tiers (the row stays, as before).
+    var hasSessionWindow: Bool? = nil
+    var sessionPercent: Double? = nil
 }
 
 /// Mirror of the widget extension's `WidgetData`. Property names ARE the

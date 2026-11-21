@@ -346,6 +346,25 @@ final class ClaudeStrategyTests: XCTestCase {
                        "A single bad launch-window value must not poison sibling parses")
     }
 
+    // MARK: - Weekly-only plans
+
+    /// A plan with no 5-hour window (OAuth `five_hour: null`) is headlined by
+    /// its week, not by a made-up 100% (2026-11-22).
+    func testWeeklyOnlyPlanIsHeadlinedByTheWeek() {
+        let result = ClaudeResultBuilder.build(from: ClaudeSnapshot(weeklyUsed: 40, sourceLabel: "oauth"))
+        XCTAssertEqual(result.usage.quota, 100)
+        XCTAssertEqual(result.usage.remaining, 60)
+        XCTAssertEqual(result.usage.status_text, "40% used")
+        XCTAssertEqual(result.usage.tiers.map(\.name), ["Weekly"])
+    }
+
+    /// With a 5-hour window the headline stays the 5-hour window.
+    func testSessionWindowStillHeadlinesWhenPresent() {
+        let result = ClaudeResultBuilder.build(from: ClaudeSnapshot(sessionUsed: 10, weeklyUsed: 40, sourceLabel: "oauth"))
+        XCTAssertEqual(result.usage.remaining, 90)
+        XCTAssertEqual(result.usage.status_text, "10% used")
+    }
+
     // MARK: - ClaudeSourceResolver
 
     func testResolverDefaultOrder() {
