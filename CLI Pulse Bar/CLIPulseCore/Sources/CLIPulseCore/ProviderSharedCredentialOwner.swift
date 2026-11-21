@@ -314,8 +314,16 @@ enum ProviderSharedCredentialOwner {
         let expected: Lookup =
             owner.map(Lookup.owned)
                 ?? .unowned
+        // The read-back is the check, not `synchronize()`. On macOS 27 that
+        // returns false for the app-group suite although the value is stored
+        // and reads back in this process and the helper (owner's Mac,
+        // 2026-11-22). Requiring true rolled every claim back, so Claude and
+        // Gemini never had a token: their collectors were never ready, and
+        // their cards showed whatever another device had uploaded. Apple
+        // documents `synchronize()` as unnecessary; it is still called so a
+        // system where it does flush keeps doing so.
+        _ = synchronizeDefaults(defaults)
         guard
-            synchronizeDefaults(defaults),
             ownerLookup(
                 defaults: defaults,
                 forKey: key

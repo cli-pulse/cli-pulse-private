@@ -534,5 +534,43 @@ final class ProviderSharedCredentialOwnerTests: XCTestCase {
         XCTAssertTrue(firstSuppressed)
         XCTAssertFalse(secondSuppressed)
     }
+
+    // MARK: - synchronize() is not the check
+
+    /// Every other test here stubs `synchronize()` to succeed. On the owner's
+    /// Mac (macOS 27, Developer ID build) it returned false for the app-group
+    /// suite although the value was stored, every claim rolled back, and
+    /// Claude and Gemini were never collected (2026-11-22).
+    func testClaimSucceedsWhenSynchronizeReportsFalseButTheValueReadsBack() {
+        ProviderSharedCredentialOwner.synchronizeDefaults = { _ in false }
+        let accountID = UUID()
+        XCTAssertTrue(ProviderSharedCredentialOwner.claim(kind: .claude, accountID: accountID))
+        XCTAssertTrue(ProviderSharedCredentialOwner.isOwner(kind: .claude, accountID: accountID))
+        XCTAssertFalse(ProviderSharedCredentialOwner.claim(kind: .claude, accountID: UUID()),
+                       "a second account still cannot take a claimed login")
+    }
+
+    func testReconcileSucceedsWhenSynchronizeReportsFalseButTheValueReadsBack() {
+        ProviderSharedCredentialOwner.synchronizeDefaults = { _ in false }
+        let accountID = UUID()
+        XCTAssertTrue(ProviderSharedCredentialOwner.reconcile(configs: [
+            ProviderConfig(kind: .gemini, accountID: accountID, isEnabled: true, sortOrder: 0),
+        ]))
+        XCTAssertTrue(ProviderSharedCredentialOwner.isOwner(kind: .gemini, accountID: accountID))
+    }
+
+    /// The read-back still decides: a store that drops the write fails the
+    /// claim, whatever `synchronize()` says.
+    func testClaimFailsWhenTheValueDoesNotReadBack() {
+        final class DroppingDefaults: UserDefaults {
+            override func set(_ value: Any?, forKey defaultName: String) {}
+        }
+        let name = "ProviderSharedCredentialOwnerTests-dropping-\(UUID().uuidString)"
+        let dropping = DroppingDefaults(suiteName: name)!
+        defer { dropping.removePersistentDomain(forName: name) }
+        ProviderSharedCredentialOwner.defaults = dropping
+        ProviderSharedCredentialOwner.synchronizeDefaults = { _ in true }
+        XCTAssertFalse(ProviderSharedCredentialOwner.claim(kind: .claude, accountID: UUID()))
+    }
 }
 #endif
