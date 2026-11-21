@@ -300,6 +300,15 @@ public enum WatchRingMath {
             ?? provider.tiers.first { $0.name.localizedCaseInsensitiveContains("week") }
     }
 
+    /// The provider's 5-hour window: the tier the collector marks primary
+    /// with a 300-minute window, or named "5h Window" (Claude's tiers carry
+    /// no window length). `nil` when the provider reports tiers and none is
+    /// that window, as on Claude's weekly-only plans.
+    public static func fiveHourTier(_ provider: ProviderUsage) -> TierDTO? {
+        provider.tiers.first { $0.windowMinutes == 300 }
+            ?? provider.tiers.first { $0.name == "5h Window" }
+    }
+
     /// Consumption fraction `0...1` for the provider's **Weekly** window,
     /// falling back to the provider's primary `usagePercent` when there is
     /// no weekly tier. The Quota rings use this so the arc tracks the slower

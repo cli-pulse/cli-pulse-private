@@ -71,6 +71,11 @@ struct WidgetProviderData: Codable, Identifiable {
     /// window when a provider has no weekly tier). Optional for back-compat
     /// with payloads written before this field existed.
     var weeklyPercent: Double? = nil
+    /// Whether the provider has a 5-hour window (nil: the payload predates
+    /// the field, or the provider reports no tiers; the row stays), and that
+    /// window's USED fraction. Written by `PublishedWidgetProviderData`.
+    var hasSessionWindow: Bool? = nil
+    var sessionPercent: Double? = nil
 
     var id: String { name }
 
@@ -83,8 +88,14 @@ struct WidgetProviderData: Codable, Identifiable {
         return min(1, max(0, Double(usage) / Double(quota)))
     }
 
-    /// 5h / session-window USED fraction (the primary quota window).
-    var sessionUsed: Double { usagePercent }
+    /// 5h / session-window USED fraction: the 5-hour tier's when the app
+    /// sent it, else the headline (older payloads).
+    var sessionUsed: Double {
+        if let sessionPercent { return min(1, max(0, sessionPercent)) }
+        return usagePercent
+    }
+    /// Draw the "5h" row unless the app said there is no 5-hour window.
+    var showsSessionRow: Bool { hasSessionWindow ?? true }
     /// Weekly-window USED fraction; falls back to the session window when
     /// the payload carries no weekly value (legacy or no weekly tier).
     var weeklyUsed: Double { min(1, max(0, weeklyPercent ?? usagePercent)) }
