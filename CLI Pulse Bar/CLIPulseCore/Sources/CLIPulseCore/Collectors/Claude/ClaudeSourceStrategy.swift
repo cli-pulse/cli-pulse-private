@@ -233,6 +233,31 @@ public enum ClaudeCredentials {
     public struct Creds: Sendable {
         public let accessToken: String
         public let rateLimitTier: String?
+        /// When the access token stops working, if the credentials say.
+        /// Claude Code writes it as milliseconds since 1970 (`expiresAt`).
+        public let expiresAt: Date?
+
+        public init(accessToken: String, rateLimitTier: String?, expiresAt: Date? = nil) {
+            self.accessToken = accessToken
+            self.rateLimitTier = rateLimitTier
+            self.expiresAt = expiresAt
+        }
+
+        /// True only when the credentials name an expiry and it has passed.
+        /// Credentials without one are taken as current, as before.
+        public func isExpired(now: Date = Date()) -> Bool {
+            guard let expiresAt else { return false }
+            return expiresAt <= now
+        }
+    }
+
+    /// `expiresAt` / `expires_at` as Claude Code writes it: milliseconds since
+    /// 1970. A value small enough to be seconds is read as seconds.
+    static func parseExpiry(_ value: Any?) -> Date? {
+        guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+        let raw = number.doubleValue
+        guard raw.isFinite, raw > 0 else { return nil }
+        return Date(timeIntervalSince1970: raw > 100_000_000_000 ? raw / 1000 : raw)
     }
 
     /// Parse credentials from JSON data (supports both snake_case and camelCase).
@@ -240,11 +265,13 @@ public enum ClaudeCredentials {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         if let oauth = json["claude_ai_oauth"] as? [String: Any],
            let token = oauth["access_token"] as? String, !token.isEmpty {
-            return Creds(accessToken: token, rateLimitTier: oauth["rate_limit_tier"] as? String)
+            return Creds(accessToken: token, rateLimitTier: oauth["rate_limit_tier"] as? String,
+                         expiresAt: parseExpiry(oauth["expires_at"]))
         }
         if let oauth = json["claudeAiOauth"] as? [String: Any],
            let token = oauth["accessToken"] as? String, !token.isEmpty {
-            return Creds(accessToken: token, rateLimitTier: oauth["rateLimitTier"] as? String)
+            return Creds(accessToken: token, rateLimitTier: oauth["rateLimitTier"] as? String,
+                         expiresAt: parseExpiry(oauth["expiresAt"]))
         }
         return nil
     }
@@ -254,6 +281,13 @@ public enum ClaudeCredentials {
         let path = (realHomeDir as NSString).appendingPathComponent(".claude/.credentials.json")
         guard let data = FileManager.default.contents(atPath: path) else { return nil }
         return parseCredentialsJSON(data)
+    }
+
+    /// The credentials file, unless its token has expired: for reading the
+    /// plan tier, which an expired file from an earlier login names wrongly.
+    static func readCurrentCredentialsFile() -> Creds? {
+        guard let creds = readCredentialsFile(), !creds.isExpired(now: nowProvider()) else { return nil }
+        return creds
     }
 
     /// Read credentials from macOS Keychain (Claude Code's keychain item).
@@ -501,17 +535,20 @@ public enum ClaudeCredentials {
     ///   - environment, credentialsFile, keychain: the three machine-wide
     ///     sources, in the order they are tried. Tests pass their own, so
     ///     what this machine has never decides a result.
+    ///   - now: what "expired" is measured against (the credentials file's).
     static func resolveTokenDetails(
         config: ProviderConfig,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         credentialsFile: () -> Creds? = { ClaudeCredentials.readCredentialsFile() },
-        keychain: () -> ClaudeKeychainLookup = { ClaudeCredentials.readKeychainForTokenResolver() }
+        keychain: () -> ClaudeKeychainLookup = { ClaudeCredentials.readKeychainForTokenResolver() },
+        now: Date = Date()
     ) -> ResolvedToken {
         let resolved = resolveTokenFromSources(
             config: config,
             environment: environment,
             credentialsFile: credentialsFile,
-            keychain: keychain
+            keychain: keychain,
+            now: now
         )
         if let absence = resolved.absence {
             ClaudeTokenResolutionLog.note(absence)
@@ -523,7 +560,8 @@ public enum ClaudeCredentials {
         config: ProviderConfig,
         environment: [String: String],
         credentialsFile: () -> Creds?,
-        keychain: () -> ClaudeKeychainLookup
+        keychain: () -> ClaudeKeychainLookup,
+        now: Date
     ) -> ResolvedToken {
         // Explicitly connected tokens are copied into this account's
         // ProviderConfig Keychain slot. They always win over machine-global
@@ -572,7 +610,19 @@ public enum ClaudeCredentials {
                 )
             }
         }
-        if let fileCreds = credentialsFile() {
+        // `~/.claude/.credentials.json` first, unless its token has expired.
+        // Claude Code on macOS keeps its login in the keychain and does not
+        // refresh this file, so one left from an earlier login stays expired
+        // for good. Taken first regardless, it shadowed the keychain: every
+        // OAuth call was refused and the card fell back to other sources,
+        // whose weekly figure was far from Claude's own (owner, 2026-11-21,
+        // with a file months past its expiry). An expired file is now the
+        // last resort, used only when the keychain has nothing, as CodexBar's
+        // `ClaudeOAuthCredentials.load` does. (Should the expired file hold
+        // the current login and the keychain an older one, the keychain's
+        // account is shown; nothing here can tell the two apart.)
+        let fileCreds = credentialsFile()
+        if let fileCreds, !fileCreds.isExpired(now: now) {
             return ResolvedToken(
                 token: fileCreds.accessToken,
                 tier: fileCreds.rateLimitTier,
@@ -587,6 +637,15 @@ public enum ClaudeCredentials {
                 source: .sharedKeychain
             )
         case .missing(let miss):
+            if let fileCreds {
+                // Expired, but the only token there is: the same answer as
+                // before this check existed.
+                return ResolvedToken(
+                    token: fileCreds.accessToken,
+                    tier: fileCreds.rateLimitTier,
+                    source: .sharedCredentialsFile
+                )
+            }
             return ResolvedToken(
                 token: "",
                 tier: nil,

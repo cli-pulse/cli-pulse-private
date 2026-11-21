@@ -357,7 +357,14 @@ final class ClaudeStrategyTests: XCTestCase {
         XCTAssertEqual(strategies[2].sourceLabel, "web")
     }
 
-    func testResolverAvailability() {
+    /// Reads this Mac's real Claude sources. Where `~/.claude/.credentials.json`
+    /// has expired, that now includes Claude Code's keychain item, whose
+    /// authorization dialog would hold an unattended run, so it runs only with
+    /// the live tests.
+    func testResolverAvailability() throws {
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["RUN_LIVE_TESTS"] == "1",
+            "Reads this Mac's Claude login, keychain included; set RUN_LIVE_TESTS=1 to run it")
         let resolver = ClaudeSourceResolver()
         let config = ProviderConfig(kind: .claude)
         _ = resolver.isAvailable(config: config)
