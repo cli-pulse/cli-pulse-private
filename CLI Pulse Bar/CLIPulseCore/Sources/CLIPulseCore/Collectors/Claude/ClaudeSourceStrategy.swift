@@ -41,6 +41,12 @@ public struct ClaudeSnapshot: Sendable {
     public let rateLimitTier: String?
     public let accountEmail: String?
     public let sourceLabel: String
+    /// Weekly limits scoped to one model ("Fable only"), from the usage
+    /// body's `limits` array (`ClaudeUsageLimits`). Empty when there are none.
+    public let scopedWeekly: [ClaudeUsageLimits.Scoped]
+    /// What `/api/oauth/profile` calls the plan ("Ultra plan"). The token's
+    /// `rateLimitTier` is set at sign-in and goes stale when the plan changes.
+    public let planDisplayLabel: String?
 
     public init(
         sessionUsed: Int? = nil, weeklyUsed: Int? = nil,
@@ -51,7 +57,9 @@ public struct ClaudeSnapshot: Sendable {
         extraUsage: ClaudeExtraUsage? = nil,
         rateLimitTier: String? = nil,
         accountEmail: String? = nil,
-        sourceLabel: String
+        sourceLabel: String,
+        scopedWeekly: [ClaudeUsageLimits.Scoped] = [],
+        planDisplayLabel: String? = nil
     ) {
         self.sessionUsed = sessionUsed
         self.weeklyUsed = weeklyUsed
@@ -65,6 +73,8 @@ public struct ClaudeSnapshot: Sendable {
         self.rateLimitTier = rateLimitTier
         self.accountEmail = accountEmail
         self.sourceLabel = sourceLabel
+        self.scopedWeekly = scopedWeekly
+        self.planDisplayLabel = planDisplayLabel
     }
 
     /// True when at least one of the quota windows has a parsed value.
@@ -76,6 +86,7 @@ public struct ClaudeSnapshot: Sendable {
             || sonnetUsed != nil
             || opusUsed != nil
             || dailyRoutinesUsed != nil
+            || !scopedWeekly.isEmpty
     }
 
     /// Return a copy with `accountEmail` / `rateLimitTier` / `weeklyReset`
@@ -97,7 +108,9 @@ public struct ClaudeSnapshot: Sendable {
             extraUsage: extraUsage,
             rateLimitTier: rateLimitTier ?? info.rateLimitTier,
             accountEmail: accountEmail ?? info.accountEmail,
-            sourceLabel: sourceLabel
+            sourceLabel: sourceLabel,
+            scopedWeekly: scopedWeekly,
+            planDisplayLabel: planDisplayLabel
         )
     }
 }
@@ -149,26 +162,39 @@ public enum ClaudeResultBuilder {
         if let u = snapshot.weeklyUsed {
             tiers.append(TierDTO(name: "Weekly", quota: 100, remaining: max(0, 100 - u), reset_time: snapshot.weeklyReset))
         }
-        if let u = snapshot.sonnetUsed ?? snapshot.opusUsed {
+        // One per-model week from the flat keys, named for the model it is:
+        // it used to read "Sonnet only" when it held Opus's number.
+        if let u = snapshot.sonnetUsed {
             tiers.append(TierDTO(name: "Sonnet only", quota: 100, remaining: max(0, 100 - u), reset_time: snapshot.weeklyReset))
+        } else if let u = snapshot.opusUsed {
+            tiers.append(TierDTO(name: "Opus only", quota: 100, remaining: max(0, 100 - u), reset_time: snapshot.weeklyReset))
         }
         if let u = snapshot.dailyRoutinesUsed {
             tiers.append(TierDTO(name: "Daily Routines", quota: 100, remaining: max(0, 100 - u), reset_time: snapshot.dailyRoutinesReset))
         }
+        // A week scoped to one model ("Fable only"). The name keeps the
+        // vendor's model noun verbatim; `scripts/quota_tier_names.json` lists
+        // it as composed at runtime. A model that already has its row from
+        // the flat keys (`seven_day_sonnet` → "Sonnet only") is the same
+        // limit and is not drawn twice.
+        for scoped in snapshot.scopedWeekly {
+            let title = "\(scoped.modelName) only"
+            let row = { (name: String) in
+                TierDTO(name: name, quota: 100, remaining: max(0, 100 - scoped.used),
+                        reset_time: scoped.resetsAt ?? snapshot.weeklyReset,
+                        windowMinutes: 7 * 24 * 60, role: .modelSpecific)
+            }
+            if let index = tiers.firstIndex(where: { $0.name.caseInsensitiveCompare(title) == .orderedSame }) {
+                // The same limit: keep the row's name, take the scoped
+                // entry's own reset (the flat row only had the week's).
+                tiers[index] = row(tiers[index].name)
+            } else {
+                tiers.append(row(title))
+            }
+        }
 
-        let planType: String
-        let tierLower = (snapshot.rateLimitTier ?? "").lowercased()
-        // Match specific Max tiers first (20x before generic max)
-        if tierLower.contains("max_20x") || tierLower.contains("max 20x") { planType = "Max 20x" }
-        else if tierLower.contains("max_5x") || tierLower.contains("max 5x") { planType = "Max 5x" }
-        else if tierLower.contains("max") { planType = "Max 5x" }  // default Max → 5x
-        else if tierLower.contains("ultra") { planType = "Ultra" }
-        else if tierLower.contains("pro") { planType = "Pro" }
-        else if tierLower.contains("team") { planType = "Team" }
-        else if tierLower.contains("enterprise") { planType = "Enterprise" }
-        else if tierLower.contains("free") { planType = "Free" }
-        else if tierLower.isEmpty { planType = "Unknown" }
-        else { planType = "Unknown" }
+        let planType = ClaudePlanType.resolve(rateLimitTier: snapshot.rateLimitTier,
+                                              planDisplayLabel: snapshot.planDisplayLabel)
 
         // Be honest: if no strategy populated any of the three quota windows
         // we used to emit `quota=100, remaining=100, tiers=[]`, which AppState
@@ -180,7 +206,15 @@ public enum ClaudeResultBuilder {
         // no 5-hour window (Claude's weekly-only plans: `five_hour` is null).
         // It used to fall back to 100, so such a plan read "100% left" and
         // "Operational" whatever its week stood at (owner, 2026-11-22).
-        let headlineUsed = snapshot.sessionUsed ?? snapshot.weeklyUsed
+        // With neither, the most-used model-scoped week, so a reply holding
+        // only those cannot read "100% left" either. `reset_time` is the
+        // headline's own reset, which is what the pace reads.
+        let topScoped = snapshot.scopedWeekly.max { $0.used < $1.used }
+        let headline: (used: Int, reset: String?)? =
+            snapshot.sessionUsed.map { ($0, snapshot.sessionReset) }
+            ?? snapshot.weeklyUsed.map { ($0, snapshot.weeklyReset) }
+            ?? topScoped.map { ($0.used, $0.resetsAt ?? snapshot.weeklyReset) }
+        let headlineUsed = headline?.used
         let overallRemaining: Int? = hasUsage ? (headlineUsed.map { max(0, 100 - $0) } ?? 100) : nil
         let statusText: String
         if let used = headlineUsed {
@@ -212,7 +246,7 @@ public enum ClaudeResultBuilder {
             estimated_cost_today: 0, estimated_cost_week: 0,
             cost_status_today: "Unavailable", cost_status_week: "Unavailable",
             quota: overallQuota, remaining: overallRemaining, plan_type: planType,
-            reset_time: snapshot.sessionReset, tiers: tiers, status_text: statusText,
+            reset_time: headline.map { $0.reset } ?? snapshot.sessionReset, tiers: tiers, status_text: statusText,
             trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(display_name: "Claude", category: "cloud",
                                        supports_exact_cost: false, supports_quota: true))

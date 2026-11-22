@@ -85,9 +85,11 @@ public extension ProviderUsage {
     /// Length in minutes of the window whose reset is `reset_time`, or nil
     /// when it is not known.
     ///
-    /// * Claude: its headline is always the 5-hour session window
-    ///   (`ClaudeResultBuilder` sets `reset_time` to the session reset), so
-    ///   300, as before.
+    /// * Claude: the headline is the 5-hour window (300, as before), or, on a
+    ///   plan without one, the week: `ClaudeResultBuilder` sets `reset_time` to
+    ///   the headline's own reset, so a weekly tier with that reset means a
+    ///   week. Rows with no tiers (older writers) keep 300; a reset that no
+    ///   weekly tier shares gets no pace.
     /// * Codex: the headline is the session lane's window, or the weekly
     ///   lane's when the account has no session window, and that window may
     ///   be 5 hours, a week, 30 days, or a length the API did not say
@@ -110,7 +112,21 @@ public extension ProviderUsage {
     func paceWindowMinutes(resetsAt: Date, now: Date = .init()) -> Int? {
         switch providerKind {
         case .claude?:
-            return Self.claudeSessionMinutes
+            if tiers.isEmpty { return Self.claudeSessionMinutes }
+            if let fiveHour = WatchRingMath.fiveHourTier(self) {
+                // The 5-hour row is the headline unless its own reset says otherwise.
+                guard let reset = fiveHour.reset_time.flatMap(sharedISO8601Parse),
+                      abs(reset.timeIntervalSince(resetsAt)) >= Self.resetMatchTolerance
+                else { return Self.claudeSessionMinutes }
+            }
+            let week = tiers.first { tier in
+                guard tier.role != .credits,
+                      tier.windowMinutes == Self.weekMinutes
+                          || (tier.windowMinutes == nil && tier.name.localizedCaseInsensitiveContains("week")),
+                      let reset = tier.reset_time.flatMap(sharedISO8601Parse) else { return false }
+                return abs(reset.timeIntervalSince(resetsAt)) < Self.resetMatchTolerance
+            }
+            return week == nil ? nil : Self.weekMinutes
         case .codex?:
             let matching = tiers
                 .map { CodexQuotaWindows.resolved($0, now: now) }
@@ -138,6 +154,7 @@ public extension ProviderUsage {
 
 private extension ProviderUsage {
     static let claudeSessionMinutes = 300
+    static let weekMinutes = 7 * 24 * 60
     /// The headline and its tier are written from the same date by the same
     /// writer; the slack only absorbs a writer that rounds one of them.
     static let resetMatchTolerance: TimeInterval = 60

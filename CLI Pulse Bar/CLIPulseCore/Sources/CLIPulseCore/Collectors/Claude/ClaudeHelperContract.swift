@@ -79,6 +79,17 @@ import Foundation
 ///     Companion release that maps the same keys must write it too.
 /// Any other value, or none, means the file's lanes are not trusted.
 ///
+/// ### `scoped_weekly` and `plan_display_label`
+///
+/// Additive, written by this app only (the Companion does not write them):
+///
+///     "scoped_weekly": [ { "model": "Fable", "used": 55, "reset": "…" | null } ],
+///     "plan_display_label": "Ultra plan"
+///
+/// The weeks scoped to one model (`ClaudeUsageLimits`) and the plan label from
+/// `/api/oauth/profile`, so the resolver's last-known-good fallback keeps the
+/// "Fable only" row and the plan name. A file without them reads as none.
+///
 /// ## Freshness
 ///
 /// Snapshots older than 10 minutes are rejected. The helper should write
@@ -290,7 +301,25 @@ public enum ClaudeHelperContract {
         // On every file, with or without `extra_tiers`: it says this writer
         // maps the lanes from the 1.59 keys.
         dict[extraTiersSchemaKey] = extraTiersSchema
+        if !snapshot.scopedWeekly.isEmpty {
+            dict["scoped_weekly"] = snapshot.scopedWeekly.map { scoped -> [String: Any] in
+                ["model": scoped.modelName, "used": scoped.used, "reset": (scoped.resetsAt as Any?) ?? NSNull()]
+            }
+        }
+        if let v = snapshot.planDisplayLabel { dict["plan_display_label"] = v }
         return dict
+    }
+
+    /// `scoped_weekly` read back; entries that do not have the written shape
+    /// are skipped. Internal for tests.
+    static func decodeScopedWeekly(_ json: [String: Any]) -> [ClaudeUsageLimits.Scoped] {
+        guard let entries = json["scoped_weekly"] as? [[String: Any]] else { return [] }
+        return entries.prefix(ClaudeUsageLimits.maxScoped).compactMap { entry in
+            guard let model = entry["model"] as? String, !model.isEmpty,
+                  model.count <= ClaudeUsageLimits.maxModelNameLength,
+                  let used = entry["used"] as? Int, (0...100).contains(used) else { return nil }
+            return ClaudeUsageLimits.Scoped(modelName: model, used: used, resetsAt: entry["reset"] as? String)
+        }
     }
 
     /// Write account-level metadata to its dedicated sibling file.
@@ -429,7 +458,9 @@ public enum ClaudeHelperContract {
                 extraUsage: extra,
                 rateLimitTier: json["rate_limit_tier"] as? String,
                 accountEmail: json["account_email"] as? String,
-                sourceLabel: sourceLabel
+                sourceLabel: sourceLabel,
+                scopedWeekly: Self.decodeScopedWeekly(json),
+                planDisplayLabel: json["plan_display_label"] as? String
             )
         }
         return nil
@@ -481,6 +512,15 @@ public enum ClaudeHelperContract {
 
         let delta = abs(parsed.timeIntervalSince(canonical))
         if delta <= 6 * 3600 {
+            return sharedISO8601Formatter.string(from: parsed)
+        }
+        // Claude's week is no longer one Friday for everyone: each account's
+        // rolls from its own start (an account read on 2026-11-22 reset mid-week,
+        // in `seven_day.resets_at` and `limits[]` alike). A reset the API
+        // gave that lies within the week after the fetch is that account's;
+        // only one outside it is replaced.
+        let ahead = parsed.timeIntervalSince(reference)
+        if ahead > 0, ahead <= 7 * 24 * 3600 + 6 * 3600 {
             return sharedISO8601Formatter.string(from: parsed)
         }
         return sharedISO8601Formatter.string(from: canonical)

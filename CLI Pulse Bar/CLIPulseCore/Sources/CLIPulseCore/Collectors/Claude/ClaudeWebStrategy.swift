@@ -118,7 +118,8 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
             extraUsage: extra,
             rateLimitTier: account?.rateLimitTier ?? usage.planType,
             accountEmail: account?.email ?? org.email,
-            sourceLabel: sourceLabel
+            sourceLabel: sourceLabel,
+            scopedWeekly: usage.scopedWeekly
         )
     }
 
@@ -256,6 +257,8 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
         let weeklyResetISO: String?
         let dailyRoutinesResetISO: String?
         let planType: String?
+        /// Weeks scoped to one model, from `limits[]` (`ClaudeUsageLimits`).
+        var scopedWeekly: [ClaudeUsageLimits.Scoped] = []
         /// Sorted, comma-separated list of top-level JSON keys from the response
         /// used for schema-drift diagnostics only. Values are NEVER included to
         /// avoid leaking tokens / PII.
@@ -273,6 +276,7 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
             sessionPercent != nil || weeklyPercent != nil
                 || opusPercent != nil || sonnetPercent != nil
                 || dailyRoutinesPercent != nil
+                || !scopedWeekly.isEmpty
         }
     }
 
@@ -332,10 +336,12 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
             ?? parsePercent("session_percent_used")
             ?? parsePercent("sessionPercentUsed")
             ?? parsePercent("five_hour_utilization")
+        let weeklyAll = ClaudeUsageLimits.weeklyAll(json)
         let weeklyPct = sevenDay?.utilization
             ?? parsePercent("weekly_percent_used")
             ?? parsePercent("weeklyPercentUsed")
             ?? parsePercent("seven_day_utilization")
+            ?? weeklyAll?.used
         let opusPct = sevenDayOpus?.utilization
             ?? parsePercent("opus_percent_used")
             ?? parsePercent("opusPercentUsed")
@@ -352,6 +358,7 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
         let weeklyReset = sevenDay?.resetsAt
             ?? parseReset("weekly_resets_at")
             ?? parseReset("weeklyResetsAt")
+            ?? (sevenDay == nil ? weeklyAll?.resetsAt : nil)
         let dailyRoutinesReset = routines?.resetsAt
         let plan = json["plan_type"] as? String ?? json["planType"] as? String
 
@@ -368,6 +375,7 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
             weeklyResetISO: weeklyReset,
             dailyRoutinesResetISO: dailyRoutinesReset,
             planType: plan,
+            scopedWeekly: ClaudeUsageLimits.scopedWeekly(json),
             topLevelKeysForDiagnostics: keysHint
         )
     }

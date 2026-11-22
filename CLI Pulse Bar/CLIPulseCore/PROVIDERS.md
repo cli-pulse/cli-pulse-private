@@ -14,7 +14,7 @@ Two data paths:
 
 Codex, Claude, and Gemini collectors target **subscription-linked usage/quota endpoints** via local OAuth state:
 - Codex: `~/.codex/auth.json` → `chatgpt.com/backend-api/wham/usage` (ChatGPT subscription)
-- Claude: `~/.claude/.credentials.json` → `api.anthropic.com/api/oauth/usage` (Claude subscription OAuth)
+- Claude: `~/.claude/.credentials.json` → `api.anthropic.com/api/oauth/usage` (Claude subscription OAuth); the same token reads `api.anthropic.com/api/oauth/profile` at most every 6 hours for the plan's display label only (`ClaudePlanLabelCache`)
 - Gemini: `~/.gemini/oauth_creds.json` → `cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota` (Gemini CLI subscription)
 
 These do **not** use developer API key billing.
