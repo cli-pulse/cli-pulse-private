@@ -214,7 +214,7 @@
    "display": "TRANSLATE",
    "l10n_key": "quota_tier.opus_only",
    "reason": "Same mixed shape: keep \"Opus\" verbatim, localize \"only\". Emitted only by HelperSwift ClaudeQuotaFetcher, so it must be in the mapper alongside \"Sonnet only\" and \"Opus (Weekly)\" or the same window reads localized on one machine and English on another.",
-   "producers": "HelperSwift ClaudeQuotaFetcher ONLY (weekly_opus). No other producer emits this spelling - the in-app Swift path says \"Sonnet only\" and the Python/Android paths say \"Opus (Weekly)\".",
+   "producers": "Swift ClaudeResultBuilder (OAuth/web `seven_day_opus` when there is no `seven_day_sonnet`; it used to label that number \"Sonnet only\") and HelperSwift ClaudeQuotaFetcher (weekly_opus). The Python/Android paths say \"Opus (Weekly)\".",
    "scanner_blind_spot": true
   },
   {
@@ -323,8 +323,8 @@
    "name": "Sonnet only",
    "display": "TRANSLATE",
    "l10n_key": "quota_tier.sonnet_only",
-   "reason": "Mixed name: \"Sonnet\" is a Claude model name and must be preserved verbatim inside the translated string (e.g. \"Sonnet のみ\"), while \"only\" is a generic qualifier this app added. Note the producer uses this label for both sonnetUsed and opusUsed (`sonnetUsed ?? opusUsed`), so the visible model noun can already be wrong — translation neither fixes nor worsens that.",
-   "producers": "Swift ClaudeResultBuilder (used for BOTH sonnetUsed and opusUsed - `snapshot.sonnetUsed ?? snapshot.opusUsed`); Tauri desktop claude.rs"
+   "reason": "Mixed name: \"Sonnet\" is a Claude model name and must be preserved verbatim inside the translated string (e.g. \"Sonnet のみ\"), while \"only\" is a generic qualifier this app added. The producer names the flat-key row for the model it holds: \"Sonnet only\" from `seven_day_sonnet`, \"Opus only\" when only `seven_day_opus` is present (it used to say \"Sonnet only\" for both); a `limits[]` week scoped to Sonnet reads the same name and is the same row.",
+   "producers": "Swift ClaudeResultBuilder (`seven_day_sonnet`, and a `limits[]` week scoped to Sonnet via the composed \"<model> only\"); Tauri desktop claude.rs"
   },
   {
    "name": "Tariff Credits",
@@ -387,6 +387,14 @@
    "reason": "Synthetic: Android's legacy usage_windows fallback when the payload has no window_name, so it is an app-invented placeholder with essentially no information content — localizing it is at least as useful as the English. It reaches Apple render sites via the shared cloud rows, so the Apple mapper needs it; the non-default case (whatever string the server sent) stays an open set and must pass through.",
    "producers": "Android ClaudeCollector legacy `usage_windows` fallback - the default when the payload's `window_name` is absent. Otherwise the tier name is whatever string the server sent (open-ended). Swift CodexCollector, the Python helper and HelperSwift CodexQuotaFetcher for a Codex window whose length they know but have no name for (CodexQuotaWindows.tierName), rather than call it \"5h Window\", and for the second of two Codex windows that would otherwise share a name.",
    "scanner_blind_spot": true
+  },
+  {
+   "name": "Fable only",
+   "display": "PASSTHROUGH",
+   "reason": "Not a closed literal: ClaudeResultBuilder composes \"<model> only\" from the `scope.model.display_name` of each `weekly_scoped` entry in Claude's usage `limits[]` (\"Fable\" on an Ultra plan in 2026-11; the model rotates). The model noun is Anthropic's and must stay verbatim; a mapper keyed on exact literals could only translate the model names already seen, so the whole family renders as the vendor writes it until a pattern rendering exists on every platform.",
+   "producers": "Swift ClaudeResultBuilder via `\"\\(scoped.modelName) only\"` (OAuth and web usage `limits[]`) - an open-ended family (\"<MODEL> only\"); this entry pins the expression.",
+   "composed_at_runtime": true,
+   "composed_from": "\\(scoped.modelName) only"
   }
  ]
 }

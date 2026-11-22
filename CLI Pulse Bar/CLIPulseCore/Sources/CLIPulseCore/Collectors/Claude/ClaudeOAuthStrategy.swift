@@ -22,9 +22,14 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
     /// Backoff state. Defaults to the process singleton; tests inject
     /// a fresh actor with a controllable clock.
     private let backoff: ClaudeOAuthBackoffState
+    /// What `/api/oauth/profile` says about the plan, read at most every 6 h
+    /// per token, off the usage path. Defaults to the process singleton;
+    /// tests inject their own.
+    private let planLabels: ClaudePlanLabelCache
 
-    public init(backoff: ClaudeOAuthBackoffState? = nil) {
+    public init(backoff: ClaudeOAuthBackoffState? = nil, planLabels: ClaudePlanLabelCache? = nil) {
         self.backoff = backoff ?? ClaudeOAuthBackoffState.shared
+        self.planLabels = planLabels ?? ClaudePlanLabelCache.shared
     }
 
     public func isAvailable(config: ProviderConfig) -> Bool {
@@ -94,11 +99,21 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
         // suppressing OAuth until the natural 15-min expiry.
         await backoff.reset(forFingerprint: fingerprint)
 
+        // What Claude calls the plan today. The token's tier is set at sign-in
+        // and an Ultra account's still reads Max 20x. Answered from memory at
+        // once; a stale or missing read is fetched in the background for the
+        // next refresh, so the profile never delays or fails the usage result.
+        let profile = await planLabels.profile(forFingerprint: fingerprint) {
+            await Self.fetchProfile(token: token)
+        }
+
         return Self.snapshot(
             from: usage,
-            rateLimitTier: tier
+            rateLimitTier: profile?.rateLimitTier
+                ?? tier
                 ?? ClaudeCredentials.readCurrentCredentialsFile()?.rateLimitTier
                 ?? ClaudeCredentials.readKeychainCredentialsIfAllowed()?.rateLimitTier,
+            planDisplayLabel: profile?.planDisplayLabel,
             sourceLabel: sourceLabel
         )
     }
@@ -110,16 +125,21 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
     static func snapshot(
         from usage: OAuthUsageResponse,
         rateLimitTier: String?,
+        planDisplayLabel: String? = nil,
         sourceLabel: String
     ) -> ClaudeSnapshot {
-        ClaudeSnapshot(
+        // `seven_day` is the all-models week; `limits[weekly_all]` says the
+        // same where a body leaves `seven_day` out.
+        let weekly = usage.sevenDay.map { ($0.utilization, $0.resetsAt) }
+            ?? usage.weeklyAll.map { ($0.used, $0.resetsAt) }
+        return ClaudeSnapshot(
             sessionUsed: usage.fiveHour?.utilization,
-            weeklyUsed: usage.sevenDay?.utilization,
+            weeklyUsed: weekly?.0,
             opusUsed: usage.sevenDayOpus?.utilization,
             sonnetUsed: usage.sevenDaySonnet?.utilization,
             dailyRoutinesUsed: usage.routines?.utilization,
             sessionReset: usage.fiveHour?.resetsAt,
-            weeklyReset: usage.sevenDay?.resetsAt,
+            weeklyReset: weekly?.1,
             dailyRoutinesReset: usage.routines?.resetsAt,
             extraUsage: usage.extraUsage.flatMap { e in
                 e.isEnabled ? ClaudeExtraUsage(
@@ -130,7 +150,9 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
                 ) : nil
             },
             rateLimitTier: rateLimitTier,
-            sourceLabel: sourceLabel
+            sourceLabel: sourceLabel,
+            scopedWeekly: usage.scopedWeekly,
+            planDisplayLabel: planDisplayLabel
         )
     }
 
@@ -163,6 +185,56 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
         return try Self.parseUsage(data)
     }
 
+    static let profileURL = URL(string: "https://api.anthropic.com/api/oauth/profile")!
+
+    /// The profile GET: the same bearer token as the usage call. Its own
+    /// function so tests can check the request without a network.
+    static func profileRequest(token: String) -> URLRequest {
+        var request = URLRequest(url: profileURL)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("CLIPulseBar", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 10
+        return request
+    }
+
+    /// `/api/oauth/profile` → the plan fields. Any failure is `.failed`; the
+    /// cache then keeps what it had and asks again in 30 minutes.
+    static func fetchProfile(token: String) async -> ClaudePlanLabelCache.Outcome {
+        do {
+            let (data, response) = try await CredentialedURLSession.shared.data(for: profileRequest(token: token))
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                  let profile = parseProfile(data) else {
+                return .failed
+            }
+            return .profile(profile)
+        } catch {
+            return .failed
+        }
+    }
+
+    /// Reads two fields of `organization`: `plan_display_label` ("Ultra
+    /// plan"; failing that `plan_display_name`) and `rate_limit_tier`. The
+    /// body also names the person and the organization; none of that is
+    /// kept, logged or returned. Nil when the body has no `organization`.
+    static func parseProfile(_ data: Data) -> ClaudePlanLabelCache.Profile? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let organization = json["organization"] as? [String: Any] else { return nil }
+        var label: String?
+        for key in ["plan_display_label", "plan_display_name"] {
+            if let raw = organization[key] as? String, ClaudePlanType.normalizedLabel(raw) != nil {
+                label = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                break
+            }
+        }
+        let tier = (organization["rate_limit_tier"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return ClaudePlanLabelCache.Profile(
+            planDisplayLabel: label,
+            rateLimitTier: (tier?.isEmpty == false && tier!.count <= 64) ? tier : nil)
+    }
+
     // MARK: - Response types (internal for testing)
 
     struct UsageWindow: Sendable {
@@ -191,6 +263,10 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
         /// `seven_day_omelette` (the retired Design window) are not read.
         let routines: ClaudeRoutinesWindow.Window?
         let extraUsage: ExtraUsage?
+        /// `limits[]`: the weeks scoped to one model, and the all-models
+        /// week for a body without `seven_day` (`ClaudeUsageLimits`).
+        var scopedWeekly: [ClaudeUsageLimits.Scoped] = []
+        var weeklyAll: (used: Int, resetsAt: String?)? = nil
     }
 
     /// Coerce a JSON value that may be `Int` or `Double` into `Int`.
@@ -242,7 +318,9 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
             sevenDaySonnet: parseWindow("seven_day_sonnet"),
             sevenDayOAuthApps: parseWindow("seven_day_oauth_apps"),
             routines: ClaudeRoutinesWindow.parse(json),
-            extraUsage: extra
+            extraUsage: extra,
+            scopedWeekly: ClaudeUsageLimits.scopedWeekly(json),
+            weeklyAll: ClaudeUsageLimits.weeklyAll(json)
         )
     }
 }

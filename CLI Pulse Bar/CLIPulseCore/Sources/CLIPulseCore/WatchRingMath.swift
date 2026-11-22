@@ -295,9 +295,15 @@ public enum WatchRingMath {
     /// explicit `role == .secondary`, else falls back to a tier whose name
     /// contains "week" (both Claude and Codex name it "Weekly"). `nil` when
     /// the provider has no weekly window.
+    /// Failing both, the most-used tier that says it is 7 days long (a week
+    /// scoped to one model, "Fable only", on a plan that reports no other).
     public static func weeklyTier(_ provider: ProviderUsage) -> TierDTO? {
         provider.tiers.first { $0.role == .secondary }
             ?? provider.tiers.first { $0.name.localizedCaseInsensitiveContains("week") }
+            ?? provider.tiers
+                .filter { $0.role != .credits && $0.windowMinutes == 7 * 24 * 60 }
+                .max { usagePercent(quota: $0.quota, remaining: $0.remaining)
+                    < usagePercent(quota: $1.quota, remaining: $1.remaining) }
     }
 
     /// The provider's 5-hour window: a tier with a 300-minute window, or,
@@ -316,7 +322,8 @@ public enum WatchRingMath {
 
     /// Whether the widget should draw a "5h" row: `true` with a 5-hour
     /// window, `false` only for a provider that reports a weekly window and
-    /// no 5-hour one (Claude's weekly-only plans, whose headline is the week),
+    /// no 5-hour one (Claude's weekly-only plans, whose headline is the week;
+    /// a week scoped to one model, "Fable only", carries its 7-day length),
     /// `nil` otherwise, which keeps the row as it was.
     public static func hasFiveHourWindow(_ provider: ProviderUsage) -> Bool? {
         guard !provider.tiers.isEmpty else { return nil }

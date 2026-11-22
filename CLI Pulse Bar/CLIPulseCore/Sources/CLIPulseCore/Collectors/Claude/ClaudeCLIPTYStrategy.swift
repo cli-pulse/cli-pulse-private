@@ -86,6 +86,7 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
                 sessionUsed: parsed.sessionPercentLeft.map { 100 - $0 },
                 weeklyUsed: parsed.weeklyPercentLeft.map { 100 - $0 },
                 opusUsed: parsed.opusPercentLeft.map { 100 - $0 },
+                sonnetUsed: parsed.sonnetPercentLeft.map { 100 - $0 },
                 sessionReset: parsed.primaryResetDescription,
                 weeklyReset: parsed.secondaryResetDescription,
                 rateLimitTier: tier,
@@ -431,6 +432,10 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
         let sessionPercentLeft: Int?
         let weeklyPercentLeft: Int?
         let opusPercentLeft: Int?
+        /// "Current week (Sonnet only)". It used to be read into
+        /// `opusPercentLeft`, which was harmless while every per-model row
+        /// was called "Sonnet only"; the row is now named for its model.
+        var sonnetPercentLeft: Int? = nil
         let primaryResetDescription: String?
         let secondaryResetDescription: String?
     }
@@ -461,10 +466,11 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
         var sessionPct: Int? = nil
         var weeklyPct: Int? = nil
         var opusPct: Int? = nil
+        var sonnetPct: Int? = nil
         var primaryReset: String? = nil
         var secondaryReset: String? = nil
 
-        enum Section { case none, session, weekly, opus }
+        enum Section { case none, session, weekly, opus, sonnet }
         var currentSection: Section = .none
 
         for line in lines {
@@ -473,7 +479,9 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
 
             if normalized.contains("currentsession") {
                 currentSection = .session; continue
-            } else if normalized.contains("currentweek") && (normalized.contains("opus") || normalized.contains("sonnet")) {
+            } else if normalized.contains("currentweek") && normalized.contains("sonnet") {
+                currentSection = .sonnet; continue
+            } else if normalized.contains("currentweek") && normalized.contains("opus") {
                 currentSection = .opus; continue
             } else if normalized.contains("currentweek") {
                 currentSection = .weekly; continue
@@ -484,6 +492,7 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
                 case .session where sessionPct == nil: sessionPct = pct
                 case .weekly where weeklyPct == nil: weeklyPct = pct
                 case .opus where opusPct == nil: opusPct = pct
+                case .sonnet where sonnetPct == nil: sonnetPct = pct
                 default: break
                 }
             }
@@ -506,6 +515,7 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
             sessionPercentLeft: sessionPct.map { max(0, 100 - $0) },
             weeklyPercentLeft: weeklyPct.map { max(0, 100 - $0) },
             opusPercentLeft: opusPct.map { max(0, 100 - $0) },
+            sonnetPercentLeft: sonnetPct.map { max(0, 100 - $0) },
             primaryResetDescription: primaryReset,
             secondaryResetDescription: secondaryReset
         )

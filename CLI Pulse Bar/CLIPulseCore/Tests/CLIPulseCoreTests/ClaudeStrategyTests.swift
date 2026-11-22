@@ -29,8 +29,8 @@ final class ClaudeStrategyTests: XCTestCase {
 
     // Daily Routines appends after the existing Sonnet/Opus row in the order
     // [5h, Weekly, Sonnet only, Daily Routines]. 1.59 dropped the Designs
-    // row. Sonnet/Opus coalescing is unchanged — it still produces a single
-    // "Sonnet only" bar regardless of which of the two carried the value.
+    // row. One per-model bar from the flat keys: "Sonnet only", or "Opus
+    // only" when only Opus carried a value (`ClaudePlanWindowsTests`).
     func testResultBuilderAppendsDailyRoutines() {
         let snapshot = ClaudeSnapshot(
             sessionUsed: 22,
@@ -118,11 +118,22 @@ final class ClaudeStrategyTests: XCTestCase {
     func testNormalizeWeeklyResetPrefersCanonicalWhenSnapshotLooksBogus() {
         let formatter = ISO8601DateFormatter()
         let reference = formatter.date(from: "2026-04-02T08:34:00Z")!
-        let normalized = ClaudeHelperContract.normalizeWeeklyReset(
-            "2026-04-09T00:00:00Z",
-            reference: reference
-        )
-        XCTAssertEqual(normalized, "2026-04-03T14:00:00Z")
+        // More than a week after the fetch, or before it: not a weekly reset.
+        for bogus in ["2026-04-20T00:00:00Z", "2026-04-01T00:00:00Z"] {
+            XCTAssertEqual(ClaudeHelperContract.normalizeWeeklyReset(bogus, reference: reference),
+                           "2026-04-03T14:00:00Z", bogus)
+        }
+    }
+
+    /// Each account's week rolls from its own start now; a reset within the
+    /// week after the fetch is kept, not moved to Friday (2026-11-22).
+    func testNormalizeWeeklyResetKeepsAnAccountsOwnWeek() {
+        let formatter = ISO8601DateFormatter()
+        let reference = formatter.date(from: "2026-04-02T08:34:00Z")!
+        XCTAssertEqual(ClaudeHelperContract.normalizeWeeklyReset("2026-04-09T00:00:00Z", reference: reference),
+                       "2026-04-09T00:00:00Z")
+        XCTAssertEqual(ClaudeHelperContract.normalizeWeeklyReset("2026-04-06T09:30:00.123456+00:00", reference: reference),
+                       "2026-04-06T09:30:00Z")
     }
 
     func testNormalizeSessionResetDropsPastReset() {
