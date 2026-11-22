@@ -313,7 +313,9 @@ final class ClaudePlanWindowsTests: XCTestCase {
     }
 
     /// Two refreshes at once start one read; a read that has not answered
-    /// holds a refresh up for at most the first-read wait.
+    /// holds up only the call that started it, and only for the first-read
+    /// wait. The gate stays closed throughout, so each call returning at all
+    /// is the proof; the expectations are hang watchdogs, not timings.
     func testOneReadAtATimeAndAHungReadBlocksNothing() async {
         let gate = Gate()
         let cache = ClaudePlanLabelCache()
@@ -321,12 +323,17 @@ final class ClaudePlanWindowsTests: XCTestCase {
             await gate.enterAndWait()
             return .profile(.init(planDisplayLabel: "Ultra plan", rateLimitTier: nil))
         }
-        let started = Date()
-        let a = await cache.profile(forFingerprint: "a", firstReadWait: 0.2, fetch: fetch)
-        XCTAssertLessThan(Date().timeIntervalSince(started), 1.0, "waited only the first-read wait")
-        let b = await cache.profile(forFingerprint: "a", firstReadWait: 0, fetch: fetch)
+        // The starting call waits its (short) first-read wait, then answers.
+        let a = await cache.profile(forFingerprint: "a", firstReadWait: 0.05, fetch: fetch)
         XCTAssertNil(a)
-        XCTAssertNil(b)
+        // A later call does not wait again, however long its allowance.
+        let returned = expectation(description: "a later call answers without waiting")
+        Task {
+            let b = await cache.profile(forFingerprint: "a", firstReadWait: 3600, fetch: fetch)
+            XCTAssertNil(b)
+            returned.fulfill()
+        }
+        await fulfillment(of: [returned], timeout: 10)
         await gate.waitUntilEntered()
         let calls = await gate.calls
         XCTAssertEqual(calls, 1)

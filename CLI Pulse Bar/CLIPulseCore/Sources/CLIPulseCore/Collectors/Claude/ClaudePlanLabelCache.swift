@@ -72,8 +72,9 @@ public actor ClaudePlanLabelCache {
 
     /// The profile known for this token (nil before the first read lands, or
     /// once it is more than a day old). If it is stale and no read is
-    /// running, starts one; a token's first read is waited for up to
-    /// `firstReadWait` seconds.
+    /// running, starts one. Only the call that starts a token's first read
+    /// waits for it, up to `firstReadWait` seconds; every other call answers
+    /// at once.
     public func profile(
         forFingerprint fingerprint: String,
         firstReadWait: TimeInterval = ClaudePlanLabelCache.firstReadWait,
@@ -84,13 +85,14 @@ public actor ClaudePlanLabelCache {
             now().timeIntervalSince($0.askedAt) >= ($0.failed ? Self.retryAfterFailure : Self.freshFor)
         } ?? true
         if stale, inFlight[fingerprint] == nil {
-            inFlight[fingerprint] = Task {
+            let task = Task {
                 let outcome = await fetch()
                 self.store(outcome, for: fingerprint)
             }
-        }
-        if entry == nil, firstReadWait > 0, let task = inFlight[fingerprint] {
-            await Self.wait(for: task, atMost: firstReadWait)
+            inFlight[fingerprint] = task
+            if entry == nil, firstReadWait > 0 {
+                await Self.wait(for: task, atMost: firstReadWait)
+            }
         }
         return current(fingerprint)
     }
