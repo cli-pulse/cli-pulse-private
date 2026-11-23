@@ -30,6 +30,7 @@ final class ClaudeNotReadyReasonTests: XCTestCase {
     /// What the injected `SecItemCopyMatching` answers, and how often it was asked.
     private var keychainAnswer: (OSStatus, CFTypeRef?) = (errSecItemNotFound, nil)
     private var keychainReads = 0
+    private var originalItemModified: (() -> Date?)!
 
     private let accountID = UUID(uuidString: "5E5E5E5E-0000-4000-8000-000000000159")!
 
@@ -48,6 +49,8 @@ final class ClaudeNotReadyReasonTests: XCTestCase {
             self.keychainReads += 1
             return self.keychainAnswer
         }
+        originalItemModified = ClaudeCredentials.keychainItemModified
+        ClaudeCredentials.keychainItemModified = { nil }
 
         // `resolveTokenDetails` claims the machine's login for the entry
         // before it reads anything; keep that claim out of the real app group.
@@ -74,6 +77,7 @@ final class ClaudeNotReadyReasonTests: XCTestCase {
             let status = SecItemCopyMatching(query, &item)
             return (status, item)
         }
+        ClaudeCredentials.keychainItemModified = originalItemModified
         ClaudeCredentials.nowProvider = { Date() }
         ClaudeCredentials.cooldownDefaults = UserDefaults(suiteName: "group.yyh.CLI-Pulse") ?? .standard
         UserDefaults().removePersistentDomain(forName: cooldownSuite)
@@ -162,6 +166,10 @@ final class ClaudeNotReadyReasonTests: XCTestCase {
 
     func test_cooldownAfterARejectedToken_isMissingCredentials() {
         XCTAssertEqual(reason(.keychain(.onCooldown(.rejectedToken))), .missingCredentials)
+    }
+
+    func test_expiredLogin_isMissingCredentials_likeARejectedToken() {
+        XCTAssertEqual(reason(.keychain(.expiredLogin)), .missingCredentials)
     }
 
     func test_cooldownAfterADeclinedDialog_isKeychainDenied() {
@@ -392,6 +400,11 @@ final class ClaudeNotReadyReasonTests: XCTestCase {
         let misses: [ClaudeKeychainMiss] = [
             .skipped(.skippedBySetting), .skipped(.skippedStrictPrivacyMode),
             .onCooldown(.declined), .onCooldown(.rejectedToken), .status(errSecAuthFailed), .unreadable,
+            // 2026-11-23: an expired keychain login too. The file's refused
+            // call has no side effects (no cleared copy, no cooldown), and it
+            // keeps the collector running, so the resolver's last-known-good
+            // snapshot still bridges the gap.
+            .expiredLogin,
         ]
         for miss in misses {
             let resolved = ClaudeCredentials.resolveTokenDetails(
