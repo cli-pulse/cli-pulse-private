@@ -353,11 +353,14 @@ public enum ClaudeCredentials {
         let itemModified = keychainItemModified()
 
         // 1. The app's own copy (never triggers a prompt), while it can still
-        //    be Claude Code's login. Claude Code renews its login every few
-        //    hours and rewrites the item; a copy taken before that holds a
-        //    token Anthropic refuses. Handing it out anyway cost a 401, a
-        //    cleared copy and a 30-minute cooldown with no Claude figures,
-        //    after every renewal (owner, 2026-11-23).
+        //    be Claude Code's login. It used to be handed out whatever it
+        //    held. On the owner's Mac (2026-11-23) the login had expired the
+        //    evening before: Claude Code ran only from the desktop app, which
+        //    does not renew this item. Every 30 minutes the expired token was
+        //    sent, refused (401), the copy cleared and the cooldown re-armed,
+        //    and the row could only say "rejected token". After a renewal the
+        //    same path sends the copy taken before it until it is refused, then
+        //    waits out the cooldown before reading the renewed login.
         var read = ItemRead.mayAsk
         var workingCopy: Creds?
         if let cached = KeychainHelper.load(key: keychainCacheKey),

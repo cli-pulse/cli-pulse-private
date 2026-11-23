@@ -6,13 +6,15 @@ import XCTest
 /// 2026-11-23: the app's copy of Claude Code's keychain login is used only
 /// while it can still be that login.
 ///
-/// Claude Code renews its login every few hours and rewrites its keychain
-/// item. The copy was handed out regardless, so after each renewal OAuth
-/// refused it, the copy was cleared and a 30-minute cooldown left the card
-/// without Claude figures. Now the item's modification date (read without a
+/// The copy was handed out whatever it held. On the owner's Mac Claude Code's
+/// login had expired (nothing there renewed the item), so every 30 minutes
+/// the expired token was refused, the copy cleared and the cooldown re-armed.
+/// After a renewal the same path sent the old copy until it was refused, then
+/// waited out the cooldown. Now the item's modification date (read without a
 /// dialog) and the copy's expiry decide whether to read the item again, and
 /// how: a rewrite while the copy still works is read without a dialog, so
-/// this never asks the user more often than before.
+/// this never asks the user more often than before, and an expired keychain
+/// login is no longer sent.
 ///
 /// Every source is injected: the item's date, `SecItemCopyMatching`, the
 /// clock, and the copy itself (KeychainHelper's in-memory store under XCTest).
