@@ -135,8 +135,16 @@ enum ClaudeSignInRenewalScreen {
     ] + ClaudeCLIPTYStrategy.mcpApprovalNeedles
 
     /// - Parameter normalized: the latest output, ANSI stripped, lowercased.
+    ///   Compared with and without whitespace: a terminal UI that places text
+    ///   by cursor position can leave the words of a line run together once
+    ///   the escape codes are gone.
     static func shouldStop(_ normalized: String) -> Bool {
-        stopNeedles.contains { normalized.contains($0) }
+        let compact = withoutWhitespace(normalized)
+        return stopNeedles.contains { normalized.contains($0) || compact.contains(withoutWhitespace($0)) }
+    }
+
+    private static func withoutWhitespace(_ text: String) -> String {
+        String(text.unicodeScalars.filter { !CharacterSet.whitespacesAndNewlines.contains($0) }.map(Character.init))
     }
 
     /// `window` with `chunk` appended, cut to the last `windowBytes`.
@@ -216,10 +224,16 @@ struct ClaudeSignInRenewalProbes: @unchecked Sendable {
 enum ClaudeSignInRenewalRun {
     static let deadline: TimeInterval = 30
     static let pollInterval: TimeInterval = 0.5
-    /// How long to wait for Claude Code to finish a refresh it is in the
-    /// middle of before stopping it anyway.
+    /// How long a refresh in progress holds back the first signal.
     static let refreshLockWait: TimeInterval = 30
-    static let interruptWait: TimeInterval = 3
+    /// After SIGINT, Claude Code's own exit, which waits for a refresh in
+    /// flight ("OAuth refresh still in flight after …ms").
+    static let interruptWait: TimeInterval = 5
+    /// How long a refresh in progress holds back SIGTERM after that. Claude
+    /// Code touches the lock every 5 s while it holds it and calls it stale
+    /// after 60 s, so a lock still fresh after this is another Claude Code's
+    /// long refresh, or a hung one.
+    static let escalationLockWait: TimeInterval = 60
     static let terminateWait: TimeInterval = 1
 
     static func drive(
@@ -278,26 +292,50 @@ enum ClaudeSignInRenewalRun {
         }
     }
 
-    /// Never while Claude Code holds its refresh lock: stopping it between
+    /// Not while Claude Code holds its refresh lock: stopping it between
     /// receiving a new token and storing it could lose the rotated refresh
-    /// token and sign Claude Code out.
+    /// token and sign Claude Code out. First SIGINT, Claude Code's own way
+    /// out, which itself waits for a refresh in flight; SIGTERM and SIGKILL
+    /// only once no refresh is in progress (or the lock outlived any
+    /// refresh of this one's). Checking the lock and then signalling leaves a
+    /// moment in between; that is why the first signal is the one Claude Code
+    /// handles itself.
     static func stop(_ child: ClaudeSignInRenewalChild, probes: ClaudeSignInRenewalProbes) async {
-        let lockDeadline = probes.clock() + refreshLockWait
-        while !child.hasExited, probes.refreshLockHeld(), probes.clock() < lockDeadline {
-            await probes.sleep(0.25)
-        }
+        await waitWhileRefreshing(child, seconds: refreshLockWait, probes: probes)
         if !child.hasExited {
             child.interrupt()
             await waitForExit(child, seconds: interruptWait, probes: probes)
         }
+        await waitWhileRefreshing(child, seconds: escalationLockWait, probes: probes)
         if !child.hasExited {
             child.terminateGroup()
             await waitForExit(child, seconds: terminateWait, probes: probes)
         }
+        await waitWhileRefreshing(child, seconds: escalationLockWait, probes: probes)
         if !child.hasExited {
             child.killGroup()
         }
         child.finish()
+    }
+
+    private static func waitWhileRefreshing(
+        _ child: ClaudeSignInRenewalChild, seconds: TimeInterval, probes: ClaudeSignInRenewalProbes
+    ) async {
+        let until = probes.clock() + seconds
+        while !child.hasExited, probes.refreshLockHeld(), probes.clock() < until {
+            await pause(child, 0.25, probes: probes)
+        }
+    }
+
+    /// Waits, reading what Claude Code prints meanwhile. Its way out writes
+    /// to the terminal; with nobody reading, the pseudo-terminal fills and it
+    /// blocks there and never exits (measured 2026-11-24: SIGINT and SIGTERM
+    /// both seemed ignored until the output was read).
+    private static func pause(
+        _ child: ClaudeSignInRenewalChild, _ seconds: TimeInterval, probes: ClaudeSignInRenewalProbes
+    ) async {
+        _ = child.readAvailable(max: 64 * 1024)
+        await probes.sleep(seconds)
     }
 
     private static func waitForExit(
@@ -305,7 +343,7 @@ enum ClaudeSignInRenewalRun {
     ) async {
         let until = probes.clock() + seconds
         while !child.hasExited, probes.clock() < until {
-            await probes.sleep(0.1)
+            await pause(child, 0.1, probes: probes)
         }
     }
 
@@ -335,7 +373,13 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
         var itemModified: () -> Date?
         /// nil when it cannot be told; treated as locked.
         var isScreenLocked: () -> Bool?
-        var verify: () -> ClaudeSignInRenewalVerdict
+        /// The fingerprint of the app's copy of the login, the expired one:
+        /// a token read back with this fingerprint was not renewed, whatever
+        /// its expiry says. From the app's own copy; never reads the item.
+        var copyFingerprint: () -> String?
+        /// The item read back without a dialog; the argument is the
+        /// fingerprint not to count as renewed.
+        var verify: (_ excluding: String?) -> ClaudeSignInRenewalVerdict
         /// Held for the whole attempt against a second copy of the app; nil
         /// when another holds it. Calling the returned closure releases it.
         var acquireInstanceLock: () -> (() -> Void)?
@@ -355,15 +399,23 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
                 findClaudeBinary: { ClaudeCLIPTYStrategy.findClaudeBinary() },
                 itemModified: { ClaudeCredentials.keychainItemModifiedIfAllowed() },
                 isScreenLocked: { ClaudeSignInRenewal.liveScreenLocked() },
-                verify: { ClaudeSignInRenewal.liveVerify() },
+                copyFingerprint: {
+                    ClaudeCredentials.readCachedKeychainCredentials()
+                        .map { ClaudeOAuthBackoffState.fingerprint(forToken: $0.accessToken) }
+                },
+                verify: { ClaudeSignInRenewal.liveVerify(excluding: $0) },
                 acquireInstanceLock: { ClaudeSignInRenewal.liveInstanceLock() },
                 run: { binary, baseline, probes in
+                    #if DEVID_BUILD
                     guard let child = ClaudeSignInRenewalProcess.spawn(binary: binary) else {
                         return .notRenewed(.launchFailed)
                     }
                     ClaudeSignInRenewal.shared.setRunningChild(child)
                     defer { ClaudeSignInRenewal.shared.setRunningChild(nil) }
                     return await ClaudeSignInRenewalRun.drive(child, baseline: baseline, probes: probes)
+                    #else
+                    return .notRenewed(.launchFailed)
+                    #endif
                 },
                 refreshLockHeld: { ClaudeSignInRenewal.liveRefreshLockHeld() },
                 clock: { ProcessInfo.processInfo.systemUptime },
@@ -398,24 +450,56 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
         set { lock.withLock { _environment = newValue } }
     }
 
-    /// The app, at launch (Developer ID build, live runtime): from now on an
-    /// expired login read in this process may start a renewal, as Settings ›
-    /// Privacy allow. `onRenewed` runs after one renewed the login, so the
-    /// app can refresh and the card shows it at once.
-    public func enableInThisProcess(onRenewed: @escaping @Sendable () -> Void) {
+    /// Whether this build offers the renewal: the Developer ID build, and
+    /// not sandboxed (an App Store build cannot start another app's
+    /// program). Settings shows the switch only then.
+    public static var isOfferedInThisBuild: Bool {
+        #if DEVID_BUILD
+        return !MASSandboxGate.isSandboxed
+        #else
+        return false
+        #endif
+    }
+
+    /// The app's launch. Turns the renewal on where this build offers it and
+    /// the runtime collects live (a QA or quarantined runtime starts
+    /// nothing). Called unconditionally, so CI's App Store build compiles the
+    /// call; it does nothing there. Returns whether it turned it on.
+    @discardableResult
+    public static func enableForThisApp(
+        allowsLiveCollection: Bool, onRenewed: @escaping @Sendable () -> Void
+    ) -> Bool {
+        guard allowsLiveCollection, isOfferedInThisBuild else { return false }
+        shared.enableInThisProcess(onRenewed: onRenewed)
+        return true
+    }
+
+    /// From now on an expired login read in this process may start a
+    /// renewal, as Settings › Privacy allow. `onRenewed` runs after one
+    /// renewed the login, so the app can refresh and the card shows it at
+    /// once.
+    func enableInThisProcess(onRenewed: @escaping @Sendable () -> Void) {
         lock.withLock {
             enabled = true
             self.onRenewed = onRenewed
             if terminationObserver == nil {
                 terminationObserver = NotificationCenter.default.addObserver(
                     forName: NSApplication.willTerminateNotification, object: nil, queue: nil
-                ) { [weak self] _ in
-                    // The app is quitting: ask Claude Code to quit too, the way
-                    // Ctrl-C would. Not a kill: it may be storing a new login.
-                    self?.lock.withLock { self?.runningChild }?.interrupt()
-                }
+                ) { [weak self] _ in self?.appWillTerminate() }
             }
         }
+    }
+
+    /// The app is quitting: start no more, and ask a running Claude Code to
+    /// quit too, the way Ctrl-C would. Not a kill: it may be storing a new
+    /// login, and its own exit waits for that. Once the app is gone, launchd
+    /// reaps it; with `--safe-mode` it starts no processes of its own.
+    func appWillTerminate() {
+        let child: ClaudeSignInRenewalChild? = lock.withLock {
+            enabled = false
+            return runningChild
+        }
+        child?.interrupt()
     }
 
     /// For tests.
@@ -474,9 +558,10 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
         save(record, env)
 
         Self.logger.info("Claude sign-in renewal: starting Claude Code")
+        let expiredFingerprint = env.copyFingerprint()
         let probes = ClaudeSignInRenewalProbes(
             itemModified: env.itemModified,
-            verify: env.verify,
+            verify: { env.verify(expiredFingerprint) },
             stillAllowed: { [self] in
                 lock.withLock { enabled } && env.allowedBySettings() && !(env.isScreenLocked() ?? true)
             },
@@ -546,31 +631,46 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
 
     // MARK: - Live probes
 
-    /// Locked, or another user at the console. nil when there is no session
+    /// Locked, or this user not at the console. nil when there is no session
     /// to ask.
     static func liveScreenLocked() -> Bool? {
-        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return nil }
-        if let onConsole = session["kCGSessionOnConsoleKey"] as? Bool, !onConsole { return true }
+        screenLocked(session: CGSessionCopyCurrentDictionary() as? [String: Any])
+    }
+
+    /// The session dictionary's console key. Spelled "kCGSSessionOnConsoleKey"
+    /// (two S): the constant's name is not its value, which a literal of the
+    /// name got wrong (found by the live trial, 2026-11-24).
+    static let onConsoleKey: String = kCGSessionOnConsoleKey
+
+    /// Unlocked only when the session says this user is at the console
+    /// (`onConsoleKey` true) and does not say the screen is locked
+    /// (`CGSSessionScreenIsLocked`, undocumented, present only while locked).
+    static func screenLocked(session: [String: Any]?) -> Bool? {
+        guard let session else { return nil }
+        guard session[onConsoleKey] as? Bool == true else { return true }
         return (session["CGSSessionScreenIsLocked"] as? Bool) ?? false
     }
 
     /// The item read back without a dialog, through Settings › Privacy's
     /// guard. It refreshes the app's copy as a collection's read would.
-    static func liveVerify(now: () -> Date = { Date() }) -> ClaudeSignInRenewalVerdict {
+    static func liveVerify(excluding: String?, now: () -> Date = { Date() }) -> ClaudeSignInRenewalVerdict {
         let log = ClaudeKeychainReadLog()
         let creds = ClaudeKeychainReadLog.$current.withValue(log) {
             ClaudeCredentials.readKeychainCredentialsQuietlyIfAllowed()
         }
-        return verdict(creds: creds, miss: log.miss, now: now())
+        return verdict(creds: creds, miss: log.miss, now: now(), excluding: excluding)
     }
 
-    /// A login counts as renewed only with an expiry that is at least five
-    /// minutes away. Without an expiry nothing can be said: the token may be
-    /// the old one.
+    /// A login counts as renewed only as a token other than the expired one
+    /// (`excluding`, its fingerprint), with an expiry at least five minutes
+    /// away. Without an expiry nothing can be said: it may be the old token.
     static func verdict(
-        creds: ClaudeCredentials.Creds?, miss: ClaudeKeychainMiss?, now: Date
+        creds: ClaudeCredentials.Creds?, miss: ClaudeKeychainMiss?, now: Date, excluding: String? = nil
     ) -> ClaudeSignInRenewalVerdict {
         if let creds {
+            if let excluding, ClaudeOAuthBackoffState.fingerprint(forToken: creds.accessToken) == excluding {
+                return .stillExpired
+            }
             guard let expiresAt = creds.expiresAt else { return .notReadableQuietly }
             return expiresAt > now.addingTimeInterval(5 * 60) ? .current : .stillExpired
         }
@@ -614,8 +714,9 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
     }
 }
 
+#if DEVID_BUILD
 /// Claude Code started in a pseudo-terminal, in a process group of its own
-/// from the moment it runs.
+/// from the moment it runs. Developer ID build only.
 final class ClaudeSignInRenewalProcess: ClaudeSignInRenewalChild {
     /// The command line, minus the binary.
     ///
@@ -637,31 +738,30 @@ final class ClaudeSignInRenewalProcess: ClaudeSignInRenewalChild {
         "--settings", #"{"remoteControlAtStartup":false,"disableAllHooks":true}"#,
     ]
 
-    /// Names that would make Claude Code sign in with something other than
-    /// the item CLI Pulse watches, or use another item: an API key or token,
-    /// another config directory (it is part of the item's name), another
-    /// provider, bare mode.
-    static let removedEnvironmentNames: Set<String> = [
-        "CLAUDE_CODE_OAUTH_TOKEN",
-        "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
-        "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR",
-        "CLAUDE_CONFIG_DIR",
-        "CLAUDE_SECURESTORAGE_CONFIG_DIR",
-        "CLAUDE_CODE_SIMPLE",
-        "CLAUDE_CODE_ENTRYPOINT",
-    ]
-    static let removedEnvironmentPrefixes = ["ANTHROPIC_", "CODEXBAR_", "CLAUDE_CODE_USE_"]
+    /// What the app's environment loses: every `ANTHROPIC_*` (an API key or
+    /// base URL would sign Claude Code in with something other than the item
+    /// CLI Pulse watches), and every name starting with `CLAUDE`. That covers
+    /// `CLAUDE_CONFIG_DIR` and `CLAUDE_SECURESTORAGE_CONFIG_DIR`, which are part
+    /// of the item's name; `CLAUDE_CODE_OAUTH_TOKEN`; bare mode; and the
+    /// markers a Claude Code session gives the processes it starts
+    /// (`CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION`, …), for an app opened from a
+    /// terminal inside one. Measured 2026-11-24: with those inherited, Claude
+    /// Code ignored SIGINT and saved no transcript. Also `CODEXBAR_*`, as the
+    /// `/usage` probe drops.
+    static let removedEnvironmentPrefixes = ["ANTHROPIC_", "CLAUDE", "CODEXBAR_"]
+    /// Kept although `CLAUDE`-prefixed: the user's own choice to cut Claude
+    /// Code's nonessential traffic holds here too, even if the renewal then
+    /// cannot work. `DISABLE_TELEMETRY` and the like have no prefix and stay.
+    static let keptEnvironmentNames: Set<String> = ["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"]
 
     /// The app's environment without those, and with Claude Code's updater
     /// off, so a start the user did not make downloads no new Claude Code.
-    /// Anything else, such as `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`,
-    /// is kept: the user's choice holds here too.
     static func launchEnvironment(
         base: [String: String] = ProcessInfo.processInfo.environment, workingDirectory: String
     ) -> [String: String] {
         var env = base.filter { key, _ in
-            !removedEnvironmentNames.contains(key)
-                && !removedEnvironmentPrefixes.contains(where: { key.hasPrefix($0) })
+            keptEnvironmentNames.contains(key)
+                || !removedEnvironmentPrefixes.contains(where: { key.hasPrefix($0) })
         }
         env["DISABLE_AUTOUPDATER"] = "1"
         env["PWD"] = workingDirectory
@@ -780,10 +880,12 @@ final class ClaudeSignInRenewalProcess: ClaudeSignInRenewalChild {
             _ = kill(-pid, SIGTERM)
             _ = kill(-pid, SIGKILL)
             var status: Int32 = 0
-            _ = waitpid(pid, &status, 0)
+            // Retried on EINTR; ECHILD means it is reaped already.
+            while waitpid(pid, &status, 0) == -1, errno == EINTR {}
             close(primaryFD)
             finished = true
         }
     }
 }
+#endif
 #endif

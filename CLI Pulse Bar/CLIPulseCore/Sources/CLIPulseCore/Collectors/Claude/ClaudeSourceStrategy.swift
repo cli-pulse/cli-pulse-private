@@ -345,7 +345,9 @@ public enum ClaudeCredentials {
     /// - Parameter quietOnly: never let macOS show its dialog, not even for
     ///   the read the dialog is for (an expired copy of a rewritten item).
     ///   `ClaudeSignInRenewal` checks a renewal this way: something CLI Pulse
-    ///   started on its own must not end in a dialog. Arms no cooldown.
+    ///   started on its own must not end in a dialog. Arms no cooldown, starts
+    ///   no renewal, and reads the item even when the copy's date says it is
+    ///   unchanged (a rewrite within the same second).
     public static func readKeychainCredentials(
         bypassCooldown: Bool = false,
         cacheResult: Bool = true,
@@ -383,11 +385,15 @@ public enum ClaudeCredentials {
             case .readAndMayAsk:
                 break
             case .expiredAndUnchanged:
+                // `ClaudeSignInRenewal`'s check reads anyway, quietly: Claude
+                // Code may have rewritten the item within the same second as
+                // the date the copy was kept with.
+                if quietOnly { break }
                 // Claude Code has not renewed it yet. Reading the item again
                 // would only ask macOS (and perhaps the user) for the same
                 // expired token; Claude Code's next run rewrites it.
                 ClaudeKeychainReadLog.note(.expiredLogin)
-                if !quietOnly { ClaudeSignInRenewal.shared.expiredLoginSeen() }
+                ClaudeSignInRenewal.shared.expiredLoginSeen()
                 return nil
             }
         }

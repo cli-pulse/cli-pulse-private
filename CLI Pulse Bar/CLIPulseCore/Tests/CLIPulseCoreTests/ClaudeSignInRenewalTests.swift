@@ -100,6 +100,11 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         XCTAssertFalse(ClaudeSignInRenewalScreen.shouldStop(ClaudeSignInRenewalScreen.normalized(window)))
     }
 
+    func test_wordsRunTogether_stillMatch() {
+        XCTAssertTrue(ClaudeSignInRenewalScreen.shouldStop("selectloginmethod:"))
+        XCTAssertTrue(ClaudeSignInRenewalScreen.shouldStop("notloggedin·pleaserun/login"))
+    }
+
     func test_ansiIsStrippedBeforeMatching() {
         let window = Data("\u{1b}[1mSelect\u{1b}[0m login method:".utf8)
         XCTAssertTrue(ClaudeSignInRenewalScreen.shouldStop(ClaudeSignInRenewalScreen.normalized(window)))
@@ -124,25 +129,63 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         XCTAssertEqual(ClaudeSignInRenewal.verdict(creds: nil, miss: nil, now: now), .notReadableQuietly)
     }
 
+    func test_verdict_theExpiredTokenWithANewExpiry_isNotARenewal() {
+        let now = Date(timeIntervalSince1970: 2_000_000)
+        let same = ClaudeCredentials.Creds(accessToken: "old", rateLimitTier: nil, expiresAt: now.addingTimeInterval(8 * 3600))
+        let old = ClaudeOAuthBackoffState.fingerprint(forToken: "old")
+        XCTAssertEqual(ClaudeSignInRenewal.verdict(creds: same, miss: nil, now: now, excluding: old), .stillExpired)
+        let new = ClaudeCredentials.Creds(accessToken: "new", rateLimitTier: nil, expiresAt: now.addingTimeInterval(8 * 3600))
+        XCTAssertEqual(ClaudeSignInRenewal.verdict(creds: new, miss: nil, now: now, excluding: old), .current)
+    }
+
+    // MARK: - Screen lock
+
+    func test_unlockedOnlyWhenThisUserIsAtTheConsole() {
+        let key = ClaudeSignInRenewal.onConsoleKey
+        XCTAssertEqual(key, "kCGSSessionOnConsoleKey", "the key as CGSessionCopyCurrentDictionary spells it")
+        XCTAssertNil(ClaudeSignInRenewal.screenLocked(session: nil))
+        XCTAssertEqual(ClaudeSignInRenewal.screenLocked(session: [key: true]), false)
+        XCTAssertEqual(ClaudeSignInRenewal.screenLocked(session: [key: true, "CGSSessionScreenIsLocked": true]), true)
+        XCTAssertEqual(ClaudeSignInRenewal.screenLocked(session: [key: false]), true)
+        XCTAssertEqual(ClaudeSignInRenewal.screenLocked(session: [:]), true, "no console key is no proof")
+        XCTAssertEqual(ClaudeSignInRenewal.screenLocked(session: [key: "yes"]), true)
+        XCTAssertEqual(ClaudeSignInRenewal.screenLocked(session: ["kCGSessionOnConsoleKey": true]), true,
+                       "the constant's name is not the key")
+    }
+
     // MARK: - The run
 
     private final class FakeChild: ClaudeSignInRenewalChild {
         var outputs: [Data] = []
         var exited = false
         var exitsOnInterrupt = true
+        /// Like Claude Code: its way out writes to the terminal, so it ends
+        /// only once someone reads that.
+        var exitsOnlyWhenRead = false
+        private var exiting = false
         var interrupts = 0, terminations = 0, kills = 0, finishes = 0
         /// When each signal came, by the fake clock.
         var interruptedAt: TimeInterval?
+        var terminatedAt: TimeInterval?
         let clock: () -> TimeInterval
         init(clock: @escaping () -> TimeInterval) { self.clock = clock }
-        func readAvailable(max: Int) -> Data { outputs.isEmpty ? Data() : outputs.removeFirst() }
+        func readAvailable(max: Int) -> Data {
+            if exiting { exited = true }
+            return outputs.isEmpty ? Data() : outputs.removeFirst()
+        }
         var hasExited: Bool { exited }
         func interrupt() {
             interrupts += 1
             interruptedAt = clock()
-            if exitsOnInterrupt { exited = true }
+            if exitsOnInterrupt {
+                if exitsOnlyWhenRead { exiting = true } else { exited = true }
+            }
         }
-        func terminateGroup() { terminations += 1; exited = true }
+        func terminateGroup() {
+            terminations += 1
+            terminatedAt = clock()
+            exited = true
+        }
         func killGroup() { kills += 1; exited = true }
         func finish() { finishes += 1 }
     }
@@ -272,13 +315,43 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         XCTAssertLessThan(clock.now, 4)
     }
 
-    func test_stop_aRefreshLockThatNeverGoes_isWaitedOutThenInterrupted() async {
+    func test_stop_aRefreshLockThatNeverGoes_isWaitedOutBeforeEachSignal() async {
         let clock = FakeClock()
         let child = FakeChild(clock: { clock.now })
-        await ClaudeSignInRenewalRun.stop(child, probes: probes(
-            clock, itemModified: { nil }, refreshLockHeld: { true }))
+        child.exitsOnInterrupt = false
+        await ClaudeSignInRenewalRun.stop(child, probes: probes(clock, itemModified: { nil }, refreshLockHeld: { true }))
         XCTAssertEqual(child.interrupts, 1)
         XCTAssertGreaterThanOrEqual(child.interruptedAt ?? 0, ClaudeSignInRenewalRun.refreshLockWait)
+        XCTAssertEqual(child.terminations, 1)
+        XCTAssertGreaterThanOrEqual(
+            child.terminatedAt ?? 0,
+            ClaudeSignInRenewalRun.refreshLockWait + ClaudeSignInRenewalRun.interruptWait
+                + ClaudeSignInRenewalRun.escalationLockWait,
+            "SIGTERM while Claude Code held its refresh lock")
+    }
+
+    func test_stop_aRefreshStartingAfterTheInterrupt_holdsBackTheTerminate() async {
+        let clock = FakeClock()
+        let child = FakeChild(clock: { clock.now })
+        child.exitsOnInterrupt = false
+        // Claude Code takes the lock right after SIGINT and lets go at 20 s.
+        await ClaudeSignInRenewalRun.stop(child, probes: probes(
+            clock, itemModified: { nil }, refreshLockHeld: { child.interrupts > 0 && clock.now < 20 }))
+        XCTAssertEqual(child.interrupts, 1)
+        XCTAssertLessThan(child.interruptedAt ?? 99, 1)
+        XCTAssertEqual(child.terminations, 1)
+        XCTAssertGreaterThanOrEqual(child.terminatedAt ?? 0, 20, "SIGTERM while Claude Code held its refresh lock")
+        XCTAssertEqual(child.kills, 0)
+    }
+
+    func test_stop_keepsReadingWhileClaudeCodeQuits() async {
+        let clock = FakeClock()
+        let child = FakeChild(clock: { clock.now })
+        child.exitsOnlyWhenRead = true
+        await ClaudeSignInRenewalRun.stop(child, probes: probes(clock, itemModified: { nil }))
+        XCTAssertEqual(child.interrupts, 1)
+        XCTAssertEqual(child.terminations, 0, "its output was not read, so it could not quit on SIGINT")
+        XCTAssertEqual(child.kills, 0)
     }
 
     func test_stop_aChildThatIgnoresTheInterrupt_isTerminated() async {
@@ -325,7 +398,8 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         env.findClaudeBinary = { "/usr/local/bin/claude" }
         env.itemModified = { Date(timeIntervalSince1970: 4_000_000) }
         env.isScreenLocked = { false }
-        env.verify = { .stillExpired }
+        env.copyFingerprint = { nil }
+        env.verify = { _ in .stillExpired }
         env.acquireInstanceLock = { {} }
         env.refreshLockHeld = { false }
         env.clock = { 0 }
@@ -505,6 +579,22 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         }
     }
 
+    /// Claude Code rewrote the item within the same second as the date the
+    /// app's copy was kept with: the read-back reads it all the same.
+    func test_readBack_ofAnItemWithAnUnchangedDate_stillReadsIt() {
+        withFakeItem {
+            itemAnswer = item("old", expiresIn: -60)
+            XCTAssertNil(ClaudeCredentials.readKeychainCredentialsIfAllowed(privacy: privacy()))
+            reads = []
+            itemAnswer = item("new", expiresIn: 8 * 3600)
+            XCTAssertNil(ClaudeCredentials.readKeychainCredentialsIfAllowed(privacy: privacy()),
+                         "control: a collection's read does not look again at an unchanged item")
+            XCTAssertEqual(reads, [])
+            XCTAssertEqual(ClaudeCredentials.readKeychainCredentialsQuietlyIfAllowed(privacy: privacy())?.accessToken, "new")
+            XCTAssertEqual(reads, [true])
+        }
+    }
+
     func test_readBack_thatWouldNeedTheDialog_armsNoCooldown() {
         withFakeItem {
             itemAnswer = (errSecInteractionNotAllowed, nil)
@@ -585,8 +675,29 @@ final class ClaudeSignInRenewalTests: XCTestCase {
                       "the switch was not kept")
     }
 
+    // MARK: - The build
+
+    func test_offeredOnlyInTheDeveloperIDBuild() {
+        #if DEVID_BUILD
+        XCTAssertEqual(ClaudeSignInRenewal.isOfferedInThisBuild, !MASSandboxGate.isSandboxed)
+        #else
+        XCTAssertFalse(ClaudeSignInRenewal.isOfferedInThisBuild)
+        XCTAssertFalse(ClaudeSignInRenewal.enableForThisApp(allowsLiveCollection: true) {})
+        #endif
+        XCTAssertFalse(ClaudeSignInRenewal.enableForThisApp(allowsLiveCollection: false) {},
+                       "a QA or quarantined runtime turned it on")
+    }
+
+    func test_quitting_startsNoMore() async {
+        let renewal = makeRenewal(environment())
+        renewal.appWillTerminate()
+        let outcome = await renewal.attemptIfAllowed(userAsked: true)
+        XCTAssertEqual(outcome, .skipped(.notEnabledInThisProcess))
+    }
+
     // MARK: - The command
 
+    #if DEVID_BUILD
     func test_theCommandLine() {
         let args = ClaudeSignInRenewalProcess.launchArguments
         XCTAssertTrue(args.contains("--safe-mode"))
@@ -613,6 +724,9 @@ final class ClaudeSignInRenewalTests: XCTestCase {
             "CLAUDE_CODE_USE_BEDROCK": "1",
             "CLAUDE_CODE_SIMPLE": "1",
             "CLAUDE_CODE_ENTRYPOINT": "x",
+            "CLAUDECODE": "1",
+            "CLAUDE_CODE_CHILD_SESSION": "1",
+            "CLAUDE_PID": "1",
             "CODEXBAR_ANYTHING": "x",
             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
             "DISABLE_TELEMETRY": "1",
@@ -627,6 +741,7 @@ final class ClaudeSignInRenewalTests: XCTestCase {
             "TERM": "xterm-256color",
         ])
     }
+    #endif
 
     // MARK: - Claude Code's refresh lock
 

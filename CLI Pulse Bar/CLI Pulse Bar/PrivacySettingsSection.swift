@@ -232,10 +232,9 @@ struct PrivacySettingsSection: View {
             // 2026-11-24, Developer ID build: start Claude Code so it renews
             // its own expired sign-in (`ClaudeSignInRenewal`). Off by default.
             // It needs the item, so it is shown off while the switches above
-            // keep CLI Pulse away from it. Asked at run time, not with
-            // `#if DEVID_BUILD`, so CI's App Store build compiles it: a
-            // sandboxed app cannot start Claude Code, and does not offer to.
-            if !MASSandboxGate.isSandboxed {
+            // keep CLI Pulse away from it. Asked of CLIPulseCore rather than
+            // with `#if DEVID_BUILD` here, so CI's App Store build compiles it.
+            if ClaudeSignInRenewal.isOfferedInThisBuild {
                 Toggle(isOn: Binding(
                     get: { settings.renewsClaudeCodeSignIn },
                     set: { settings.renewClaudeCodeSignIn = $0 }
