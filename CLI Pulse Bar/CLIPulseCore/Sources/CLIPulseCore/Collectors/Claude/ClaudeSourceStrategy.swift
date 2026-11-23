@@ -346,11 +346,44 @@ public enum ClaudeCredentials {
         bypassCooldown: Bool = false,
         cacheResult: Bool = true
     ) -> Creds? {
-        // 1. Try the app's own keychain cache (never triggers a prompt)
+        // When Claude Code last wrote its item, from the item's attributes,
+        // which macOS gives without a dialog. Read before the item itself, so
+        // a write landing between the two leaves a date older than the copy
+        // (one more read later), never a newer one (a missed write).
+        let itemModified = keychainItemModified()
+
+        // 1. The app's own copy (never triggers a prompt), while it can still
+        //    be Claude Code's login. It used to be handed out whatever it
+        //    held. On the owner's Mac (2026-11-23) the login had expired the
+        //    evening before: Claude Code ran only from the desktop app, which
+        //    does not renew this item. Every 30 minutes the expired token was
+        //    sent, refused (401), the copy cleared and the cooldown re-armed,
+        //    and the row could only say "rejected token". After a renewal the
+        //    same path sends the copy taken before it until it is refused, then
+        //    waits out the cooldown before reading the renewed login.
+        var read = ItemRead.mayAsk
+        var workingCopy: Creds?
         if let cached = KeychainHelper.load(key: keychainCacheKey),
            let data = cached.data(using: .utf8),
            let creds = parseCredentialsJSON(data) {
-            return creds
+            // The Connect button's read (`bypassCooldown`) only needs to know
+            // this Mac has a Claude Code login; any copy says so, as before.
+            if bypassCooldown { return creds }
+            switch copyStanding(of: creds, itemModified: itemModified) {
+            case .current:
+                return creds
+            case .readQuietly:
+                read = .quiet
+                if !creds.isExpired(now: nowProvider()) { workingCopy = creds }
+            case .readAndMayAsk:
+                break
+            case .expiredAndUnchanged:
+                // Claude Code has not renewed it yet. Reading the item again
+                // would only ask macOS (and perhaps the user) for the same
+                // expired token; Claude Code's next run rewrites it.
+                ClaudeKeychainReadLog.note(.expiredLogin)
+                return nil
+            }
         }
 
         // 1b. Cross-app read cooldown (v1.30.x — keychain prompt-spam fix).
@@ -366,21 +399,33 @@ public enum ClaudeCredentials {
         // expires, capping prompts to ≤1 per cooldown window. See
         // feedback_claude_oauth_keychain_prompt_spam. 1.59: a declined read
         // arms the same cooldown (below), and the cause is noted so the
-        // provider row can say which one it is.
-        if !bypassCooldown, let cause = activeKeychainReadCooldown() {
+        // provider row can say which one it is. A quiet read cannot show the
+        // dialog, so the cooldown does not hold it back.
+        if read == .mayAsk, !bypassCooldown, let cause = activeKeychainReadCooldown() {
             ClaudeKeychainReadLog.note(.onCooldown(cause))
             return nil
         }
 
-        // 2. Read from Claude Code's keychain (may trigger one-time prompt)
-        let query: [String: Any] = [
+        // 2. Read from Claude Code's keychain (may trigger one-time prompt,
+        //    unless quiet)
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "Claude Code-credentials",
+            kSecAttrService as String: claudeCodeItemService,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
+        if read == .quiet {
+            query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+        }
         let (status, item) = copyKeychainItem(query as CFDictionary)
         guard status == errSecSuccess else {
+            if read == .quiet {
+                // macOS would have had to ask. Nobody said no, so no cooldown;
+                // the copy, while it lasts, is still a working token.
+                if let workingCopy { return workingCopy }
+                ClaudeKeychainReadLog.note(.status(status))
+                return nil
+            }
             // 1.59 (59-15 F6): the user said no in macOS's dialog. Without a
             // cooldown every later refresh asked again (`readiness` →
             // `isAvailable` → here), so one "Deny" became a dialog every few
@@ -394,18 +439,155 @@ public enum ClaudeCredentials {
             return nil
         }
         guard let data = item as? Data, let creds = parseCredentialsJSON(data) else {
+            if let workingCopy { return workingCopy }
             ClaudeKeychainReadLog.note(.unreadable)
             return nil
         }
+        let expired = creds.isExpired(now: nowProvider())
+        if expired, let workingCopy {
+            // The item now holds an older login than the copy: keep the copy.
+            return workingCopy
+        }
 
-        // 3. Cache in the app's own keychain so the prompt never recurs, and
-        //    clear any cooldown — a successful read means we're back to normal.
+        // 3. Cache in the app's own keychain so the prompt never recurs, with
+        //    the date of the item it copies, and clear any cooldown — a
+        //    successful read means we're back to normal.
+        var keptWithDate = false
         if cacheResult,
            let jsonStr = String(data: data, encoding: .utf8) {
-            KeychainHelper.save(key: keychainCacheKey, value: jsonStr)
+            keptWithDate = copyLock.withLock {
+                let copySaved = KeychainHelper.save(key: keychainCacheKey, value: jsonStr)
+                guard let itemModified else {
+                    KeychainHelper.delete(key: keychainCacheItemModifiedKey)
+                    return false
+                }
+                let dateSaved = KeychainHelper.save(
+                    key: keychainCacheItemModifiedKey,
+                    value: copyDateRecord(itemModified: itemModified, token: creds.accessToken)
+                )
+                return copySaved && dateSaved
+            }
         }
         clearKeychainReadCooldown()
+        // A background read never hands out a token past its expiry: OAuth
+        // would refuse it, and the refusal arms the cooldown. The Connect
+        // button (`bypassCooldown`) still gets it: there it only shows that
+        // this Mac has a Claude Code login.
+        if expired, !bypassCooldown {
+            ClaudeKeychainReadLog.note(.expiredLogin)
+            if read == .mayAsk, !keptWithDate {
+                // Without the copy and its date, a later refresh may read
+                // (and perhaps ask) again for the same expired login. The
+                // refused call this replaces armed the cooldown; so does this.
+                installKeychainReadCooldown(cause: .rejectedToken)
+            }
+            return nil
+        }
         return creds
+    }
+
+    /// How `readKeychainCredentials` reads Claude Code's item: allowing
+    /// macOS's dialog, or failing instead of showing it.
+    enum ItemRead: Equatable {
+        case mayAsk
+        case quiet
+    }
+
+    /// What `readKeychainCredentials` does with the app's own copy.
+    enum CopyStanding: Equatable {
+        /// Use it.
+        case current
+        /// Read the item without a dialog: it was rewritten since the copy
+        /// (or the copy has no date) while the copy still works, so the copy
+        /// carries on if macOS would have to ask.
+        case readQuietly
+        /// The copy has expired, and the item was rewritten since, or there
+        /// is no date to tell: the read the dialog is for. The cooldown holds
+        /// it back, and an expired login read without a date to keep arms
+        /// the cooldown, so it asks at most once per cooldown, as the refused
+        /// call it replaces did.
+        case readAndMayAsk
+        /// The copy has expired and the item is the one it was taken from.
+        case expiredAndUnchanged
+    }
+
+    /// - Parameter itemModified: the item's modification date now, nil when
+    ///   there is no item or its attributes could not be read.
+    static func copyStanding(of copy: Creds, itemModified: Date?) -> CopyStanding {
+        let expired = copy.isExpired(now: nowProvider())
+        guard let current = itemModified.map(wholeSeconds) else {
+            // No date to go by: no item, or a locked keychain, where the read
+            // finds nothing or cannot ask either.
+            return expired ? .readAndMayAsk : .current
+        }
+        // A copy from a build before this one has no date.
+        let recorded = recordedItemDate(forCopyHolding: copy.accessToken)
+        if recorded == current {
+            return expired ? .expiredAndUnchanged : .current
+        }
+        return expired ? .readAndMayAsk : .readQuietly
+    }
+
+    /// Whole seconds since 1970: the keychain keeps no finer date.
+    private static func wholeSeconds(_ date: Date) -> Int {
+        Int(date.timeIntervalSince1970.rounded())
+    }
+
+    /// The item's date as stored next to the copy, with the fingerprint of
+    /// the token it came with. The two are written one after the other, so
+    /// two reads in one process can interleave and leave one read's token
+    /// beside the other's date; the fingerprint makes such a date count as
+    /// none, never as a newer token's.
+    static func copyDateRecord(itemModified: Date, token: String) -> String {
+        "\(wholeSeconds(itemModified)) \(ClaudeOAuthBackoffState.fingerprint(forToken: token))"
+    }
+
+    static func recordedItemDate(forCopyHolding token: String) -> Int? {
+        guard let record = KeychainHelper.load(key: keychainCacheItemModifiedKey) else { return nil }
+        let parts = record.split(separator: " ")
+        guard parts.count == 2,
+              parts[1] == ClaudeOAuthBackoffState.fingerprint(forToken: token) else { return nil }
+        return Int(parts[0])
+    }
+
+    /// After OAuth refused `token`, read from Claude Code's item: drop the
+    /// copy if it is still that token. Returns false when the copy already
+    /// holds another one, read after the refused token was sent (by a later
+    /// refresh in this process); the refusal says nothing about it, so it
+    /// stays, and no cooldown is armed for it.
+    static func dropRejectedKeychainCopy(token: String) -> Bool {
+        copyLock.withLock {
+            if let copy = readCachedKeychainCredentials(), copy.accessToken != token {
+                return false
+            }
+            clearCachedKeychainCredentials()
+            return true
+        }
+    }
+
+    /// Held while the copy and its date are saved, and while a refused token's
+    /// copy is checked and dropped, so a refusal in one refresh cannot drop
+    /// the copy another refresh in this process has just saved.
+    private static let copyLock = NSLock()
+
+    /// When Claude Code last wrote its keychain item, read from the item's
+    /// attributes only. Never shows a dialog: attributes are not behind the
+    /// item's access list, and the query is told to fail rather than ask.
+    /// nil when there is no item or the answer is anything else. Called only
+    /// from `readKeychainCredentials`, so Settings › Privacy's switches cover
+    /// it as they cover the read. Tests replace it.
+    static var keychainItemModified: () -> Date? = {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: ClaudeCredentials.claudeCodeItemService,
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let attributes = item as? [String: Any] else { return nil }
+        return attributes[kSecAttrModificationDate as String] as? Date
     }
 
     /// v1.55: the read every background lookup uses. It asks Settings ›
@@ -439,6 +621,7 @@ public enum ClaudeCredentials {
     /// Connect is never blocked by the cooldown (codex review 2026-06-19).
     public static func clearCachedKeychainCredentials() {
         KeychainHelper.delete(key: keychainCacheKey)
+        KeychainHelper.delete(key: keychainCacheItemModifiedKey)
     }
 
     // MARK: - Cross-app keychain read cooldown (prompt-spam guard)
@@ -548,7 +731,15 @@ public enum ClaudeCredentials {
         return creds
     }
 
+    /// Claude Code's keychain item. Spelled once: `ClaudeKeychainGateReferenceTests`
+    /// checks that nothing else in the app names it.
+    private static let claudeCodeItemService = "Claude Code-credentials"
+
     private static let keychainCacheKey = "claude-code-creds-cache"
+    /// The item's modification date when the copy above was taken
+    /// (`copyDateRecord`). Kept next to the copy, in the same store, so each
+    /// process keeps its own pair.
+    private static let keychainCacheItemModifiedKey = "claude-code-creds-cache-item-modified"
 
     private static let keychainLogger = Logger(subsystem: "com.clipulse", category: "ClaudeCredentials")
 

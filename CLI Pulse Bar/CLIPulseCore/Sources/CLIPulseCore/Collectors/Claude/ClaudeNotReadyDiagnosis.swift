@@ -39,6 +39,10 @@ enum ClaudeKeychainMiss: Sendable, Equatable {
     case status(OSStatus)
     /// Read, and the item held no token we can parse.
     case unreadable
+    /// The login there is past its expiry: the app's copy of an item Claude
+    /// Code has not rewritten since, or the item just read. Claude Code
+    /// renews it when it next runs.
+    case expiredLogin
 
     /// Deny, or Cancel, in macOS's "CLI Pulse wants to use …" dialog.
     /// `errSecAuthFailed` (-25293) is what Deny and a refused password give;
@@ -178,7 +182,7 @@ enum ClaudeNotReadyDiagnosis {
             return .unknown
         case .onCooldown(.declined):
             return .keychainDenied
-        case .onCooldown(.rejectedToken):
+        case .onCooldown(.rejectedToken), .expiredLogin:
             // Claude Code refreshes the token when it next runs; signing in
             // there (or just running `claude`) is the fix.
             return .missingCredentials

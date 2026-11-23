@@ -151,6 +151,21 @@ final class ClaudeKeychainGateReferenceTests: XCTestCase {
         XCTAssertEqual(openers.sorted(), ["ClaudeQuotaFetcher.swift", "ClaudeSourceStrategy.swift"], "\(locations)")
     }
 
+    func testTheItemsDateIsReadOnlyBehindTheSwitches() throws {
+        // 2026-11-23: the item's modification date decides whether the app's
+        // copy is still Claude Code's login. Reading it shows no dialog, but it
+        // is still a look at the item: only `readKeychainCredentials`, which
+        // the guard covers, may ask for it.
+        var callers: [String] = []
+        for file in try productionFiles() {
+            for (index, line) in file.lines.enumerated()
+            where line.range(of: #"\bkeychainItemModified\(\)"#, options: .regularExpression) != nil {
+                callers.append(file.location(index))
+            }
+        }
+        XCTAssertEqual(callers.count, 1, "\(callers)")
+    }
+
     func testTheBundledSwiftHelperNeverRunsItsKeychainQuotaFetcher() throws {
         // `ClaudeQuotaFetcher` reads the item through `KeychainReader`
         // (`security find-generic-password`) and asks no switch: the bundled

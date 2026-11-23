@@ -75,8 +75,8 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
                     ClaudeAccountInfo(accountEmail: nil, rateLimitTier: tier, weeklyReset: nil)
                 )
             }
-            if resolved.source == .sharedKeychain {
-                ClaudeCredentials.clearCachedKeychainCredentials()
+            if resolved.source == .sharedKeychain,
+               ClaudeCredentials.dropRejectedKeychainCopy(token: token) {
                 // v1.30.x: arm the cross-app keychain-read cooldown so a token
                 // that keeps 401ing cannot re-trigger the macOS keychain dialog
                 // every refresh. Account-scoped config tokens never mutate
