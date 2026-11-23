@@ -163,7 +163,7 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         /// only once someone reads that.
         var exitsOnlyWhenRead = false
         private var exiting = false
-        var interrupts = 0, terminations = 0, kills = 0, finishes = 0
+        var interrupts = 0, terminations = 0, kills = 0, finishes = 0, abandons = 0
         /// When each signal came, by the fake clock.
         var interruptedAt: TimeInterval?
         var terminatedAt: TimeInterval?
@@ -188,6 +188,7 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         }
         func killGroup() { kills += 1; exited = true }
         func finish() { finishes += 1 }
+        func abandon() { abandons += 1 }
     }
 
     private final class FakeClock {
@@ -315,19 +316,19 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         XCTAssertLessThan(clock.now, 4)
     }
 
-    func test_stop_aRefreshLockThatNeverGoes_isWaitedOutBeforeEachSignal() async {
+    func test_stop_aRefreshLockThatNeverGoes_getsNoSIGTERMOrSIGKILL() async {
         let clock = FakeClock()
         let child = FakeChild(clock: { clock.now })
         child.exitsOnInterrupt = false
         await ClaudeSignInRenewalRun.stop(child, probes: probes(clock, itemModified: { nil }, refreshLockHeld: { true }))
         XCTAssertEqual(child.interrupts, 1)
         XCTAssertGreaterThanOrEqual(child.interruptedAt ?? 0, ClaudeSignInRenewalRun.refreshLockWait)
-        XCTAssertEqual(child.terminations, 1)
-        XCTAssertGreaterThanOrEqual(
-            child.terminatedAt ?? 0,
-            ClaudeSignInRenewalRun.refreshLockWait + ClaudeSignInRenewalRun.interruptWait
-                + ClaudeSignInRenewalRun.escalationLockWait,
-            "SIGTERM while Claude Code held its refresh lock")
+        XCTAssertEqual(child.terminations, 0, "SIGTERM while Claude Code held its refresh lock")
+        XCTAssertEqual(child.kills, 0, "SIGKILL while Claude Code held its refresh lock")
+        XCTAssertEqual(child.abandons, 1)
+        XCTAssertEqual(child.finishes, 0)
+        XCTAssertGreaterThanOrEqual(clock.now, ClaudeSignInRenewalRun.refreshLockWait
+            + ClaudeSignInRenewalRun.interruptWait + ClaudeSignInRenewalRun.refreshLockLongestWait)
     }
 
     func test_stop_aRefreshStartingAfterTheInterrupt_holdsBackTheTerminate() async {
@@ -398,7 +399,6 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         env.findClaudeBinary = { "/usr/local/bin/claude" }
         env.itemModified = { Date(timeIntervalSince1970: 4_000_000) }
         env.isScreenLocked = { false }
-        env.copyFingerprint = { nil }
         env.verify = { _ in .stillExpired }
         env.acquireInstanceLock = { {} }
         env.refreshLockHeld = { false }
@@ -621,21 +621,31 @@ final class ClaudeSignInRenewalTests: XCTestCase {
 
     /// A collection's read that finds the login expired starts a renewal (in
     /// the app, once enabled); the renewal's own read-back does not.
-    func test_anExpiredLogin_inACollectionsRead_startsARenewal_butNotInTheReadBack() {
+    /// A collection's read that finds the login expired starts a renewal (in
+    /// the app, once enabled), and hands it the expired token's fingerprint,
+    /// taken there and then, not later from a copy another read may replace.
+    func test_anExpiredLogin_inACollectionsRead_startsARenewal_withThatTokensFingerprint() {
         withFakeItem {
             var env = environment()
-            let started = expectation(description: "renewal asked")
-            started.assertForOverFulfill = false
-            env.isSandboxed = {
-                started.fulfill()
-                return true
+            let checked = expectation(description: "read back")
+            checked.assertForOverFulfill = false
+            var excluded: String??
+            env.run = { _, _, probes in
+                _ = probes.verify()
+                return .notRenewed(.deadline)
+            }
+            env.verify = { fingerprint in
+                excluded = .some(fingerprint)
+                checked.fulfill()
+                return .stillExpired
             }
             ClaudeSignInRenewal.shared.environment = env
             ClaudeSignInRenewal.shared.enableInThisProcess {}
 
             itemAnswer = item("old", expiresIn: -60)
             XCTAssertNil(ClaudeCredentials.readKeychainCredentialsIfAllowed(privacy: privacy()))
-            wait(for: [started], timeout: 2)
+            wait(for: [checked], timeout: 2)
+            XCTAssertEqual(excluded, .some(ClaudeOAuthBackoffState.fingerprint(forToken: "old")))
         }
     }
 
@@ -686,6 +696,37 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         #endif
         XCTAssertFalse(ClaudeSignInRenewal.enableForThisApp(allowsLiveCollection: false) {},
                        "a QA or quarantined runtime turned it on")
+    }
+
+    /// Quitting while Claude Code runs: the quit waits while the attempt
+    /// stops it its usual way (SIGINT, output read until it exits).
+    func test_quitting_duringARun_waitsForClaudeCodeToStop() async {
+        let child = FakeChild(clock: { ProcessInfo.processInfo.systemUptime })
+        child.exitsOnlyWhenRead = true
+        let running = expectation(description: "running")
+        var env = environment()
+        env.clock = { ProcessInfo.processInfo.systemUptime }
+        env.sleep = { seconds in try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)) }
+        env.run = { _, baseline, probes in
+            running.fulfill()
+            return await ClaudeSignInRenewalRun.drive(child, baseline: baseline, probes: probes)
+        }
+        let renewal = makeRenewal(env)
+        let attempt = Task { await renewal.attemptIfAllowed(userAsked: false) }
+        await fulfillment(of: [running], timeout: 2)
+        // On a thread of its own, as the app's main thread would be: the quit
+        // blocks while the attempt, on the concurrency pool, stops Claude Code.
+        let quitReturned = expectation(description: "quit returned")
+        DispatchQueue.global().async {
+            renewal.appWillTerminate()
+            quitReturned.fulfill()
+        }
+        await fulfillment(of: [quitReturned], timeout: 10)
+        XCTAssertEqual(child.interrupts, 1, "quit returned before Claude Code was asked to stop")
+        XCTAssertEqual(child.finishes, 1, "quit returned before Claude Code was stopped")
+        XCTAssertEqual(child.terminations, 0)
+        let outcome = await attempt.value
+        XCTAssertEqual(outcome, .ran(.notRenewed(.gatesChanged)))
     }
 
     func test_quitting_startsNoMore() async {

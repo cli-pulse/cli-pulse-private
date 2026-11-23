@@ -205,6 +205,9 @@ protocol ClaudeSignInRenewalChild: AnyObject {
     func killGroup()
     /// Ends the group and reaps the process. Called once, last.
     func finish()
+    /// Instead of `finish`: leaves the process alone, already asked to quit,
+    /// and reaps it whenever it exits. Sends nothing more.
+    func abandon()
 }
 
 /// What the run asks the system while Claude Code runs.
@@ -229,11 +232,12 @@ enum ClaudeSignInRenewalRun {
     /// After SIGINT, Claude Code's own exit, which waits for a refresh in
     /// flight ("OAuth refresh still in flight after …ms").
     static let interruptWait: TimeInterval = 5
-    /// How long a refresh in progress holds back SIGTERM after that. Claude
-    /// Code touches the lock every 5 s while it holds it and calls it stale
-    /// after 60 s, so a lock still fresh after this is another Claude Code's
-    /// long refresh, or a hung one.
-    static let escalationLockWait: TimeInterval = 60
+    /// How long, after SIGINT, the renewal stays to see a refresh through.
+    /// No SIGTERM or SIGKILL while the lock is fresh (Claude Code touches it
+    /// every 5 s while it holds it, and calls it stale after 60 s): if it
+    /// still is after this, Claude Code is left alone, already asked to quit,
+    /// and reaped when it exits.
+    static let refreshLockLongestWait: TimeInterval = 10 * 60
     static let terminateWait: TimeInterval = 1
 
     static func drive(
@@ -292,26 +296,32 @@ enum ClaudeSignInRenewalRun {
         }
     }
 
-    /// Not while Claude Code holds its refresh lock: stopping it between
-    /// receiving a new token and storing it could lose the rotated refresh
-    /// token and sign Claude Code out. First SIGINT, Claude Code's own way
-    /// out, which itself waits for a refresh in flight; SIGTERM and SIGKILL
-    /// only once no refresh is in progress (or the lock outlived any
-    /// refresh of this one's). Checking the lock and then signalling leaves a
-    /// moment in between; that is why the first signal is the one Claude Code
-    /// handles itself.
+    /// Stopping Claude Code between receiving a new token and storing it
+    /// could lose the rotated refresh token and sign it out. So: first
+    /// SIGINT, Claude Code's own way out, which itself waits for a refresh
+    /// in flight (sent after up to `refreshLockWait` for a refresh in
+    /// progress to end); then SIGTERM, then SIGKILL, each only while its
+    /// refresh lock is not fresh. A lock that stays fresh means Claude Code
+    /// is left alone, already asked to quit (`abandon`).
     static func stop(_ child: ClaudeSignInRenewalChild, probes: ClaudeSignInRenewalProbes) async {
         await waitWhileRefreshing(child, seconds: refreshLockWait, probes: probes)
         if !child.hasExited {
             child.interrupt()
             await waitForExit(child, seconds: interruptWait, probes: probes)
         }
-        await waitWhileRefreshing(child, seconds: escalationLockWait, probes: probes)
+        await waitWhileRefreshing(child, seconds: refreshLockLongestWait, probes: probes)
+        if !child.hasExited, probes.refreshLockHeld() {
+            child.abandon()
+            return
+        }
         if !child.hasExited {
             child.terminateGroup()
             await waitForExit(child, seconds: terminateWait, probes: probes)
         }
-        await waitWhileRefreshing(child, seconds: escalationLockWait, probes: probes)
+        if !child.hasExited, probes.refreshLockHeld() {
+            child.abandon()
+            return
+        }
         if !child.hasExited {
             child.killGroup()
         }
@@ -373,12 +383,8 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
         var itemModified: () -> Date?
         /// nil when it cannot be told; treated as locked.
         var isScreenLocked: () -> Bool?
-        /// The fingerprint of the app's copy of the login, the expired one:
-        /// a token read back with this fingerprint was not renewed, whatever
-        /// its expiry says. From the app's own copy; never reads the item.
-        var copyFingerprint: () -> String?
-        /// The item read back without a dialog; the argument is the
-        /// fingerprint not to count as renewed.
+        /// The item read back without a dialog; the argument is the expired
+        /// token's fingerprint, not to count as renewed.
         var verify: (_ excluding: String?) -> ClaudeSignInRenewalVerdict
         /// Held for the whole attempt against a second copy of the app; nil
         /// when another holds it. Calling the returned closure releases it.
@@ -399,19 +405,15 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
                 findClaudeBinary: { ClaudeCLIPTYStrategy.findClaudeBinary() },
                 itemModified: { ClaudeCredentials.keychainItemModifiedIfAllowed() },
                 isScreenLocked: { ClaudeSignInRenewal.liveScreenLocked() },
-                copyFingerprint: {
-                    ClaudeCredentials.readCachedKeychainCredentials()
-                        .map { ClaudeOAuthBackoffState.fingerprint(forToken: $0.accessToken) }
-                },
                 verify: { ClaudeSignInRenewal.liveVerify(excluding: $0) },
                 acquireInstanceLock: { ClaudeSignInRenewal.liveInstanceLock() },
                 run: { binary, baseline, probes in
                     #if DEVID_BUILD
+                    // The app may have begun to quit since the gates.
+                    guard probes.stillAllowed() else { return .notRenewed(.gatesChanged) }
                     guard let child = ClaudeSignInRenewalProcess.spawn(binary: binary) else {
                         return .notRenewed(.launchFailed)
                     }
-                    ClaudeSignInRenewal.shared.setRunningChild(child)
-                    defer { ClaudeSignInRenewal.shared.setRunningChild(nil) }
                     return await ClaudeSignInRenewalRun.drive(child, baseline: baseline, probes: probes)
                     #else
                     return .notRenewed(.launchFailed)
@@ -437,7 +439,8 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
     private var enabled = false
     private var running = false
     private var onRenewed: (@Sendable () -> Void)?
-    private var runningChild: ClaudeSignInRenewalChild?
+    /// Signalled when the running attempt has stopped Claude Code.
+    private var runStopped: DispatchSemaphore?
     private var terminationObserver: NSObjectProtocol?
     private var _environment: Environment
 
@@ -490,16 +493,21 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
         }
     }
 
-    /// The app is quitting: start no more, and ask a running Claude Code to
-    /// quit too, the way Ctrl-C would. Not a kill: it may be storing a new
-    /// login, and its own exit waits for that. Once the app is gone, launchd
-    /// reaps it; with `--safe-mode` it starts no processes of its own.
+    /// How long quitting the app waits for a running attempt to stop Claude
+    /// Code.
+    static let quitWait: TimeInterval = 30
+
+    /// The app is quitting: start no more, and hold the quit (on the main
+    /// thread, at most `quitWait`) while a running attempt stops Claude Code
+    /// its usual way: it sees the switch-off within a tenth of a second, then
+    /// SIGINT, reading its output, the refresh lock respected. If the wait
+    /// runs out, Claude Code has been asked to quit and launchd reaps it.
     func appWillTerminate() {
-        let child: ClaudeSignInRenewalChild? = lock.withLock {
+        let stopped: DispatchSemaphore? = lock.withLock {
             enabled = false
-            return runningChild
+            return runStopped
         }
-        child?.interrupt()
+        _ = stopped?.wait(timeout: .now() + Self.quitWait)
     }
 
     /// For tests.
@@ -510,25 +518,24 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
         }
     }
 
-    fileprivate func setRunningChild(_ child: ClaudeSignInRenewalChild?) {
-        lock.withLock { runningChild = child }
-    }
-
     /// `ClaudeCredentials.readKeychainCredentials` found the login in the item
     /// expired. Returns at once; a renewal, if one starts, runs detached, so
     /// no collection waits for it. A Refresh the user clicked
     /// (`RefreshInteraction.userInitiated`, read here, before detaching) is
     /// not held back by the backoff.
-    func expiredLoginSeen() {
+    /// - Parameter expiredToken: the expired access token's fingerprint, taken
+    ///   where it was read: a token read back with it was not renewed,
+    ///   whatever its expiry says.
+    func expiredLoginSeen(expiredToken: String) {
         guard lock.withLock({ enabled }) else { return }
         let userAsked = RefreshInteraction.current == .userInitiated
         Task.detached(priority: .utility) { [self] in
-            _ = await attemptIfAllowed(userAsked: userAsked)
+            _ = await attemptIfAllowed(userAsked: userAsked, expiredToken: expiredToken)
         }
     }
 
     /// One renewal, if everything allows it.
-    func attemptIfAllowed(userAsked: Bool) async -> Outcome {
+    func attemptIfAllowed(userAsked: Bool, expiredToken: String? = nil) async -> Outcome {
         let claim: ClaudeSignInRenewalSkip? = lock.withLock {
             guard enabled else { return .notEnabledInThisProcess }
             guard !running else { return .alreadyRunning }
@@ -558,10 +565,9 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
         save(record, env)
 
         Self.logger.info("Claude sign-in renewal: starting Claude Code")
-        let expiredFingerprint = env.copyFingerprint()
         let probes = ClaudeSignInRenewalProbes(
             itemModified: env.itemModified,
-            verify: { env.verify(expiredFingerprint) },
+            verify: { env.verify(expiredToken) },
             stillAllowed: { [self] in
                 lock.withLock { enabled } && env.allowedBySettings() && !(env.isScreenLocked() ?? true)
             },
@@ -569,7 +575,11 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
             clock: env.clock,
             sleep: env.sleep
         )
+        let stopped = DispatchSemaphore(value: 0)
+        lock.withLock { runStopped = stopped }
         let result = await env.run(binary, baseline, probes)
+        lock.withLock { runStopped = nil }
+        stopped.signal()
 
         if result == .renewed { record.consecutiveFailures = 0 }
         record.itemDateAfterLastAttempt = env.itemModified().map(ClaudeSignInRenewalRun.wholeSeconds)
@@ -870,6 +880,31 @@ final class ClaudeSignInRenewalProcess: ClaudeSignInRenewalChild {
 
     func killGroup() {
         lock.withLock { if !finished { _ = kill(-pid, SIGKILL) } }
+    }
+
+    func abandon() {
+        let taken: Bool = lock.withLock {
+            guard !finished else { return false }
+            finished = true
+            return true
+        }
+        guard taken else { return }
+        let pid = self.pid
+        let fd = primaryFD
+        // Its output read and thrown away, so its way out cannot block on a
+        // full terminal; reaped once it exits.
+        Thread.detachNewThread {
+            var buffer = [UInt8](repeating: 0, count: 16 * 1024)
+            while true {
+                _ = read(fd, &buffer, buffer.count)
+                var info = siginfo_t()
+                if waitid(P_PID, id_t(pid), &info, WEXITED | WNOHANG | WNOWAIT) == 0, info.si_pid == pid { break }
+                usleep(200_000)
+            }
+            var status: Int32 = 0
+            while waitpid(pid, &status, 0) == -1, errno == EINTR {}
+            close(fd)
+        }
     }
 
     func finish() {

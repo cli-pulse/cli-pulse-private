@@ -393,7 +393,8 @@ public enum ClaudeCredentials {
                 // would only ask macOS (and perhaps the user) for the same
                 // expired token; Claude Code's next run rewrites it.
                 ClaudeKeychainReadLog.note(.expiredLogin)
-                ClaudeSignInRenewal.shared.expiredLoginSeen()
+                ClaudeSignInRenewal.shared.expiredLoginSeen(
+                    expiredToken: ClaudeOAuthBackoffState.fingerprint(forToken: creds.accessToken))
                 return nil
             }
         }
@@ -488,7 +489,10 @@ public enum ClaudeCredentials {
         // this Mac has a Claude Code login.
         if expired, !bypassCooldown {
             ClaudeKeychainReadLog.note(.expiredLogin)
-            if !quietOnly { ClaudeSignInRenewal.shared.expiredLoginSeen() }
+            if !quietOnly {
+                ClaudeSignInRenewal.shared.expiredLoginSeen(
+                    expiredToken: ClaudeOAuthBackoffState.fingerprint(forToken: creds.accessToken))
+            }
             if read == .mayAsk, !keptWithDate {
                 // Without the copy and its date, a later refresh may read
                 // (and perhaps ask) again for the same expired login. The
