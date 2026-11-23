@@ -99,10 +99,13 @@ final class ClaudeKeychainGateReferenceTests: XCTestCase {
                 }
             }
         }
+        // 2026-11-24: the second in ClaudeSourceStrategy.swift is the quiet
+        // read behind the same guard (`readKeychainCredentialsQuietlyIfAllowed`,
+        // pinned by the next test but one).
         XCTAssertEqual(
             rawCallers,
-            ["ClaudeSourceStrategy.swift": 1, "ProviderConfigEditor.swift": 1],
-            "only the guard's own reader and the Connect button may open Claude Code's keychain "
+            ["ClaudeSourceStrategy.swift": 2, "ProviderConfigEditor.swift": 1],
+            "only the guard's own readers and the Connect button may open Claude Code's keychain "
                 + "item without asking Settings › Privacy's switches: \(rawLocations)"
         )
         // The token resolver and the two rate-limit tier lookups. A lower count
@@ -122,6 +125,27 @@ final class ClaudeKeychainGateReferenceTests: XCTestCase {
         XCTAssertLessThan(ask.lowerBound, read.lowerBound)
         // Its default reader is the raw read, the one caller counted above.
         XCTAssertTrue(body.contains("reader: () -> Creds? = { ClaudeCredentials.readKeychainCredentials() }"))
+    }
+
+    /// 2026-11-24: `ClaudeSignInRenewal` checks Claude Code's renewal with a
+    /// read that never shows a dialog, and watches the item's date. Both ask
+    /// the same switch first.
+    func testTheRenewalsReadsAskTheSwitchBeforeTheyRead() throws {
+        let strategy = try XCTUnwrap(
+            try swiftFiles(under: Self.coreSources).first { $0.name == "ClaudeSourceStrategy.swift" }
+        )
+        let text = strategy.lines.joined(separator: "\n")
+        for (function, call) in [
+            ("func readKeychainCredentialsQuietlyIfAllowed(", "return readKeychainCredentials(quietOnly: true)"),
+            ("func keychainItemModifiedIfAllowed(", "return keychainItemModified()"),
+        ] {
+            let start = try XCTUnwrap(text.range(of: function), function)
+            let body = text[start.lowerBound...].prefix(400)
+            let ask = try XCTUnwrap(
+                body.range(of: "guard !privacy.skipsClaudeKeychainOnItsOwn else { return nil }"), function)
+            let read = try XCTUnwrap(body.range(of: call), function)
+            XCTAssertLessThan(ask.lowerBound, read.lowerBound, function)
+        }
     }
 
     func testNoCollectorAsksTheAppOnlySwitch() throws {
@@ -163,7 +187,10 @@ final class ClaudeKeychainGateReferenceTests: XCTestCase {
                 callers.append(file.location(index))
             }
         }
-        XCTAssertEqual(callers.count, 1, "\(callers)")
+        // `readKeychainCredentials`, and since 2026-11-24
+        // `keychainItemModifiedIfAllowed` (behind the guard, test above).
+        XCTAssertEqual(callers.count, 2, "\(callers)")
+        XCTAssertTrue(callers.allSatisfy { $0.contains("ClaudeSourceStrategy.swift") }, "\(callers)")
     }
 
     func testTheBundledSwiftHelperNeverRunsItsKeychainQuotaFetcher() throws {

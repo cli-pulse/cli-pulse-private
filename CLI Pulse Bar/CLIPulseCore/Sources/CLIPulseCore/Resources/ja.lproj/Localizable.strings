@@ -1439,6 +1439,9 @@
 "settings.skip_claude_keychain" = "Claude Code のキーチェーンにアクセスしない";
 "settings.skip_claude_keychain_forced" = "プライバシー強化モードにより強制的にオンになっています。";
 "settings.skip_claude_keychain_hint" = "Claude Code が macOS のキーチェーンに保存しているトークンを、CLI Pulse が自分から読み取ることはなくなります。Claude Code の認証ファイルがある場合は、引き続き読み取ります。macOS のキーチェーンダイアログがログインパスワードを受け付けない場合に役立ちます。";
+"settings.renew_claude_sign_in" = "Claude Code のサインインが期限切れになったら更新する";
+"settings.renew_claude_sign_in_hint" = "Claude Code は実行されたときにだけ自分のサインインを更新します。claude をあまり実行しない場合、サインインの期限が切れると Claude のカードに使用量が表示されなくなります。オンにすると、そのとき CLI Pulse が Claude Code を数秒間起動し、サインインが更新されたら終了します。何も入力せず、Claude にプロンプトも送りません。Claude Code が macOS にキーチェーンへのアクセスを求めることがあります。";
+"settings.renew_claude_sign_in_unavailable" = "CLI Pulse が Claude Code のキーチェーンのサインイン情報を読み取らない設定のあいだは無効です。";
 "settings.claude_keychain_helper_confirmed" = "バックグラウンドヘルパーもこの設定に従っています。";
 "settings.claude_keychain_helper_unconfirmed" = "バックグラウンドヘルパーからの確認はまだありません。";
 "settings.companion_ignores_switches" = "この Mac の Companion CLI（%@）は、これらのスイッチに従いません。「設定 › Companion CLI」でアップデートするか、アンインストールしてください。";

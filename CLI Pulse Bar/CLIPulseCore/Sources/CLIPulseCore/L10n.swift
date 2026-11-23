@@ -1384,6 +1384,9 @@ public enum L10n {
         public static var skipClaudeKeychain: String { tr("settings.skip_claude_keychain") }
         public static var skipClaudeKeychainForced: String { tr("settings.skip_claude_keychain_forced") }
         public static var skipClaudeKeychainHint: String { tr("settings.skip_claude_keychain_hint") }
+        public static var renewClaudeSignIn: String { tr("settings.renew_claude_sign_in") }
+        public static var renewClaudeSignInHint: String { tr("settings.renew_claude_sign_in_hint") }
+        public static var renewClaudeSignInUnavailable: String { tr("settings.renew_claude_sign_in_unavailable") }
         /// Under the Claude keychain switches: the LoginItem helper said it skips
         /// the item too (`HelperClaudeKeychainConfirmation.confirmed`).
         public static var claudeKeychainHelperConfirmed: String { tr("settings.claude_keychain_helper_confirmed") }
