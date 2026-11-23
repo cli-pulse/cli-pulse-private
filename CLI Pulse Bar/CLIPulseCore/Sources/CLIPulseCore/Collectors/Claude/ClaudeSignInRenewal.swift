@@ -195,19 +195,13 @@ protocol ClaudeSignInRenewalChild: AnyObject {
     func readAvailable(max: Int) -> Data
     /// True once the process has exited (not yet reaped).
     var hasExited: Bool { get }
-    /// SIGINT: how Claude Code is quit from any screen, as Ctrl-C would. It
-    /// removes its session record on the way out; SIGTERM leaves
-    /// `~/.claude/sessions/<pid>.json` behind.
+    /// SIGINT: how Claude Code is quit from any screen, as Ctrl-C would. Its
+    /// own way out, which waits for a refresh in flight and removes its
+    /// session record. The only signal it is ever sent while it runs.
     func interrupt()
-    /// SIGTERM to the whole process group.
-    func terminateGroup()
-    /// SIGKILL to the whole process group.
-    func killGroup()
-    /// Ends the group and reaps the process. Called once, last.
+    /// After it exited: ends anything it left in its process group, and reaps
+    /// it. Called once, last.
     func finish()
-    /// Instead of `finish`: leaves the process alone, already asked to quit,
-    /// and reaps it whenever it exits. Sends nothing more.
-    func abandon()
 }
 
 /// What the run asks the system while Claude Code runs.
@@ -227,18 +221,11 @@ struct ClaudeSignInRenewalProbes: @unchecked Sendable {
 enum ClaudeSignInRenewalRun {
     static let deadline: TimeInterval = 30
     static let pollInterval: TimeInterval = 0.5
-    /// How long a refresh in progress holds back the first signal.
+    /// How long a refresh in progress holds back the SIGINT.
     static let refreshLockWait: TimeInterval = 30
-    /// After SIGINT, Claude Code's own exit, which waits for a refresh in
-    /// flight ("OAuth refresh still in flight after …ms").
-    static let interruptWait: TimeInterval = 5
-    /// How long, after SIGINT, the renewal stays to see a refresh through.
-    /// No SIGTERM or SIGKILL while the lock is fresh (Claude Code touches it
-    /// every 5 s while it holds it, and calls it stale after 60 s): if it
-    /// still is after this, Claude Code is left alone, already asked to quit,
-    /// and reaped when it exits.
-    static let refreshLockLongestWait: TimeInterval = 10 * 60
-    static let terminateWait: TimeInterval = 1
+    /// A Claude Code still running this long after the last SIGINT, with no
+    /// refresh in progress, is sent another.
+    static let reinterruptInterval: TimeInterval = 10
 
     static func drive(
         _ child: ClaudeSignInRenewalChild, baseline: Date, probes: ClaudeSignInRenewalProbes
@@ -297,33 +284,28 @@ enum ClaudeSignInRenewalRun {
     }
 
     /// Stopping Claude Code between receiving a new token and storing it
-    /// could lose the rotated refresh token and sign it out. So: first
-    /// SIGINT, Claude Code's own way out, which itself waits for a refresh
-    /// in flight (sent after up to `refreshLockWait` for a refresh in
-    /// progress to end); then SIGTERM, then SIGKILL, each only while its
-    /// refresh lock is not fresh. A lock that stays fresh means Claude Code
-    /// is left alone, already asked to quit (`abandon`).
+    /// could lose the rotated refresh token and sign it out, so it is only
+    /// ever asked to quit (SIGINT), never killed. Its own way out waits for a
+    /// refresh in flight (2 s in 2.1.330: "OAuth refresh still in flight
+    /// after …ms; exiting without waiting further"), so the SIGINT waits
+    /// first for a refresh in progress to end (up to `refreshLockWait`). If it
+    /// keeps running, it is asked again, never while a refresh is in progress,
+    /// and its output is read all along (its way out writes to the terminal),
+    /// until it exits: the attempt, with its claim and the instance lock,
+    /// lasts until then.
     static func stop(_ child: ClaudeSignInRenewalChild, probes: ClaudeSignInRenewalProbes) async {
         await waitWhileRefreshing(child, seconds: refreshLockWait, probes: probes)
-        if !child.hasExited {
-            child.interrupt()
-            await waitForExit(child, seconds: interruptWait, probes: probes)
-        }
-        await waitWhileRefreshing(child, seconds: refreshLockLongestWait, probes: probes)
-        if !child.hasExited, probes.refreshLockHeld() {
-            child.abandon()
-            return
-        }
-        if !child.hasExited {
-            child.terminateGroup()
-            await waitForExit(child, seconds: terminateWait, probes: probes)
-        }
-        if !child.hasExited, probes.refreshLockHeld() {
-            child.abandon()
-            return
-        }
-        if !child.hasExited {
-            child.killGroup()
+        let start = probes.clock()
+        var lastInterrupt: TimeInterval?
+        while !child.hasExited {
+            let now = probes.clock()
+            if lastInterrupt == nil
+                || (now - lastInterrupt! >= reinterruptInterval && !probes.refreshLockHeld()) {
+                child.interrupt()
+                lastInterrupt = now
+            }
+            // Quick at first; once a minute has gone by, at a calmer pace.
+            await pause(child, now - start < 60 ? 0.1 : 1, probes: probes)
         }
         child.finish()
     }
@@ -346,15 +328,6 @@ enum ClaudeSignInRenewalRun {
     ) async {
         _ = child.readAvailable(max: 64 * 1024)
         await probes.sleep(seconds)
-    }
-
-    private static func waitForExit(
-        _ child: ClaudeSignInRenewalChild, seconds: TimeInterval, probes: ClaudeSignInRenewalProbes
-    ) async {
-        let until = probes.clock() + seconds
-        while !child.hasExited, probes.clock() < until {
-            await pause(child, 0.1, probes: probes)
-        }
     }
 
     static func wholeSeconds(_ date: Date) -> Int {
@@ -494,14 +467,16 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
     }
 
     /// How long quitting the app waits for a running attempt to stop Claude
-    /// Code.
-    static let quitWait: TimeInterval = 30
+    /// Code: past the SIGINT's own wait for a refresh in progress.
+    static let quitWait: TimeInterval = ClaudeSignInRenewalRun.refreshLockWait + 10
 
     /// The app is quitting: start no more, and hold the quit (on the main
     /// thread, at most `quitWait`) while a running attempt stops Claude Code
     /// its usual way: it sees the switch-off within a tenth of a second, then
-    /// SIGINT, reading its output, the refresh lock respected. If the wait
-    /// runs out, Claude Code has been asked to quit and launchd reaps it.
+    /// SIGINT, reading its output, the refresh lock respected. Normally that
+    /// takes under a second. If the wait runs out, Claude Code keeps what it
+    /// was told; once the app is gone its terminal writes fail rather than
+    /// block, and launchd reaps it.
     func appWillTerminate() {
         let stopped: DispatchSemaphore? = lock.withLock {
             enabled = false
@@ -874,44 +849,13 @@ final class ClaudeSignInRenewalProcess: ClaudeSignInRenewalChild {
         lock.withLock { if !finished { _ = kill(pid, SIGINT) } }
     }
 
-    func terminateGroup() {
-        lock.withLock { if !finished { _ = kill(-pid, SIGTERM) } }
-    }
-
-    func killGroup() {
-        lock.withLock { if !finished { _ = kill(-pid, SIGKILL) } }
-    }
-
-    func abandon() {
-        let taken: Bool = lock.withLock {
-            guard !finished else { return false }
-            finished = true
-            return true
-        }
-        guard taken else { return }
-        let pid = self.pid
-        let fd = primaryFD
-        // Its output read and thrown away, so its way out cannot block on a
-        // full terminal; reaped once it exits.
-        Thread.detachNewThread {
-            var buffer = [UInt8](repeating: 0, count: 16 * 1024)
-            while true {
-                _ = read(fd, &buffer, buffer.count)
-                var info = siginfo_t()
-                if waitid(P_PID, id_t(pid), &info, WEXITED | WNOHANG | WNOWAIT) == 0, info.si_pid == pid { break }
-                usleep(200_000)
-            }
-            var status: Int32 = 0
-            while waitpid(pid, &status, 0) == -1, errno == EINTR {}
-            close(fd)
-        }
-    }
-
     func finish() {
         lock.withLock {
             guard !finished else { return }
-            // Anything it started and left behind goes with it, while the
-            // unreaped process still holds the group's number.
+            // It has exited (or this is the last word anyway): anything it
+            // started and left behind goes too, while the unreaped process
+            // still holds the group's number. It does its refreshing itself,
+            // so nothing here can cut one short.
             _ = kill(-pid, SIGTERM)
             _ = kill(-pid, SIGKILL)
             var status: Int32 = 0

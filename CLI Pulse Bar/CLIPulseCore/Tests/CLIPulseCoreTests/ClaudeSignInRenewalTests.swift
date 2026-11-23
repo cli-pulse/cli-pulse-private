@@ -158,37 +158,33 @@ final class ClaudeSignInRenewalTests: XCTestCase {
     private final class FakeChild: ClaudeSignInRenewalChild {
         var outputs: [Data] = []
         var exited = false
+        /// Exits by itself then, whatever it was sent: the stop tests set it so
+        /// none can hang.
+        var exitsAt: TimeInterval = .infinity
         var exitsOnInterrupt = true
         /// Like Claude Code: its way out writes to the terminal, so it ends
         /// only once someone reads that.
         var exitsOnlyWhenRead = false
         private var exiting = false
-        var interrupts = 0, terminations = 0, kills = 0, finishes = 0, abandons = 0
-        /// When each signal came, by the fake clock.
-        var interruptedAt: TimeInterval?
-        var terminatedAt: TimeInterval?
+        var finishes = 0
+        /// When each SIGINT came, by the fake clock.
+        var interruptTimes: [TimeInterval] = []
+        var interrupts: Int { interruptTimes.count }
+        var interruptedAt: TimeInterval? { interruptTimes.first }
         let clock: () -> TimeInterval
         init(clock: @escaping () -> TimeInterval) { self.clock = clock }
         func readAvailable(max: Int) -> Data {
             if exiting { exited = true }
             return outputs.isEmpty ? Data() : outputs.removeFirst()
         }
-        var hasExited: Bool { exited }
+        var hasExited: Bool { exited || clock() >= exitsAt }
         func interrupt() {
-            interrupts += 1
-            interruptedAt = clock()
+            interruptTimes.append(clock())
             if exitsOnInterrupt {
                 if exitsOnlyWhenRead { exiting = true } else { exited = true }
             }
         }
-        func terminateGroup() {
-            terminations += 1
-            terminatedAt = clock()
-            exited = true
-        }
-        func killGroup() { kills += 1; exited = true }
         func finish() { finishes += 1 }
-        func abandon() { abandons += 1 }
     }
 
     private final class FakeClock {
@@ -228,8 +224,6 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         XCTAssertEqual(verifies, 1)
         XCTAssertEqual(child.interrupts, 1)
         XCTAssertGreaterThanOrEqual(child.interruptedAt ?? 0, 6, "stopped while Claude Code held its refresh lock")
-        XCTAssertEqual(child.terminations, 0)
-        XCTAssertEqual(child.kills, 0)
         XCTAssertEqual(child.finishes, 1)
     }
 
@@ -316,53 +310,51 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         XCTAssertLessThan(clock.now, 4)
     }
 
-    func test_stop_aRefreshLockThatNeverGoes_getsNoSIGTERMOrSIGKILL() async {
+    /// The only signal is SIGINT, however long Claude Code takes; the stop
+    /// lasts until it exits.
+    func test_stop_aRefreshLockThatNeverGoes_onlySIGINT_untilItExits() async {
         let clock = FakeClock()
         let child = FakeChild(clock: { clock.now })
         child.exitsOnInterrupt = false
+        child.exitsAt = 200
         await ClaudeSignInRenewalRun.stop(child, probes: probes(clock, itemModified: { nil }, refreshLockHeld: { true }))
-        XCTAssertEqual(child.interrupts, 1)
+        XCTAssertEqual(child.interrupts, 1, "asked again while Claude Code held its refresh lock")
         XCTAssertGreaterThanOrEqual(child.interruptedAt ?? 0, ClaudeSignInRenewalRun.refreshLockWait)
-        XCTAssertEqual(child.terminations, 0, "SIGTERM while Claude Code held its refresh lock")
-        XCTAssertEqual(child.kills, 0, "SIGKILL while Claude Code held its refresh lock")
-        XCTAssertEqual(child.abandons, 1)
-        XCTAssertEqual(child.finishes, 0)
-        XCTAssertGreaterThanOrEqual(clock.now, ClaudeSignInRenewalRun.refreshLockWait
-            + ClaudeSignInRenewalRun.interruptWait + ClaudeSignInRenewalRun.refreshLockLongestWait)
+        XCTAssertGreaterThanOrEqual(clock.now, 200, "the stop ended while Claude Code still ran")
+        XCTAssertEqual(child.finishes, 1)
     }
 
-    func test_stop_aRefreshStartingAfterTheInterrupt_holdsBackTheTerminate() async {
+    func test_stop_aChildStillRunning_isAskedAgain_onlyBetweenRefreshes() async {
         let clock = FakeClock()
         let child = FakeChild(clock: { clock.now })
         child.exitsOnInterrupt = false
-        // Claude Code takes the lock right after SIGINT and lets go at 20 s.
+        child.exitsAt = 45
+        // Claude Code takes the lock right after the first SIGINT and lets go at 20 s.
         await ClaudeSignInRenewalRun.stop(child, probes: probes(
             clock, itemModified: { nil }, refreshLockHeld: { child.interrupts > 0 && clock.now < 20 }))
-        XCTAssertEqual(child.interrupts, 1)
-        XCTAssertLessThan(child.interruptedAt ?? 99, 1)
-        XCTAssertEqual(child.terminations, 1)
-        XCTAssertGreaterThanOrEqual(child.terminatedAt ?? 0, 20, "SIGTERM while Claude Code held its refresh lock")
-        XCTAssertEqual(child.kills, 0)
+        XCTAssertLessThan(child.interruptTimes.first ?? 99, 1)
+        guard child.interrupts >= 2 else {
+            return XCTFail("asked only once although Claude Code kept running: \(child.interruptTimes)")
+        }
+        XCTAssertGreaterThanOrEqual(child.interruptTimes[1], 20, "asked again while Claude Code held its refresh lock")
+        for (earlier, later) in zip(child.interruptTimes, child.interruptTimes.dropFirst()) {
+            XCTAssertGreaterThanOrEqual(later - earlier, ClaudeSignInRenewalRun.reinterruptInterval)
+        }
+        XCTAssertEqual(child.finishes, 1)
     }
 
     func test_stop_keepsReadingWhileClaudeCodeQuits() async {
         let clock = FakeClock()
         let child = FakeChild(clock: { clock.now })
         child.exitsOnlyWhenRead = true
+        child.exitsAt = 100
         await ClaudeSignInRenewalRun.stop(child, probes: probes(clock, itemModified: { nil }))
         XCTAssertEqual(child.interrupts, 1)
-        XCTAssertEqual(child.terminations, 0, "its output was not read, so it could not quit on SIGINT")
-        XCTAssertEqual(child.kills, 0)
+        XCTAssertLessThan(clock.now, 5, "its output was not read, so it could not quit on SIGINT")
     }
 
-    func test_stop_aChildThatIgnoresTheInterrupt_isTerminated() async {
-        let clock = FakeClock()
-        let child = FakeChild(clock: { clock.now })
-        child.exitsOnInterrupt = false
-        await ClaudeSignInRenewalRun.stop(child, probes: probes(clock, itemModified: { nil }))
-        XCTAssertEqual(child.interrupts, 1)
-        XCTAssertEqual(child.terminations, 1)
-        XCTAssertEqual(child.finishes, 1)
+    func test_quitWaitsLongerThanTheSIGINTWaitsForARefresh() {
+        XCTAssertGreaterThan(ClaudeSignInRenewal.quitWait, ClaudeSignInRenewalRun.refreshLockWait)
     }
 
     // MARK: - The coordinator
@@ -703,6 +695,8 @@ final class ClaudeSignInRenewalTests: XCTestCase {
     func test_quitting_duringARun_waitsForClaudeCodeToStop() async {
         let child = FakeChild(clock: { ProcessInfo.processInfo.systemUptime })
         child.exitsOnlyWhenRead = true
+        // A failure ends the test (the quit returns early), not hangs it.
+        child.exitsAt = ProcessInfo.processInfo.systemUptime + 15
         let running = expectation(description: "running")
         var env = environment()
         env.clock = { ProcessInfo.processInfo.systemUptime }
@@ -724,7 +718,6 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         await fulfillment(of: [quitReturned], timeout: 10)
         XCTAssertEqual(child.interrupts, 1, "quit returned before Claude Code was asked to stop")
         XCTAssertEqual(child.finishes, 1, "quit returned before Claude Code was stopped")
-        XCTAssertEqual(child.terminations, 0)
         let outcome = await attempt.value
         XCTAssertEqual(outcome, .ran(.notRenewed(.gatesChanged)))
     }
