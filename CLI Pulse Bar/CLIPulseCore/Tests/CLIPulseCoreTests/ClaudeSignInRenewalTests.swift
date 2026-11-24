@@ -22,52 +22,59 @@ final class ClaudeSignInRenewalTests: XCTestCase {
 
     func test_firstAttempt_isAllowed() {
         XCTAssertTrue(ClaudeSignInRenewalPolicy.allows(
-            now: Date(), record: ClaudeSignInRenewalRecord(), userAsked: false, itemDate: 1))
+            now: Date(), record: ClaudeSignInRenewalRecord(), userAsked: false, expiredLogin: nil))
     }
 
     func test_thirtyMinutesAfterAnyAttempt_beforeTheNext() {
         let last = Date(timeIntervalSince1970: 1_000_000)
-        let record = ClaudeSignInRenewalRecord(lastAttemptAt: last, consecutiveFailures: 0, itemDateAfterLastAttempt: 5)
+        let record = ClaudeSignInRenewalRecord(lastAttemptAt: last, consecutiveFailures: 0, expiredLoginAtLastAttempt: "a")
         XCTAssertFalse(ClaudeSignInRenewalPolicy.allows(
-            now: last.addingTimeInterval(29 * 60), record: record, userAsked: false, itemDate: 5))
+            now: last.addingTimeInterval(29 * 60), record: record, userAsked: false, expiredLogin: "a"))
         XCTAssertTrue(ClaudeSignInRenewalPolicy.allows(
-            now: last.addingTimeInterval(30 * 60), record: record, userAsked: false, itemDate: 5))
+            now: last.addingTimeInterval(30 * 60), record: record, userAsked: false, expiredLogin: "a"))
     }
 
     func test_failuresInARow_holdTheNextOneBack() {
         let last = Date(timeIntervalSince1970: 1_000_000)
-        let record = ClaudeSignInRenewalRecord(lastAttemptAt: last, consecutiveFailures: 3, itemDateAfterLastAttempt: 5)
+        let record = ClaudeSignInRenewalRecord(lastAttemptAt: last, consecutiveFailures: 3, expiredLoginAtLastAttempt: "a")
         XCTAssertFalse(ClaudeSignInRenewalPolicy.allows(
-            now: last.addingTimeInterval(119 * 60), record: record, userAsked: false, itemDate: 5))
+            now: last.addingTimeInterval(119 * 60), record: record, userAsked: false, expiredLogin: "a"))
         XCTAssertTrue(ClaudeSignInRenewalPolicy.allows(
-            now: last.addingTimeInterval(120 * 60), record: record, userAsked: false, itemDate: 5))
+            now: last.addingTimeInterval(120 * 60), record: record, userAsked: false, expiredLogin: "a"))
     }
 
-    func test_anItemRewrittenBySomethingElse_liftsTheBackoff_butNotTheFloor() {
+    /// Claude Code started by the Claude desktop app rewrites the item without
+    /// renewing it, so only a different expired login lifts the backoff.
+    func test_aDifferentExpiredLogin_liftsTheBackoff_butNotTheFloor() {
         let last = Date(timeIntervalSince1970: 1_000_000)
-        let record = ClaudeSignInRenewalRecord(lastAttemptAt: last, consecutiveFailures: 7, itemDateAfterLastAttempt: 5)
+        let record = ClaudeSignInRenewalRecord(lastAttemptAt: last, consecutiveFailures: 7, expiredLoginAtLastAttempt: "a")
         XCTAssertFalse(ClaudeSignInRenewalPolicy.allows(
-            now: last.addingTimeInterval(10 * 60), record: record, userAsked: false, itemDate: 6))
+            now: last.addingTimeInterval(10 * 60), record: record, userAsked: false, expiredLogin: "b"))
         XCTAssertTrue(ClaudeSignInRenewalPolicy.allows(
-            now: last.addingTimeInterval(31 * 60), record: record, userAsked: false, itemDate: 6))
+            now: last.addingTimeInterval(31 * 60), record: record, userAsked: false, expiredLogin: "b"))
         XCTAssertFalse(ClaudeSignInRenewalPolicy.allows(
-            now: last.addingTimeInterval(31 * 60), record: record, userAsked: false, itemDate: 5))
+            now: last.addingTimeInterval(31 * 60), record: record, userAsked: false, expiredLogin: "a"))
+        XCTAssertFalse(ClaudeSignInRenewalPolicy.allows(
+            now: last.addingTimeInterval(31 * 60), record: record, userAsked: false, expiredLogin: nil))
+        let unknown = ClaudeSignInRenewalRecord(lastAttemptAt: last, consecutiveFailures: 7, expiredLoginAtLastAttempt: nil)
+        XCTAssertFalse(ClaudeSignInRenewalPolicy.allows(
+            now: last.addingTimeInterval(31 * 60), record: unknown, userAsked: false, expiredLogin: "b"))
     }
 
     func test_aRefreshTheUserClicked_skipsTheBackoff_notTheMinute() {
         let last = Date(timeIntervalSince1970: 1_000_000)
-        let record = ClaudeSignInRenewalRecord(lastAttemptAt: last, consecutiveFailures: 7, itemDateAfterLastAttempt: 5)
+        let record = ClaudeSignInRenewalRecord(lastAttemptAt: last, consecutiveFailures: 7, expiredLoginAtLastAttempt: "a")
         XCTAssertFalse(ClaudeSignInRenewalPolicy.allows(
-            now: last.addingTimeInterval(59), record: record, userAsked: true, itemDate: 5))
+            now: last.addingTimeInterval(59), record: record, userAsked: true, expiredLogin: "a"))
         XCTAssertTrue(ClaudeSignInRenewalPolicy.allows(
-            now: last.addingTimeInterval(60), record: record, userAsked: true, itemDate: 5))
+            now: last.addingTimeInterval(60), record: record, userAsked: true, expiredLogin: "a"))
     }
 
     func test_aClockSetBack_doesNotWaitForTheClockToCatchUp() {
         let last = Date(timeIntervalSince1970: 1_000_000)
-        let record = ClaudeSignInRenewalRecord(lastAttemptAt: last, consecutiveFailures: 7, itemDateAfterLastAttempt: 5)
+        let record = ClaudeSignInRenewalRecord(lastAttemptAt: last, consecutiveFailures: 7, expiredLoginAtLastAttempt: "a")
         XCTAssertTrue(ClaudeSignInRenewalPolicy.allows(
-            now: last.addingTimeInterval(-3600), record: record, userAsked: false, itemDate: 5))
+            now: last.addingTimeInterval(-3600), record: record, userAsked: false, expiredLogin: "a"))
     }
 
     // MARK: - Screen
@@ -447,7 +454,7 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         }
     }
 
-    func test_success_resetsTheFailures_recordsTheItemDate_andRefreshesOnce() async {
+    func test_success_resetsTheFailures_recordsTheLogin_andRefreshesOnce() async {
         let now = Date(timeIntervalSince1970: 5_000_000)
         defaults.set(now.addingTimeInterval(-2 * 24 * 3600).timeIntervalSince1970, forKey: ClaudeSignInRenewal.lastAttemptKey)
         defaults.set(4, forKey: ClaudeSignInRenewal.failuresKey)
@@ -456,14 +463,14 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         let renewal = makeRenewal(environment(now: now, result: .renewed, runs: { reservation = $0 })) {
             refreshed.fulfill()
         }
-        let outcome = await renewal.attemptIfAllowed(userAsked: false)
+        let outcome = await renewal.attemptIfAllowed(userAsked: false, expiredToken: "fp-expired")
         XCTAssertEqual(outcome, .ran(.renewed))
         await fulfillment(of: [refreshed], timeout: 1)
         XCTAssertEqual(reservation?.lastAttemptAt, now, "the attempt was not recorded before Claude Code started")
         XCTAssertEqual(reservation?.consecutiveFailures, 5)
         let record = renewal.load(renewal.environment)
         XCTAssertEqual(record.consecutiveFailures, 0)
-        XCTAssertEqual(record.itemDateAfterLastAttempt, 4_000_000)
+        XCTAssertEqual(record.expiredLoginAtLastAttempt, "fp-expired")
     }
 
     func test_failure_countsUp_andCallsNoRefresh() async {
@@ -475,6 +482,33 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         XCTAssertEqual(renewal.load(renewal.environment).consecutiveFailures, 1)
         let again = await renewal.attemptIfAllowed(userAsked: false)
         XCTAssertEqual(again, .skipped(.backingOff))
+    }
+
+    /// Seen on 2026-11-24: Claude Code started by the Claude desktop app
+    /// rewrote the item three times in 40 minutes and left the login as it
+    /// was. A rewrite like that must not undo the backoff; a new login does.
+    func test_aRewriteKeepingTheSameLogin_keepsTheBackoff_aNewLoginLiftsIt() async {
+        let start = Date(timeIntervalSince1970: 5_000_000)
+        let clock = LockedBox<Date>(start)
+        let itemDate = LockedBox<Date?>(Date(timeIntervalSinceReferenceDate: 4_000_000))
+        var env = environment(result: .notRenewed(.deadline))
+        env.now = { clock.get() }
+        env.itemModified = { itemDate.get() }
+        let renewal = makeRenewal(env)
+        for failure in 1...3 {
+            let outcome = await renewal.attemptIfAllowed(userAsked: false, expiredToken: "fp-old")
+            XCTAssertEqual(outcome, .ran(.notRenewed(.deadline)), "attempt \(failure)")
+            clock.set(clock.get().addingTimeInterval(ClaudeSignInRenewalPolicy.interval(afterFailures: failure)))
+        }
+        // Three failures: the next is 2 h after the last. 31 minutes on, the
+        // item rewritten with the same login is still held back.
+        clock.set(clock.get().addingTimeInterval(-ClaudeSignInRenewalPolicy.interval(afterFailures: 3) + 31 * 60))
+        itemDate.set(itemDate.get().addingTimeInterval(600))
+        let sameLogin = await renewal.attemptIfAllowed(userAsked: false, expiredToken: "fp-old")
+        XCTAssertEqual(sameLogin, .skipped(.backingOff))
+        let newLogin = await renewal.attemptIfAllowed(userAsked: false, expiredToken: "fp-new")
+        XCTAssertEqual(newLogin, .ran(.notRenewed(.deadline)))
+        XCTAssertEqual(renewal.load(renewal.environment).expiredLoginAtLastAttempt, "fp-new")
     }
 
     func test_aRewriteThatCannotBeReadQuietly_refreshesNothing() async {

@@ -63,10 +63,16 @@ struct ClaudeSignInRenewalRecord: Equatable, Sendable {
     var lastAttemptAt: Date?
     /// Attempts in a row that did not renew the login.
     var consecutiveFailures: Int = 0
-    /// The item's date (whole seconds) when the last attempt ended. A
-    /// different date later means something else rewrote the item, for
-    /// example the user signed in again.
-    var itemDateAfterLastAttempt: Int?
+    /// The fingerprint of the expired login the last attempt was for
+    /// (`ClaudeOAuthBackoffState.fingerprint`, a one-way hash of an access
+    /// token that had already expired). A different expired login later
+    /// means a new sign-in, for example the user signed in again.
+    ///
+    /// Not the item's date: Claude Code started by the Claude desktop app
+    /// rewrites the item each time it starts without renewing the login
+    /// (seen three times in 40 minutes on 2026-11-24, the expiry unchanged),
+    /// which would lift the backoff for exactly the people this is for.
+    var expiredLoginAtLastAttempt: String?
 }
 
 /// When the next renewal may start.
@@ -89,9 +95,10 @@ enum ClaudeSignInRenewalPolicy {
         return min(firstInterval * pow(2, doublings), longestInterval)
     }
 
-    /// - Parameter itemDate: the item's date now, whole seconds.
+    /// - Parameter expiredLogin: the fingerprint of the expired login seen
+    ///   now, if known.
     static func allows(
-        now: Date, record: ClaudeSignInRenewalRecord, userAsked: Bool, itemDate: Int?
+        now: Date, record: ClaudeSignInRenewalRecord, userAsked: Bool, expiredLogin: String?
     ) -> Bool {
         guard let last = record.lastAttemptAt else { return true }
         let since = now.timeIntervalSince(last)
@@ -100,9 +107,9 @@ enum ClaudeSignInRenewalPolicy {
         if since < 0 { return true }
         if userAsked { return since >= userAskedFloor }
         if since < firstInterval { return false }
-        // Rewritten by something else since the last attempt ended (the user
-        // signed in again, say): a new login, so the old failures don't count.
-        if let itemDate, let recorded = record.itemDateAfterLastAttempt, itemDate != recorded {
+        // A different login has expired since (the user signed in again,
+        // say), so the old one's failures don't count.
+        if let expiredLogin, let recorded = record.expiredLoginAtLastAttempt, expiredLogin != recorded {
             return true
         }
         return since >= interval(afterFailures: record.consecutiveFailures)
@@ -404,7 +411,7 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
     // own standard-defaults keys.
     static let lastAttemptKey = "cli_pulse_claude_sign_in_renewal_last_attempt"
     static let failuresKey = "cli_pulse_claude_sign_in_renewal_failures"
-    static let itemDateKey = "cli_pulse_claude_sign_in_renewal_item_date"
+    static let expiredLoginKey = "cli_pulse_claude_sign_in_renewal_expired_login"
 
     private static let logger = Logger(subsystem: "com.clipulse", category: "ClaudeSignInRenewal")
 
@@ -521,7 +528,7 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
         defer { lock.withLock { running = false } }
 
         let env = environment
-        if let skip = gate(env, userAsked: userAsked) {
+        if let skip = gate(env, userAsked: userAsked, expiredLogin: expiredToken) {
             if skip != .backingOff {
                 Self.logger.info("Claude sign-in renewal not started: \(String(describing: skip), privacy: .public)")
             }
@@ -537,6 +544,7 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
         var record = load(env)
         record.lastAttemptAt = env.now()
         record.consecutiveFailures += 1
+        record.expiredLoginAtLastAttempt = expiredToken
         save(record, env)
 
         Self.logger.info("Claude sign-in renewal: starting Claude Code")
@@ -556,9 +564,10 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
         lock.withLock { runStopped = nil }
         stopped.signal()
 
-        if result == .renewed { record.consecutiveFailures = 0 }
-        record.itemDateAfterLastAttempt = env.itemModified().map(ClaudeSignInRenewalRun.wholeSeconds)
-        save(record, env)
+        if result == .renewed {
+            record.consecutiveFailures = 0
+            save(record, env)
+        }
 
         switch result {
         case .renewed:
@@ -575,15 +584,13 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
     }
 
     /// The first reason not to start, cheapest questions first.
-    private func gate(_ env: Environment, userAsked: Bool) -> ClaudeSignInRenewalSkip? {
+    private func gate(_ env: Environment, userAsked: Bool, expiredLogin: String?) -> ClaudeSignInRenewalSkip? {
         if env.isSandboxed() { return .sandboxed }
         if !env.allowedBySettings() { return .notAllowedBySettings }
         if env.isScreenLocked() ?? true { return .screenLocked }
-        let itemDate = env.itemModified()
-        guard let itemDate else { return .itemDateUnreadable }
+        if env.itemModified() == nil { return .itemDateUnreadable }
         if !ClaudeSignInRenewalPolicy.allows(
-            now: env.now(), record: load(env), userAsked: userAsked,
-            itemDate: ClaudeSignInRenewalRun.wholeSeconds(itemDate)
+            now: env.now(), record: load(env), userAsked: userAsked, expiredLogin: expiredLogin
         ) {
             return .backingOff
         }
@@ -596,7 +603,7 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
         return ClaudeSignInRenewalRecord(
             lastAttemptAt: epoch > 0 ? Date(timeIntervalSince1970: epoch) : nil,
             consecutiveFailures: max(0, env.defaults.integer(forKey: Self.failuresKey)),
-            itemDateAfterLastAttempt: env.defaults.object(forKey: Self.itemDateKey) as? Int
+            expiredLoginAtLastAttempt: env.defaults.string(forKey: Self.expiredLoginKey)
         )
     }
 
@@ -607,10 +614,10 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
             env.defaults.removeObject(forKey: Self.lastAttemptKey)
         }
         env.defaults.set(record.consecutiveFailures, forKey: Self.failuresKey)
-        if let date = record.itemDateAfterLastAttempt {
-            env.defaults.set(date, forKey: Self.itemDateKey)
+        if let login = record.expiredLoginAtLastAttempt {
+            env.defaults.set(login, forKey: Self.expiredLoginKey)
         } else {
-            env.defaults.removeObject(forKey: Self.itemDateKey)
+            env.defaults.removeObject(forKey: Self.expiredLoginKey)
         }
     }
 
