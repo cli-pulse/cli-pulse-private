@@ -542,6 +542,11 @@ public final class ClaudeSignInRenewal: @unchecked Sendable {
         // Recorded before the start, as a failure, so a start that hangs or
         // a crash still holds the next one back.
         var record = load(env)
+        // A different login than the last attempt's: its failures were the
+        // old login's, so they don't count against this one.
+        if let expiredToken, let recorded = record.expiredLoginAtLastAttempt, expiredToken != recorded {
+            record.consecutiveFailures = 0
+        }
         record.lastAttemptAt = env.now()
         record.consecutiveFailures += 1
         record.expiredLoginAtLastAttempt = expiredToken

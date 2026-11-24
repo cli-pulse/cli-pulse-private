@@ -490,7 +490,7 @@ final class ClaudeSignInRenewalTests: XCTestCase {
     func test_aRewriteKeepingTheSameLogin_keepsTheBackoff_aNewLoginLiftsIt() async {
         let start = Date(timeIntervalSince1970: 5_000_000)
         let clock = LockedBox<Date>(start)
-        let itemDate = LockedBox<Date?>(Date(timeIntervalSinceReferenceDate: 4_000_000))
+        let itemDate = LockedBox<Date>(Date(timeIntervalSinceReferenceDate: 4_000_000))
         var env = environment(result: .notRenewed(.deadline))
         env.now = { clock.get() }
         env.itemModified = { itemDate.get() }
@@ -508,7 +508,13 @@ final class ClaudeSignInRenewalTests: XCTestCase {
         XCTAssertEqual(sameLogin, .skipped(.backingOff))
         let newLogin = await renewal.attemptIfAllowed(userAsked: false, expiredToken: "fp-new")
         XCTAssertEqual(newLogin, .ran(.notRenewed(.deadline)))
-        XCTAssertEqual(renewal.load(renewal.environment).expiredLoginAtLastAttempt, "fp-new")
+        let record = renewal.load(renewal.environment)
+        XCTAssertEqual(record.expiredLoginAtLastAttempt, "fp-new")
+        XCTAssertEqual(record.consecutiveFailures, 1, "the new login inherited the old login's failures")
+        // So its next try is 30 minutes on, not a day.
+        clock.set(clock.get().addingTimeInterval(30 * 60))
+        let again = await renewal.attemptIfAllowed(userAsked: false, expiredToken: "fp-new")
+        XCTAssertEqual(again, .ran(.notRenewed(.deadline)))
     }
 
     func test_aRewriteThatCannotBeReadQuietly_refreshesNothing() async {
