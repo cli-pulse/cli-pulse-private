@@ -133,6 +133,18 @@ struct CLIPulseBarApp: App {
 
         let state = AppState(runtimeEnvironment: runtimeEnvironment)
         _appState = StateObject(wrappedValue: state)
+
+        // 2026-11-24: when Claude Code's sign-in in its keychain item has
+        // expired, this app (never the LoginItem helper) may start Claude Code
+        // so it renews it, as Settings › Privacy allow (`ClaudeSignInRenewal`,
+        // off by default). Only the Developer ID build, unsandboxed, in a live
+        // runtime; elsewhere this does nothing. After a renewal, refresh, so
+        // the Claude card shows it at once.
+        ClaudeSignInRenewal.enableForThisApp(
+            allowsLiveCollection: runtimeEnvironment.capabilities.allowsLiveCollection
+        ) { [weak state] in
+            Task { @MainActor in state?.requestRefresh() }
+        }
         if runtimeEnvironment.capabilities.allowsTelemetry {
             SentryLogger.start(platform: .macOS)
             MainThreadStallProbe.shared.start()

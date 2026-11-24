@@ -45,6 +45,9 @@ public final class PrivacySettings: ObservableObject {
         // together, so a rename here fails there rather than silently
         // detaching the switch from what it switches.
         static let anonymousTelemetryEnabled = UserDefaultsAnonymousTelemetryStore.enabledKey
+        // 2026-11-24: the app's own, never copied to the helpers: only the
+        // app starts Claude Code (`ClaudeSignInRenewal`).
+        static let renewClaudeCodeSignIn = "privacy.renewClaudeCodeSignIn"
     }
 
     @Published public var skipClaudeKeychain: Bool {
@@ -89,6 +92,25 @@ public final class PrivacySettings: ObservableObject {
         }
     }
 
+    /// 2026-11-24 (Developer ID build): when Claude Code's sign-in in its
+    /// keychain item has expired, start Claude Code briefly so it renews it
+    /// (`ClaudeSignInRenewal`). Off unless turned on: CLI Pulse would be
+    /// starting another app's program on its own, which may ask macOS for
+    /// keychain access. Takes effect only while the Claude keychain switches
+    /// allow reading the item (`renewsClaudeCodeSignIn`).
+    @Published public var renewClaudeCodeSignIn: Bool {
+        didSet {
+            defaults.set(renewClaudeCodeSignIn, forKey: Keys.renewClaudeCodeSignIn)
+        }
+    }
+
+    /// Whether `ClaudeSignInRenewal` may start Claude Code: the switch is on,
+    /// and neither Strict privacy mode nor "Skip Claude Code keychain access"
+    /// keeps CLI Pulse away from the item.
+    public var renewsClaudeCodeSignIn: Bool {
+        renewClaudeCodeSignIn && !skipsClaudeKeychainOnItsOwn
+    }
+
     /// True when `localOnlyMode` is already suppressing telemetry, so the UI can
     /// show the switch as inactive instead of letting someone toggle a control
     /// that does nothing.
@@ -107,6 +129,7 @@ public final class PrivacySettings: ObservableObject {
         // `bool(forKey:)`'s false-for-missing from reading as an opt-out.
         self.anonymousTelemetryEnabled =
             (defaults.object(forKey: Keys.anonymousTelemetryEnabled) as? Bool) ?? true
+        self.renewClaudeCodeSignIn = defaults.bool(forKey: Keys.renewClaudeCodeSignIn)
     }
 
     // MARK: - The helpers (v1.55)

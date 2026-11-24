@@ -342,9 +342,16 @@ public enum ClaudeCredentials {
     /// - Parameter cacheResult: pass `false` when importing into one account's
     ///   staged editor state. This avoids creating a provider-global cache when
     ///   the user may still cancel the account draft.
+    /// - Parameter quietOnly: never let macOS show its dialog, not even for
+    ///   the read the dialog is for (an expired copy of a rewritten item).
+    ///   `ClaudeSignInRenewal` checks a renewal this way: something CLI Pulse
+    ///   started on its own must not end in a dialog. Arms no cooldown, starts
+    ///   no renewal, and reads the item even when the copy's date says it is
+    ///   unchanged (a rewrite within the same second).
     public static func readKeychainCredentials(
         bypassCooldown: Bool = false,
-        cacheResult: Bool = true
+        cacheResult: Bool = true,
+        quietOnly: Bool = false
     ) -> Creds? {
         // When Claude Code last wrote its item, from the item's attributes,
         // which macOS gives without a dialog. Read before the item itself, so
@@ -378,13 +385,20 @@ public enum ClaudeCredentials {
             case .readAndMayAsk:
                 break
             case .expiredAndUnchanged:
+                // `ClaudeSignInRenewal`'s check reads anyway, quietly: Claude
+                // Code may have rewritten the item within the same second as
+                // the date the copy was kept with.
+                if quietOnly { break }
                 // Claude Code has not renewed it yet. Reading the item again
                 // would only ask macOS (and perhaps the user) for the same
                 // expired token; Claude Code's next run rewrites it.
                 ClaudeKeychainReadLog.note(.expiredLogin)
+                ClaudeSignInRenewal.shared.expiredLoginSeen(
+                    expiredToken: ClaudeOAuthBackoffState.fingerprint(forToken: creds.accessToken))
                 return nil
             }
         }
+        if quietOnly { read = .quiet }
 
         // 1b. Cross-app read cooldown (v1.30.x — keychain prompt-spam fix).
         // The cross-app read below shows a macOS authorization dialog
@@ -475,6 +489,10 @@ public enum ClaudeCredentials {
         // this Mac has a Claude Code login.
         if expired, !bypassCooldown {
             ClaudeKeychainReadLog.note(.expiredLogin)
+            if !quietOnly {
+                ClaudeSignInRenewal.shared.expiredLoginSeen(
+                    expiredToken: ClaudeOAuthBackoffState.fingerprint(forToken: creds.accessToken))
+            }
             if read == .mayAsk, !keptWithDate {
                 // Without the copy and its date, a later refresh may read
                 // (and perhaps ask) again for the same expired login. The
@@ -612,6 +630,27 @@ public enum ClaudeCredentials {
     ) -> Creds? {
         guard !privacy.skipsClaudeKeychainOnItsOwn else { return nil }
         return reader()
+    }
+
+    /// `readKeychainCredentialsIfAllowed`, but the item is read only without
+    /// a dialog (`quietOnly`). For `ClaudeSignInRenewal`, which checks that
+    /// Claude Code renewed its login: something CLI Pulse started on its own
+    /// must not end in a dialog.
+    static func readKeychainCredentialsQuietlyIfAllowed(
+        privacy: PrivacySettings = .shared
+    ) -> Creds? {
+        guard !privacy.skipsClaudeKeychainOnItsOwn else { return nil }
+        return readKeychainCredentials(quietOnly: true)
+    }
+
+    /// The item's modification date (attributes only, never a dialog), behind
+    /// the same switches as the read. For `ClaudeSignInRenewal`, which watches
+    /// it for Claude Code's rewrite.
+    static func keychainItemModifiedIfAllowed(
+        privacy: PrivacySettings = .shared
+    ) -> Date? {
+        guard !privacy.skipsClaudeKeychainOnItsOwn else { return nil }
+        return keychainItemModified()
     }
 
     /// Clear the cached Claude Code credentials (cache-only — does NOT arm the

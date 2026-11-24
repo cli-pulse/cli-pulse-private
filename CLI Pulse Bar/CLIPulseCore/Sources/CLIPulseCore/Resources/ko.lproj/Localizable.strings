@@ -1380,6 +1380,9 @@
 "settings.skip_claude_keychain" = "Claude Code 키체인 접근 건너뛰기";
 "settings.skip_claude_keychain_forced" = "엄격한 개인정보 보호 모드에 의해 강제로 켜져 있습니다.";
 "settings.skip_claude_keychain_hint" = "Claude Code가 macOS 키체인에 보관하는 로그인 토큰을 CLI Pulse가 스스로 읽지 않도록 합니다. Claude Code의 자격 증명 파일이 있으면 그 파일은 계속 읽습니다. macOS 키체인 대화상자가 로그인 암호를 받아들이지 않는 경우에 유용합니다.";
+"settings.renew_claude_sign_in" = "Claude Code 로그인이 만료되면 갱신";
+"settings.renew_claude_sign_in_hint" = "Claude Code는 실행될 때만 자신의 로그인을 갱신합니다. claude를 거의 실행하지 않으면 로그인이 만료된 뒤 Claude 카드에 사용량이 표시되지 않습니다. 이 옵션을 켜면 그럴 때 CLI Pulse가 Claude Code를 몇 초 동안 실행하고, 로그인이 갱신되면 종료합니다. 아무것도 입력하지 않으며 Claude에 프롬프트를 보내지 않습니다. Claude Code가 macOS에 키체인 접근을 요청할 수 있습니다.";
+"settings.renew_claude_sign_in_unavailable" = "CLI Pulse가 Claude Code의 키체인 로그인 정보를 읽지 않는 동안에는 적용되지 않습니다.";
 "settings.claude_keychain_helper_confirmed" = "백그라운드 헬퍼도 이 설정을 따릅니다.";
 "settings.claude_keychain_helper_unconfirmed" = "백그라운드 헬퍼의 확인을 아직 받지 못했습니다.";
 "settings.companion_ignores_switches" = "이 Mac에 설치된 Companion CLI는 이 스위치들을 따르지 않습니다(설치된 버전: %@). 설정 › Companion CLI에서 업데이트하거나 제거하세요.";

@@ -1426,6 +1426,9 @@
 "settings.skip_claude_keychain" = "跳过 Claude Code 钥匙串访问";
 "settings.skip_claude_keychain_forced" = "已由严格隐私模式强制开启。";
 "settings.skip_claude_keychain_hint" = "CLI Pulse 不会自行读取 Claude Code 保存在 macOS 钥匙串中的登录令牌；如果 Claude Code 有凭据文件，仍会读取该文件。如果你遇到过 macOS 钥匙串对话框不接受登录密码的情况，可以开启此项。";
+"settings.renew_claude_sign_in" = "Claude Code 登录过期时自动续期";
+"settings.renew_claude_sign_in_hint" = "Claude Code 只有在运行时才会续期自己的登录。如果你很少运行 claude，登录过期后 Claude 卡片就不再显示用量。开启后，遇到这种情况 CLI Pulse 会启动 Claude Code 几秒钟，登录续期后随即关闭。它不会输入任何内容，也不会向 Claude 发送提示词。Claude Code 可能会请求 macOS 钥匙串访问权限。";
+"settings.renew_claude_sign_in_unavailable" = "CLI Pulse 不读取 Claude Code 的钥匙串登录时，此项不起作用。";
 "settings.claude_keychain_helper_confirmed" = "后台 helper 也会遵循这项设置。";
 "settings.claude_keychain_helper_unconfirmed" = "后台 helper 尚未确认会遵循这项设置。";
 "settings.companion_ignores_switches" = "这台 Mac 上的 Companion CLI（%@）不遵循这些开关。请在「设置 › Companion CLI」中更新或卸载它。";

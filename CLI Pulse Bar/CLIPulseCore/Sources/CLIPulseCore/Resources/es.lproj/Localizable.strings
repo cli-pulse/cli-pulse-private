@@ -1393,6 +1393,9 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "settings.skip_claude_keychain" = "Omitir el acceso al Llavero para Claude Code";
 "settings.skip_claude_keychain_forced" = "Activado obligatoriamente por el modo de privacidad estricta.";
 "settings.skip_claude_keychain_hint" = "CLI Pulse no lee por su cuenta el token de inicio de sesión que Claude Code guarda en tu Llavero de macOS; el archivo de credenciales de Claude Code, si existe, se sigue leyendo. Útil si te has topado con un diálogo del Llavero de macOS que no acepta tu contraseña de inicio de sesión.";
+"settings.renew_claude_sign_in" = "Renovar el inicio de sesión de Claude Code cuando caduque";
+"settings.renew_claude_sign_in_hint" = "Claude Code solo renueva su inicio de sesión cuando lo ejecutas, así que si casi nunca ejecutas claude, la tarjeta de Claude deja de mostrar el uso cuando caduca. Con esta opción, CLI Pulse abre Claude Code unos segundos cuando eso pase y lo cierra en cuanto se renueva el inicio de sesión. No escribe nada ni envía ninguna instrucción a Claude. Claude Code puede pedir a macOS acceso al Llavero.";
+"settings.renew_claude_sign_in_unavailable" = "Sin efecto mientras CLI Pulse no lea el inicio de sesión de Claude Code en el Llavero.";
 "settings.claude_keychain_helper_confirmed" = "El helper en segundo plano también lo respeta.";
 "settings.claude_keychain_helper_unconfirmed" = "El helper en segundo plano aún no lo ha confirmado.";
 "settings.companion_ignores_switches" = "El helper de Companion CLI de este Mac (%@) no respeta estos interruptores. Actualízalo o desinstálalo en Ajustes › Companion CLI.";
