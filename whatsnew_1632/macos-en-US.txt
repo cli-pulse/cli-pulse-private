@@ -1,0 +1,7 @@
+Claude, measured the way each plan is metered.
+
+• Claude plans without a 5-hour window, such as Ultra, now lead with their weekly figure and show a pace, and a weekly limit kept for one model gets its own row. The card shows your plan's real name, which CLI Pulse asks Anthropic for, and Ultra counts as $200 a month in the cost summary.
+• Fixes several causes of Claude's card going blank or showing another device's numbers: an old saved login file no longer hides Claude Code's keychain sign-in, an expired copy of that sign-in is no longer sent, and on some Macs Claude and Gemini were not being read at all.
+• New in Settings › Privacy, off by default: "Renew Claude Code's sign-in when it expires". If you run Claude Code only from the Claude desktop app, its sign-in in your keychain expires. With this on, CLI Pulse can start the installed Claude Code CLI to attempt the renewal, then asks it to exit. It types nothing and sends no prompt.
+• Settings › Display › Window background: from clear glass to solid. Frosted glass is the new default.
+• Settings no longer runs off both sides of the window.
