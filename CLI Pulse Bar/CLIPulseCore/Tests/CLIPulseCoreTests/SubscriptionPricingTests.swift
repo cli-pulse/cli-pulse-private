@@ -10,7 +10,7 @@ final class SubscriptionPricingTests: XCTestCase {
         XCTAssertEqual(SubscriptionPricing.monthlyCost(provider: "Claude", plan: "Max 5x"), 100)
         XCTAssertEqual(SubscriptionPricing.monthlyCost(provider: "Claude", plan: "Max 20x"), 200)
         XCTAssertEqual(SubscriptionPricing.monthlyCost(provider: "Claude", plan: "Team"), 30)
-        XCTAssertEqual(SubscriptionPricing.monthlyCost(provider: "Claude", plan: "Ultra"), 100)
+        XCTAssertEqual(SubscriptionPricing.monthlyCost(provider: "Claude", plan: "Ultra"), 200)
     }
 
     func testKnownCodexPlans() {
