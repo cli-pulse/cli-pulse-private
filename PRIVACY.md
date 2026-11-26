@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **CLI Pulse**
-**Last Updated: November 19, 2026**
+**Last Updated: November 26, 2026**
 
 CLI Pulse is a developer tool for monitoring usage, quotas, and cost across AI
 coding providers (Claude, Codex, Gemini, OpenRouter, and others). Our privacy
@@ -86,7 +86,7 @@ pass through our servers.
 | **Provider API keys you enter** (OpenAI, Anthropic, Google, OpenRouter, etc.) | macOS Keychain on this Mac. The Android app has no place to enter one | ❌ Never | Sent only to that provider, to ask for your usage and quota |
 | **Provider session cookies you paste** (manual cookie headers) | macOS Keychain on this Mac | ❌ Never | Sent only to that provider, as a `Cookie` header |
 | **Provider cookies read from your browsers**, only for a provider whose cookie source is "Automatic" (Cursor's is until you change it; any other provider's only if you choose it), and not while Strict privacy mode is on | Read from that browser's cookie store (macOS may ask you to let CLI Pulse use the browser's "Safe Storage" Keychain item) | ❌ Never | Sent only to that provider |
-| **Tokens that AI CLIs keep on your Mac**: `~/.codex/auth.json`, `~/.claude/.credentials.json`, `~/.gemini/oauth_creds.json`, `~/.local/share/kilo/auth.json`, and Claude Code's Keychain item | Read where each CLI keeps them. The app copies the file-based ones into a Keychain item that only CLI Pulse's own programs can read | ❌ Never | Sent only to that provider, for live quota (and, since v1.57, Codex's limit reset credits) |
+| **Tokens that AI CLIs keep on your Mac**: `~/.codex/auth.json`, `~/.claude/.credentials.json`, `~/.gemini/oauth_creds.json`, `~/.local/share/kilo/auth.json`, and Claude Code's Keychain item | Read where each CLI keeps them. The app copies the file-based ones into a Keychain item that only CLI Pulse's own programs can read | ❌ Never | Sent only to that provider, for live quota (and, since v1.57, Codex's limit reset credits; since 1.63.2, your Claude plan's name: CLI Pulse asks Anthropic for your account profile and keeps only the plan's name and rate-limit tier, in memory) |
 | **Contents of your session logs** (`~/.codex/sessions/`, `~/.codex/archived_sessions/`, `~/.claude/projects/`, `~/.config/claude/projects/`) | Read on your Mac: in the App Store build through folder access you grant, in the direct-download build directly | ❌ Never | Token counts and costs are worked out on your Mac |
 | **Daily usage** (per day, provider and model: input, cached and output token counts and a cost estimate; which of your Macs it came from, once that Mac is paired) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So iPhone, Apple Watch and the Android app show the same history as your Mac |
 | **Provider quota state** (remaining, limit, plan, reset times; for a provider that sells prepaid credit, such as OpenRouter, DeepSeek or Venice, the credit balance and, where the provider reports it, how much credit was bought; the label you gave the account, if any; which Mac reported it) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So mobile clients display current quotas without running the scanner themselves |
@@ -340,6 +340,24 @@ Starting the scan turns on:
   disclosed, and v1.50 also fixed a bug that made it happen far more often than
   intended — a date-parsing error meant a check written as "renew if the token is
   more than 8 days old" renewed it on essentially every refresh.
+* **Starting Claude Code to renew its sign-in** (direct-download build, from
+  1.63.2), only if you turn on Settings → Privacy → "Renew Claude Code's
+  sign-in when it expires", which is off by default. When CLI Pulse finds that
+  the sign-in Claude Code keeps in your Keychain has expired, it starts Claude
+  Code on your Mac, in a temporary folder of its own. It types nothing and
+  sends Claude no prompt. Claude Code renews its own sign-in, which rewrites
+  Claude Code's Keychain item, and it contacts Anthropic as it does whenever it
+  starts; CLI Pulse never uses the renewal token itself. CLI Pulse watches for
+  the renewal for up to 30 seconds and then asks Claude Code to exit; if Claude
+  Code is in the middle of renewing, it waits up to another 30 seconds before
+  asking. Claude Code can take longer than that to exit.
+  It starts no attempt while your screen is locked, or while Strict privacy
+  mode or "Skip Claude Code keychain access" is on, and if your screen locks
+  or a switch changes during an attempt, it asks Claude Code to exit. To space
+  out retries, it keeps in its preferences on your Mac the time of its last
+  attempt, how many attempts in a row failed, and a one-way fingerprint of the
+  expired sign-in token, and it uses a lock file while an attempt runs. Claude
+  Code may ask macOS for keychain access.
 * **macOS Keychain prompts, which macOS shows you itself**: once for Claude
   Code's token; in the direct-download build, possibly once for Zed's own
   credential, if you use Zed; and, for a provider whose cookie source is
@@ -780,6 +798,11 @@ with CLI Pulse 1.55, and later releases follow them:
   crash reports are still sent. Settings says whether the
   background helper has confirmed it follows the Claude switches; for the
   Companion CLI see its section.
+- **Claude Code sign-in renewal** (direct-download build, from 1.63.2):
+  Settings → Privacy → "Renew Claude Code's sign-in when it expires". Off by
+  default; while it is off, CLI Pulse starts no attempt, and turning it off
+  during one asks Claude Code to exit. Strict privacy mode and "Skip Claude
+  Code keychain access" also stop it.
 - **Disable anonymous install statistics:** Settings → Privacy → "Send
   anonymous install statistics". On by default, disclosed on first launch
   before anything is sent. Strict privacy mode disables it too.
