@@ -1,0 +1,7 @@
+Claude, measured the way each plan is metered.
+
+• Claude plans without a 5-hour window, such as Ultra, are headlined by their week, and a week kept for one model gets its own row. The card names your plan as Claude does, and Ultra is priced at $200 a month.
+• Claude's card works again where it went blank or showed another device's figures: an expired ~/.claude/.credentials.json no longer hides Claude Code's keychain sign-in, a stale or expired copy of that sign-in is no longer sent, and on some Macs Claude and Gemini were not collected at all.
+• New in Settings › Privacy, off by default: "Renew Claude Code's sign-in when it expires". If you run Claude Code only from the Claude desktop app, its sign-in in your keychain expires; with this on, CLI Pulse starts Claude Code for a few seconds so it renews the sign-in itself. It types nothing and sends no prompt.
+• Settings › Display › Window background: from clear glass to solid. Frosted glass is the new default.
+• Settings no longer runs off both sides of the window.
