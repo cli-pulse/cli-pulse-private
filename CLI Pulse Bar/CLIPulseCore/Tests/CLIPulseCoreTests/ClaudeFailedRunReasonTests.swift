@@ -239,11 +239,14 @@ final class ClaudeFailedRunReasonTests: XCTestCase {
     func test_privacySwitches_aLockedScreen_andAnUnreadableItem_keepTheFailure() async {
         for miss in [ClaudeKeychainMiss.skipped(.skippedBySetting), .skipped(.skippedStrictPrivacyMode),
                      .skipped(.skippedAwaitingApp), .status(errSecInteractionNotAllowed), .unreadable] {
-            let (_, error) = await run([
+            let (outcome, error) = await run([
                 TokenlessOAuth(keychain: .missing(miss)),
                 Failing(.cli, .timedOut),
             ])
-            XCTAssertFalse(error is CollectorNotReadyFailure, "\(miss)")
+            XCTAssertEqual(outcome, .failed(.other), "\(miss)")
+            guard case .timedOut? = error as? ClaudeStrategyError else {
+                return XCTFail("\(miss): the run's own failure is reported, got \(String(describing: error))")
+            }
         }
     }
 
