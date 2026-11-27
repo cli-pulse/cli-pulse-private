@@ -36,6 +36,11 @@
 # nobody has watched fail is not known to work.
 #
 # Usage: check_paywall_claims.sh [--root DIR]   (--root is for the self-test)
+#
+# Never pipe into `grep -q` here: under `pipefail`, grep exiting at the first
+# match kills the writer with SIGPIPE (141), the pipeline fails, and `if` reads
+# a real match as no match. Feed grep a here-string (`grep -q PAT <<< "$x"`).
+# The caption check missed a planted claim this way (#796's CI, 2026-11-27).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -158,7 +163,7 @@ inline_bullets="$(grep -oE 'features: L10n\.subscription\.[A-Za-z0-9_]+' "$INLIN
     | sed 's/.*L10n\.subscription\.//' | sort -u)"
 for sym in $inline_bullets; do
     case " $POINTER_BULLETS " in *" $sym "*) continue ;; esac
-    if ! echo "$registered" | grep -qx "$sym"; then
+    if ! grep -qx -- "$sym" <<< "$registered"; then
         echo "ERROR: the inline buy card in SubscriptionSection.swift pitches"
         echo "       'L10n.subscription.$sym', which is not registered in"
         echo "       scripts/paywall_claims.allow."
@@ -169,7 +174,7 @@ done
 # ── 2. every bullet is registered ────────────────────────────────────────────
 for sym in $bullets; do
     case " $POINTER_BULLETS " in *" $sym "*) continue ;; esac
-    if ! echo "$registered" | grep -qx "$sym"; then
+    if ! grep -qx -- "$sym" <<< "$registered"; then
         echo "ERROR: the paywall advertises 'L10n.subscription.$sym' but it is not"
         echo "       registered in scripts/paywall_claims.allow."
         echo
@@ -190,7 +195,7 @@ while IFS='|' read -r sym file pattern _note; do
     file="$(echo "$file" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
     pattern="$(echo "$pattern" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
 
-    if ! echo "$bullets" | grep -qx "$sym"; then
+    if ! grep -qx -- "$sym" <<< "$bullets"; then
         echo "ERROR: scripts/paywall_claims.allow registers '$sym' but the paywall"
         echo "       no longer advertises it. Remove the stale registry line — a"
         echo "       registry that describes a paywall we do not ship is not"
@@ -237,7 +242,7 @@ if [ -f "$OFFER_FILE" ]; then
         failed=1
     else
         for withdrawn in teamMonthlyID teamYearlyID proLifetimeID; do
-            if echo "$offer_block" | grep -q "$withdrawn"; then
+            if grep -q -- "$withdrawn" <<< "$offer_block"; then
                 echo "ERROR: '$withdrawn' is back in allProductIDs — that puts a withdrawn"
                 echo "       tier back on sale."
                 echo
@@ -338,7 +343,8 @@ else
         hits=""
         while IFS= read -r f; do
             [ -z "$f" ] && continue
-            if sed 's/#.*$//' "$f" | grep -qie "$phrase"; then
+            caption_body="$(sed 's/#.*$//' "$f")"
+            if grep -qie "$phrase" <<< "$caption_body"; then
                 hits="$hits$f
 "
             fi
@@ -432,7 +438,7 @@ while IFS= read -r src; do
     rel="${src#"$ROOT"/}"
     body="$(sed 's/#.*$//' "$src")"
 
-    if printf '%s' "$body" | grep -qE "$price_pattern"; then
+    if grep -qE -- "$price_pattern" <<< "$body"; then
         echo "ERROR: $rel hardcodes a price in the App Store description."
         printf '%s' "$body" | grep -nE "$price_pattern" | sed 's/^/         /'
         echo "       Prices live in App Store Connect and change there; a copy"
@@ -443,7 +449,7 @@ while IFS= read -r src; do
         failed=1
     fi
 
-    if printf '%s' "$body" | grep -qiE 'CLI Pulse Team'; then
+    if grep -qiE 'CLI Pulse Team' <<< "$body"; then
         echo "ERROR: $rel sells 'CLI Pulse Team' in the App Store description,"
         echo "       but the tier was withdrawn from sale in v1.52."
         echo "       The store listing is a purchase surface like any other."
