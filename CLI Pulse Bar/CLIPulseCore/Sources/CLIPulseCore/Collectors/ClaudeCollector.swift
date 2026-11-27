@@ -49,8 +49,27 @@ public struct ClaudeCollector: ProviderCollector, Sendable {
         return .notReady(ClaudeNotReadyDiagnosis.reason(for: resolution.absence))
     }
 
+    /// 1.63.3: a run in which every strategy failed because Claude Code's own
+    /// login cannot be used says so, as `readiness` does when nothing else can
+    /// run ("Not signed in", "Keychain access declined"), rather than "Check
+    /// failed — This one is on us". The resolution log is bound here as
+    /// `readiness` binds it around `isAvailable`: the OAuth strategy notes why
+    /// it had no token, or that the token it sent was refused.
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
-        try await resolver.resolve(config: config)
+        let resolution = ClaudeTokenResolutionLog()
+        do {
+            return try await ClaudeTokenResolutionLog.$current.withValue(resolution) {
+                try await resolver.resolveKeepingFailures(config: config)
+            }
+        } catch let exhausted as ClaudeStrategiesExhausted {
+            if let reason = ClaudeNotReadyDiagnosis.reason(
+                forFailedRun: exhausted.failures, absence: resolution.absence
+            ) {
+                throw CollectorNotReadyFailure(
+                    reason: reason, providerName: kind.rawValue, underlying: exhausted.primary)
+            }
+            throw exhausted.primary
+        }
     }
 
     // MARK: - Backward-compatible static methods (used by tests)

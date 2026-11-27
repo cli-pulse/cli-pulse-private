@@ -22,9 +22,21 @@ public struct ClaudeSourceResolver: Sendable {
     ]
 
     private let strategies: [any ClaudeSourceStrategy]
+    /// The last-known-good snapshot, read when every strategy failed.
+    private let cachedSnapshot: @Sendable () -> ClaudeSnapshot?
 
     public init(strategies: [any ClaudeSourceStrategy]? = nil) {
+        self.init(strategies: strategies, cachedSnapshot: { Self.readCachedSnapshot() })
+    }
+
+    /// Tests pass their own cache, so a snapshot this Mac's helper wrote in
+    /// the last 24 hours never decides what a failing chain throws.
+    init(
+        strategies: [any ClaudeSourceStrategy]?,
+        cachedSnapshot: @escaping @Sendable () -> ClaudeSnapshot?
+    ) {
         self.strategies = strategies ?? Self.defaultStrategies
+        self.cachedSnapshot = cachedSnapshot
     }
 
     /// Resolve Claude usage using the configured strategy chain.
@@ -34,6 +46,18 @@ public struct ClaudeSourceResolver: Sendable {
     /// - `.oauth` / `.web` / `.cli`: uses only that specific strategy
     /// - Other modes: falls through to auto behavior
     public func resolve(config: ProviderConfig) async throws -> CollectorResult {
+        do {
+            return try await resolveKeepingFailures(config: config)
+        } catch let exhausted as ClaudeStrategiesExhausted {
+            throw exhausted.primary
+        }
+    }
+
+    /// `resolve`, except that when every strategy in the chain failed (and the
+    /// snapshot cache had nothing) it throws `ClaudeStrategiesExhausted` with
+    /// each failure, not only the one `resolve` throws. `ClaudeCollector` uses
+    /// it to tell a refused Claude Code login from a failure of its own.
+    func resolveKeepingFailures(config: ProviderConfig) async throws -> CollectorResult {
         Self.log("resolve start, sourceMode=\(config.sourceMode), helper=\(ClaudeHelperContract.diagnosticSummary())")
 
         let rawSnapshot: ClaudeSnapshot
@@ -115,7 +139,7 @@ public struct ClaudeSourceResolver: Sendable {
     }
 
     private func runChain(config: ProviderConfig) async throws -> ClaudeSnapshot {
-        var errors: [(source: String, error: Error)] = []
+        var errors: [ClaudeStrategyFailure] = []
 
         for strategy in strategies {
             guard strategy.isAvailable(config: config) else {
@@ -139,7 +163,8 @@ public struct ClaudeSourceResolver: Sendable {
                     shouldFallback = true
                 }
 
-                errors.append((strategy.sourceLabel, error))
+                errors.append(ClaudeStrategyFailure(
+                    source: strategy.sourceLabel, sourceType: strategy.sourceType, error: error))
                 Self.log("[\(strategy.sourceLabel)] failed: \(error.localizedDescription), fallback=\(shouldFallback)")
 
                 if !shouldFallback {
@@ -152,12 +177,12 @@ public struct ClaudeSourceResolver: Sendable {
         // The cache accepts last-known-good snapshots much longer than the
         // WebStrategy live window, bridging transient 429 rate-limit windows.
         Self.log("[cache] attempting fallback, paths=\(ClaudeHelperContract.snapshotCandidatePaths.joined(separator: ", "))")
-        if let cached = Self.readCachedSnapshot() {
+        if let cached = cachedSnapshot() {
             return cached
         }
 
         // Truly no data available — log and throw
-        if let lastError = errors.last {
+        if !errors.isEmpty {
             // 1.59: DEBUG builds only, like the resolver log below. A
             // release build wrote this into `$TMPDIR` for every user, with
             // file paths and error text nobody read.
@@ -165,8 +190,8 @@ public struct ClaudeSourceResolver: Sendable {
             let logPath = NSTemporaryDirectory() + "clipulse_claude_fallback.log"
             let timestamp = sharedISO8601Formatter.string(from: Date())
             var msg = "[\(timestamp)] All Claude strategies failed (including cache):\n"
-            for (source, err) in errors {
-                msg += "  - \(source): \(err.localizedDescription)\n"
+            for failure in errors {
+                msg += "  - \(failure.source): \(failure.error.localizedDescription)\n"
             }
             msg += "  - cache: \(ClaudeHelperContract.snapshotCandidatePaths.joined(separator: ", ")) — see resolver log for details\n"
             if let fh = FileHandle(forWritingAtPath: logPath) {
@@ -178,7 +203,7 @@ public struct ClaudeSourceResolver: Sendable {
             }
             #endif
 
-            throw lastError.error
+            throw ClaudeStrategiesExhausted(failures: errors)
         }
 
         throw ClaudeStrategyError.noToken
@@ -297,5 +322,30 @@ public struct ClaudeSourceResolver: Sendable {
         }
     }
     #endif
+}
+/// One strategy's failure in a resolver run.
+struct ClaudeStrategyFailure: Sendable {
+    let source: String
+    let sourceType: SourceType
+    let error: Error
+}
+
+/// Every strategy in the chain failed and the snapshot cache had nothing.
+/// Thrown by `ClaudeSourceResolver.resolveKeepingFailures`; `resolve` throws
+/// `primary` in its place.
+struct ClaudeStrategiesExhausted: Error, Sendable {
+    let failures: [ClaudeStrategyFailure]
+
+    /// The most actionable failure, as the resolver's doc comment always
+    /// promised (it threw the last one until 1.63.3): the first a credential
+    /// was refused for (`.auth`), else the first the provider answered with an
+    /// error status (`.http`), else the last. A refused OAuth token used to be
+    /// replaced by whatever the CLI probe or the web strategy failed with next.
+    var primary: Error {
+        let categories = failures.map { CollectorFailureCategory.categorize($0.error) }
+        if let auth = categories.firstIndex(of: .auth) { return failures[auth].error }
+        if let http = categories.firstIndex(of: .http) { return failures[http].error }
+        return failures.last?.error ?? ClaudeStrategyError.noToken
+    }
 }
 #endif
