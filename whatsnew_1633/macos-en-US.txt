@@ -1,4 +1,4 @@
 Clearer Claude status, and Settings that fit.
 
-• When Claude can't be read because your Claude Code sign-in was refused or has expired, or macOS's keychain dialog was declined, the Claude card now says so ("Not signed in", "Keychain access declined") instead of "This one is on us". A refused claude.ai sign-in or token reads "Authentication failed", and a rate limit says that it usually clears on its own.
+• When a Claude check fails because your Claude Code sign-in was refused or has expired, or macOS's keychain dialog was declined, the Claude card now says so in most cases ("Not signed in", "Keychain access declined") instead of "This one is on us", and so does the Test button in the provider's settings. A refused claude.ai sign-in or token reads "Authentication failed", and a rate limit says that it usually clears on its own.
 • Settings › General › Refresh Cadence is now a menu beside its label, so it no longer runs past the right edge of the window.
