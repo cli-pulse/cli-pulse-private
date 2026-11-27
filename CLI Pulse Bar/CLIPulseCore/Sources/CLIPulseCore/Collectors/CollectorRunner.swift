@@ -218,6 +218,24 @@ public enum CollectorFailureCategory: String, Sendable, Equatable, CaseIterable 
                 return .retired
             }
         }
+        // 1.63.3: Claude's strategies throw `ClaudeStrategyError`, and every
+        // one of those used to land in `.other` ("This one is on us"), a
+        // refused Claude Code sign-in included. Only the cases whose meaning is not in
+        // doubt are mapped. `parseFailed` stays `.other`: it is also thrown for
+        // a throttled CLI probe, a failed `openpty` and a non-HTTP response,
+        // where `.parse`'s "the provider changed its format" would be false.
+        if let claudeError = error as? ClaudeStrategyError {
+            switch claudeError {
+            case .httpError(let status, _):
+                return (status == 401 || status == 403) ? .auth : .http
+            case .unauthorized:
+                return .auth
+            case .rateLimitBackoff:
+                return .http
+            case .noToken, .parseFailed, .noBinary, .noSessionKey, .timedOut, .processExited:
+                return .other
+            }
+        }
         #endif
 
         let nsError = error as NSError
@@ -238,6 +256,37 @@ public enum CollectorFailureCategory: String, Sendable, Equatable, CaseIterable 
 // Everything below touches `ProviderCollector` / `CollectorResult`, which are
 // macOS-only, so the machinery is gated even though the vocabulary above is not.
 #if os(macOS)
+
+/// 1.63.3: a run that failed for a reason `readiness` would have named, had it
+/// been able to see it before the run.
+///
+/// Claude is the producer. Its OAuth source cannot use Claude Code's login when
+/// that login was refused, has expired, or macOS's keychain dialog was
+/// declined, and `readiness` says so ("Not signed in", "Keychain access
+/// declined") when nothing else could run. With the `claude` binary installed
+/// the CLI probe can run, so the run goes ahead and fails on the same login;
+/// it used to end as "Check failed — This one is on us".
+/// `CollectorRunner.failureOutcome` turns this into `.notReady(reason)`.
+public struct CollectorNotReadyFailure: LocalizedError, Sendable {
+    public let reason: CollectorNotReadyReason
+    /// The provider's display name, for the sentence the Test button shows.
+    public let providerName: String
+    /// What the run itself failed with, for logs (`CollectorError.logText(for:)`).
+    public let underlying: Error
+
+    public init(reason: CollectorNotReadyReason, providerName: String, underlying: Error) {
+        self.reason = reason
+        self.providerName = providerName
+        self.underlying = underlying
+    }
+
+    /// The next step the provider row shows for this reason, so the provider
+    /// editor's Test button says the same thing as the row.
+    public var errorDescription: String? {
+        let presentation = CollectorOutcomePresentation.of(.notReady(reason), providerName: providerName)
+        return presentation.nextStep ?? presentation.label
+    }
+}
 
 /// One provider's result from a collector pass.
 public struct CollectorRun: Sendable {
@@ -397,6 +446,9 @@ public enum CollectorRunner {
     ) -> CollectorOutcome {
         if let skip = strictPrivacySkip(causing: error, strictPrivacySkips: strictPrivacySkips) {
             return .notReady(skip.notReadyReason)
+        }
+        if let notReady = error as? CollectorNotReadyFailure {
+            return .notReady(notReady.reason)
         }
         return .failed(CollectorFailureCategory.categorize(error))
     }

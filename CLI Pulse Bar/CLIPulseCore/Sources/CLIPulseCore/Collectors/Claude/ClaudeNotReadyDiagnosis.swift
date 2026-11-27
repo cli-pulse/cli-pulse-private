@@ -162,6 +162,79 @@ enum ClaudeNotReadyDiagnosis {
         }
     }
 
+    /// 1.63.3: the reason to report for a run in which every strategy failed,
+    /// or nil to report the failure itself.
+    ///
+    /// Only when the OAuth source could not use Claude Code's login on this Mac
+    /// (refused, which `ClaudeOAuthStrategy` notes in the run it happens;
+    /// expired; or the keychain dialog declined) AND every failure can be put
+    /// down to that login:
+    /// - the OAuth strategy's own;
+    /// - the CLI probe's when Claude Code timed out or exited (it runs on the
+    ///   same login, and a signed-out Claude Code waits at its sign-in
+    ///   screen). Not `parseFailed`: that is also a throttled probe or a
+    ///   Claude Code that printed something else, and the login may be fine;
+    /// - the web strategy's only when it had no cookie or its cookie was
+    ///   refused. A web cookie is a credential of its own; when it worked and
+    ///   something after it failed (a 500, a format change), that failure is
+    ///   the one to report.
+    /// Otherwise the run reports its most actionable failure, which for a
+    /// refused cookie or token is already "Authentication failed".
+    ///
+    /// Not for a Mac with no Claude Code login at all (`errSecItemNotFound`):
+    /// then the run failed in whatever the user did set up, and that is what
+    /// the row should name. Not for the Settings › Privacy switches or Strict
+    /// privacy mode: those say so through their own reasons.
+    static func reason(
+        forFailedRun failures: [ClaudeStrategyFailure],
+        absence: ClaudeTokenAbsence?
+    ) -> CollectorNotReadyReason? {
+        guard case .keychain(let miss)? = absence else { return nil }
+        switch miss {
+        case .onCooldown, .expiredLogin:
+            break
+        case .status(let status) where ClaudeKeychainMiss.isDeclined(status):
+            break
+        case .status, .skipped, .unreadable:
+            return nil
+        }
+        guard !failures.isEmpty, failures.allSatisfy(dependsOnClaudeCodeLogin) else { return nil }
+        let reason = Self.reason(for: absence)
+        switch reason {
+        case .missingCredentials, .keychainDenied:
+            return reason
+        default:
+            return nil
+        }
+    }
+
+    private static func dependsOnClaudeCodeLogin(_ failure: ClaudeStrategyFailure) -> Bool {
+        switch failure.sourceType {
+        case .oauth:
+            return true
+        case .cli:
+            guard let error = failure.error as? ClaudeStrategyError else { return false }
+            switch error {
+            case .timedOut, .processExited:
+                return true
+            case .noToken, .httpError, .parseFailed, .noBinary, .noSessionKey, .unauthorized, .rateLimitBackoff:
+                return false
+            }
+        case .web:
+            guard let error = failure.error as? ClaudeStrategyError else { return false }
+            switch error {
+            case .noSessionKey, .unauthorized:
+                return true
+            case .httpError(let status, _):
+                return status == 401 || status == 403
+            case .noToken, .parseFailed, .noBinary, .timedOut, .processExited, .rateLimitBackoff:
+                return false
+            }
+        case .auto, .api, .local, .merged:
+            return false
+        }
+    }
+
     private static func reason(
         for miss: ClaudeKeychainMiss,
         isSandboxed: Bool,

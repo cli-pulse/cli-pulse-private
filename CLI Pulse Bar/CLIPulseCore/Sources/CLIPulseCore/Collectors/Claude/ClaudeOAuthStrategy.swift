@@ -82,6 +82,11 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
                 // every refresh. Account-scoped config tokens never mutate
                 // another account's shared compatibility cache.
                 ClaudeCredentials.installKeychainReadCooldown(cause: .rejectedToken)
+                // 1.63.3: and note it as this run's absence: the one the next
+                // run's read will meet. `ClaudeCollector.collect` then reports
+                // this run as every later one ("Not signed in"), not as the
+                // CLI probe's or the web strategy's failure that follows.
+                ClaudeTokenResolutionLog.note(.keychain(.onCooldown(.rejectedToken)))
             }
             throw ClaudeStrategyError.httpError(status: status, provider: "Claude")
         } catch ClaudeStrategyError.httpError(let status, _) where status == 429 {

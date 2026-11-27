@@ -255,7 +255,13 @@ public enum CollectorError: LocalizedError, Sendable {
     /// English text for any error bound for a log: a `CollectorError`'s own
     /// `logText`, otherwise the error's description.
     public static func logText(for error: Error) -> String {
-        (error as? CollectorError)?.logText ?? error.localizedDescription
+        if let notReady = error as? CollectorNotReadyFailure {
+            // The reason, and the failure the run actually ended with: the
+            // user-facing sentence alone would drop the HTTP status or the CLI
+            // error from the log.
+            return "not ready (\(notReady.reason.rawValue)): \(logText(for: notReady.underlying))"
+        }
+        return (error as? CollectorError)?.logText ?? error.localizedDescription
     }
 
     /// True if this error indicates "skip silently this tick".

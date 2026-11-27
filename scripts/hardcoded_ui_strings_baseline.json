@@ -1566,6 +1566,12 @@
    "literal": "\"privacy: \\(check.id) (\\(check.source)): the control showed none of the \\(check.lookedFor)\"",
    "count": 1,
    "reason": "KEEP_NOT_USER_VISIBLE: QARenderSnapshot.privacyProblem says why a hide-personal-info-* render failed its privacy check. Only the QA build's offscreen renderer (#if CLIPULSE_QA_RENDER, Debug QA only) logs it and writes it to render.json's warnings, and QARenderSnapshotTests assert it; no view of the app ever shows it."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/OpenRouterCollector.swift",
+   "literal": "\"not ready (\\(notReady.reason.rawValue)): \\(logText(for: notReady.underlying))\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: CollectorError.logText(for:), English for log lines by design (its doc comment: a log written in Chinese on one Mac cannot be grepped against one in English on another). Its only callers are DataRefreshManager's collector-failure log line and CollectorErrorLog file, and HelperDaemon's logger; no view shows it. The Test button shows CollectorNotReadyFailure.errorDescription, which is L10n."
   }
  ]
 }
