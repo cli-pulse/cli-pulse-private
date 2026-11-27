@@ -77,7 +77,7 @@ done
 # name appGroupReader.
 if grep -nE 'cloudConfigSnapshot[[:space:]]*\(' "$DAEMON_DIR/cli_pulse_helper/main.swift" 2>/dev/null \
      | sed 's://.*$::' | grep -E 'cloudConfigSnapshot[[:space:]]*\(' \
-     | grep -qv 'appGroupReader'; then
+     | grep -v 'appGroupReader' >/dev/null; then
   echo "error: main.swift calls cloudConfigSnapshot() with its DEFAULT reader."
   echo "       That default is AppGroupConfigReader.readPairing, which reads"
   echo "       UserDefaults(suiteName:) inside the app-group container and"

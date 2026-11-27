@@ -51,7 +51,7 @@ expect_fail() {
         echo "FAIL: [$name] guard PASSED a tree it should have rejected."
         fail=$((fail + 1)); return
     fi
-    if ! printf '%s' "$out" | grep -qF "$needle"; then
+    if ! grep -qF "$needle" <<< "$out"; then
         echo "FAIL: [$name] guard failed, but not for the expected reason."
         echo "      wanted substring: $needle"
         fail=$((fail + 1)); return
@@ -124,7 +124,7 @@ expect_fail "Android in an archived note (the platform check still reads release
 # ── the guard must refuse to scan nothing ───────────────────────────────────
 rm -rf "$TMP/empty"; mkdir -p "$TMP/empty"
 out="$(bash "$GUARD" --root "$TMP/empty" 2>&1)"
-if [ $? -ne 0 ] && printf '%s' "$out" | grep -qF "found no whatsnew"; then
+if [ $? -ne 0 ] && grep -qF "found no whatsnew" <<< "$out"; then
     echo "ok:   [scans nothing] guard refused rather than passing vacuously."
     pass=$((pass + 1))
 else

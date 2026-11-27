@@ -40,7 +40,7 @@ expect_new() {
   local name="$1" out got missing=""; shift
   out="$(python3 "$GUARD" --root "$T" 2>&1)"; got=$?
   for lit in "$@"; do
-    printf '%s\n' "$out" | grep -F "NEW" | grep -qF "\"$lit\"" || missing="$missing [$lit]"
+    grep -F "NEW" <<< "$out" | grep -F "\"$lit\"" >/dev/null || missing="$missing [$lit]"
   done
   if [ "$got" = 1 ] && [ -z "$missing" ]; then pass=$((pass+1)); echo "  ok    $name"
   else fail=$((fail+1)); echo "  FAIL  $name (exit $got; not reported NEW:${missing:- none})"; echo "$out" | sed 's/^/        /'; fi
@@ -51,7 +51,7 @@ expect_new() {
 expect_output() {
   local want="$1" name="$2" text="$3" out got
   out="$(python3 "$GUARD" --root "$T" 2>&1)"; got=$?
-  if [ "$got" = "$want" ] && printf '%s\n' "$out" | grep -qF -- "$text"; then pass=$((pass+1)); echo "  ok    $name"
+  if [ "$got" = "$want" ] && grep -qF -- "$text" <<< "$out"; then pass=$((pass+1)); echo "  ok    $name"
   else fail=$((fail+1)); echo "  FAIL  $name (want exit $want with \"$text\", got $got)"; echo "$out" | sed 's/^/        /'; fi
   rm -rf "$T"
 }

@@ -10,7 +10,7 @@
 # same: a check that has never been watched to FAIL is not known to work.
 #
 # So this builds a throwaway copy of only the files the guard reads, mutates it
-# nine ways, and asserts the guard rejects each one (plus two positive controls). It also asserts the
+# once per case below, and asserts the guard rejects each mutation (case 10 is a positive control). It also asserts the
 # unmutated fixture PASSES — without that positive control, a guard that always
 # failed would sail through every case below.
 set -uo pipefail

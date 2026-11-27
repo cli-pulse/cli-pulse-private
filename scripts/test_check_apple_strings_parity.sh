@@ -170,7 +170,7 @@ expect_fail() {
         echo "FAIL: [$name] guard PASSED a tree it should have rejected."
         fail=$((fail + 1)); return
     fi
-    if ! printf '%s' "$out" | grep -qF "$needle"; then
+    if ! grep -qF "$needle" <<< "$out"; then
         echo "FAIL: [$name] guard failed (rc=$rc), but not for the expected reason."
         echo "      wanted substring: $needle"
         echo "      got: $out"
@@ -1054,7 +1054,7 @@ out="$(python3 "$GUARD" --root "$TMP/case" --update-baseline 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ]; then
     echo "FAIL: [baseline growth] --update-baseline silently grew the debt."
     fail=$((fail + 1))
-elif ! printf '%s' "$out" | grep -qF "may only shrink"; then
+elif ! grep -qF "may only shrink" <<< "$out"; then
     echo "FAIL: [baseline growth] refused, but not for the expected reason: $out"
     fail=$((fail + 1))
 else

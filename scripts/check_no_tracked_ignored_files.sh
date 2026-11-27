@@ -56,7 +56,7 @@ while IFS= read -r path; do
     allowed=0
     for pattern in "${ALLOWED[@]:-}"; do
         [[ -z "$pattern" ]] && continue
-        if printf '%s' "$path" | grep -Eq "$pattern"; then
+        if grep -Eq "$pattern" <<< "$path"; then
             allowed=1
             break
         fi

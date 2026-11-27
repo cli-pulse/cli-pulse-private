@@ -111,7 +111,7 @@ expect_fail() {
         record_fail "$name" "guard PASSED a tree it should have rejected."
     elif [ "$rc" -ne 1 ]; then
         record_fail "$name" "guard exited $rc, not 1 — that is a crash or a usage error, not a rejection: $out"
-    elif ! printf '%s' "$out" | grep -qF -- "$needle"; then
+    elif ! grep -qF -- "$needle" <<< "$out"; then
         record_fail "$name" "guard failed, but not for the expected reason. wanted: $needle  got: $out"
     else
         record_ok "$name" "guard rejected it, for the right reason."
@@ -254,7 +254,7 @@ rm -f "$PBX"
 expect_fail "no Xcode project" "no Xcode project at"
 
 out="$(bash "$GUARD" --root "$TMP/does-not-exist" 2>&1)"; rc=$?
-if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -qF "no Xcode project at"; then
+if [ "$rc" -eq 1 ] && grep -qF "no Xcode project at" <<< "$out"; then
     record_ok "nonexistent --root" "guard rejected it, for the right reason."
 else
     record_fail "nonexistent --root" "wanted exit 1 and 'no Xcode project at', got exit $rc: $out"
@@ -262,7 +262,7 @@ fi
 
 for args in "--root" "--bogus"; do
     out="$(bash "$GUARD" $args 2>&1)"; rc=$?
-    if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -qF "usage:"; then
+    if [ "$rc" -eq 2 ] && grep -qF "usage:" <<< "$out"; then
         record_ok "usage: $args" "guard refuses with exit 2."
     else
         record_fail "usage: $args" "wanted exit 2 and a usage line, got exit $rc: $out"

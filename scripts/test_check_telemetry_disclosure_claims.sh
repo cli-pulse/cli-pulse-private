@@ -81,7 +81,7 @@ expect_fail() {
         echo "FAIL: [$name] guard PASSED a tree it should have rejected."
         fail=$((fail + 1)); return
     fi
-    if ! printf '%s' "$out" | grep -qF "$needle"; then
+    if ! grep -qF "$needle" <<< "$out"; then
         echo "FAIL: [$name] guard failed (rc=$rc), but not for the expected reason."
         echo "      wanted substring: $needle"
         echo "      got: $out"

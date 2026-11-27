@@ -82,7 +82,7 @@ distinct="$(printf '%s\n' "$versions" | wc -l | tr -d '[:space:]')"
 [ "$distinct" = 1 ] \
     || fail "the Xcode project has $distinct different MARKETING_VERSION values ($(printf '%s ' $versions)); they must agree before the policy can be compared (scripts/check-versions.sh)"
 version="$versions"
-printf '%s\n' "$version" | grep -qE '^[0-9]+\.[0-9]+(\.[0-9]+)?$' \
+grep -qE '^[0-9]+\.[0-9]+(\.[0-9]+)?$' <<< "$version" \
     || fail "MARKETING_VERSION '$version' is not X.Y or X.Y.Z"
 want="$(printf '%s\n' "$version" | sed -E 's/^([0-9]+\.[0-9]+).*$/\1/')"
 
@@ -99,7 +99,7 @@ text="${lines#*:}"
 
 # Exactly "It describes CLI Pulse X.Y." — anything else ("1.62.0.", "1.62 and
 # later.") fails loudly rather than being half-parsed into a false pass.
-printf '%s\n' "$text" | grep -qE "^$PREFIX [0-9]+\.[0-9]+\.\$" \
+grep -qE "^$PREFIX [0-9]+\.[0-9]+\.\$" <<< "$text" \
     || fail_at "$lineno" "PRIVACY.md line $lineno reads '$text'; it must be exactly 'It describes CLI Pulse $want.' (major.minor, then a full stop)."
 have="$(printf '%s\n' "$text" | sed -E "s/^$PREFIX ([0-9]+\.[0-9]+)\.\$/\1/")"
 

@@ -32,7 +32,7 @@
 # stop.
 #
 # NEGATIVE CONTROL: `scripts/test_check_paywall_claims.sh` mutates a throwaway
-# copy of the tree four ways and asserts this script fails each time. A guard
+# copy of the tree once per case and asserts this script fails each time. A guard
 # nobody has watched fail is not known to work.
 #
 # Usage: check_paywall_claims.sh [--root DIR]   (--root is for the self-test)
