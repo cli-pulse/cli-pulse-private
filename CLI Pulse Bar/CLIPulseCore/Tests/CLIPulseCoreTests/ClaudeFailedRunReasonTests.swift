@@ -13,9 +13,10 @@ import XCTest
 /// (everything Claude threw was `.other`), and the resolver threw the LAST
 /// strategy's failure, not the refused token.
 ///
-/// Every strategy here is a stub and the snapshot cache is injected empty: no
-/// test reads this Mac's Claude Code login, its credentials file, or a
-/// snapshot its helper wrote.
+/// Every strategy here is a stub and the snapshot cache is injected: nothing
+/// this Mac has (Claude Code's login, its credentials file, a snapshot or
+/// account file its helper wrote) decides a result. The resolver's DEBUG log
+/// line still describes the helper's snapshot files; it reads, never decides.
 final class ClaudeFailedRunReasonTests: XCTestCase {
 
     private var ownerSuite: String!
@@ -117,20 +118,48 @@ final class ClaudeFailedRunReasonTests: XCTestCase {
 
     // MARK: - Claude Code's login cannot be used: say so
 
-    func test_refusedLoginOnCooldown_andTheCLIProbeFails_isNotSignedIn() async throws {
-        let (outcome, error) = await run([
-            TokenlessOAuth(keychain: .missing(.onCooldown(.rejectedToken))),
-            Failing(.cli, Self.cliCannotRead),
-        ])
-        XCTAssertEqual(outcome, .notReady(.missingCredentials))
-        let failure = try XCTUnwrap(error as? CollectorNotReadyFailure)
-        guard case .parseFailed? = failure.underlying as? ClaudeStrategyError else {
-            return XCTFail("the run's own failure is kept for the log: \(failure.underlying)")
+    func test_refusedLoginOnCooldown_andClaudeCodeHangsOrExits_isNotSignedIn() async throws {
+        for cliError in [ClaudeStrategyError.timedOut, .processExited] {
+            let (outcome, error) = await run([
+                TokenlessOAuth(keychain: .missing(.onCooldown(.rejectedToken))),
+                Failing(.cli, cliError),
+            ])
+            XCTAssertEqual(outcome, .notReady(.missingCredentials), "\(cliError)")
+            let failure = try XCTUnwrap(error as? CollectorNotReadyFailure)
+            XCTAssertEqual((failure.underlying as? ClaudeStrategyError)?.errorDescription, cliError.errorDescription,
+                           "the run's own failure is kept for the log")
         }
     }
 
+    func test_refusedLogin_withoutAnyOtherSource_isNotSignedIn() async {
+        // The `claude` binary is not there; the web strategy had no cookie.
+        let (outcome, _) = await run([
+            TokenlessOAuth(keychain: .missing(.onCooldown(.rejectedToken))),
+            Failing(.web, .noSessionKey),
+        ])
+        XCTAssertEqual(outcome, .notReady(.missingCredentials))
+    }
+
+    func test_aCLIProbeThatPrintedSomethingElse_keepsItsOwnFailure() async {
+        // A throttled probe, or Claude Code printing a screen the parser does
+        // not know: the login may well be fine, so "Not signed in" could be
+        // false. The owner's own run on 1.63.2 ended with the web cookie
+        // refused, which is reported as such ("Authentication failed").
+        let alone = await run([
+            TokenlessOAuth(keychain: .missing(.onCooldown(.rejectedToken))),
+            Failing(.cli, Self.cliCannotRead),
+        ])
+        XCTAssertEqual(alone.outcome, .failed(.other))
+        let withRefusedCookie = await run([
+            TokenlessOAuth(keychain: .missing(.onCooldown(.rejectedToken))),
+            Failing(.cli, .parseFailed("cli-pty probe throttled (~60s backoff remaining); skipping PTY spawn")),
+            Failing(.web, .unauthorized),
+        ])
+        XCTAssertEqual(withRefusedCookie.outcome, .failed(.auth))
+    }
+
     func test_theRunWhereTheTokenIsRefused_saysTheSameAsTheRunsAfterIt() async {
-        let (outcome, _) = await run([RefusedOAuth(), Failing(.cli, Self.cliCannotRead)])
+        let (outcome, _) = await run([RefusedOAuth(), Failing(.cli, .timedOut)])
         XCTAssertEqual(outcome, .notReady(.missingCredentials),
                        "the first run said 'Authentication failed', every later one 'Not signed in'")
     }
@@ -159,7 +188,7 @@ final class ClaudeFailedRunReasonTests: XCTestCase {
                          .httpError(status: 403, provider: "Claude Web")] {
             let (outcome, _) = await run([
                 TokenlessOAuth(keychain: .missing(.onCooldown(.rejectedToken))),
-                Failing(.cli, Self.cliCannotRead),
+                Failing(.cli, .processExited),
                 Failing(.web, webError),
             ])
             XCTAssertEqual(outcome, .notReady(.missingCredentials), "\(webError)")
@@ -180,17 +209,28 @@ final class ClaudeFailedRunReasonTests: XCTestCase {
 
         let rateLimited = await run([
             TokenlessOAuth(keychain: .missing(.onCooldown(.rejectedToken))),
-            Failing(.cli, Self.cliCannotRead),
+            Failing(.cli, .timedOut),
             Failing(.web, .httpError(status: 429, provider: "Claude Web")),
         ])
         XCTAssertEqual(rateLimited.outcome, .failed(.http))
+    }
+
+    func test_theRunWhereTheTokenIsRefused_withACookieThatFailedOtherwise_saysAuthenticationFailed() async {
+        // Both are true in that run; the refusal is the one that needs the
+        // user, so the resolver ranks it first. Later runs no longer send the
+        // token (cooldown) and report the cookie's own failure.
+        let (outcome, _) = await run([
+            RefusedOAuth(),
+            Failing(.web, .httpError(status: 429, provider: "Claude Web")),
+        ])
+        XCTAssertEqual(outcome, .failed(.auth))
     }
 
     func test_noClaudeCodeLoginAtAll_keepsTheFailure() async {
         // No item: the run failed in whatever the user did set up.
         let (outcome, error) = await run([
             TokenlessOAuth(keychain: .missing(.status(errSecItemNotFound))),
-            Failing(.cli, Self.cliCannotRead),
+            Failing(.cli, .timedOut),
         ])
         XCTAssertEqual(outcome, .failed(.other))
         XCTAssertFalse(error is CollectorNotReadyFailure)
@@ -201,7 +241,7 @@ final class ClaudeFailedRunReasonTests: XCTestCase {
                      .skipped(.skippedAwaitingApp), .status(errSecInteractionNotAllowed), .unreadable] {
             let (_, error) = await run([
                 TokenlessOAuth(keychain: .missing(miss)),
-                Failing(.cli, Self.cliCannotRead),
+                Failing(.cli, .timedOut),
             ])
             XCTAssertFalse(error is CollectorNotReadyFailure, "\(miss)")
         }
@@ -220,9 +260,10 @@ final class ClaudeFailedRunReasonTests: XCTestCase {
 
     func test_aCachedSnapshotStillAnswers() async throws {
         let snapshot = ClaudeSnapshot(sessionUsed: 10, weeklyUsed: 20, sourceLabel: "cache")
+        // No strategy here resolves a token, so the entry claims no shared
+        // login and the resolver reads no account file of this Mac's.
         let collector = ClaudeCollector(resolver: ClaudeSourceResolver(
-            strategies: [TokenlessOAuth(keychain: .missing(.onCooldown(.rejectedToken))),
-                         Failing(.cli, Self.cliCannotRead)],
+            strategies: [Failing(.cli, .timedOut)],
             cachedSnapshot: { snapshot }))
         _ = try await collector.collect(config: config)
     }

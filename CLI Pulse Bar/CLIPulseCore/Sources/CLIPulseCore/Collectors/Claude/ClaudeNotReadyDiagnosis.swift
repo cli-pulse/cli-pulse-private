@@ -168,11 +168,18 @@ enum ClaudeNotReadyDiagnosis {
     /// Only when the OAuth source could not use Claude Code's login on this Mac
     /// (refused, which `ClaudeOAuthStrategy` notes in the run it happens;
     /// expired; or the keychain dialog declined) AND every failure can be put
-    /// down to that login: the OAuth strategy's own, the CLI probe's (it runs
-    /// Claude Code, on the same login), and the web strategy's only when it
-    /// had no cookie or its cookie was refused. A web cookie is a credential of
-    /// its own; when it worked and something after it failed (a 500, a format
-    /// change, the network), that failure is the one to report.
+    /// down to that login:
+    /// - the OAuth strategy's own;
+    /// - the CLI probe's when Claude Code timed out or exited (it runs on the
+    ///   same login, and a signed-out Claude Code waits at its sign-in
+    ///   screen). Not `parseFailed`: that is also a throttled probe or a
+    ///   Claude Code that printed something else, and the login may be fine;
+    /// - the web strategy's only when it had no cookie or its cookie was
+    ///   refused. A web cookie is a credential of its own; when it worked and
+    ///   something after it failed (a 500, a format change), that failure is
+    ///   the one to report.
+    /// Otherwise the run reports its most actionable failure, which for a
+    /// refused cookie or token is already "Authentication failed".
     ///
     /// Not for a Mac with no Claude Code login at all (`errSecItemNotFound`):
     /// then the run failed in whatever the user did set up, and that is what
@@ -203,8 +210,16 @@ enum ClaudeNotReadyDiagnosis {
 
     private static func dependsOnClaudeCodeLogin(_ failure: ClaudeStrategyFailure) -> Bool {
         switch failure.sourceType {
-        case .oauth, .cli:
+        case .oauth:
             return true
+        case .cli:
+            guard let error = failure.error as? ClaudeStrategyError else { return false }
+            switch error {
+            case .timedOut, .processExited:
+                return true
+            case .noToken, .httpError, .parseFailed, .noBinary, .noSessionKey, .unauthorized, .rateLimitBackoff:
+                return false
+            }
         case .web:
             guard let error = failure.error as? ClaudeStrategyError else { return false }
             switch error {
