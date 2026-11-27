@@ -10,7 +10,7 @@
 # same: a check that has never been watched to FAIL is not known to work.
 #
 # So this builds a throwaway copy of only the files the guard reads, mutates it
-# nine ways, and asserts the guard rejects each one (plus two positive controls). It also asserts the
+# once per case below, and asserts the guard rejects each mutation (case 10 is a positive control). It also asserts the
 # unmutated fixture PASSES — without that positive control, a guard that always
 # failed would sail through every case below.
 set -uo pipefail
@@ -105,7 +105,7 @@ expect_fail() {
         fail=$((fail + 1))
         return
     fi
-    if ! echo "$out" | grep -qF -- "$needle"; then
+    if ! grep -qF -- "$needle" <<< "$out"; then
         echo "FAIL: [$name] guard failed, but not for the expected reason."
         echo "      wanted output containing: $needle"
         echo "      got:"
@@ -222,6 +222,21 @@ perl -0pi -e 's/"Meet Pulse Cat"/"Unlimited providers, devices, and priority sup
     "$TMP/case/$CAPTION_REL"
 assert_changed "screenshot caption claim" "$TMP/case/$CAPTION_REL" "$before" \
     && expect_fail "screenshot caption claim" "screenshot caption claims"
+
+# ── 8b. the same claim, in a caption source too long to read in one go ─────
+# The guard used to pipe each caption file into `grep -q` under `pipefail`.
+# `grep -q` exits at the first match; the writer then dies of SIGPIPE, pipefail
+# fails the pipeline, and `if` read a real match as no match. With the real
+# 31 KB file that happened only sometimes (case 8 failed on #796's CI and passed
+# on main at the same tree). The padding makes the writer outlast grep every time.
+build_fixture "$TMP/case"
+before="$(shasum "$TMP/case/$CAPTION_REL" | cut -d' ' -f1)"
+perl -0pi -e 's/"Meet Pulse Cat"/"Unlimited providers, devices, and priority support"/' \
+    "$TMP/case/$CAPTION_REL"
+awk 'BEGIN { for (i = 0; i < 40000; i++) print "PADDING_" i " = \"filler line for the SIGPIPE case\"" }' \
+    >> "$TMP/case/$CAPTION_REL"
+assert_changed "caption claim in a long file" "$TMP/case/$CAPTION_REL" "$before" \
+    && expect_fail "caption claim in a long file" "screenshot caption claims"
 
 # ── 9. the caption scan silently matches nothing ───────────────────────────
 # Same failure mode as case 5, one surface over: if the compose scripts move or

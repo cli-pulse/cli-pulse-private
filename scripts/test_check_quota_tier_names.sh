@@ -47,7 +47,7 @@ l10n() { printf '%s\n' "$1" > "$T/$CORE/L10n.swift"; }
 expect_reason() {  # expect_reason <needle> <name>
   local needle="$1" name="$2" out got
   out="$(python3 "$GUARD" --root "$T" 2>&1)"; got=$?
-  if [ "$got" = 1 ] && printf '%s' "$out" | grep -qF -- "$needle"; then pass=$((pass+1)); echo "  ok    $name"
+  if [ "$got" = 1 ] && grep -qF -- "$needle" <<< "$out"; then pass=$((pass+1)); echo "  ok    $name"
   else fail=$((fail+1)); echo "  FAIL  $name (want exit 1 with: $needle; got exit $got)"; echo "$out" | sed 's/^/        /'; fi
   rm -rf "$T"
 }
