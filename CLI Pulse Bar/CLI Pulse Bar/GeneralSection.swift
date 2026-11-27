@@ -53,15 +53,18 @@ struct GeneralSection: View {
                 LastCloudUploadRow(store: CloudUploadStatusStore.shared)
             }
 
-            // The label sits above the picker. Beside a 300-point picker it had
-            // about 30 points left, and broke inside its words in every
-            // language ("Refre/sh Caden/ce", "새로고/침 주기").
-            VStack(alignment: .leading, spacing: 4) {
+            // 1.63.3: a menu, laid out like Currency below. The six-segment
+            // picker this replaces measured 324-335 pt wide (en, es, zh) at
+            // the small control size, against about 356 pt inside the
+            // popover's insets, and ran past the right edge of the real
+            // menu-bar window on 1.63.2. Its label had to sit above it.
+            HStack {
                 Text(L10n.settings.refreshCadence)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
+                Spacer()
                 // Titled for VoiceOver; `.labelsHidden()` hides the title from
-                // sight only, since the Text above it already shows it.
+                // sight only, since the Text beside it already shows it.
                 Picker(L10n.settings.refreshCadence, selection: Binding(
                     get: { state.refreshInterval },
                     set: { state.updateRefreshInterval($0) }
@@ -73,10 +76,10 @@ struct GeneralSection: View {
                         Text(L10n.settings.refreshMinutesShort(minutes)).tag(minutes * 60)
                     }
                 }
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
                 .controlSize(.small)
                 .labelsHidden()
-                .frame(maxWidth: .infinity)
+                .frame(width: 120)
             }
 
             // v1.40 PR-7: display currency (costs convert at display time; storage stays USD).
